@@ -1,0 +1,13 @@
+node_modules
+
+# Environment files
+.env
+.env.*
+
+# Build and runtime output
+/dist
+/runtime
+/generated/prisma
+*.log
+*.err.log
+*.out.log

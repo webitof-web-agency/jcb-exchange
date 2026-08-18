@@ -1,0 +1,1 @@
+// Master data business logic (fetching from Prisma)

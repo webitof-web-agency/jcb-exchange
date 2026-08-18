@@ -1,0 +1,26 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const master_controller_1 = require("../controllers/master.controller");
+const auth_middleware_1 = require("../middlewares/auth.middleware");
+const router = (0, express_1.Router)();
+router.get('/categories', auth_middleware_1.requireAuth, master_controller_1.getCategories);
+router.post('/categories', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.create']), master_controller_1.createCategory);
+router.put('/categories/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.update']), master_controller_1.updateCategory);
+router.delete('/categories/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.delete']), master_controller_1.deleteCategory);
+router.get('/brands', master_controller_1.getBrands);
+router.get('/models/:brandId', master_controller_1.getModels);
+router.get('/icons', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, master_controller_1.getIcons);
+router.post('/icons', master_controller_1.createIcon);
+router.get('/dealers', master_controller_1.getApprovedDealers);
+router.get('/finance-support', master_controller_1.getFinanceSupportItems);
+router.get('/hero-image', master_controller_1.getHeroImage);
+router.get('/inspection-section', master_controller_1.getInspectionSection);
+router.get('/public-listings', master_controller_1.getPublicListings);
+router.get('/public-listings/:id', master_controller_1.getPublicListingById);
+router.post('/public-listings/:id/view', master_controller_1.incrementListingView);
+router.get('/public-categories', master_controller_1.getPublicCategories);
+router.get('/public-search-filters', master_controller_1.getPublicSearchFilters);
+router.get('/recent-listings', master_controller_1.getRecentListings);
+exports.default = router;
+//# sourceMappingURL=master.routes.js.map

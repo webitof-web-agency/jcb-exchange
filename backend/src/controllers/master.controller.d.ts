@@ -1,0 +1,20 @@
+import { Request, Response, NextFunction } from 'express';
+export declare const getCategories: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const createCategory: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const updateCategory: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const deleteCategory: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const getBrands: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getModels: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getIcons: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const createIcon: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const getApprovedDealers: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getFinanceSupportItems: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getHeroImage: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getInspectionSection: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getPublicListings: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getRecentListings: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getPublicCategories: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const getPublicSearchFilters: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export declare const getPublicListingById: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const incrementListingView: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+//# sourceMappingURL=master.controller.d.ts.map

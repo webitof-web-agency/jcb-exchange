@@ -1,0 +1,572 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  PARTNER
+  SUPER_ADMIN
+  ADMIN
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BLOCKED
+  CLOSED
+}
+
+enum PartnerType {
+  SHOWROOM
+  BROKER
+}
+
+enum PartnerOnboardingStatus {
+  ACCOUNT_CREATED
+  PROFILE_PENDING
+  KYC_PENDING
+  DEPOSIT_PENDING
+  AGREEMENT_PENDING
+  REVIEW_PENDING
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum PartnerAccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+  CLOSED
+}
+
+enum KycStatus {
+  NOT_STARTED
+  INCOMPLETE
+  SUBMITTED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  EXPIRED
+  SUSPENDED
+}
+
+enum KycDocumentType {
+  PAN_CARD
+  AADHAAR_CARD
+  PASSPORT_PHOTO
+  CANCELLED_CHEQUE
+  GST_CERTIFICATE
+  AUTHORIZED_PERSON_ID
+}
+
+enum KycDocumentStatus {
+  NOT_UPLOADED
+  UPLOADED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_APPROVAL
+  CHANGES_REQUESTED
+  PUBLISHED
+  PAUSED
+  RESERVED
+  SOLD
+  REJECTED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  INSPECTION_SCHEDULED
+  WON
+  LOST
+}
+
+enum AdminPermissionKey {
+  MANAGE_PARTNERS
+  REVIEW_KYC
+  REVIEW_LISTINGS
+  MANAGE_LEADS
+  MANAGE_FINANCE
+  MANAGE_REFUNDS
+  MANAGE_SUPPORT
+  MANAGE_CMS
+  MANAGE_SEO
+  VIEW_REPORTS
+  MANAGE_SETTINGS
+  MANAGE_ADMINS
+}
+
+enum PartnerStaffRole {
+  OWNER
+  LISTING_MANAGER
+  SALES_EXECUTIVE
+  LEAD_MANAGER
+  MEDIA_UPLOADER
+  FINANCE_VIEWER
+  READ_ONLY
+}
+
+enum DepositType {
+  ONLINE_PAYMENT
+  UPI_PAYMENT
+  NET_BANKING
+  BANK_TRANSFER
+  CASH
+  CHEQUE
+  DEMAND_DRAFT
+  BANK_GUARANTEE
+  WAIVER_LETTER
+  UNDERTAKING_LETTER
+  EXCEPTION_APPROVAL
+}
+
+enum DepositStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  VERIFICATION_PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  REFUND_REQUESTED
+  REFUNDED
+}
+
+enum AgreementType {
+  MARKETPLACE_TERMS
+  PARTNER_TERMS
+  LISTING_AUTHENTICITY
+  MEDIA_OWNERSHIP
+  SECURITY_DEPOSIT_POLICY
+  REFUND_POLICY
+  CUSTOMER_DATA_USAGE
+  CONTACT_VISIBILITY_POLICY
+  FRAUD_POLICY
+  LISTING_SUSPENSION_POLICY
+  SOLD_MEDIA_DELETION_POLICY
+  FEATURED_IMAGE_RETENTION_CONSENT
+  COMMISSION_POLICY
+  LEAD_OWNERSHIP_POLICY
+}
+
+enum AuditEntityType {
+  USER
+  PARTNER_PROFILE
+  KYC_DOCUMENT
+  LISTING
+  DEPOSIT
+  AGREEMENT
+}
+
+enum CustomerPrimeSubscriptionStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id               String     @id @default(uuid())
+  mobile           String?    @unique
+  email            String?    @unique
+  password         String?
+  name             String?
+  authProvider     String?    @default("LOCAL")
+  role             Role       @default(CUSTOMER)
+  status           UserStatus @default(ACTIVE)
+  whatsappNumber   String?
+  city             String?
+  state            String?
+  isMobileVerified Boolean    @default(false)
+  createdById      String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  customRoleId     String?
+
+  createdBy          User?                @relation("UserCreation", fields: [createdById], references: [id])
+  createdUsers       User[]               @relation("UserCreation")
+  adminProfile       AdminProfile?
+  adminPermissions   AdminPermission[]
+  customRole         CustomRole?          @relation("UserCustomRole", fields: [customRoleId], references: [id])
+  partnerProfile     PartnerProfile?
+  teamMemberships    PartnerTeamMember[]
+  listings           Listing[]
+  leads              Lead[]               @relation("CustomerLeads")
+  assignedLeads      Lead[]               @relation("DealerLeads")
+  reviewedKycDocs    KycDocument[]        @relation("KycReviewer")
+  kycReviewActions   KycReviewLog[]       @relation("KycReviewActor")
+  verifiedDeposits   PartnerDeposit[]     @relation("DepositVerifier")
+  acceptedAgreements PartnerAgreement[]   @relation("AgreementAcceptor")
+  approvedPartners   PartnerProfile[]     @relation("PartnerApprover")
+  customerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeSubscriptions")
+  approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeApprover")
+  rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeRejector")
+  auditLogs          AuditLog[]           @relation("AuditActor")
+  notifications      Notification[]
+}
+
+model AdminProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  title       String?
+  isRootAdmin Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model CustomRole {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  users       User[]   @relation("UserCustomRole")
+}
+
+model AdminPermission {
+  id          String             @id @default(uuid())
+  adminUserId String
+  permission  AdminPermissionKey
+  createdAt   DateTime           @default(now())
+
+  adminUser User @relation(fields: [adminUserId], references: [id])
+
+  @@unique([adminUserId, permission])
+  @@index([adminUserId])
+}
+
+model PartnerProfile {
+  id                String                  @id @default(uuid())
+  userId            String                  @unique
+  ownerName         String?
+  businessName      String?
+  partnerType       PartnerType?
+  businessAddress   String?
+  district          String?
+  pinCode           String?
+  businessExperience String?
+  expectedMonthlyListings Int?
+  listingLimit      Int                     @default(5)
+  referralCode      String?
+  businessDescription String?               @db.Text
+  businessLogoUrl   String?
+  googleMapsLocation String?
+  serviceAreas      String?
+  workingHours      String?
+  alternateMobile   String?
+  websiteUrl        String?
+  socialLinks       String?
+  yearsInBusiness   Int?
+  teamSize          Int?
+  gstNumber         String?
+  businessRegistrationNumber String?
+  onboardingStatus  PartnerOnboardingStatus @default(ACCOUNT_CREATED)
+  accountStatus     PartnerAccountStatus    @default(PENDING)
+  kycStatus         KycStatus               @default(NOT_STARTED)
+  depositStatus     DepositStatus           @default(NOT_SUBMITTED)
+  contactPreference String?
+  approvedById      String?
+  approvedAt        DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id])
+  approvedBy    User?              @relation("PartnerApprover", fields: [approvedById], references: [id])
+  teamMembers   PartnerTeamMember[]
+  categories    Category[]
+  kycDocuments  KycDocument[]
+  kycReviews    KycReviewLog[]
+  deposits      PartnerDeposit[]
+  agreements    PartnerAgreement[]
+
+  @@index([onboardingStatus])
+  @@index([accountStatus])
+  @@index([kycStatus])
+}
+
+model PartnerTeamMember {
+  id               String          @id @default(uuid())
+  partnerProfileId String
+  userId           String
+  staffRole        PartnerStaffRole
+  isPrimary        Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+
+  @@unique([partnerProfileId, userId])
+  @@index([userId])
+}
+
+model CategoryIcon {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  svgData   String     @db.Text
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  categories Category[]
+}
+
+model Category {
+  id               String          @id @default(uuid())
+  partnerProfileId String?
+  name             String
+  iconId           String?
+
+  partnerProfile PartnerProfile? @relation(fields: [partnerProfileId], references: [id])
+  icon           CategoryIcon?   @relation(fields: [iconId], references: [id])
+  listings       Listing[]
+
+  @@index([partnerProfileId])
+  @@unique([partnerProfileId, name])
+}
+
+model Brand {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  models   Model[]
+  listings Listing[]
+}
+
+model Model {
+  id       String    @id @default(uuid())
+  name     String
+  brandId  String
+  brand    Brand     @relation(fields: [brandId], references: [id])
+  listings Listing[]
+}
+
+model Listing {
+  id                String        @id @default(uuid())
+  partnerId         String
+  categoryId        String
+  brandId           String
+  modelId           String
+  title             String
+  price             Decimal
+  isNegotiable      Boolean       @default(false)
+  manufacturingYear Int
+  operatingHours    Int?
+  locationState     String
+  locationCity      String
+  condition         String?
+  description       String?       @db.Text
+  additionalDescription String?   @db.Text
+  grossPower        String?
+  status            ListingStatus @default(DRAFT)
+  soldAt            DateTime?
+  contactMode       String?
+  views             Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  partner  User     @relation(fields: [partnerId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+  brand    Brand    @relation(fields: [brandId], references: [id])
+  model    Model    @relation(fields: [modelId], references: [id])
+  media    Media[]
+  leads    Lead[]
+
+  @@index([status, soldAt])
+}
+
+model Media {
+  id            String    @id @default(uuid())
+  listingId     String
+  url           String
+  type          String
+  isFeatured    Boolean   @default(false)
+  toBeDeletedAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id])
+}
+
+model Lead {
+  id          String     @id @default(uuid())
+  listingId   String?
+  customerId  String
+  dealerId    String
+  enquiryType String
+  message     String?    @db.Text
+  status      LeadStatus @default(NEW)
+  listingTitleSnapshot String?
+  listingStatusSnapshot String?
+  listingPriceSnapshot Decimal?
+  listingLocationCitySnapshot String?
+  listingLocationStateSnapshot String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  listing  Listing? @relation(fields: [listingId], references: [id])
+  customer User    @relation("CustomerLeads", fields: [customerId], references: [id])
+  dealer   User    @relation("DealerLeads", fields: [dealerId], references: [id])
+
+  @@index([listingId])
+}
+
+model KycDocument {
+  id               String            @id @default(uuid())
+  partnerProfileId String
+  documentType     KycDocumentType
+  fileUrl          String
+  fileName         String?
+  documentNumber   String?
+  nameOnDocument   String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  submittedNote    String?           @db.Text
+  status           KycDocumentStatus @default(UPLOADED)
+  reviewComment    String?           @db.Text
+  reviewedById     String?
+  reviewedAt       DateTime?
+  uploadedAt       DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+  reviewedBy     User?          @relation("KycReviewer", fields: [reviewedById], references: [id])
+  reviewLogs     KycReviewLog[]
+
+  @@index([partnerProfileId, status])
+}
+
+model KycReviewLog {
+  id               String   @id @default(uuid())
+  partnerProfileId String
+  kycDocumentId    String?
+  action           String
+  comment          String?  @db.Text
+  actorUserId      String
+  createdAt        DateTime @default(now())
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+  kycDocument    KycDocument?   @relation(fields: [kycDocumentId], references: [id])
+  actorUser      User           @relation("KycReviewActor", fields: [actorUserId], references: [id])
+
+  @@index([partnerProfileId, createdAt])
+}
+
+model PartnerDeposit {
+  id               String        @id @default(uuid())
+  partnerProfileId String
+  depositType      DepositType
+  amount           Decimal?
+  referenceNo      String?
+  paymentDate      DateTime?
+  paymentMode      String?
+  receiptUrl       String?
+  bankDetails      String?       @db.Text
+  lockInPeriodDays Int?
+  refundEligibleOn DateTime?
+  guaranteeExpiryDate DateTime?
+  notes            String?       @db.Text
+  status           DepositStatus @default(SUBMITTED)
+  verifiedById     String?
+  verifiedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+  verifiedBy     User?          @relation("DepositVerifier", fields: [verifiedById], references: [id])
+
+  @@index([partnerProfileId, status])
+}
+
+model PartnerAgreement {
+  id               String        @id @default(uuid())
+  partnerProfileId String
+  agreementType    AgreementType
+  version          String
+  acceptedAt       DateTime      @default(now())
+  acceptedByUserId String
+  ipAddress        String?
+  createdAt        DateTime      @default(now())
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+  acceptedByUser User           @relation("AgreementAcceptor", fields: [acceptedByUserId], references: [id])
+
+  @@unique([partnerProfileId, agreementType, version])
+}
+
+model AuditLog {
+  id          String          @id @default(uuid())
+  actorUserId String
+  entityType  AuditEntityType
+  entityId    String
+  action      String
+  beforeJson  Json?
+  afterJson   Json?
+  ipAddress   String?
+  createdAt   DateTime        @default(now())
+
+  actorUser User @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String?  
+  isRead    Boolean  @default(false)
+  link      String?  
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CustomerPrimeSubscription {
+  id                 String                          @id @default(uuid())
+  userId             String
+  status             CustomerPrimeSubscriptionStatus @default(PENDING)
+  transactionRef     String?
+  paymentNote        String?                         @db.Text
+  receiptUrl         String?
+  paidAmount         Decimal
+  paidUpiId          String?
+  settingsSnapshot   Json
+  startedAt          DateTime?
+  expiresAt          DateTime?
+  submittedAt        DateTime                        @default(now())
+  approvedByUserId   String?
+  approvedAt         DateTime?
+  rejectedByUserId   String?
+  rejectedAt         DateTime?
+  rejectionReason    String?                         @db.Text
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+
+  user       User   @relation("CustomerPrimeSubscriptions", fields: [userId], references: [id])
+  approvedBy User?  @relation("CustomerPrimeApprover", fields: [approvedByUserId], references: [id])
+  rejectedBy User?  @relation("CustomerPrimeRejector", fields: [rejectedByUserId], references: [id])
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@index([submittedAt])
+}

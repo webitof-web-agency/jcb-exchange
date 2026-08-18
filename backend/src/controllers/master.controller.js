@@ -1,0 +1,854 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.incrementListingView = exports.getPublicListingById = exports.getPublicSearchFilters = exports.getPublicCategories = exports.getRecentListings = exports.getPublicListings = exports.getInspectionSection = exports.getHeroImage = exports.getFinanceSupportItems = exports.getApprovedDealers = exports.createIcon = exports.getIcons = exports.getModels = exports.getBrands = exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategories = void 0;
+const prisma_1 = __importDefault(require("../lib/prisma"));
+const appSettings_1 = require("../utils/appSettings");
+const publicListingVisibility_1 = require("../utils/publicListingVisibility");
+const prismaAny = prisma_1.default;
+const normalizePhoneNumber = (value) => {
+    const trimmedValue = value?.trim();
+    if (!trimmedValue) {
+        return null;
+    }
+    const normalizedDigits = trimmedValue.replace(/\D/g, '');
+    if (normalizedDigits.length < 10) {
+        return null;
+    }
+    return normalizedDigits;
+};
+const resolvePublicLeadContact = ({ useSellerContact, adminCallNumber, adminWhatsappNumber, sellerMobile, sellerAlternateMobile, sellerWhatsappNumber, }) => {
+    const normalizedAdminCallNumber = normalizePhoneNumber(adminCallNumber);
+    const normalizedAdminWhatsappNumber = normalizePhoneNumber(adminWhatsappNumber) || normalizedAdminCallNumber;
+    const normalizedSellerCallNumber = normalizePhoneNumber(sellerMobile) || normalizePhoneNumber(sellerAlternateMobile);
+    const normalizedSellerWhatsappNumber = normalizePhoneNumber(sellerWhatsappNumber) || normalizedSellerCallNumber;
+    if (useSellerContact) {
+        return {
+            callNumber: normalizedSellerCallNumber || normalizedAdminCallNumber,
+            whatsappNumber: normalizedSellerWhatsappNumber || normalizedAdminWhatsappNumber,
+            routingMode: normalizedSellerCallNumber || normalizedSellerWhatsappNumber ? 'SELLER' : 'SUPER_ADMIN',
+            fallbackApplied: (!!normalizedAdminCallNumber || !!normalizedAdminWhatsappNumber) &&
+                (!normalizedSellerCallNumber || !normalizedSellerWhatsappNumber),
+        };
+    }
+    return {
+        callNumber: normalizedAdminCallNumber,
+        whatsappNumber: normalizedAdminWhatsappNumber,
+        routingMode: 'SUPER_ADMIN',
+        fallbackApplied: false,
+    };
+};
+const getDefaultSuperAdminContact = async () => {
+    const superAdminUser = await prisma_1.default.user.findFirst({
+        where: {
+            role: 'SUPER_ADMIN',
+        },
+        select: {
+            mobile: true,
+            whatsappNumber: true,
+        },
+        orderBy: {
+            createdAt: 'asc',
+        },
+    });
+    const adminCallNumber = normalizePhoneNumber(superAdminUser?.mobile);
+    const adminWhatsappNumber = normalizePhoneNumber(superAdminUser?.whatsappNumber) || adminCallNumber;
+    return {
+        adminCallNumber,
+        adminWhatsappNumber,
+    };
+};
+const getPartnerProfile = async (userId) => {
+    if (!userId) {
+        return null;
+    }
+    return prismaAny.partnerProfile.findUnique({
+        where: { userId },
+        select: { id: true },
+    });
+};
+const isHiddenPublicCategory = (name) => name?.trim().toLowerCase() === 'uncategorized';
+const getCategories = async (req, res, next) => {
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({ error: 'Authentication required.' });
+        }
+        const categories = await prismaAny.category.findMany({
+            where: {
+                partnerProfileId: null,
+            },
+            include: { icon: true },
+            orderBy: { name: 'asc' },
+        });
+        res.status(200).json({
+            success: true,
+            data: categories.filter((category) => !isHiddenPublicCategory(category.name)),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getCategories = getCategories;
+const createCategory = async (req, res, next) => {
+    try {
+        if (!req.user?.id || req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Super admin access required.' });
+        }
+        const { name, iconId } = req.body;
+        if (!name)
+            return res.status(400).json({ error: 'Name is required' });
+        const normalizedName = String(name).trim();
+        const existing = await prismaAny.category.findFirst({
+            where: {
+                partnerProfileId: null,
+                name: normalizedName,
+            },
+            select: { id: true },
+        });
+        if (existing)
+            return res.status(400).json({ error: 'Category already exists' });
+        const category = await prismaAny.category.create({
+            data: {
+                name: normalizedName,
+                iconId,
+                partnerProfileId: null,
+            },
+            include: { icon: true },
+        });
+        res.status(201).json({ success: true, data: category });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.createCategory = createCategory;
+const updateCategory = async (req, res, next) => {
+    try {
+        if (!req.user?.id || req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Super admin access required.' });
+        }
+        const id = req.params.id;
+        const { name, iconId } = req.body;
+        if (!name)
+            return res.status(400).json({ error: 'Name is required' });
+        const normalizedName = String(name).trim();
+        const existingCategory = await prismaAny.category.findFirst({
+            where: {
+                id,
+                partnerProfileId: null,
+            },
+            select: { id: true },
+        });
+        if (!existingCategory) {
+            return res.status(404).json({ error: 'Category not found.' });
+        }
+        const duplicateCategory = await prismaAny.category.findFirst({
+            where: {
+                id: { not: id },
+                partnerProfileId: null,
+                name: normalizedName,
+            },
+            select: { id: true },
+        });
+        if (duplicateCategory) {
+            return res.status(400).json({ error: 'Category already exists' });
+        }
+        const category = await prismaAny.category.update({
+            where: { id },
+            data: { name: normalizedName, iconId },
+            include: { icon: true },
+        });
+        res.status(200).json({ success: true, data: category });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.updateCategory = updateCategory;
+const deleteCategory = async (req, res, next) => {
+    try {
+        if (!req.user?.id || req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Super admin access required.' });
+        }
+        const id = req.params.id;
+        const category = await prismaAny.category.findFirst({
+            where: {
+                id,
+                partnerProfileId: null,
+            },
+            select: {
+                id: true,
+                _count: {
+                    select: {
+                        listings: true,
+                    },
+                },
+            },
+        });
+        if (!category) {
+            return res.status(404).json({ error: 'Category not found.' });
+        }
+        if (category._count.listings > 0) {
+            return res.status(400).json({ error: 'This category is already used in listings and cannot be deleted.' });
+        }
+        await prismaAny.category.delete({
+            where: { id },
+        });
+        res.status(200).json({ success: true });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.deleteCategory = deleteCategory;
+const getBrands = async (req, res, next) => {
+    try {
+        res.status(200).json({ success: true, data: [] });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getBrands = getBrands;
+const getModels = async (req, res, next) => {
+    try {
+        res.status(200).json({ success: true, data: [] });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getModels = getModels;
+const getIcons = async (req, res, next) => {
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({ error: 'Authentication required.' });
+        }
+        const icons = await prisma_1.default.categoryIcon.findMany({
+            orderBy: { name: 'asc' },
+        });
+        res.status(200).json({ success: true, data: icons });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getIcons = getIcons;
+const createIcon = async (req, res, next) => {
+    try {
+        const { name, svgData } = req.body;
+        if (!name || !svgData)
+            return res.status(400).json({ error: 'Name and SVG data are required' });
+        const existing = await prisma_1.default.categoryIcon.findUnique({ where: { name } });
+        if (existing)
+            return res.status(400).json({ error: 'Icon with this name already exists' });
+        const icon = await prisma_1.default.categoryIcon.create({
+            data: { name, svgData },
+        });
+        res.status(201).json({ success: true, data: icon });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.createIcon = createIcon;
+const getApprovedDealers = async (req, res, next) => {
+    try {
+        const [settings, defaultSuperAdminContact, dealers] = await Promise.all([
+            (0, appSettings_1.getAppSettings)(),
+            getDefaultSuperAdminContact(),
+            prismaAny.partnerProfile.findMany({
+                where: {
+                    accountStatus: 'ACTIVE',
+                    onboardingStatus: 'APPROVED',
+                    kycStatus: 'APPROVED',
+                },
+                select: {
+                    id: true,
+                    businessName: true,
+                    businessLogoUrl: true,
+                    district: true,
+                    businessAddress: true,
+                    alternateMobile: true,
+                    user: {
+                        select: {
+                            mobile: true,
+                            name: true,
+                            whatsappNumber: true,
+                        },
+                    },
+                    partnerType: true,
+                    workingHours: true,
+                    yearsInBusiness: true,
+                    businessDescription: true,
+                    contactPreference: true,
+                },
+                orderBy: {
+                    businessName: 'asc',
+                },
+            }),
+        ]);
+        const data = dealers.map((dealer) => ({
+            ...dealer,
+            publicContact: resolvePublicLeadContact({
+                useSellerContact: settings.publicLeadRouting.useSellerContact,
+                adminCallNumber: defaultSuperAdminContact.adminCallNumber,
+                adminWhatsappNumber: defaultSuperAdminContact.adminWhatsappNumber,
+                sellerMobile: dealer.user?.mobile,
+                sellerAlternateMobile: dealer.alternateMobile,
+                sellerWhatsappNumber: dealer.user?.whatsappNumber,
+            }),
+        }));
+        res.status(200).json({ success: true, data });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getApprovedDealers = getApprovedDealers;
+const getFinanceSupportItems = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.status(200).json({
+            success: true,
+            data: settings.financeSupport.items,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getFinanceSupportItems = getFinanceSupportItems;
+const getHeroImage = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.status(200).json({
+            success: true,
+            data: settings.heroImage,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getHeroImage = getHeroImage;
+const getInspectionSection = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.status(200).json({
+            success: true,
+            data: settings.inspectionSection,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getInspectionSection = getInspectionSection;
+const getPublicListings = async (req, res, next) => {
+    try {
+        const listings = await prismaAny.listing.findMany({
+            where: (0, publicListingVisibility_1.getPublicMarketplaceListingWhere)(),
+            include: {
+                media: {
+                    orderBy: {
+                        createdAt: 'asc',
+                    },
+                },
+                category: {
+                    select: { id: true, name: true },
+                },
+                brand: {
+                    select: { id: true, name: true },
+                },
+                model: {
+                    select: { id: true, name: true },
+                },
+                partner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                                expiresAt: {
+                                    gte: new Date(),
+                                },
+                            },
+                            select: {
+                                expiresAt: true,
+                            },
+                        },
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: [
+                {
+                    createdAt: 'desc',
+                },
+            ],
+        });
+        res.status(200).json({
+            success: true,
+            data: listings.map((listing) => ({
+                id: listing.id,
+                title: listing.title,
+                price: Number(listing.price || 0),
+                isNegotiable: Boolean(listing.isNegotiable),
+                manufacturingYear: listing.manufacturingYear,
+                operatingHours: listing.operatingHours,
+                locationCity: listing.locationCity,
+                locationState: listing.locationState,
+                condition: listing.condition,
+                description: listing.description,
+                status: listing.status,
+                category: listing.category,
+                brand: listing.brand,
+                model: listing.model,
+                partner: {
+                    id: listing.partner?.id,
+                    name: listing.partner?.partnerProfile?.businessName ||
+                        listing.partner?.name ||
+                        'Verified Partner',
+                },
+                featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
+                    listing.media.find((media) => media.type === 'IMAGE')?.url ||
+                    null,
+                mediaCount: listing.media.length,
+                createdAt: listing.createdAt,
+            })),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getPublicListings = getPublicListings;
+const getRecentListings = async (req, res, next) => {
+    try {
+        const listings = await prismaAny.listing.findMany({
+            where: {
+                status: 'PUBLISHED',
+                partner: {
+                    OR: [
+                        {
+                            role: 'CUSTOMER',
+                            status: 'ACTIVE',
+                        },
+                        {
+                            partnerProfile: (0, publicListingVisibility_1.getApprovedPartnerProfileWhere)(),
+                        },
+                    ],
+                },
+            },
+            include: {
+                media: {
+                    orderBy: {
+                        createdAt: 'asc',
+                    },
+                },
+                category: {
+                    select: { name: true },
+                },
+                brand: {
+                    select: { name: true },
+                },
+                partner: {
+                    select: {
+                        name: true,
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                                expiresAt: {
+                                    gte: new Date(),
+                                },
+                            },
+                            select: {
+                                expiresAt: true,
+                            },
+                        },
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+            take: 4,
+        });
+        res.status(200).json({
+            success: true,
+            data: listings.map((listing) => ({
+                id: listing.id,
+                title: listing.title,
+                price: Number(listing.price || 0),
+                locationCity: listing.locationCity,
+                locationState: listing.locationState,
+                categoryName: listing.category?.name,
+                brandName: listing.brand?.name,
+                partnerName: listing.partner?.partnerProfile?.businessName ||
+                    listing.partner?.name ||
+                    'Verified Partner',
+                featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
+                    listing.media.find((media) => media.type === 'IMAGE')?.url ||
+                    null,
+                createdAt: listing.createdAt,
+            })),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getRecentListings = getRecentListings;
+const getPublicCategories = async (req, res, next) => {
+    try {
+        const requestedLimit = Number.parseInt(String(req.query.limit || ''), 10);
+        const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : null;
+        const listings = await prismaAny.listing.findMany({
+            where: {
+                status: {
+                    in: (0, publicListingVisibility_1.getPublicListingStatuses)(),
+                },
+                category: {
+                    partnerProfileId: null,
+                },
+                partner: (0, publicListingVisibility_1.getPublicSellerWhere)(),
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+            include: {
+                media: {
+                    orderBy: {
+                        createdAt: 'asc',
+                    },
+                },
+                category: {
+                    include: {
+                        icon: {
+                            select: {
+                                id: true,
+                                name: true,
+                                svgData: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        const categoryMap = new Map();
+        for (const listing of listings) {
+            if (!listing.category) {
+                continue;
+            }
+            if (isHiddenPublicCategory(listing.category.name)) {
+                continue;
+            }
+            const existing = categoryMap.get(listing.category.id);
+            const featuredImage = listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
+                listing.media.find((media) => media.type === 'IMAGE')?.url ||
+                null;
+            if (!existing) {
+                categoryMap.set(listing.category.id, {
+                    id: listing.category.id,
+                    name: listing.category.name,
+                    count: 1,
+                    featuredImage,
+                    icon: listing.category.icon
+                        ? {
+                            id: listing.category.icon.id,
+                            name: listing.category.icon.name,
+                            svgData: listing.category.icon.svgData,
+                        }
+                        : null,
+                });
+                continue;
+            }
+            existing.count += 1;
+        }
+        const data = Array.from(categoryMap.values())
+            .sort((left, right) => {
+            if (right.count !== left.count) {
+                return right.count - left.count;
+            }
+            return left.name.localeCompare(right.name);
+        })
+            .slice(0, limit ?? undefined);
+        return res.status(200).json({
+            success: true,
+            data,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getPublicCategories = getPublicCategories;
+const getPublicSearchFilters = async (req, res, next) => {
+    try {
+        const listings = await prismaAny.listing.findMany({
+            where: {
+                status: {
+                    in: (0, publicListingVisibility_1.getPublicListingStatuses)(),
+                },
+                category: {
+                    partnerProfileId: null,
+                },
+                partner: (0, publicListingVisibility_1.getPublicSellerWhere)(),
+            },
+            select: {
+                locationCity: true,
+                locationState: true,
+                category: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+        });
+        const categoryMap = new Map();
+        const locationMap = new Map();
+        for (const listing of listings) {
+            if (listing.category) {
+                if (isHiddenPublicCategory(listing.category.name)) {
+                    continue;
+                }
+                const existingCategory = categoryMap.get(listing.category.id);
+                if (existingCategory) {
+                    existingCategory.count += 1;
+                }
+                else {
+                    categoryMap.set(listing.category.id, {
+                        id: listing.category.id,
+                        name: listing.category.name,
+                        count: 1,
+                    });
+                }
+            }
+            const locationLabel = [listing.locationCity, listing.locationState].filter(Boolean).join(', ');
+            if (!locationLabel) {
+                continue;
+            }
+            const existingLocation = locationMap.get(locationLabel);
+            if (existingLocation) {
+                existingLocation.count += 1;
+            }
+            else {
+                locationMap.set(locationLabel, {
+                    name: locationLabel,
+                    count: 1,
+                });
+            }
+        }
+        const categories = Array.from(categoryMap.values()).sort((left, right) => {
+            if (right.count !== left.count) {
+                return right.count - left.count;
+            }
+            return left.name.localeCompare(right.name);
+        });
+        const locations = Array.from(locationMap.values()).sort((left, right) => {
+            if (right.count !== left.count) {
+                return right.count - left.count;
+            }
+            return left.name.localeCompare(right.name);
+        });
+        res.status(200).json({
+            success: true,
+            data: {
+                categories,
+                locations,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getPublicSearchFilters = getPublicSearchFilters;
+const getPublicListingById = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ success: false, error: 'Listing ID is required.' });
+        }
+        const listing = await prismaAny.listing.findUnique({
+            where: { id },
+            include: {
+                media: {
+                    orderBy: {
+                        createdAt: 'asc',
+                    },
+                },
+                category: {
+                    select: { id: true, name: true },
+                },
+                brand: {
+                    select: { id: true, name: true },
+                },
+                model: {
+                    select: { id: true, name: true },
+                },
+                partner: {
+                    select: {
+                        id: true,
+                        role: true,
+                        status: true,
+                        name: true,
+                        mobile: true,
+                        email: true,
+                        whatsappNumber: true,
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                                expiresAt: {
+                                    gte: new Date(),
+                                },
+                            },
+                            select: {
+                                expiresAt: true,
+                            },
+                        },
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                                partnerType: true,
+                                onboardingStatus: true,
+                                accountStatus: true,
+                                kycStatus: true,
+                                district: true,
+                                businessAddress: true,
+                                workingHours: true,
+                                alternateMobile: true,
+                                businessLogoUrl: true,
+                                businessDescription: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!listing) {
+            return res.status(404).json({ success: false, error: 'Listing not found.' });
+        }
+        if (!(0, publicListingVisibility_1.isPublicMarketplaceListingVisible)({
+            status: listing.status,
+            partner: {
+                role: listing.partner?.role,
+                status: listing.partner?.status,
+                partnerProfile: listing.partner?.partnerProfile,
+            },
+        })) {
+            return res.status(404).json({ success: false, error: 'Listing is not available.' });
+        }
+        const [settings, defaultSuperAdminContact] = await Promise.all([
+            (0, appSettings_1.getAppSettings)(),
+            getDefaultSuperAdminContact(),
+        ]);
+        const publicContact = resolvePublicLeadContact({
+            useSellerContact: settings.publicLeadRouting.useSellerContact,
+            adminCallNumber: defaultSuperAdminContact.adminCallNumber,
+            adminWhatsappNumber: defaultSuperAdminContact.adminWhatsappNumber,
+            sellerMobile: listing.partner?.mobile,
+            sellerAlternateMobile: listing.partner?.partnerProfile?.alternateMobile,
+            sellerWhatsappNumber: listing.partner?.whatsappNumber,
+        });
+        const sellerPresentation = (0, publicListingVisibility_1.getMarketplaceSellerPresentation)({
+            role: listing.partner?.role,
+            name: listing.partner?.name,
+            partnerProfile: listing.partner?.partnerProfile,
+        });
+        const responseData = {
+            id: listing.id,
+            title: listing.title,
+            price: Number(listing.price || 0),
+            isNegotiable: Boolean(listing.isNegotiable),
+            manufacturingYear: listing.manufacturingYear,
+            operatingHours: listing.operatingHours,
+            locationCity: listing.locationCity,
+            locationState: listing.locationState,
+            condition: listing.condition,
+            description: listing.description,
+            additionalDescription: listing.additionalDescription,
+            grossPower: listing.grossPower,
+            status: listing.status,
+            views: listing.views,
+            category: listing.category,
+            brand: listing.brand,
+            model: listing.model,
+            partner: {
+                id: listing.partner?.id,
+                name: sellerPresentation.displayName,
+                partnerType: sellerPresentation.partnerType,
+                customerCategory: sellerPresentation.partnerType === 'PRIME_CUSTOMER' ? 'PRIME_CUSTOMER' : 'STANDARD_CUSTOMER',
+                district: listing.partner?.partnerProfile?.district,
+                address: listing.partner?.partnerProfile?.businessAddress,
+                mobile: listing.partner?.mobile,
+                whatsapp: listing.partner?.whatsappNumber || listing.partner?.mobile,
+                alternateMobile: listing.partner?.partnerProfile?.alternateMobile,
+                logo: listing.partner?.partnerProfile?.businessLogoUrl,
+                description: listing.partner?.partnerProfile?.businessDescription,
+                workingHours: listing.partner?.partnerProfile?.workingHours,
+            },
+            publicContact,
+            media: listing.media,
+            featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
+                listing.media.find((media) => media.type === 'IMAGE')?.url ||
+                null,
+            mediaCount: listing.media.length,
+            createdAt: listing.createdAt,
+            updatedAt: listing.updatedAt,
+        };
+        res.status(200).json({
+            success: true,
+            data: responseData,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getPublicListingById = getPublicListingById;
+const incrementListingView = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ success: false, error: 'Listing ID is required.' });
+        }
+        const listing = await prismaAny.listing.update({
+            where: { id },
+            data: {
+                views: {
+                    increment: 1,
+                },
+            },
+            select: { views: true },
+        });
+        res.status(200).json({
+            success: true,
+            data: { views: listing.views },
+        });
+    }
+    catch (error) {
+        // If the listing doesn't exist, we don't necessarily want to throw a hard error in the UI
+        if (error.code === 'P2025') {
+            return res.status(404).json({ success: false, error: 'Listing not found.' });
+        }
+        next(error);
+    }
+};
+exports.incrementListingView = incrementListingView;
+//# sourceMappingURL=master.controller.js.map
