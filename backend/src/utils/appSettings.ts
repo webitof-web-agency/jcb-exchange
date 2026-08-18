@@ -55,7 +55,14 @@ type AppSettings = {
 };
 
 const settingsDirectory = path.resolve(process.cwd(), 'runtime');
+const legacySettingsDirectory = path.resolve(__dirname, '..', '..', 'runtime');
+const repoRootLegacySettingsDirectory = path.resolve(__dirname, '..', '..', '..', 'runtime');
 const settingsFilePath = path.join(settingsDirectory, 'app-settings.json');
+const legacySettingsFilePath = path.join(legacySettingsDirectory, 'app-settings.json');
+const repoRootLegacySettingsFilePath = path.join(repoRootLegacySettingsDirectory, 'app-settings.json');
+const settingsFileCandidates = Array.from(
+  new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]),
+);
 
 const defaultSettings: AppSettings = {
   googleAuth: {
@@ -100,6 +107,24 @@ const defaultSettings: AppSettings = {
     updatedByUserId: null,
   },
 };
+
+const isMeaningfulSettings = (settings: AppSettings) =>
+  Boolean(
+    settings.googleAuth.clientId ||
+      settings.publicLeadRouting.useSellerContact ||
+      settings.publicLeadRouting.adminCallNumber ||
+      settings.publicLeadRouting.adminWhatsappNumber ||
+      settings.customerPrime.enabled ||
+      settings.customerPrime.upiId ||
+      settings.customerPrime.amount !== null ||
+      settings.customerPrime.validityValue !== null ||
+      settings.financeSupport.items.length > 0 ||
+      settings.heroImage.imageUrl ||
+      settings.heroImage.headline ||
+      settings.inspectionSection.title ||
+      settings.inspectionSection.description ||
+      settings.inspectionSection.imageUrl,
+  );
 
 const normalizeClientId = (value?: string | null) => {
   const trimmedValue = value?.trim();
@@ -157,51 +182,91 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
 const ensureSettingsFile = async () => {
   await fs.mkdir(settingsDirectory, { recursive: true });
 
-  try {
-    await fs.access(settingsFilePath);
-  } catch {
-    await fs.writeFile(settingsFilePath, JSON.stringify(defaultSettings, null, 2), 'utf8');
+  const [currentExists, legacyExists, repoRootLegacyExists] = await Promise.all(
+    settingsFileCandidates.map(async (candidatePath) => {
+      try {
+        await fs.access(candidatePath);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  );
+
+  if (currentExists) {
+    return;
   }
+
+  if (legacyExists || repoRootLegacyExists) {
+    return;
+  }
+
+  await fs.writeFile(settingsFilePath, JSON.stringify(defaultSettings, null, 2), 'utf8');
 };
 
 export const getAppSettings = async (): Promise<AppSettings> => {
   await ensureSettingsFile();
 
   try {
-    const content = await fs.readFile(settingsFilePath, 'utf8');
-    const parsed = JSON.parse(content) as Partial<AppSettings>;
+    const candidateSnapshots = await Promise.all(
+      settingsFileCandidates.map(async (candidatePath) => {
+        try {
+          const content = await fs.readFile(candidatePath, 'utf8');
+          const parsed = JSON.parse(content) as Partial<AppSettings>;
 
-    return {
-      googleAuth: {
-        clientId: normalizeClientId(parsed.googleAuth?.clientId) || null,
-        updatedAt: parsed.googleAuth?.updatedAt || null,
-        updatedByUserId: parsed.googleAuth?.updatedByUserId || null,
-      },
-      publicLeadRouting: {
-        useSellerContact: parsed.publicLeadRouting?.useSellerContact === true,
-        adminCallNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminCallNumber) || null,
-        adminWhatsappNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminWhatsappNumber) || null,
-        updatedAt: parsed.publicLeadRouting?.updatedAt || null,
-        updatedByUserId: parsed.publicLeadRouting?.updatedByUserId || null,
-      },
-      customerPrime: normalizeCustomerPrimeSettings(parsed.customerPrime),
-      financeSupport: {
-        items: normalizeFinanceSupportItems(parsed.financeSupport?.items),
-      },
-      heroImage: {
-        imageUrl: parsed.heroImage?.imageUrl?.trim() || null,
-        headline: parsed.heroImage?.headline?.trim() || null,
-        updatedAt: parsed.heroImage?.updatedAt || null,
-        updatedByUserId: parsed.heroImage?.updatedByUserId || null,
-      },
-      inspectionSection: {
-        title: parsed.inspectionSection?.title?.trim() || null,
-        description: parsed.inspectionSection?.description?.trim() || null,
-        imageUrl: parsed.inspectionSection?.imageUrl?.trim() || null,
-        updatedAt: parsed.inspectionSection?.updatedAt || null,
-        updatedByUserId: parsed.inspectionSection?.updatedByUserId || null,
-      },
-    };
+          const snapshot: AppSettings = {
+            googleAuth: {
+              clientId: normalizeClientId(parsed.googleAuth?.clientId) || null,
+              updatedAt: parsed.googleAuth?.updatedAt || null,
+              updatedByUserId: parsed.googleAuth?.updatedByUserId || null,
+            },
+            publicLeadRouting: {
+              useSellerContact: parsed.publicLeadRouting?.useSellerContact === true,
+              adminCallNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminCallNumber) || null,
+              adminWhatsappNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminWhatsappNumber) || null,
+              updatedAt: parsed.publicLeadRouting?.updatedAt || null,
+              updatedByUserId: parsed.publicLeadRouting?.updatedByUserId || null,
+            },
+            customerPrime: normalizeCustomerPrimeSettings(parsed.customerPrime),
+            financeSupport: {
+              items: normalizeFinanceSupportItems(parsed.financeSupport?.items),
+            },
+            heroImage: {
+              imageUrl: parsed.heroImage?.imageUrl?.trim() || null,
+              headline: parsed.heroImage?.headline?.trim() || null,
+              updatedAt: parsed.heroImage?.updatedAt || null,
+              updatedByUserId: parsed.heroImage?.updatedByUserId || null,
+            },
+            inspectionSection: {
+              title: parsed.inspectionSection?.title?.trim() || null,
+              description: parsed.inspectionSection?.description?.trim() || null,
+              imageUrl: parsed.inspectionSection?.imageUrl?.trim() || null,
+              updatedAt: parsed.inspectionSection?.updatedAt || null,
+              updatedByUserId: parsed.inspectionSection?.updatedByUserId || null,
+            },
+          };
+
+          return {
+            candidatePath,
+            snapshot,
+            meaningful: isMeaningfulSettings(snapshot),
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const preferredSnapshot =
+      candidateSnapshots.find((entry) => entry?.meaningful)?.snapshot ||
+      candidateSnapshots.find((entry) => entry?.snapshot)?.snapshot ||
+      defaultSettings;
+
+    if (!candidateSnapshots.some((entry) => entry?.candidatePath === settingsFilePath && entry.snapshot)) {
+      await fs.writeFile(settingsFilePath, JSON.stringify(preferredSnapshot, null, 2), 'utf8');
+    }
+
+    return preferredSnapshot;
   } catch {
     return defaultSettings;
   }
