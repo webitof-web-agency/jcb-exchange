@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getMarketplaceSellerPresentation = exports.isPublicMarketplaceListingVisible = exports.getPublicMarketplaceListingWhere = exports.getPublicSellerWhere = exports.getApprovedPartnerProfileWhere = exports.getPublicListingStatuses = void 0;
-const publicListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED'];
+const publicListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED', 'SOLD'];
 const approvedPartnerProfileWhere = {
     onboardingStatus: 'APPROVED',
     accountStatus: 'ACTIVE',

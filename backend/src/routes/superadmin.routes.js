@@ -26,7 +26,7 @@ const canManageEnquiries = (0, auth_middleware_1.requireSuperAdminOrEmployeePerm
 const canViewVisitors = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['visitors.read']);
 const canUpdateAccountStatus = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['users.update', 'partners.change_status', 'visitors.change_status']);
 const canManageCategories = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.read', 'categories.create', 'categories.update', 'categories.delete']);
-const canManageListings = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['partners.read', 'kyc.manage']);
+const canManageListings = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['partners.read', 'kyc.manage', 'listings.read']);
 router.get('/dashboard', canViewDashboard, admin_controller_1.getDashboardSummary);
 router.get('/badges', canViewDashboard, admin_controller_1.getModuleBadges);
 router.get('/finance-support', canManageSettings, admin_controller_1.getFinanceSupportContent);

@@ -102,6 +102,37 @@ const normalizeListingStatus = (value, fallback) => {
     }
     return fallback.toUpperCase();
 };
+const formatSellerTypeLabel = (value) => {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+        return 'Unknown';
+    }
+    return normalized
+        .replace(/[_-]+/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+};
+const getDealerCategoryLabel = (partner) => {
+    if (!partner) {
+        return 'Unknown';
+    }
+    if (partner.role === 'PARTNER') {
+        return partner.partnerProfile?.partnerType || 'Authorized Place';
+    }
+    if (partner.role === 'CUSTOMER') {
+        const hasActivePrimeSubscription = partner.customerPrimeSubscriptions?.some((subscription) => {
+            const expiresAt = subscription.expiresAt ? new Date(subscription.expiresAt) : null;
+            return !!expiresAt && expiresAt >= new Date();
+        });
+        return hasActivePrimeSubscription ? 'Prime Customer' : 'Customer';
+    }
+    if (partner.role) {
+        return formatSellerTypeLabel(partner.role);
+    }
+    return 'User';
+};
 const normalizeMedia = (media) => {
     if (!Array.isArray(media)) {
         return [];
@@ -132,6 +163,12 @@ const getOwnedListingForUser = async (listingId, userId) => {
     const listing = await prismaAny.listing.findUnique({
         where: { id: listingId },
         include: {
+            partner: {
+                select: {
+                    id: true,
+                    role: true,
+                },
+            },
             media: true,
             category: {
                 select: { id: true, name: true },
@@ -344,9 +381,16 @@ const getListings = async (req, res, next) => {
         if (!req.user?.id) {
             return res.status(401).json({ error: 'Authentication required.' });
         }
+        if (req.user.role === 'EMPLOYEE') {
+            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
+            const permissions = userObj?.customRole?.permissions || [];
+            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.read')) {
+                return res.status(403).json({ error: 'Listing access is not available for this account.' });
+            }
+        }
         const where = ['PARTNER', 'CUSTOMER'].includes(req.user.role)
             ? { partnerId: req.user.id }
-            : ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
+            : ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)
                 ? {}
                 : null;
         if (!where) {
@@ -358,6 +402,31 @@ const getListings = async (req, res, next) => {
                 createdAt: 'desc',
             },
             include: {
+                partner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                                partnerType: true,
+                            },
+                        },
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                                expiresAt: {
+                                    gte: new Date(),
+                                },
+                            },
+                            select: {
+                                expiresAt: true,
+                            },
+                        },
+                    },
+                },
                 media: {
                     orderBy: {
                         createdAt: 'asc',
@@ -374,7 +443,16 @@ const getListings = async (req, res, next) => {
                 },
             },
         });
-        return res.json({ listings });
+        return res.json({
+            listings: listings.map((listing) => ({
+                ...listing,
+                dealer: listing.partner?.partnerProfile?.businessName ||
+                    listing.partner?.name ||
+                    listing.partner?.email ||
+                    'Unknown partner',
+                dealerCategory: getDealerCategoryLabel(listing.partner),
+            })),
+        });
     }
     catch (error) {
         next(error);
@@ -389,6 +467,26 @@ const getListingById = async (req, res, next) => {
         const listing = await prismaAny.listing.findUnique({
             where: { id: String(req.params.id || '') },
             include: {
+                partner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                                partnerType: true,
+                            },
+                        },
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                            },
+                            take: 1,
+                        },
+                    },
+                },
                 media: true,
                 category: {
                     select: { id: true, name: true },
@@ -405,11 +503,20 @@ const getListingById = async (req, res, next) => {
             return res.status(404).json({ error: 'Listing not found.' });
         }
         const canAccessOwnedListing = ['PARTNER', 'CUSTOMER'].includes(req.user.role) && listing.partnerId === req.user.id;
-        const canAccessAllListings = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+        const canAccessAllListings = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
         if (!canAccessOwnedListing && !canAccessAllListings) {
             return res.status(403).json({ error: 'You do not have access to this listing.' });
         }
-        return res.json({ listing });
+        return res.json({
+            listing: {
+                ...listing,
+                dealer: listing.partner?.partnerProfile?.businessName ||
+                    listing.partner?.name ||
+                    listing.partner?.email ||
+                    'Unknown partner',
+                dealerCategory: getDealerCategoryLabel(listing.partner),
+            },
+        });
     }
     catch (error) {
         next(error);
@@ -418,17 +525,35 @@ const getListingById = async (req, res, next) => {
 exports.getListingById = getListingById;
 const updateListing = async (req, res, next) => {
     try {
-        if (!req.user?.id || !['PARTNER', 'CUSTOMER'].includes(req.user.role)) {
-            return res.status(403).json({ error: 'Customer or partner access required.' });
+        if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
+        }
+        if (req.user.role === 'EMPLOYEE') {
+            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
+            const permissions = userObj?.customRole?.permissions || [];
+            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.update')) {
+                return res.status(403).json({ error: 'You do not have permission to edit listings.' });
+            }
         }
         const listingId = String(req.params.id || '');
-        const existingListing = await getOwnedListingForUser(listingId, req.user.id);
+        const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+        const existingListing = isAdmin
+            ? await prismaAny.listing.findUnique({
+                where: { id: listingId },
+                include: {
+                    category: { select: { id: true, name: true } },
+                    brand: { select: { id: true, name: true } },
+                    model: { select: { id: true, name: true } },
+                    media: true,
+                },
+            })
+            : await getOwnedListingForUser(listingId, req.user.id);
         const isCustomer = req.user.role === 'CUSTOMER';
-        const partnerProfile = isCustomer ? null : await getApprovedPartnerProfile(req.user.id);
+        const partnerProfile = isCustomer || isAdmin ? null : await getApprovedPartnerProfile(req.user.id);
         if (!existingListing) {
             return res.status(404).json({ error: 'Listing not found.' });
         }
-        if (!isCustomer && !partnerProfile) {
+        if (!isAdmin && !isCustomer && !partnerProfile) {
             return res.status(403).json({
                 error: 'Your partner account must complete KYC and receive super admin approval before updating listings.',
             });
@@ -448,7 +573,9 @@ const updateListing = async (req, res, next) => {
                 });
             }
         }
-        const { categoryId, brandName, modelName, title, status, price, isNegotiable, manufacturingYear, operatingHours, locationState, locationCity, condition, description, additionalDescription, grossPower, media, } = req.body || {};
+        const requestBody = req.body || {};
+        const hasOwnField = (field) => Object.prototype.hasOwnProperty.call(requestBody, field);
+        const { categoryId, brandName, modelName, title, status, price, isNegotiable, manufacturingYear, operatingHours, locationState, locationCity, condition, description, additionalDescription, grossPower, media, } = requestBody;
         const normalizedCategoryId = normalizeText(categoryId);
         const normalizedBrandName = normalizeText(brandName) || existingListing.brand?.name || 'Not specified';
         const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
@@ -456,14 +583,30 @@ const updateListing = async (req, res, next) => {
         const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
         const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
         const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
-        const normalizedCondition = normalizeText(condition);
-        const normalizedDescription = normalizeText(description);
-        const normalizedAdditionalDescription = normalizeText(additionalDescription);
-        const normalizedGrossPower = normalizeText(grossPower);
+        const normalizedCondition = hasOwnField('condition') ? normalizeText(condition) : existingListing.condition;
+        const normalizedDescription = hasOwnField('description') ? normalizeText(description) : existingListing.description;
+        const normalizedAdditionalDescription = hasOwnField('additionalDescription')
+            ? normalizeText(additionalDescription)
+            : existingListing.additionalDescription;
+        const normalizedGrossPower = hasOwnField('grossPower') ? normalizeText(grossPower) : existingListing.grossPower;
         const parsedYear = parseInteger(manufacturingYear) || existingListing.manufacturingYear || new Date().getFullYear();
-        const parsedOperatingHours = parseInteger(operatingHours);
-        const parsedPrice = parseDecimal(price) || new client_1.Prisma.Decimal(existingListing.price || 0);
-        const normalizedMedia = normalizeMedia(media);
+        const parsedOperatingHours = hasOwnField('operatingHours')
+            ? parseInteger(operatingHours)
+            : existingListing.operatingHours;
+        const parsedPrice = hasOwnField('price')
+            ? parseDecimal(price) || new client_1.Prisma.Decimal(existingListing.price || 0)
+            : new client_1.Prisma.Decimal(existingListing.price || 0);
+        const hasMediaField = hasOwnField('media');
+        const normalizedMedia = hasMediaField
+            ? normalizeMedia(media)
+            : existingListing.media.map((item) => ({
+                url: item.url,
+                type: item.type,
+                isFeatured: item.isFeatured,
+            }));
+        const nextIsNegotiable = hasOwnField('isNegotiable')
+            ? Boolean(isNegotiable)
+            : Boolean(existingListing.isNegotiable);
         const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({
             nextStatus: normalizedStatus,
             previousStatus: existingListing.status,
@@ -512,9 +655,11 @@ const updateListing = async (req, res, next) => {
                 select: { id: true, name: true },
             });
         }
-        await prismaAny.media.deleteMany({
-            where: { listingId },
-        });
+        if (hasMediaField) {
+            await prismaAny.media.deleteMany({
+                where: { listingId },
+            });
+        }
         const updatedListing = await prismaAny.listing.update({
             where: { id: listingId },
             data: {
@@ -523,7 +668,7 @@ const updateListing = async (req, res, next) => {
                 modelId: model.id,
                 title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
                 price: parsedPrice,
-                isNegotiable: Boolean(isNegotiable),
+                isNegotiable: nextIsNegotiable,
                 manufacturingYear: parsedYear,
                 operatingHours: parsedOperatingHours,
                 locationState: normalizedState,
@@ -533,7 +678,7 @@ const updateListing = async (req, res, next) => {
                 additionalDescription: normalizedAdditionalDescription || null,
                 grossPower: normalizedGrossPower || null,
                 status: normalizedStatus,
-                media: normalizedMedia.length
+                media: hasMediaField && normalizedMedia.length
                     ? {
                         create: normalizedMedia,
                     }
@@ -566,13 +711,36 @@ const updateListing = async (req, res, next) => {
 exports.updateListing = updateListing;
 const deleteListing = async (req, res, next) => {
     try {
-        if (!req.user?.id || !['PARTNER', 'CUSTOMER'].includes(req.user.role)) {
-            return res.status(403).json({ error: 'Customer or partner access required.' });
+        if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Access denied.' });
+        }
+        if (req.user.role === 'EMPLOYEE') {
+            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
+            const permissions = userObj?.customRole?.permissions || [];
+            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.delete')) {
+                return res.status(403).json({ error: 'You do not have permission to delete listings.' });
+            }
         }
         const listingId = String(req.params.id || '');
-        const existingListing = await getOwnedListingForUser(listingId, req.user.id);
+        const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+        const existingListing = isAdmin
+            ? await prismaAny.listing.findUnique({
+                where: { id: listingId },
+                include: {
+                    partner: {
+                        select: {
+                            id: true,
+                            role: true,
+                        },
+                    },
+                },
+            })
+            : await getOwnedListingForUser(listingId, req.user.id);
         if (!existingListing) {
             return res.status(404).json({ error: 'Listing not found.' });
+        }
+        if (existingListing.partner?.role === 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Super admin listings cannot be deleted.' });
         }
         await prismaAny.$transaction(async (tx) => {
             await (0, soldListingRetention_1.detachLeadsFromListing)(tx, existingListing);
@@ -604,12 +772,22 @@ const updateListingStatus = async (req, res, next) => {
 exports.updateListingStatus = updateListingStatus;
 const updateListingAvailability = async (req, res, next) => {
     try {
-        if (!req.user?.id || !['PARTNER', 'CUSTOMER'].includes(req.user.role)) {
-            return res.status(403).json({ error: 'Customer or partner access required.' });
+        if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
+        }
+        if (req.user.role === 'EMPLOYEE') {
+            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
+            const permissions = userObj?.customRole?.permissions || [];
+            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.update')) {
+                return res.status(403).json({ error: 'You do not have permission to edit listings.' });
+            }
         }
         const listingId = String(req.params.id || '');
         const { status } = req.body;
-        const existingListing = await getOwnedListingForUser(listingId, req.user.id);
+        const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+        const existingListing = isAdmin
+            ? await prismaAny.listing.findUnique({ where: { id: listingId } })
+            : await getOwnedListingForUser(listingId, req.user.id);
         if (!existingListing) {
             return res.status(404).json({ error: 'Listing not found.' });
         }

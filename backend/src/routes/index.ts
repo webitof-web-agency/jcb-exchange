@@ -7,6 +7,7 @@ import leadRoutes from './lead.routes';
 import analyticsRoutes from './analytics.routes';
 import superAdminRoutes from './superadmin.routes';
 import notificationRoutes from './notification.routes';
+import locationRoutes from './location.routes';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/listings', listingRoutes);
 router.use('/leads', leadRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/locations', locationRoutes);
 
 export default router;

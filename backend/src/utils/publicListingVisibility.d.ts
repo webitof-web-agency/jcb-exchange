@@ -1,4 +1,4 @@
-export declare const getPublicListingStatuses: () => ("PAUSED" | "PUBLISHED" | "RESERVED")[];
+export declare const getPublicListingStatuses: () => ("PAUSED" | "PUBLISHED" | "RESERVED" | "SOLD")[];
 export declare const getApprovedPartnerProfileWhere: () => {
     onboardingStatus: 'APPROVED';
     accountStatus: 'ACTIVE';
@@ -21,7 +21,7 @@ export declare const getPublicSellerWhere: () => {
 };
 export declare const getPublicMarketplaceListingWhere: () => {
     status: {
-        in: ("PAUSED" | "PUBLISHED" | "RESERVED")[];
+        in: ("PAUSED" | "PUBLISHED" | "RESERVED" | "SOLD")[];
     };
     partner: {
         OR: ({

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyLeadBadges = exports.updateLeadStatus = exports.getMyLeads = exports.createPublicContactLead = exports.createLead = void 0;
+exports.getMyLeadBadges = exports.addLeadActivity = exports.getLeadById = exports.updateLeadStatus = exports.getMyLeads = exports.createPublicContactLead = exports.createLead = void 0;
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const appSettings_1 = require("../utils/appSettings");
 const prismaAny = prisma_1.default;
@@ -118,6 +118,88 @@ const formatLead = (lead) => ({
                 null,
         },
 });
+const formatDetailedLead = (lead) => {
+    const base = formatLead(lead);
+    const listingMedia = Array.isArray(lead.listing?.media)
+        ? lead.listing.media.map((m) => ({
+            id: m.id,
+            url: m.url,
+            type: m.type,
+            isFeatured: m.isFeatured,
+        }))
+        : [];
+    const listingDetails = {
+        ...base.listing,
+        categoryId: lead.listing?.categoryId,
+        categoryName: lead.listing?.category?.name,
+        brandName: lead.listing?.brand?.name,
+        modelName: lead.listing?.model?.name,
+        manufacturingYear: lead.listing?.manufacturingYear,
+        operatingHours: lead.listing?.operatingHours,
+        condition: lead.listing?.condition,
+        description: lead.listing?.description,
+        isNegotiable: lead.listing?.isNegotiable,
+        media: listingMedia,
+        featuredImage: listingMedia.find((m) => m.isFeatured)?.url || listingMedia[0]?.url || null,
+    };
+    const activities = Array.isArray(lead.activities)
+        ? lead.activities.map((a) => ({
+            id: a.id,
+            type: a.type,
+            title: a.title,
+            content: a.content || '',
+            metadata: a.metadata || null,
+            createdAt: a.createdAt,
+            actor: a.actor
+                ? {
+                    id: a.actor.id,
+                    name: a.actor.partnerProfile?.businessName || a.actor.name || 'Staff',
+                    role: a.actor.role,
+                }
+                : null,
+        }))
+        : [];
+    const synthesizedTimeline = [...activities];
+    const hasCreatedActivity = activities.some((a) => a.type === 'CREATED');
+    if (!hasCreatedActivity) {
+        synthesizedTimeline.unshift({
+            id: `synth-created-${lead.id}`,
+            type: 'CREATED',
+            title: 'Enquiry Received',
+            content: lead.message || `Customer generated an enquiry (${lead.enquiryType}).`,
+            metadata: { enquiryType: lead.enquiryType },
+            createdAt: lead.createdAt,
+            actor: {
+                id: lead.customer?.id || '',
+                name: lead.customer?.name || 'Customer',
+                role: 'CUSTOMER',
+            },
+        });
+    }
+    const hasRoutingActivity = activities.some((a) => a.type === 'ROUTING_UPDATE');
+    if (!hasRoutingActivity && lead.dealer) {
+        synthesizedTimeline.push({
+            id: `synth-routing-${lead.id}`,
+            type: 'ROUTING_UPDATE',
+            title: lead.dealer.role === 'SUPER_ADMIN' ? 'Routed to Platform Admin' : 'Routed to Seller',
+            content: `Enquiry routed to ${base.recipient.name} (${base.recipient.mobile || base.recipient.email}).`,
+            metadata: { mode: base.routing.mode },
+            createdAt: lead.createdAt,
+            actor: null,
+        });
+    }
+    synthesizedTimeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return {
+        ...base,
+        customer: {
+            ...base.customer,
+            role: lead.customer?.role || 'CUSTOMER',
+            createdAt: lead.customer?.createdAt || null,
+        },
+        listing: listingDetails,
+        activities: synthesizedTimeline,
+    };
+};
 const buildLeadSummary = (leads) => {
     const summary = {
         total: leads.length,
@@ -153,6 +235,43 @@ const buildLeadSummary = (leads) => {
         active: summary.new + summary.contacted + summary.interested + summary.inspectionScheduled,
         conversionRate: summary.total > 0 ? Number(((summary.won / summary.total) * 100).toFixed(1)) : 0,
     };
+};
+const getLeadGroupKey = (lead) => {
+    const customerKey = lead.customer?.id || lead.customer?.mobile || lead.customer?.email || 'customer';
+    const listingKey = lead.listing?.id || lead.listingTitleSnapshot || 'listing';
+    const dealerKey = lead.dealer?.id || 'dealer';
+    return `${customerKey}::${listingKey}::${dealerKey}`;
+};
+const groupLeadsForInbox = (leads) => {
+    const grouped = new Map();
+    for (const lead of leads) {
+        const key = getLeadGroupKey(lead);
+        const existing = grouped.get(key);
+        if (!existing) {
+            grouped.set(key, {
+                ...lead,
+                duplicateCount: 1,
+                duplicateLeadIds: [lead.id],
+            });
+            continue;
+        }
+        existing.duplicateCount += 1;
+        existing.duplicateLeadIds.push(lead.id);
+        const leadTime = lead.updatedAt ? new Date(lead.updatedAt).getTime() : new Date(lead.createdAt).getTime();
+        const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : new Date(existing.createdAt).getTime();
+        if (leadTime > existingTime) {
+            grouped.set(key, {
+                ...lead,
+                duplicateCount: existing.duplicateCount,
+                duplicateLeadIds: existing.duplicateLeadIds,
+            });
+        }
+    }
+    return Array.from(grouped.values()).sort((a, b) => {
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : new Date(a.createdAt).getTime();
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : new Date(b.createdAt).getTime();
+        return timeB - timeA;
+    });
 };
 const normalizePhoneNumber = (value) => {
     const trimmedValue = value?.trim();
@@ -307,32 +426,75 @@ const createLead = async (req, res, next) => {
                 id: true,
             },
         });
-        const lead = await prismaAny.lead.create({
-            data: {
+        const leadMessage = message || `Dealer callback request for ${partnerProfile.businessName || partnerProfile.user.name || 'approved partner'} from ${fullName || firstName}.`;
+        const existingLead = await prismaAny.lead.findFirst({
+            where: {
                 listingId: listing.id,
                 customerId: customer.id,
                 dealerId: leadRecipient.recipientUserId,
-                enquiryType: 'DEALER_CALLBACK',
-                listingTitleSnapshot: listing.title,
-                listingStatusSnapshot: listing.status,
-                listingPriceSnapshot: listing.price,
-                listingLocationCitySnapshot: listing.locationCity,
-                listingLocationStateSnapshot: listing.locationState,
-                message: message ||
-                    `Dealer callback request for ${partnerProfile.businessName || partnerProfile.user.name || 'approved partner'} from ${fullName || firstName}.`,
             },
-            include: {
-                customer: {
-                    select: leadRelatedUserSelect,
-                },
-                listing: {
-                    select: leadRelatedListingSelect,
-                },
-                dealer: {
-                    select: leadRelatedUserSelect,
-                },
+            orderBy: {
+                createdAt: 'desc',
             },
         });
+        let lead;
+        if (existingLead) {
+            await prismaAny.leadActivity.create({
+                data: {
+                    leadId: existingLead.id,
+                    type: 'FOLLOW_UP',
+                    title: 'Repeat Enquiry',
+                    content: leadMessage,
+                },
+            });
+            lead = await prismaAny.lead.update({
+                where: { id: existingLead.id },
+                data: {
+                    status: 'NEW',
+                    updatedAt: new Date(),
+                    enquiryType: 'DEALER_CALLBACK',
+                    message: leadMessage,
+                },
+                include: {
+                    customer: {
+                        select: leadRelatedUserSelect,
+                    },
+                    listing: {
+                        select: leadRelatedListingSelect,
+                    },
+                    dealer: {
+                        select: leadRelatedUserSelect,
+                    },
+                },
+            });
+        }
+        else {
+            lead = await prismaAny.lead.create({
+                data: {
+                    listingId: listing.id,
+                    customerId: customer.id,
+                    dealerId: leadRecipient.recipientUserId,
+                    enquiryType: 'DEALER_CALLBACK',
+                    listingTitleSnapshot: listing.title,
+                    listingStatusSnapshot: listing.status,
+                    listingPriceSnapshot: listing.price,
+                    listingLocationCitySnapshot: listing.locationCity,
+                    listingLocationStateSnapshot: listing.locationState,
+                    message: leadMessage,
+                },
+                include: {
+                    customer: {
+                        select: leadRelatedUserSelect,
+                    },
+                    listing: {
+                        select: leadRelatedListingSelect,
+                    },
+                    dealer: {
+                        select: leadRelatedUserSelect,
+                    },
+                },
+            });
+        }
         return res.status(201).json({
             message: 'Callback request submitted successfully.',
             lead: formatLead(lead),
@@ -487,33 +649,77 @@ const createPublicContactLead = async (req, res, next) => {
                 whatsappNumber: listing.partner.whatsappNumber,
             },
         });
-        const lead = await prismaAny.lead.create({
-            data: {
+        const leadMessage = enquiryType === 'WHATSAPP'
+            ? `Customer requested WhatsApp contact for ${listing.title || 'listing'}.`
+            : `Customer requested phone call for ${listing.title || 'listing'}.`;
+        const existingLead = await prismaAny.lead.findFirst({
+            where: {
                 listingId: listing.id,
                 customerId: customer.id,
                 dealerId: leadRecipient.recipientUserId,
-                enquiryType: enquiryType === 'WHATSAPP' ? 'DEALER_WHATSAPP' : 'DEALER_CALL',
-                listingTitleSnapshot: listing.title,
-                listingStatusSnapshot: listing.status,
-                listingPriceSnapshot: listing.price,
-                listingLocationCitySnapshot: listing.locationCity,
-                listingLocationStateSnapshot: listing.locationState,
-                message: enquiryType === 'WHATSAPP'
-                    ? `Customer requested WhatsApp contact for ${listing.title || 'listing'}.`
-                    : `Customer requested phone call for ${listing.title || 'listing'}.`,
             },
-            include: {
-                customer: {
-                    select: leadRelatedUserSelect,
-                },
-                listing: {
-                    select: leadRelatedListingSelect,
-                },
-                dealer: {
-                    select: leadRelatedUserSelect,
-                },
+            orderBy: {
+                createdAt: 'desc',
             },
         });
+        let lead;
+        if (existingLead) {
+            await prismaAny.leadActivity.create({
+                data: {
+                    leadId: existingLead.id,
+                    type: 'FOLLOW_UP',
+                    title: 'Repeat Enquiry',
+                    content: leadMessage,
+                },
+            });
+            lead = await prismaAny.lead.update({
+                where: { id: existingLead.id },
+                data: {
+                    status: 'NEW',
+                    updatedAt: new Date(),
+                    enquiryType: enquiryType === 'WHATSAPP' ? 'DEALER_WHATSAPP' : 'DEALER_CALL',
+                    message: leadMessage,
+                },
+                include: {
+                    customer: {
+                        select: leadRelatedUserSelect,
+                    },
+                    listing: {
+                        select: leadRelatedListingSelect,
+                    },
+                    dealer: {
+                        select: leadRelatedUserSelect,
+                    },
+                },
+            });
+        }
+        else {
+            lead = await prismaAny.lead.create({
+                data: {
+                    listingId: listing.id,
+                    customerId: customer.id,
+                    dealerId: leadRecipient.recipientUserId,
+                    enquiryType: enquiryType === 'WHATSAPP' ? 'DEALER_WHATSAPP' : 'DEALER_CALL',
+                    listingTitleSnapshot: listing.title,
+                    listingStatusSnapshot: listing.status,
+                    listingPriceSnapshot: listing.price,
+                    listingLocationCitySnapshot: listing.locationCity,
+                    listingLocationStateSnapshot: listing.locationState,
+                    message: leadMessage,
+                },
+                include: {
+                    customer: {
+                        select: leadRelatedUserSelect,
+                    },
+                    listing: {
+                        select: leadRelatedListingSelect,
+                    },
+                    dealer: {
+                        select: leadRelatedUserSelect,
+                    },
+                },
+            });
+        }
         return res.status(201).json({
             message: 'Enquiry created successfully.',
             lead: formatLead(lead),
@@ -598,7 +804,7 @@ const getMyLeads = async (req, res, next) => {
                     : {}),
             },
             orderBy: {
-                createdAt: 'desc',
+                updatedAt: 'desc',
             },
             include: {
                 customer: {
@@ -612,9 +818,15 @@ const getMyLeads = async (req, res, next) => {
                 },
             },
         });
+        const groupedLeads = groupLeadsForInbox(leads);
+        const groupedSummary = buildLeadSummary(groupedLeads.map((lead) => ({ status: lead.status })));
         return res.json({
-            summary: buildLeadSummary(summarySource),
-            leads: leads.map(formatLead),
+            summary: groupedSummary,
+            leads: groupedLeads.map((lead) => ({
+                ...formatLead(lead),
+                duplicateCount: lead.duplicateCount,
+                duplicateLeadIds: lead.duplicateLeadIds,
+            })),
         });
     }
     catch (error) {
@@ -682,6 +894,23 @@ const updateLeadStatus = async (req, res, next) => {
                 },
             },
         });
+        if (existingLead.status !== status) {
+            const note = String(req.body?.note || '').trim();
+            await prismaAny.leadActivity.create({
+                data: {
+                    leadId,
+                    actorId: req.user.id,
+                    type: 'STATUS_CHANGE',
+                    title: `Status changed to ${status.replace(/_/g, ' ')}`,
+                    content: note || `Lead status was updated from ${existingLead.status} to ${status}.`,
+                    metadata: {
+                        fromStatus: existingLead.status,
+                        toStatus: status,
+                        note: note || undefined,
+                    },
+                },
+            }).catch((err) => console.error('Failed to record status change activity:', err));
+        }
         return res.json({
             message: 'Lead status updated successfully.',
             lead: formatLead(updatedLead),
@@ -692,6 +921,186 @@ const updateLeadStatus = async (req, res, next) => {
     }
 };
 exports.updateLeadStatus = updateLeadStatus;
+const getLeadById = async (req, res, next) => {
+    try {
+        if (!req.user?.id || !['PARTNER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Lead access required.' });
+        }
+        if (req.user.role === 'EMPLOYEE' && !(await canEmployeeManageEnquiries(req.user.id))) {
+            return res.status(403).json({ error: 'You do not have permission to access enquiries.' });
+        }
+        const leadId = String(req.params.id || '').trim();
+        if (!leadId) {
+            return res.status(400).json({ error: 'Lead id is required.' });
+        }
+        const lead = await prismaAny.lead.findUnique({
+            where: { id: leadId },
+            include: {
+                customer: {
+                    select: {
+                        ...leadRelatedUserSelect,
+                        createdAt: true,
+                    },
+                },
+                listing: {
+                    select: {
+                        ...leadRelatedListingSelect,
+                        categoryId: true,
+                        brandId: true,
+                        modelId: true,
+                        isNegotiable: true,
+                        manufacturingYear: true,
+                        operatingHours: true,
+                        condition: true,
+                        description: true,
+                        category: { select: { id: true, name: true } },
+                        brand: { select: { id: true, name: true } },
+                        model: { select: { id: true, name: true } },
+                        media: {
+                            select: {
+                                id: true,
+                                url: true,
+                                type: true,
+                                isFeatured: true,
+                            },
+                        },
+                    },
+                },
+                dealer: {
+                    select: leadRelatedUserSelect,
+                },
+                activities: {
+                    include: {
+                        actor: {
+                            select: {
+                                id: true,
+                                name: true,
+                                role: true,
+                                partnerProfile: {
+                                    select: {
+                                        businessName: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    orderBy: {
+                        createdAt: 'asc',
+                    },
+                },
+            },
+        });
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found.' });
+        }
+        if (req.user.role === 'PARTNER' &&
+            lead.dealerId !== req.user.id &&
+            lead.listing?.partner?.id !== req.user.id) {
+            return res.status(403).json({ error: 'Access denied to this lead.' });
+        }
+        return res.json({
+            lead: formatDetailedLead(lead),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getLeadById = getLeadById;
+const addLeadActivity = async (req, res, next) => {
+    try {
+        if (!req.user?.id || !['PARTNER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Lead access required.' });
+        }
+        if (req.user.role === 'EMPLOYEE' && !(await canEmployeeManageEnquiries(req.user.id))) {
+            return res.status(403).json({ error: 'You do not have permission to access enquiries.' });
+        }
+        const leadId = String(req.params.id || '').trim();
+        const content = String(req.body?.content || '').trim();
+        const type = String(req.body?.type || 'NOTE').trim().toUpperCase();
+        const title = String(req.body?.title || '').trim() ||
+            (type === 'CALL'
+                ? 'Phone Call Log'
+                : type === 'WHATSAPP'
+                    ? 'WhatsApp Follow-up'
+                    : type === 'INSPECTION'
+                        ? 'Inspection Note'
+                        : 'Internal Note');
+        const metadata = req.body?.metadata || null;
+        if (!leadId) {
+            return res.status(400).json({ error: 'Lead id is required.' });
+        }
+        if (!content) {
+            return res.status(400).json({ error: 'Note or activity content is required.' });
+        }
+        const lead = await prismaAny.lead.findUnique({
+            where: { id: leadId },
+            select: {
+                id: true,
+                dealerId: true,
+                listing: {
+                    select: {
+                        partnerId: true,
+                    },
+                },
+            },
+        });
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found.' });
+        }
+        if (req.user.role === 'PARTNER' &&
+            lead.dealerId !== req.user.id &&
+            lead.listing?.partnerId !== req.user.id) {
+            return res.status(403).json({ error: 'Access denied to this lead.' });
+        }
+        const activity = await prismaAny.leadActivity.create({
+            data: {
+                leadId,
+                actorId: req.user.id,
+                type,
+                title,
+                content,
+                metadata,
+            },
+            include: {
+                actor: {
+                    select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        return res.status(201).json({
+            message: 'Activity recorded successfully.',
+            activity: {
+                id: activity.id,
+                type: activity.type,
+                title: activity.title,
+                content: activity.content,
+                metadata: activity.metadata,
+                createdAt: activity.createdAt,
+                actor: activity.actor
+                    ? {
+                        id: activity.actor.id,
+                        name: activity.actor.partnerProfile?.businessName || activity.actor.name || 'Staff',
+                        role: activity.actor.role,
+                    }
+                    : null,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.addLeadActivity = addLeadActivity;
 const getMyLeadBadges = async (req, res, next) => {
     try {
         if (!req.user?.id || !['PARTNER'].includes(req.user.role)) {

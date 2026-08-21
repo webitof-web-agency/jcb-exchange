@@ -28,6 +28,7 @@ exports.authenticatedUserSelect = {
     whatsappNumber: true,
     city: true,
     state: true,
+    customRoleId: true,
     partnerProfile: {
         select: {
             onboardingStatus: true,

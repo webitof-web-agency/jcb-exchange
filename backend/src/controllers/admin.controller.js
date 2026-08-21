@@ -77,6 +77,36 @@ const allowedPartnerTypes = new Set([
     'SHOWROOM',
     'BROKER',
 ]);
+const formatSellerTypeLabel = (value) => {
+    const normalized = (value || '').trim();
+    if (!normalized) {
+        return 'Unknown';
+    }
+    return normalized
+        .replace(/[_-]+/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+};
+const getDealerCategoryLabel = (partner) => {
+    if (!partner) {
+        return 'Unknown';
+    }
+    if (partner.role === 'PARTNER') {
+        return partner.partnerProfile?.partnerType || 'Authorized Place';
+    }
+    if (partner.role === 'CUSTOMER') {
+        const hasActivePrimeSubscription = partner.customerPrimeSubscriptions?.some((subscription) => {
+            return !!subscription.expiresAt && subscription.expiresAt >= new Date();
+        });
+        return hasActivePrimeSubscription ? 'Prime Customer' : 'Customer';
+    }
+    if (partner.role) {
+        return formatSellerTypeLabel(partner.role);
+    }
+    return 'User';
+};
 const hasPartnerProfile = (user) => !!user?.partnerProfile;
 const managedUserInclude = {
     adminProfile: true,
@@ -1153,13 +1183,38 @@ const getAdminListings = async (req, res, next) => {
             ...(partnerId ? { where: { partnerId } } : {}),
             include: {
                 partner: {
-                    include: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
                         partnerProfile: {
                             select: {
                                 businessName: true,
+                                partnerType: true,
+                            },
+                        },
+                        customerPrimeSubscriptions: {
+                            where: {
+                                status: 'ACTIVE',
+                                expiresAt: {
+                                    gte: new Date(),
+                                },
+                            },
+                            select: {
+                                expiresAt: true,
                             },
                         },
                     },
+                },
+                category: {
+                    select: { id: true, name: true },
+                },
+                brand: {
+                    select: { id: true, name: true },
+                },
+                model: {
+                    select: { id: true, name: true },
                 },
                 media: {
                     select: {
@@ -1181,7 +1236,7 @@ const getAdminListings = async (req, res, next) => {
             // Prisma's inferred relation type for this query is too narrow here, so we normalize it locally.
             // This keeps the API payload strongly shaped without leaking `any` into the response contract.
             listings: listings.map((listing) => {
-                const listingImages = (listing.media || []).filter((media) => media.type === 'IMAGE');
+                const listingMedia = listing.media || [];
                 return {
                     id: listing.id,
                     title: listing.title,
@@ -1189,15 +1244,25 @@ const getAdminListings = async (req, res, next) => {
                         listing.partner?.name ||
                         listing.partner?.email ||
                         'Unknown partner',
+                    dealerCategory: getDealerCategoryLabel(listing.partner),
                     price: Number(listing.price),
                     status: listing.status,
                     createdAt: listing.createdAt,
-                    imageUrl: listingImages[0]?.url || null,
-                    images: listingImages.map((image) => ({
-                        id: image.id,
-                        url: image.url,
-                        isFeatured: image.isFeatured,
-                    })),
+                    manufacturingYear: listing.manufacturingYear,
+                    locationState: listing.locationState,
+                    locationCity: listing.locationCity,
+                    category: listing.category,
+                    brand: listing.brand,
+                    model: listing.model,
+                    condition: listing.condition,
+                    operatingHours: listing.operatingHours,
+                    views: listing.views,
+                    description: listing.description,
+                    additionalDescription: listing.additionalDescription,
+                    grossPower: listing.grossPower,
+                    isNegotiable: listing.isNegotiable,
+                    imageUrl: listingMedia.find((m) => m.type === 'IMAGE')?.url || null,
+                    media: listingMedia,
                 };
             }),
         });

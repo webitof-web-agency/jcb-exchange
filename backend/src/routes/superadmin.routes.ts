@@ -60,7 +60,7 @@ const canManageEnquiries = requireSuperAdminOrEmployeePermissions(['enquiries.ma
 const canViewVisitors = requireSuperAdminOrEmployeePermissions(['visitors.read']);
 const canUpdateAccountStatus = requireSuperAdminOrEmployeePermissions(['users.update', 'partners.change_status', 'visitors.change_status']);
 const canManageCategories = requireSuperAdminOrEmployeePermissions(['categories.read', 'categories.create', 'categories.update', 'categories.delete']);
-const canManageListings = requireSuperAdminOrEmployeePermissions(['partners.read', 'kyc.manage']);
+const canManageListings = requireSuperAdminOrEmployeePermissions(['partners.read', 'kyc.manage', 'listings.read']);
 
 router.get('/dashboard', canViewDashboard, getDashboardSummary);
 router.get('/badges', canViewDashboard, getModuleBadges);

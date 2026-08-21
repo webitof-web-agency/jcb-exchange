@@ -8,11 +8,16 @@ router.get('/categories', auth_middleware_1.requireAuth, master_controller_1.get
 router.post('/categories', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.create']), master_controller_1.createCategory);
 router.put('/categories/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.update']), master_controller_1.updateCategory);
 router.delete('/categories/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['categories.delete']), master_controller_1.deleteCategory);
-router.get('/brands', master_controller_1.getBrands);
+router.get('/brands', auth_middleware_1.requireAuth, master_controller_1.getBrands);
+router.post('/brands', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['brands.create']), master_controller_1.createBrand);
+router.put('/brands/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['brands.update']), master_controller_1.updateBrand);
+router.delete('/brands/:id', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['brands.delete']), master_controller_1.deleteBrand);
 router.get('/models/:brandId', master_controller_1.getModels);
 router.get('/icons', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, master_controller_1.getIcons);
 router.post('/icons', master_controller_1.createIcon);
 router.get('/dealers', master_controller_1.getApprovedDealers);
+router.get('/dealers/:id', master_controller_1.getDealerById);
+router.get('/dealers/:id/listings', master_controller_1.getDealerListings);
 router.get('/finance-support', master_controller_1.getFinanceSupportItems);
 router.get('/hero-image', master_controller_1.getHeroImage);
 router.get('/inspection-section', master_controller_1.getInspectionSection);

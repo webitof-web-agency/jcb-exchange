@@ -12,6 +12,7 @@ const lead_routes_1 = __importDefault(require("./lead.routes"));
 const analytics_routes_1 = __importDefault(require("./analytics.routes"));
 const superadmin_routes_1 = __importDefault(require("./superadmin.routes"));
 const notification_routes_1 = __importDefault(require("./notification.routes"));
+const location_routes_1 = __importDefault(require("./location.routes"));
 const router = (0, express_1.Router)();
 router.use('/master', master_routes_1.default);
 router.use('/auth', auth_routes_1.default);
@@ -21,5 +22,6 @@ router.use('/listings', listing_routes_1.default);
 router.use('/leads', lead_routes_1.default);
 router.use('/analytics', analytics_routes_1.default);
 router.use('/notifications', notification_routes_1.default);
+router.use('/locations', location_routes_1.default);
 exports.default = router;
 //# sourceMappingURL=index.js.map

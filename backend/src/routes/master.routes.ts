@@ -5,6 +5,9 @@ import {
   updateCategory,
   deleteCategory,
   getBrands,
+  createBrand,
+  updateBrand,
+  deleteBrand,
   getModels,
   getIcons,
   createIcon,
@@ -18,6 +21,8 @@ import {
   getPublicSearchFilters,
   getPublicListingById,
   incrementListingView,
+  getDealerById,
+  getDealerListings,
 } from '../controllers/master.controller';
 import {
   requireAuth,
@@ -46,11 +51,31 @@ router.delete(
   requireSuperAdminOrEmployeePermissions(['categories.delete']),
   deleteCategory,
 );
-router.get('/brands', getBrands);
+router.get('/brands', requireAuth, getBrands);
+router.post(
+  '/brands',
+  requireAuth,
+  requireSuperAdminOrEmployeePermissions(['brands.create']),
+  createBrand,
+);
+router.put(
+  '/brands/:id',
+  requireAuth,
+  requireSuperAdminOrEmployeePermissions(['brands.update']),
+  updateBrand,
+);
+router.delete(
+  '/brands/:id',
+  requireAuth,
+  requireSuperAdminOrEmployeePermissions(['brands.delete']),
+  deleteBrand,
+);
 router.get('/models/:brandId', getModels);
 router.get('/icons', requireAuth, requirePortalOperator, getIcons);
 router.post('/icons', createIcon);
 router.get('/dealers', getApprovedDealers);
+router.get('/dealers/:id', getDealerById);
+router.get('/dealers/:id/listings', getDealerListings);
 router.get('/finance-support', getFinanceSupportItems);
 router.get('/hero-image', getHeroImage);
 router.get('/inspection-section', getInspectionSection);

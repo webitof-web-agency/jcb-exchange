@@ -105,6 +105,52 @@ const allowedPartnerTypes = new Set([
   'BROKER',
 ]);
 
+const formatSellerTypeLabel = (value?: string | null) => {
+  const normalized = (value || '').trim();
+  if (!normalized) {
+    return 'Unknown';
+  }
+
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const getDealerCategoryLabel = (partner?: {
+  role?: string | null;
+  partnerProfile?: {
+    partnerType?: string | null;
+  } | null;
+  customerPrimeSubscriptions?: Array<{
+    expiresAt?: Date | null;
+  }> | null;
+} | null) => {
+  if (!partner) {
+    return 'Unknown';
+  }
+
+  if (partner.role === 'PARTNER') {
+    return partner.partnerProfile?.partnerType || 'Authorized Place';
+  }
+
+  if (partner.role === 'CUSTOMER') {
+    const hasActivePrimeSubscription = partner.customerPrimeSubscriptions?.some((subscription) => {
+      return !!subscription.expiresAt && subscription.expiresAt >= new Date();
+    });
+
+    return hasActivePrimeSubscription ? 'Prime Customer' : 'Customer';
+  }
+
+  if (partner.role) {
+    return formatSellerTypeLabel(partner.role);
+  }
+
+  return 'User';
+};
+
 const hasPartnerProfile = (user: any) => !!user?.partnerProfile;
 
 const managedUserInclude = {
@@ -1024,8 +1070,8 @@ export const deleteManagedUser = async (req: Request, res: Response, next: NextF
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    if ((targetUser as any).adminProfile?.isRootAdmin) {
-      return res.status(400).json({ error: 'Protected root super admin account cannot be deleted.' });
+    if (targetUser.role === 'SUPER_ADMIN') {
+      return res.status(400).json({ error: 'Super admin accounts cannot be deleted.' });
     }
 
     if (targetUser.role === 'CUSTOMER') {
@@ -1395,13 +1441,38 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
       ...(partnerId ? { where: { partnerId } } : {}),
       include: {
         partner: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
             partnerProfile: {
               select: {
                 businessName: true,
+                partnerType: true,
+              },
+            },
+            customerPrimeSubscriptions: {
+              where: {
+                status: 'ACTIVE',
+                expiresAt: {
+                  gte: new Date(),
+                },
+              },
+              select: {
+                expiresAt: true,
               },
             },
           },
+        },
+        category: {
+          select: { id: true, name: true },
+        },
+        brand: {
+          select: { id: true, name: true },
+        },
+        model: {
+          select: { id: true, name: true },
         },
         media: {
           select: {
@@ -1424,15 +1495,7 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
       // Prisma's inferred relation type for this query is too narrow here, so we normalize it locally.
       // This keeps the API payload strongly shaped without leaking `any` into the response contract.
       listings: listings.map((listing) => {
-        const listingImages =
-          ((listing as {
-            media?: Array<{
-              id: string;
-              url: string;
-              isFeatured: boolean;
-              type: string;
-            }>;
-          }).media || []).filter((media) => media.type === 'IMAGE');
+        const listingMedia = (listing as any).media || [];
 
         return {
           id: listing.id,
@@ -1442,15 +1505,25 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
             listing.partner?.name ||
             listing.partner?.email ||
             'Unknown partner',
+          dealerCategory: getDealerCategoryLabel(listing.partner),
           price: Number(listing.price),
           status: listing.status,
           createdAt: listing.createdAt,
-          imageUrl: listingImages[0]?.url || null,
-          images: listingImages.map((image) => ({
-            id: image.id,
-            url: image.url,
-            isFeatured: image.isFeatured,
-          })),
+          manufacturingYear: listing.manufacturingYear,
+          locationState: listing.locationState,
+          locationCity: listing.locationCity,
+          category: (listing as any).category,
+          brand: (listing as any).brand,
+          model: (listing as any).model,
+          condition: listing.condition,
+          operatingHours: listing.operatingHours,
+          views: listing.views,
+          description: listing.description,
+          additionalDescription: listing.additionalDescription,
+          grossPower: listing.grossPower,
+          isNegotiable: listing.isNegotiable,
+          imageUrl: listingMedia.find((m: any) => m.type === 'IMAGE')?.url || null,
+          media: listingMedia,
         };
       }),
     });

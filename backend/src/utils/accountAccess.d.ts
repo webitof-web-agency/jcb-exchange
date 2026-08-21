@@ -12,6 +12,7 @@ export declare const authenticatedUserSelect: {
     readonly whatsappNumber: true;
     readonly city: true;
     readonly state: true;
+    readonly customRoleId: true;
     readonly partnerProfile: {
         readonly select: {
             readonly onboardingStatus: true;

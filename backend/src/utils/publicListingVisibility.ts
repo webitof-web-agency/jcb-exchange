@@ -1,4 +1,4 @@
-const publicListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED'] as const;
+const publicListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED', 'SOLD'] as const;
 
 const approvedPartnerProfileWhere = {
   onboardingStatus: 'APPROVED',

@@ -219,6 +219,7 @@ model User {
   approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeApprover")
   rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeRejector")
   auditLogs          AuditLog[]           @relation("AuditActor")
+  leadActivities     LeadActivity[]       @relation("LeadActivityActor")
   notifications      Notification[]
 }
 
@@ -425,9 +426,30 @@ model Lead {
   listing  Listing? @relation(fields: [listingId], references: [id])
   customer User    @relation("CustomerLeads", fields: [customerId], references: [id])
   dealer   User    @relation("DealerLeads", fields: [dealerId], references: [id])
+  activities LeadActivity[]
 
   @@index([listingId])
+  @@index([customerId])
+  @@index([dealerId])
+  @@index([status])
 }
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadId    String
+  actorId   String?
+  type      String   // 'CREATED' | 'STATUS_CHANGE' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'FOLLOW_UP' | 'ROUTING_UPDATE'
+  title     String
+  content   String?  @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor User? @relation("LeadActivityActor", fields: [actorId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
 
 model KycDocument {
   id               String            @id @default(uuid())
@@ -569,4 +591,61 @@ model CustomerPrimeSubscription {
   @@index([userId, status])
   @@index([status, expiresAt])
   @@index([submittedAt])
+}
+
+model Country {
+  id              Int     @id
+  name            String
+  iso3            String?
+  iso2            String?
+  numericCode     String?
+  phonecode       String?
+  capital         String?
+  currency        String?
+  currencyName    String?
+  currencySymbol  String?
+  tld             String?
+  native          String?
+  region          String?
+  subregion       String?
+  nationality     String?
+  latitude        String?
+  longitude       String?
+  emoji           String?
+  emojiU          String?
+
+  states          State[]
+  cities          City[]
+}
+
+model State {
+  id           Int     @id
+  name         String
+  countryId    Int
+  countryCode  String?
+  stateCode    String?
+  latitude     String?
+  longitude    String?
+
+  country      Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities       City[]
+
+  @@index([countryId])
+}
+
+model City {
+  id           Int     @id
+  name         String
+  stateId      Int
+  stateCode    String?
+  countryId    Int
+  countryCode  String?
+  latitude     String?
+  longitude    String?
+
+  state        State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  country      Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@index([stateId])
+  @@index([countryId])
 }
