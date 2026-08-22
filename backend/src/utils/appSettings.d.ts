@@ -1,4 +1,5 @@
 import { type CustomerPrimeSettings } from './customerPrime';
+import { type MobileOtpSettings } from './mobileOtp';
 type GoogleAuthSettings = {
     clientId: string | null;
     updatedAt: string | null;
@@ -29,6 +30,7 @@ export type InspectionSectionSettings = {
 };
 type AppSettings = {
     googleAuth: GoogleAuthSettings;
+    mobileOtp: MobileOtpSettings;
     publicLeadRouting: PublicLeadRoutingSettings;
     customerPrime: CustomerPrimeSettings;
     financeSupport: {
@@ -47,8 +49,9 @@ export declare const updateGoogleAuthSettings: ({ clientId, updatedByUserId, }: 
     clientId?: string | null;
     updatedByUserId?: string | null;
 }) => Promise<AppSettings>;
-export declare const updatePlatformRuntimeSettings: ({ googleClientId, publicLeadRouting, customerPrime, updatedByUserId, }: {
+export declare const updatePlatformRuntimeSettings: ({ googleClientId, mobileOtp, publicLeadRouting, customerPrime, updatedByUserId, }: {
     googleClientId?: string | null;
+    mobileOtp?: Partial<Pick<MobileOtpSettings, 'enabled' | 'apiKey' | 'senderId' | 'templateId' | 'templateMessage'>> | null;
     publicLeadRouting?: Partial<Pick<PublicLeadRoutingSettings, 'useSellerContact' | 'adminCallNumber' | 'adminWhatsappNumber'>> | null;
     customerPrime?: Partial<Pick<CustomerPrimeSettings, 'enabled' | 'upiId' | 'amount' | 'validityValue' | 'validityUnit' | 'applyToCustomerRoleOnly' | 'requireForCall' | 'requireForWhatsapp' | 'requireForSellListing'>> | null;
     updatedByUserId?: string | null;

@@ -9,6 +9,10 @@ const prisma_1 = __importDefault(require("../lib/prisma"));
 const soldListingRetention_1 = require("../utils/soldListingRetention");
 const customerPrimeSubscriptions_1 = require("../utils/customerPrimeSubscriptions");
 const prismaAny = prisma_1.default;
+const REVIEW_PENDING_STATUSES = ['PENDING_APPROVAL', 'CHANGES_REQUESTED'];
+const PUBLIC_LISTING_STATUSES = ['PUBLISHED', 'PAUSED', 'RESERVED', 'SOLD'];
+const isReviewPendingStatus = (status) => REVIEW_PENDING_STATUSES.includes(String(status || '').toUpperCase());
+const isPublicListingStatus = (status) => PUBLIC_LISTING_STATUSES.includes(String(status || '').toUpperCase());
 const getApprovedPartnerProfile = async (userId) => {
     if (!userId) {
         return null;
@@ -144,20 +148,32 @@ const normalizeMedia = (media) => {
         }
         const fileUrl = normalizeText(item.fileUrl);
         const type = normalizeText(item.type).toUpperCase();
-        const slot = normalizeText(item.slot);
+        const slot = normalizeText(item.slot).toLowerCase();
+        const isFeatured = Boolean(item.isFeatured) || slot === 'front-view';
         if (!fileUrl || !['IMAGE', 'VIDEO'].includes(type)) {
             return null;
         }
         return {
             url: fileUrl,
             type,
-            isFeatured: slot === 'front-view',
+            slot: slot || (type === 'IMAGE' && isFeatured ? 'front-view' : null),
+            isFeatured,
         };
     })
         .filter((item) => item !== null);
 };
 const validateListingPayload = ({ categoryId, brandName, modelName, title, price, manufacturingYear, locationState, locationCity, description, media, }) => {
     return null;
+};
+const getEmployeePermissions = async (userId) => {
+    if (!userId) {
+        return [];
+    }
+    const userObj = await prismaAny.user.findUnique({
+        where: { id: userId },
+        include: { customRole: true },
+    });
+    return userObj?.customRole?.permissions || [];
 };
 const getOwnedListingForUser = async (listingId, userId) => {
     const listing = await prismaAny.listing.findUnique({
@@ -264,7 +280,8 @@ const createListing = async (req, res, next) => {
         const normalizedBrandName = normalizeText(brandName) || 'Not specified';
         const normalizedModelName = normalizeText(modelName) || 'Not specified';
         const normalizedTitle = normalizeText(title);
-        const normalizedStatus = normalizeListingStatus(status, 'DRAFT');
+        const normalizedStatus = normalizeListingStatus(status, 'PENDING_APPROVAL');
+        const initialListingStatus = isCustomer || req.user.role === 'PARTNER' ? 'PENDING_APPROVAL' : normalizedStatus;
         const normalizedState = normalizeText(locationState) || 'Not specified';
         const normalizedCity = normalizeText(locationCity) || 'Not specified';
         const normalizedCondition = normalizeText(condition);
@@ -275,7 +292,7 @@ const createListing = async (req, res, next) => {
         const parsedOperatingHours = parseInteger(operatingHours);
         const parsedPrice = parseDecimal(price) || new client_1.Prisma.Decimal(0);
         const normalizedMedia = normalizeMedia(media);
-        const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({ nextStatus: normalizedStatus });
+        const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({ nextStatus: initialListingStatus });
         const payloadValidationError = validateListingPayload({
             categoryId: normalizedCategoryId,
             brandName: normalizedBrandName,
@@ -334,7 +351,7 @@ const createListing = async (req, res, next) => {
                 description: normalizedDescription || null,
                 additionalDescription: normalizedAdditionalDescription || null,
                 grossPower: normalizedGrossPower || null,
-                status: normalizedStatus,
+                status: initialListingStatus,
                 media: normalizedMedia.length
                     ? {
                         create: normalizedMedia,
@@ -355,19 +372,9 @@ const createListing = async (req, res, next) => {
             },
         });
         await (0, soldListingRetention_1.setListingSoldAt)(listing.id, soldAt);
-        await createCustomerListingNotifications({
-            listingId: listing.id,
-            creatorUserId: req.user.id,
-            creatorRole: req.user.role,
-            title: listing.title,
-            price: listing.price,
-            locationCity: listing.locationCity,
-            locationState: listing.locationState,
-            categoryName: listing.category?.name,
-        });
         const responseListing = await getOwnedListingForUser(listing.id, req.user.id);
         return res.status(201).json({
-            message: 'Listing saved successfully.',
+            message: 'Listing submitted successfully. It will go live after admin approval.',
             listing: responseListing || listing,
         });
     }
@@ -382,8 +389,7 @@ const getListings = async (req, res, next) => {
             return res.status(401).json({ error: 'Authentication required.' });
         }
         if (req.user.role === 'EMPLOYEE') {
-            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
-            const permissions = userObj?.customRole?.permissions || [];
+            const permissions = await getEmployeePermissions(req.user.id);
             if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.read')) {
                 return res.status(403).json({ error: 'Listing access is not available for this account.' });
             }
@@ -529,9 +535,10 @@ const updateListing = async (req, res, next) => {
             return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
         }
         if (req.user.role === 'EMPLOYEE') {
-            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
-            const permissions = userObj?.customRole?.permissions || [];
-            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.update')) {
+            const permissions = await getEmployeePermissions(req.user.id);
+            if (!permissions.includes('ALL_ACCESS') &&
+                !permissions.includes('listings.update') &&
+                !permissions.includes('listings.approve')) {
                 return res.status(403).json({ error: 'You do not have permission to edit listings.' });
             }
         }
@@ -581,6 +588,7 @@ const updateListing = async (req, res, next) => {
         const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
         const normalizedTitle = normalizeText(title);
         const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
+        const nextStatus = isAdmin ? normalizedStatus : (existingListing.status || 'PENDING_APPROVAL');
         const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
         const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
         const normalizedCondition = hasOwnField('condition') ? normalizeText(condition) : existingListing.condition;
@@ -597,18 +605,19 @@ const updateListing = async (req, res, next) => {
             ? parseDecimal(price) || new client_1.Prisma.Decimal(existingListing.price || 0)
             : new client_1.Prisma.Decimal(existingListing.price || 0);
         const hasMediaField = hasOwnField('media');
-        const normalizedMedia = hasMediaField
-            ? normalizeMedia(media)
-            : existingListing.media.map((item) => ({
-                url: item.url,
-                type: item.type,
-                isFeatured: item.isFeatured,
-            }));
+    const normalizedMedia = hasMediaField
+        ? normalizeMedia(media)
+        : existingListing.media.map((item) => ({
+            url: item.url,
+            type: item.type,
+            slot: item.slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
+            isFeatured: item.isFeatured,
+        }));
         const nextIsNegotiable = hasOwnField('isNegotiable')
             ? Boolean(isNegotiable)
             : Boolean(existingListing.isNegotiable);
         const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({
-            nextStatus: normalizedStatus,
+            nextStatus,
             previousStatus: existingListing.status,
             previousSoldAt: existingListing.soldAt,
         });
@@ -677,7 +686,7 @@ const updateListing = async (req, res, next) => {
                 description: normalizedDescription || null,
                 additionalDescription: normalizedAdditionalDescription || null,
                 grossPower: normalizedGrossPower || null,
-                status: normalizedStatus,
+                status: nextStatus,
                 media: hasMediaField && normalizedMedia.length
                     ? {
                         create: normalizedMedia,
@@ -700,7 +709,11 @@ const updateListing = async (req, res, next) => {
         await (0, soldListingRetention_1.setListingSoldAt)(updatedListing.id, soldAt);
         const responseListing = await getOwnedListingForUser(updatedListing.id, req.user.id);
         return res.json({
-            message: 'Listing updated successfully.',
+            message: isAdmin
+                ? 'Listing updated successfully.'
+                : isPublicListingStatus(existingListing.status)
+                    ? 'Listing updated successfully. Your approved listing remains live.'
+                    : 'Listing updated successfully. Approval status is unchanged.',
             listing: responseListing || updatedListing,
         });
     }
@@ -715,8 +728,7 @@ const deleteListing = async (req, res, next) => {
             return res.status(403).json({ error: 'Access denied.' });
         }
         if (req.user.role === 'EMPLOYEE') {
-            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
-            const permissions = userObj?.customRole?.permissions || [];
+            const permissions = await getEmployeePermissions(req.user.id);
             if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.delete')) {
                 return res.status(403).json({ error: 'You do not have permission to delete listings.' });
             }
@@ -760,10 +772,94 @@ const deleteListing = async (req, res, next) => {
 exports.deleteListing = deleteListing;
 const updateListingStatus = async (req, res, next) => {
     try {
-        if (!req.user || !['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) {
+        if (!req.user || !['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
             return res.status(403).json({ error: 'Admin approval access required.' });
         }
-        return res.status(501).json({ error: 'Listing approval flow is not implemented yet.' });
+        if (req.user.role === 'EMPLOYEE') {
+            const permissions = await getEmployeePermissions(req.user.id);
+            if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.approve')) {
+                return res.status(403).json({ error: 'You do not have permission to approve listings.' });
+            }
+        }
+        const listingId = String(req.params.id || '');
+        const requestedStatus = normalizeListingStatus(req.body?.status, '');
+        if (!['PUBLISHED', 'CHANGES_REQUESTED'].includes(requestedStatus)) {
+            return res.status(400).json({ error: 'Invalid approval status.' });
+        }
+        const existingListing = await prismaAny.listing.findUnique({
+            where: { id: listingId },
+            include: {
+                media: true,
+                category: { select: { id: true, name: true } },
+                brand: { select: { id: true, name: true } },
+                model: { select: { id: true, name: true } },
+            },
+        });
+        if (!existingListing) {
+            return res.status(404).json({ error: 'Listing not found.' });
+        }
+        if (!isReviewPendingStatus(existingListing.status) && requestedStatus === 'PUBLISHED') {
+            return res.status(400).json({ error: 'Only pending listings can be approved.' });
+        }
+        const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({
+            nextStatus: requestedStatus,
+            previousStatus: existingListing.status,
+            previousSoldAt: existingListing.soldAt,
+        });
+        const updatedListing = await prismaAny.listing.update({
+            where: { id: listingId },
+            data: { status: requestedStatus },
+            include: {
+                partner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                        partnerProfile: {
+                            select: {
+                                businessName: true,
+                                partnerType: true,
+                            },
+                        },
+                        customerPrimeSubscriptions: {
+                            where: { status: 'ACTIVE' },
+                            take: 1,
+                        },
+                    },
+                },
+                media: true,
+                category: { select: { id: true, name: true } },
+                brand: { select: { id: true, name: true } },
+                model: { select: { id: true, name: true } },
+            },
+        });
+        await (0, soldListingRetention_1.setListingSoldAt)(updatedListing.id, soldAt);
+        if (requestedStatus === 'PUBLISHED' && !isPublicListingStatus(existingListing.status)) {
+            await createCustomerListingNotifications({
+                listingId: updatedListing.id,
+                creatorUserId: updatedListing.partnerId,
+                creatorRole: updatedListing.partner?.role || 'PARTNER',
+                title: updatedListing.title,
+                price: updatedListing.price,
+                locationCity: updatedListing.locationCity,
+                locationState: updatedListing.locationState,
+                categoryName: updatedListing.category?.name,
+            });
+        }
+        return res.json({
+            message: requestedStatus === 'PUBLISHED'
+                ? 'Listing approved and published successfully.'
+                : 'Listing marked as changes requested.',
+            listing: {
+                ...updatedListing,
+                dealer: updatedListing.partner?.partnerProfile?.businessName ||
+                    updatedListing.partner?.name ||
+                    updatedListing.partner?.email ||
+                    'Unknown partner',
+                dealerCategory: getDealerCategoryLabel(updatedListing.partner),
+            },
+        });
     }
     catch (error) {
         next(error);
@@ -776,8 +872,7 @@ const updateListingAvailability = async (req, res, next) => {
             return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
         }
         if (req.user.role === 'EMPLOYEE') {
-            const userObj = await prismaAny.user.findUnique({ where: { id: req.user.id }, include: { customRole: true } });
-            const permissions = userObj?.customRole?.permissions || [];
+            const permissions = await getEmployeePermissions(req.user.id);
             if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.update')) {
                 return res.status(403).json({ error: 'You do not have permission to edit listings.' });
             }
@@ -807,6 +902,14 @@ const updateListingAvailability = async (req, res, next) => {
             }
         }
         const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
+        if (!isAdmin) {
+            if (normalizedStatus === 'PENDING_APPROVAL') {
+                return res.status(400).json({ error: 'Approval status is controlled by admin and cannot be changed here.' });
+            }
+            if (isReviewPendingStatus(existingListing.status)) {
+                return res.status(400).json({ error: 'This listing is awaiting approval. Availability can be updated after approval.' });
+            }
+        }
         const soldAt = (0, soldListingRetention_1.getSoldAtValueForStatus)({
             nextStatus: normalizedStatus,
             previousStatus: existingListing.status,

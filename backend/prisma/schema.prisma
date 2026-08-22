@@ -400,6 +400,7 @@ model Media {
   listingId     String
   url           String
   type          String
+  slot          String?
   isFeatured    Boolean   @default(false)
   toBeDeletedAt DateTime?
   createdAt     DateTime  @default(now())

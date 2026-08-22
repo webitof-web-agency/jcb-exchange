@@ -1,16 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
-
-const vehicleNotificationTypes = new Set(['NEW_LISTING', 'LISTING_UPDATE']);
-
-const getNotificationScope = (value?: unknown) => {
-  if (typeof value !== 'string') {
-    return 'all';
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized === 'vehicle' ? 'vehicle' : 'all';
-};
+import {
+  buildNotificationWhereClause,
+  getNotificationScope,
+  getNotificationStatus,
+} from '../utils/notificationFilters';
 
 export const getNotifications = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -20,18 +14,10 @@ export const getNotifications = async (req: Request, res: Response, next: NextFu
     }
 
     const scope = getNotificationScope(req.query.scope);
+    const status = getNotificationStatus(req.query.status);
 
     const notifications = await prisma.notification.findMany({
-      where: {
-        userId,
-        ...(scope === 'vehicle'
-          ? {
-              type: {
-                in: Array.from(vehicleNotificationTypes),
-              },
-            }
-          : {}),
-      },
+      where: buildNotificationWhereClause(userId, { scope, status }),
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -77,17 +63,7 @@ export const markAllAsRead = async (req: Request, res: Response, next: NextFunct
     const scope = getNotificationScope(req.query.scope);
 
     await prisma.notification.updateMany({
-      where: {
-        userId,
-        isRead: false,
-        ...(scope === 'vehicle'
-          ? {
-              type: {
-                in: Array.from(vehicleNotificationTypes),
-              },
-            }
-          : {}),
-      },
+      where: buildNotificationWhereClause(userId, { scope, status: 'unread' }),
       data: { isRead: true },
     });
 

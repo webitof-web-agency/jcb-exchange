@@ -3,13 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.submitKyc = exports.submitPartnerOnboarding = exports.savePartnerOnboarding = exports.getPartnerOnboarding = exports.updatePassword = exports.updateProfile = exports.submitCustomerPrimeSubscription = exports.getCustomerPrimeAccess = exports.getProfile = exports.googleLogin = exports.getGoogleClientConfig = exports.checkSetup = exports.login = exports.register = exports.saveOnboardingData = exports.buildOnboardingResponse = exports.getPartnerOnboardingContext = exports.buildAuthUserPayload = exports.ensurePartnerProfileForUser = void 0;
+exports.submitKyc = exports.submitPartnerOnboarding = exports.savePartnerOnboarding = exports.getPartnerOnboarding = exports.updatePassword = exports.updateProfile = exports.submitCustomerPrimeSubscription = exports.getCustomerPrimeAccess = exports.getProfile = exports.googleLogin = exports.getGoogleClientConfig = exports.checkSetup = exports.verifyLoginOtp = exports.sendLoginOtp = exports.getMobileOtpConfig = exports.login = exports.register = exports.saveOnboardingData = exports.buildOnboardingResponse = exports.getPartnerOnboardingContext = exports.buildAuthUserPayload = exports.ensurePartnerProfileForUser = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const bootstrapSuperAdmin_1 = require("../utils/bootstrapSuperAdmin");
 const accountAccess_1 = require("../utils/accountAccess");
 const appSettings_1 = require("../utils/appSettings");
+const mobileOtp_1 = require("../utils/mobileOtp");
 const customerPrimeSubscriptions_1 = require("../utils/customerPrimeSubscriptions");
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 const prismaAny = prisma_1.default;
@@ -255,6 +256,62 @@ const signAuthToken = (user) => jsonwebtoken_1.default.sign({
     rawRole: user.rawRole ?? user.role,
     status: user.status,
 }, JWT_SECRET, { expiresIn: '7d' });
+const assertAccountAccessOrRespond = (res, user) => {
+    const accessState = (0, accountAccess_1.getAccountAccessState)(user);
+    if (accessState === 'inactive') {
+        res.status(403).json({
+            error: accountAccess_1.ACCOUNT_INACTIVE_MESSAGE,
+            code: accountAccess_1.ACCOUNT_INACTIVE_CODE,
+        });
+        return true;
+    }
+    if (accessState === 'revoked') {
+        res.status(403).json({
+            error: accountAccess_1.ACCOUNT_REVOKED_MESSAGE,
+            code: accountAccess_1.ACCOUNT_REVOKED_CODE,
+        });
+        return true;
+    }
+    return false;
+};
+const sendMobileOtpViaGateway = async ({ apiKey, mobileNumber, templateId, senderId, templateMessage, }) => {
+    if (templateId) {
+        const response = await fetch(`https://control.msg91.com/api/v5/otp?template_id=${encodeURIComponent(templateId)}&mobile=${encodeURIComponent(mobileNumber)}&authkey=${encodeURIComponent(apiKey)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        const payload = (await response.json().catch(() => null));
+        if (!response.ok || payload?.type === 'error') {
+            throw new Error(payload?.message || 'Unable to send OTP right now.');
+        }
+        return;
+    }
+    if (!senderId || !templateMessage) {
+        throw new Error('OTP gateway configuration is incomplete.');
+    }
+    const response = await fetch(`https://world.msg91.com/api/otp.php?authkey=${encodeURIComponent(apiKey)}&mobile=${encodeURIComponent(mobileNumber)}&message=${encodeURIComponent(templateMessage)}&sender=${encodeURIComponent(senderId)}&otp_expiry=${(0, mobileOtp_1.getMobileOtpExpiryMinutes)()}`, {
+        method: 'GET',
+    });
+    const payload = (await response.json().catch(() => null));
+    if (!response.ok || payload?.type === 'error') {
+        throw new Error(payload?.message || 'Unable to send OTP right now.');
+    }
+};
+const verifyMobileOtpViaGateway = async ({ apiKey, mobileNumber, otp, }) => {
+    const response = await fetch(`https://control.msg91.com/api/v5/otp/verify?otp=${encodeURIComponent(otp)}&mobile=${encodeURIComponent(mobileNumber)}`, {
+        method: 'GET',
+        headers: {
+            authkey: apiKey,
+        },
+    });
+    const payload = (await response.json().catch(() => null));
+    if (!response.ok) {
+        throw new Error(payload?.message || 'OTP verification failed.');
+    }
+    return (payload?.message || '').toLowerCase().includes('verified');
+};
 class GoogleAuthError extends Error {
     statusCode;
     constructor(message, statusCode = 400) {
@@ -683,18 +740,8 @@ const login = async (req, res, next) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         const currentUser = await (0, accountAccess_1.fetchAuthenticatedUserById)(userRecord.id);
-        const accessState = (0, accountAccess_1.getAccountAccessState)(currentUser);
-        if (accessState === 'inactive') {
-            return res.status(403).json({
-                error: accountAccess_1.ACCOUNT_INACTIVE_MESSAGE,
-                code: accountAccess_1.ACCOUNT_INACTIVE_CODE,
-            });
-        }
-        if (accessState === 'revoked') {
-            return res.status(403).json({
-                error: accountAccess_1.ACCOUNT_REVOKED_MESSAGE,
-                code: accountAccess_1.ACCOUNT_REVOKED_CODE,
-            });
+        if (assertAccountAccessOrRespond(res, currentUser)) {
+            return;
         }
         const authUser = await (0, exports.buildAuthUserPayload)(currentUser);
         const token = signAuthToken(authUser);
@@ -709,6 +756,150 @@ const login = async (req, res, next) => {
     }
 };
 exports.login = login;
+const getMobileOtpConfig = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.json({
+            enabled: settings.mobileOtp.enabled,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getMobileOtpConfig = getMobileOtpConfig;
+const sendLoginOtp = async (req, res, next) => {
+    try {
+        const { mobile } = req.body;
+        const settings = await (0, appSettings_1.getAppSettings)();
+        if (!settings.mobileOtp.enabled) {
+            return res.status(400).json({ error: 'Mobile OTP login is currently disabled.' });
+        }
+        if (!settings.mobileOtp.apiKey) {
+            return res.status(400).json({ error: 'Mobile OTP gateway is not configured yet.' });
+        }
+        const normalizedMobile = (0, mobileOtp_1.normalizeLoginMobileNumber)(mobile);
+        if (!normalizedMobile) {
+            return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+        }
+        const user = await prisma_1.default.user.findFirst({
+            where: { mobile: normalizedMobile },
+            select: { id: true },
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'No account found with this mobile number.' });
+        }
+        const currentUser = await (0, accountAccess_1.fetchAuthenticatedUserById)(user.id);
+        if (assertAccountAccessOrRespond(res, currentUser)) {
+            return;
+        }
+        const cooldownSeconds = await (0, mobileOtp_1.getMobileOtpCooldownSeconds)(normalizedMobile);
+        if (cooldownSeconds > 0) {
+            return res.status(429).json({
+                error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+            });
+        }
+        const internationalMobileNumber = (0, mobileOtp_1.toInternationalMobileNumber)(normalizedMobile);
+        await sendMobileOtpViaGateway({
+            apiKey: settings.mobileOtp.apiKey,
+            mobileNumber: internationalMobileNumber,
+            templateId: settings.mobileOtp.templateId,
+            senderId: settings.mobileOtp.senderId,
+            templateMessage: settings.mobileOtp.templateMessage,
+        });
+        const session = await (0, mobileOtp_1.createMobileOtpSession)({
+            mobile: normalizedMobile,
+            userId: user.id,
+        });
+        res.json({
+            message: 'OTP sent successfully.',
+            challengeId: session.id,
+            expiresInSeconds: (0, mobileOtp_1.getMobileOtpExpiryMinutes)() * 60,
+            maskedMobile: (0, mobileOtp_1.maskMobileNumber)(normalizedMobile),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.sendLoginOtp = sendLoginOtp;
+const verifyLoginOtp = async (req, res, next) => {
+    try {
+        const { challengeId, mobile, otp } = req.body;
+        const settings = await (0, appSettings_1.getAppSettings)();
+        if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey) {
+            return res.status(400).json({ error: 'Mobile OTP login is currently unavailable.' });
+        }
+        if (!challengeId || !otp) {
+            return res.status(400).json({ error: 'Challenge and OTP are required.' });
+        }
+        const normalizedMobile = (0, mobileOtp_1.normalizeLoginMobileNumber)(mobile);
+        if (!normalizedMobile) {
+            return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+        }
+        const session = await (0, mobileOtp_1.getMobileOtpSessionById)(challengeId);
+        if (!session || session.mobile !== normalizedMobile) {
+            return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
+        }
+        if ((0, mobileOtp_1.isMobileOtpSessionExpired)(session)) {
+            await (0, mobileOtp_1.invalidateMobileOtpSession)(session.id);
+            return res.status(400).json({ error: 'OTP expired. Please request a new OTP.' });
+        }
+        if (!(0, mobileOtp_1.canAttemptMobileOtpVerification)(session)) {
+            await (0, mobileOtp_1.invalidateMobileOtpSession)(session.id);
+            return res.status(429).json({ error: 'Too many invalid attempts. Please request a new OTP.' });
+        }
+        const verified = await verifyMobileOtpViaGateway({
+            apiKey: settings.mobileOtp.apiKey,
+            mobileNumber: (0, mobileOtp_1.toInternationalMobileNumber)(normalizedMobile),
+            otp: otp.trim(),
+        });
+        if (!verified) {
+            const updatedSession = await (0, mobileOtp_1.recordMobileOtpAttempt)({
+                sessionId: session.id,
+                verified: false,
+            });
+            if (updatedSession && !(0, mobileOtp_1.canAttemptMobileOtpVerification)(updatedSession)) {
+                await (0, mobileOtp_1.invalidateMobileOtpSession)(session.id);
+            }
+            return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+        }
+        await (0, mobileOtp_1.recordMobileOtpAttempt)({
+            sessionId: session.id,
+            verified: true,
+        });
+        const user = await prisma_1.default.user.findFirst({
+            where: { mobile: normalizedMobile },
+            select: { id: true, isMobileVerified: true },
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'No account found with this mobile number.' });
+        }
+        if (!user.isMobileVerified) {
+            await prisma_1.default.user.update({
+                where: { id: user.id },
+                data: {
+                    isMobileVerified: true,
+                },
+            });
+        }
+        const currentUser = await (0, accountAccess_1.fetchAuthenticatedUserById)(user.id);
+        if (assertAccountAccessOrRespond(res, currentUser)) {
+            return;
+        }
+        const authUser = await (0, exports.buildAuthUserPayload)(currentUser);
+        const token = signAuthToken(authUser);
+        res.json({
+            message: 'OTP verified successfully.',
+            token,
+            user: authUser,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.verifyLoginOtp = verifyLoginOtp;
 const checkSetup = async (req, res, next) => {
     try {
         const hasSuperAdmin = await (0, bootstrapSuperAdmin_1.ensureBootstrapSuperAdmin)();

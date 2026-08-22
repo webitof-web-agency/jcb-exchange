@@ -13,7 +13,20 @@ import {
   getAccountAccessState,
   resolveEffectiveUserRole,
 } from '../utils/accountAccess';
-import { getRuntimeGoogleClientId } from '../utils/appSettings';
+import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
+import {
+  canAttemptMobileOtpVerification,
+  createMobileOtpSession,
+  getMobileOtpCooldownSeconds,
+  getMobileOtpExpiryMinutes,
+  getMobileOtpSessionById,
+  invalidateMobileOtpSession,
+  isMobileOtpSessionExpired,
+  maskMobileNumber,
+  normalizeLoginMobileNumber,
+  recordMobileOtpAttempt,
+  toInternationalMobileNumber,
+} from '../utils/mobileOtp';
 import {
   createCustomerPrimeSubscriptionRequest,
   getCustomerPrimeAccessPayload,
@@ -377,6 +390,121 @@ const signAuthToken = (user: any) =>
     JWT_SECRET,
     { expiresIn: '7d' }
   );
+
+const assertAccountAccessOrRespond = (res: Response, user: unknown) => {
+  const accessState = getAccountAccessState(user as any);
+
+  if (accessState === 'inactive') {
+    res.status(403).json({
+      error: ACCOUNT_INACTIVE_MESSAGE,
+      code: ACCOUNT_INACTIVE_CODE,
+    });
+    return true;
+  }
+
+  if (accessState === 'revoked') {
+    res.status(403).json({
+      error: ACCOUNT_REVOKED_MESSAGE,
+      code: ACCOUNT_REVOKED_CODE,
+    });
+    return true;
+  }
+
+  return false;
+};
+
+const sendMobileOtpViaGateway = async ({
+  apiKey,
+  mobileNumber,
+  templateId,
+  senderId,
+  templateMessage,
+}: {
+  apiKey: string;
+  mobileNumber: string;
+  templateId?: string | null;
+  senderId?: string | null;
+  templateMessage?: string | null;
+}) => {
+  if (templateId) {
+    const response = await fetch(
+      `https://control.msg91.com/api/v5/otp?template_id=${encodeURIComponent(templateId)}&mobile=${encodeURIComponent(
+        mobileNumber,
+      )}&authkey=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const payload = (await response.json().catch(() => null)) as
+      | { type?: string; message?: string }
+      | null;
+
+    if (!response.ok || payload?.type === 'error') {
+      throw new Error(payload?.message || 'Unable to send OTP right now.');
+    }
+
+    return;
+  }
+
+  if (!senderId || !templateMessage) {
+    throw new Error('OTP gateway configuration is incomplete.');
+  }
+
+  const response = await fetch(
+    `https://world.msg91.com/api/otp.php?authkey=${encodeURIComponent(apiKey)}&mobile=${encodeURIComponent(
+      mobileNumber,
+    )}&message=${encodeURIComponent(templateMessage)}&sender=${encodeURIComponent(
+      senderId,
+    )}&otp_expiry=${getMobileOtpExpiryMinutes()}`,
+    {
+      method: 'GET',
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | { type?: string; message?: string }
+    | null;
+
+  if (!response.ok || payload?.type === 'error') {
+    throw new Error(payload?.message || 'Unable to send OTP right now.');
+  }
+};
+
+const verifyMobileOtpViaGateway = async ({
+  apiKey,
+  mobileNumber,
+  otp,
+}: {
+  apiKey: string;
+  mobileNumber: string;
+  otp: string;
+}) => {
+  const response = await fetch(
+    `https://control.msg91.com/api/v5/otp/verify?otp=${encodeURIComponent(otp)}&mobile=${encodeURIComponent(
+      mobileNumber,
+    )}`,
+    {
+      method: 'GET',
+      headers: {
+        authkey: apiKey,
+      },
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | { type?: string; message?: string }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.message || 'OTP verification failed.');
+  }
+
+  return (payload?.message || '').toLowerCase().includes('verified');
+};
 
 type GoogleTokenInfo = {
   aud?: string;
@@ -894,20 +1022,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     }
 
     const currentUser = await fetchAuthenticatedUserById(userRecord.id);
-    const accessState = getAccountAccessState(currentUser as any);
-
-    if (accessState === 'inactive') {
-      return res.status(403).json({
-        error: ACCOUNT_INACTIVE_MESSAGE,
-        code: ACCOUNT_INACTIVE_CODE,
-      });
-    }
-
-    if (accessState === 'revoked') {
-      return res.status(403).json({
-        error: ACCOUNT_REVOKED_MESSAGE,
-        code: ACCOUNT_REVOKED_CODE,
-      });
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
     }
 
     const authUser = await buildAuthUserPayload(currentUser as any);
@@ -915,6 +1031,180 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     res.json({
       message: 'Login successful',
+      token,
+      user: authUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMobileOtpConfig = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.json({
+      enabled: settings.mobileOtp.enabled,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { mobile } = req.body as { mobile?: string };
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled) {
+      return res.status(400).json({ error: 'Mobile OTP login is currently disabled.' });
+    }
+
+    if (!settings.mobileOtp.apiKey) {
+      return res.status(400).json({ error: 'Mobile OTP gateway is not configured yet.' });
+    }
+
+    const normalizedMobile = normalizeLoginMobileNumber(mobile);
+    if (!normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { mobile: normalizedMobile },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this mobile number.' });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(user.id);
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
+    }
+
+    const cooldownSeconds = await getMobileOtpCooldownSeconds(normalizedMobile);
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+      });
+    }
+
+    const internationalMobileNumber = toInternationalMobileNumber(normalizedMobile);
+
+    await sendMobileOtpViaGateway({
+      apiKey: settings.mobileOtp.apiKey,
+      mobileNumber: internationalMobileNumber,
+      templateId: settings.mobileOtp.templateId,
+      senderId: settings.mobileOtp.senderId,
+      templateMessage: settings.mobileOtp.templateMessage,
+    });
+
+    const session = await createMobileOtpSession({
+      mobile: normalizedMobile,
+      userId: user.id,
+    });
+
+    res.json({
+      message: 'OTP sent successfully.',
+      challengeId: session.id,
+      expiresInSeconds: getMobileOtpExpiryMinutes() * 60,
+      maskedMobile: maskMobileNumber(normalizedMobile),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { challengeId, mobile, otp } = req.body as {
+      challengeId?: string;
+      mobile?: string;
+      otp?: string;
+    };
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey) {
+      return res.status(400).json({ error: 'Mobile OTP login is currently unavailable.' });
+    }
+
+    if (!challengeId || !otp) {
+      return res.status(400).json({ error: 'Challenge and OTP are required.' });
+    }
+
+    const normalizedMobile = normalizeLoginMobileNumber(mobile);
+    if (!normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const session = await getMobileOtpSessionById(challengeId);
+    if (!session || session.mobile !== normalizedMobile) {
+      return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
+    }
+
+    if (isMobileOtpSessionExpired(session)) {
+      await invalidateMobileOtpSession(session.id);
+      return res.status(400).json({ error: 'OTP expired. Please request a new OTP.' });
+    }
+
+    if (!canAttemptMobileOtpVerification(session)) {
+      await invalidateMobileOtpSession(session.id);
+      return res.status(429).json({ error: 'Too many invalid attempts. Please request a new OTP.' });
+    }
+
+    const verified = await verifyMobileOtpViaGateway({
+      apiKey: settings.mobileOtp.apiKey,
+      mobileNumber: toInternationalMobileNumber(normalizedMobile),
+      otp: otp.trim(),
+    });
+
+    if (!verified) {
+      const updatedSession = await recordMobileOtpAttempt({
+        sessionId: session.id,
+        verified: false,
+      });
+
+      if (updatedSession && !canAttemptMobileOtpVerification(updatedSession)) {
+        await invalidateMobileOtpSession(session.id);
+      }
+
+      return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+    }
+
+    await recordMobileOtpAttempt({
+      sessionId: session.id,
+      verified: true,
+    });
+
+    const user = await prisma.user.findFirst({
+      where: { mobile: normalizedMobile },
+      select: { id: true, isMobileVerified: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this mobile number.' });
+    }
+
+    if (!user.isMobileVerified) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          isMobileVerified: true,
+        },
+      });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(user.id);
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
+    }
+
+    const authUser = await buildAuthUserPayload(currentUser as any);
+    const token = signAuthToken(authUser);
+
+    res.json({
+      message: 'OTP verified successfully.',
       token,
       user: authUser,
     });

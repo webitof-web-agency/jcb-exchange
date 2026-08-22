@@ -8,6 +8,7 @@ const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const crypto_1 = require("crypto");
 const customerPrime_1 = require("./customerPrime");
+const mobileOtp_1 = require("./mobileOtp");
 const settingsDirectory = path_1.default.resolve(process.cwd(), 'runtime');
 const legacySettingsDirectory = path_1.default.resolve(__dirname, '..', '..', 'runtime');
 const repoRootLegacySettingsDirectory = path_1.default.resolve(__dirname, '..', '..', '..', 'runtime');
@@ -17,10 +18,12 @@ const repoRootLegacySettingsFilePath = path_1.default.join(repoRootLegacySetting
 const settingsFileCandidates = Array.from(new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]));
 const defaultSettings = {
     googleAuth: {
+        enabled: false,
         clientId: null,
         updatedAt: null,
         updatedByUserId: null,
     },
+    mobileOtp: mobileOtp_1.defaultMobileOtpSettings,
     publicLeadRouting: {
         useSellerContact: false,
         adminCallNumber: null,
@@ -58,7 +61,13 @@ const defaultSettings = {
         updatedByUserId: null,
     },
 };
-const isMeaningfulSettings = (settings) => Boolean(settings.googleAuth.clientId ||
+const isMeaningfulSettings = (settings) => Boolean(settings.googleAuth.enabled ||
+    settings.googleAuth.clientId ||
+    settings.mobileOtp.enabled ||
+    settings.mobileOtp.apiKey ||
+    settings.mobileOtp.senderId ||
+    settings.mobileOtp.templateId ||
+    settings.mobileOtp.templateMessage ||
     settings.publicLeadRouting.useSellerContact ||
     settings.publicLeadRouting.adminCallNumber ||
     settings.publicLeadRouting.adminWhatsappNumber ||
@@ -143,10 +152,12 @@ const getAppSettings = async () => {
                 const parsed = JSON.parse(content);
                 const snapshot = {
                     googleAuth: {
+                        enabled: parsed.googleAuth?.enabled === true,
                         clientId: normalizeClientId(parsed.googleAuth?.clientId) || null,
                         updatedAt: parsed.googleAuth?.updatedAt || null,
                         updatedByUserId: parsed.googleAuth?.updatedByUserId || null,
                     },
+                    mobileOtp: (0, mobileOtp_1.normalizeMobileOtpSettings)(parsed.mobileOtp),
                     publicLeadRouting: {
                         useSellerContact: parsed.publicLeadRouting?.useSellerContact === true,
                         adminCallNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminCallNumber) || null,
@@ -195,11 +206,12 @@ const getAppSettings = async () => {
     }
 };
 exports.getAppSettings = getAppSettings;
-const updateGoogleAuthSettings = async ({ clientId, updatedByUserId, }) => {
+const updateGoogleAuthSettings = async ({ enabled, clientId, updatedByUserId, }) => {
     const currentSettings = await (0, exports.getAppSettings)();
     const nextSettings = {
         ...currentSettings,
         googleAuth: {
+            enabled: enabled === true,
             clientId: normalizeClientId(clientId) || null,
             updatedAt: new Date().toISOString(),
             updatedByUserId: updatedByUserId || null,
@@ -210,21 +222,37 @@ const updateGoogleAuthSettings = async ({ clientId, updatedByUserId, }) => {
     return nextSettings;
 };
 exports.updateGoogleAuthSettings = updateGoogleAuthSettings;
-const updatePlatformRuntimeSettings = async ({ googleClientId, publicLeadRouting, customerPrime, updatedByUserId, }) => {
+const updatePlatformRuntimeSettings = async ({ googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime, updatedByUserId, }) => {
     const currentSettings = await (0, exports.getAppSettings)();
     const nextTimestamp = new Date().toISOString();
-    const hasGoogleAuthUpdate = googleClientId !== undefined;
+    const hasGoogleAuthUpdate = googleClientId !== undefined || googleAuthEnabled !== undefined;
+    const hasMobileOtpUpdate = mobileOtp !== undefined;
     const hasPublicLeadRoutingUpdate = publicLeadRouting !== undefined;
     const hasCustomerPrimeUpdate = customerPrime !== undefined;
     const nextSettings = {
         ...currentSettings,
         googleAuth: hasGoogleAuthUpdate
             ? {
-                clientId: normalizeClientId(googleClientId) || null,
+                enabled: googleAuthEnabled !== undefined
+                    ? googleAuthEnabled === true
+                    : currentSettings.googleAuth.enabled,
+                clientId: googleClientId !== undefined
+                    ? normalizeClientId(googleClientId) || null
+                    : currentSettings.googleAuth.clientId,
                 updatedAt: nextTimestamp,
                 updatedByUserId: updatedByUserId || null,
             }
             : currentSettings.googleAuth,
+        mobileOtp: hasMobileOtpUpdate
+            ? {
+                ...(0, mobileOtp_1.normalizeMobileOtpSettings)({
+                    ...currentSettings.mobileOtp,
+                    ...mobileOtp,
+                }),
+                updatedAt: nextTimestamp,
+                updatedByUserId: updatedByUserId || null,
+            }
+            : currentSettings.mobileOtp,
         publicLeadRouting: hasPublicLeadRoutingUpdate
             ? {
                 useSellerContact: publicLeadRouting?.useSellerContact === true,
@@ -303,7 +331,9 @@ const updateInspectionSectionSettings = async ({ title, description, imageUrl, u
 exports.updateInspectionSectionSettings = updateInspectionSectionSettings;
 const getRuntimeGoogleClientId = async () => {
     const settings = await (0, exports.getAppSettings)();
-    return settings.googleAuth.clientId || normalizeClientId(process.env.GOOGLE_CLIENT_ID) || null;
+    const runtimeClientId = settings.googleAuth.clientId || normalizeClientId(process.env.GOOGLE_CLIENT_ID) || null;
+    const isEnabled = settings.googleAuth.enabled === true;
+    return isEnabled ? runtimeClientId : null;
 };
 exports.getRuntimeGoogleClientId = getRuntimeGoogleClientId;
 //# sourceMappingURL=appSettings.js.map

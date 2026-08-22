@@ -409,10 +409,19 @@ const getPlatformSettings = async (req, res, next) => {
         ]);
         res.json({
             googleAuth: {
-                enabled: !!settings.googleAuth.clientId,
+                enabled: settings.googleAuth.enabled === true,
                 clientId: settings.googleAuth.clientId || '',
                 updatedAt: settings.googleAuth.updatedAt,
                 updatedByUserId: settings.googleAuth.updatedByUserId,
+            },
+            mobileOtp: {
+                enabled: settings.mobileOtp.enabled,
+                apiKey: settings.mobileOtp.apiKey || '',
+                senderId: settings.mobileOtp.senderId || '',
+                templateId: settings.mobileOtp.templateId || '',
+                templateMessage: settings.mobileOtp.templateMessage || '',
+                updatedAt: settings.mobileOtp.updatedAt,
+                updatedByUserId: settings.mobileOtp.updatedByUserId,
             },
             publicLeadRouting: {
                 useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -437,8 +446,8 @@ const getPlatformSettings = async (req, res, next) => {
 exports.getPlatformSettings = getPlatformSettings;
 const updatePlatformSettings = async (req, res, next) => {
     try {
-        const { googleClientId, publicLeadRouting, customerPrime } = req.body;
-        if (googleClientId === undefined && !publicLeadRouting && !customerPrime) {
+        const { googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime } = req.body;
+        if (googleClientId === undefined && googleAuthEnabled === undefined && !mobileOtp && !publicLeadRouting && !customerPrime) {
             return res.status(400).json({
                 error: 'No platform setting changes were provided.',
             });
@@ -446,8 +455,20 @@ const updatePlatformSettings = async (req, res, next) => {
         const settingsPayload = {
             updatedByUserId: req.user?.id || null,
         };
-        if (googleClientId !== undefined) {
+        if (googleClientId !== undefined || googleAuthEnabled !== undefined) {
             settingsPayload.googleClientId = googleClientId;
+            settingsPayload.googleAuthEnabled = googleAuthEnabled === true;
+        }
+        if (mobileOtp) {
+            settingsPayload.mobileOtp = {
+                enabled: mobileOtp.enabled === true,
+                ...(mobileOtp.apiKey !== undefined ? { apiKey: mobileOtp.apiKey } : {}),
+                ...(mobileOtp.senderId !== undefined ? { senderId: mobileOtp.senderId } : {}),
+                ...(mobileOtp.templateId !== undefined ? { templateId: mobileOtp.templateId } : {}),
+                ...(mobileOtp.templateMessage !== undefined
+                    ? { templateMessage: mobileOtp.templateMessage }
+                    : {}),
+            };
         }
         if (publicLeadRouting) {
             settingsPayload.publicLeadRouting = {
@@ -477,10 +498,19 @@ const updatePlatformSettings = async (req, res, next) => {
         res.json({
             message: 'Platform settings updated successfully.',
             googleAuth: {
-                enabled: !!settings.googleAuth.clientId,
+                enabled: settings.googleAuth.enabled === true,
                 clientId: settings.googleAuth.clientId || '',
                 updatedAt: settings.googleAuth.updatedAt,
                 updatedByUserId: settings.googleAuth.updatedByUserId,
+            },
+            mobileOtp: {
+                enabled: settings.mobileOtp.enabled,
+                apiKey: settings.mobileOtp.apiKey || '',
+                senderId: settings.mobileOtp.senderId || '',
+                templateId: settings.mobileOtp.templateId || '',
+                templateMessage: settings.mobileOtp.templateMessage || '',
+                updatedAt: settings.mobileOtp.updatedAt,
+                updatedByUserId: settings.mobileOtp.updatedByUserId,
             },
             publicLeadRouting: {
                 useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -878,8 +908,8 @@ const deleteManagedUser = async (req, res, next) => {
         if (!targetUser) {
             return res.status(404).json({ error: 'User not found.' });
         }
-        if (targetUser.adminProfile?.isRootAdmin) {
-            return res.status(400).json({ error: 'Protected root super admin account cannot be deleted.' });
+        if (targetUser.role === 'SUPER_ADMIN') {
+            return res.status(400).json({ error: 'Super admin accounts cannot be deleted.' });
         }
         if (targetUser.role === 'CUSTOMER') {
             await prisma_1.default.user.update({
@@ -1659,7 +1689,7 @@ const getModuleBadges = async (req, res, next) => {
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount] = await Promise.all([
+        const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount] = await Promise.all([
             prisma_1.default.lead.count({
                 where: { status: 'NEW' },
             }),
@@ -1685,6 +1715,13 @@ const getModuleBadges = async (req, res, next) => {
             prisma_1.default.customerPrimeSubscription.count({
                 where: { status: 'PENDING' },
             }),
+            prisma_1.default.listing.count({
+                where: {
+                    status: {
+                        in: ['PENDING_APPROVAL', 'CHANGES_REQUESTED'],
+                    },
+                },
+            }),
         ]);
         res.json({
             badges: {
@@ -1692,6 +1729,7 @@ const getModuleBadges = async (req, res, next) => {
                 verifications: verificationsCount,
                 visitors: visitorsCount,
                 recurrence: recurrenceCount,
+                listingsPendingApproval: listingsPendingApprovalCount,
             },
         });
     }

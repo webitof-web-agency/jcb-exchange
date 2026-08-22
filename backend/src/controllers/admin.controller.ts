@@ -519,10 +519,19 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
 
     res.json({
       googleAuth: {
-        enabled: !!settings.googleAuth.clientId,
+        enabled: settings.googleAuth.enabled === true,
         clientId: settings.googleAuth.clientId || '',
         updatedAt: settings.googleAuth.updatedAt,
         updatedByUserId: settings.googleAuth.updatedByUserId,
+      },
+      mobileOtp: {
+        enabled: settings.mobileOtp.enabled,
+        apiKey: settings.mobileOtp.apiKey || '',
+        senderId: settings.mobileOtp.senderId || '',
+        templateId: settings.mobileOtp.templateId || '',
+        templateMessage: settings.mobileOtp.templateMessage || '',
+        updatedAt: settings.mobileOtp.updatedAt,
+        updatedByUserId: settings.mobileOtp.updatedByUserId,
       },
       publicLeadRouting: {
         useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -546,8 +555,16 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, publicLeadRouting, customerPrime } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime } = req.body as {
       googleClientId?: string;
+      googleAuthEnabled?: boolean;
+      mobileOtp?: {
+        enabled?: boolean;
+        apiKey?: string;
+        senderId?: string;
+        templateId?: string;
+        templateMessage?: string;
+      };
       publicLeadRouting?: {
         useSellerContact?: boolean;
       };
@@ -560,7 +577,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       };
     };
 
-    if (googleClientId === undefined && !publicLeadRouting && !customerPrime) {
+    if (googleClientId === undefined && googleAuthEnabled === undefined && !mobileOtp && !publicLeadRouting && !customerPrime) {
       return res.status(400).json({
         error: 'No platform setting changes were provided.',
       });
@@ -570,8 +587,21 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       updatedByUserId: req.user?.id || null,
     };
 
-    if (googleClientId !== undefined) {
+    if (googleClientId !== undefined || googleAuthEnabled !== undefined) {
       settingsPayload.googleClientId = googleClientId;
+      settingsPayload.googleAuthEnabled = googleAuthEnabled === true;
+    }
+
+    if (mobileOtp) {
+      settingsPayload.mobileOtp = {
+        enabled: mobileOtp.enabled === true,
+        ...(mobileOtp.apiKey !== undefined ? { apiKey: mobileOtp.apiKey } : {}),
+        ...(mobileOtp.senderId !== undefined ? { senderId: mobileOtp.senderId } : {}),
+        ...(mobileOtp.templateId !== undefined ? { templateId: mobileOtp.templateId } : {}),
+        ...(mobileOtp.templateMessage !== undefined
+          ? { templateMessage: mobileOtp.templateMessage }
+          : {}),
+      };
     }
 
     if (publicLeadRouting) {
@@ -605,10 +635,19 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
     res.json({
       message: 'Platform settings updated successfully.',
       googleAuth: {
-        enabled: !!settings.googleAuth.clientId,
+        enabled: settings.googleAuth.enabled === true,
         clientId: settings.googleAuth.clientId || '',
         updatedAt: settings.googleAuth.updatedAt,
         updatedByUserId: settings.googleAuth.updatedByUserId,
+      },
+      mobileOtp: {
+        enabled: settings.mobileOtp.enabled,
+        apiKey: settings.mobileOtp.apiKey || '',
+        senderId: settings.mobileOtp.senderId || '',
+        templateId: settings.mobileOtp.templateId || '',
+        templateMessage: settings.mobileOtp.templateMessage || '',
+        updatedAt: settings.mobileOtp.updatedAt,
+        updatedByUserId: settings.mobileOtp.updatedByUserId,
       },
       publicLeadRouting: {
         useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -1999,7 +2038,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount] = await Promise.all([
+    const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount] = await Promise.all([
       (prisma as any).lead.count({
         where: { status: 'NEW' },
       }),
@@ -2025,6 +2064,13 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
       (prisma as any).customerPrimeSubscription.count({
         where: { status: 'PENDING' },
       }),
+      (prisma as any).listing.count({
+        where: {
+          status: {
+            in: ['PENDING_APPROVAL', 'CHANGES_REQUESTED'],
+          },
+        },
+      }),
     ]);
 
     res.json({
@@ -2033,6 +2079,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         verifications: verificationsCount,
         visitors: visitorsCount,
         recurrence: recurrenceCount,
+        listingsPendingApproval: listingsPendingApprovalCount,
       },
     });
   } catch (error) {

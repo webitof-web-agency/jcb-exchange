@@ -105,6 +105,38 @@ const getPartnerProfile = async (userId?: string) => {
 const isHiddenPublicCategory = (name?: string | null) =>
   name?.trim().toLowerCase() === 'uncategorized';
 
+const validateGlobalCategoryIconAssignment = async (iconId: unknown, excludeCategoryId?: string) => {
+  if (!iconId) {
+    return null;
+  }
+
+  const normalizedIconId = String(iconId);
+
+  const existingIcon = await prisma.categoryIcon.findUnique({
+    where: { id: normalizedIconId },
+    select: { id: true },
+  });
+
+  if (!existingIcon) {
+    return 'Selected icon does not exist.';
+  }
+
+  const iconAlreadyAssigned = await prismaAny.category.findFirst({
+    where: {
+      partnerProfileId: null,
+      iconId: normalizedIconId,
+      ...(excludeCategoryId ? { id: { not: excludeCategoryId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (iconAlreadyAssigned) {
+    return 'This icon is already assigned to another category.';
+  }
+
+  return null;
+};
+
 export const getCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id) {
@@ -145,6 +177,11 @@ export const createCategory = async (req: Request, res: Response, next: NextFunc
       select: { id: true },
     });
     if (existing) return res.status(400).json({ error: 'Category already exists' });
+
+    const iconValidationError = await validateGlobalCategoryIconAssignment(iconId);
+    if (iconValidationError) {
+      return res.status(400).json({ error: iconValidationError });
+    }
 
     const category = await prismaAny.category.create({
       data: {
@@ -194,6 +231,11 @@ export const updateCategory = async (req: Request, res: Response, next: NextFunc
 
     if (duplicateCategory) {
       return res.status(400).json({ error: 'Category already exists' });
+    }
+
+    const iconValidationError = await validateGlobalCategoryIconAssignment(iconId, id);
+    if (iconValidationError) {
+      return res.status(400).json({ error: iconValidationError });
     }
 
     const category = await prismaAny.category.update({
@@ -774,10 +816,16 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
 
 export const getRecentListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const freshListingCutoff = new Date();
+    freshListingCutoff.setDate(freshListingCutoff.getDate() - 7);
+
     const listings = await prismaAny.listing.findMany({
       where: {
         status: {
           in: getPublicListingStatuses(),
+        },
+        createdAt: {
+          gte: freshListingCutoff,
         },
         partner: {
           OR: [
