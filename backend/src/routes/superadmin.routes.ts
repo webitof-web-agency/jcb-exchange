@@ -32,6 +32,10 @@ import {
   updateCustomerPrimePaymentStatus,
   updateVerificationStatus,
 } from '../controllers/admin.controller';
+import {
+  getTranslationCatalog,
+  saveTranslationCatalog,
+} from '../controllers/translationAdmin.controller';
 import { requireAuth, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
@@ -42,6 +46,7 @@ router.use(requireAuth);
 
 const canViewDashboard = requireSuperAdminOrEmployeePermissions(['dashboard.view']);
 const canManageSettings = requireSuperAdminOrEmployeePermissions(['settings.manage']);
+const canManageTranslations = requireSuperAdminOrEmployeePermissions(['translations.manage']);
 const canManageRecurrence = requireSuperAdminOrEmployeePermissions(['recurrence.manage']);
 const canViewUsers = requireSuperAdminOrEmployeePermissions(['users.read']);
 const canCreateUsers = requireSuperAdminOrEmployeePermissions(['users.create']);
@@ -72,6 +77,8 @@ router.get('/inspection-section', canManageSettings, getInspectionSectionContent
 router.put('/inspection-section', canManageSettings, updateInspectionSectionContent);
 router.get('/settings', canManageSettings, getPlatformSettings);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
+router.get('/translations/catalog', canManageTranslations, getTranslationCatalog);
+router.put('/translations/catalog', canManageTranslations, saveTranslationCatalog);
 router.get('/customer-prime-payments', canManageRecurrence, getCustomerPrimePayments);
 router.patch('/customer-prime-payments/:id/status', canManageRecurrence, updateCustomerPrimePaymentStatus);
 router.get('/users', canViewUsers, getAdminUsers);

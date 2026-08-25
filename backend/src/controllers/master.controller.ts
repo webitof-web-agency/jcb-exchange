@@ -1,16 +1,66 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
 import { getAppSettings } from '../utils/appSettings';
+import { getSoldListingCutoff } from '../utils/soldListingRetention';
 import {
-  getApprovedPartnerProfileWhere,
   getMarketplaceSellerPresentation,
   getPublicListingStatuses,
   getPublicMarketplaceListingWhere,
-  getPublicSellerWhere,
   isPublicMarketplaceListingVisible,
 } from '../utils/publicListingVisibility';
 
 const prismaAny = prisma as any;
+
+const buildVisibleSoldListingWhere = (now = new Date()) => {
+  const cutoff = getSoldListingCutoff(now);
+
+  return {
+    OR: [
+      { soldAt: { gte: cutoff } },
+      {
+        soldAt: null,
+        updatedAt: { gte: cutoff },
+      },
+    ],
+  };
+};
+
+const buildPublicMarketplaceFeedWhere = ({
+  status,
+  now = new Date(),
+}: {
+  status?: string;
+  now?: Date;
+}) => {
+  const baseWhere = getPublicMarketplaceListingWhere();
+  const targetStatus = String(status || '').trim().toUpperCase();
+  const allowedStatuses = getPublicListingStatuses();
+
+  if (targetStatus && allowedStatuses.includes(targetStatus as (typeof allowedStatuses)[number])) {
+    if (targetStatus === 'SOLD') {
+      return {
+        ...baseWhere,
+        status: 'SOLD',
+      };
+    }
+
+    return {
+      ...baseWhere,
+      status: targetStatus,
+    };
+  }
+
+  return {
+    ...baseWhere,
+    OR: [
+      { status: { not: 'SOLD' } },
+      {
+        status: 'SOLD',
+        ...buildVisibleSoldListingWhere(now),
+      },
+    ],
+  };
+};
 
 const normalizePhoneNumber = (value?: string | null) => {
   const trimmedValue = value?.trim();
@@ -547,7 +597,10 @@ export const getDealerById = async (req: Request, res: Response, next: NextFunct
       getDefaultSuperAdminContact(),
       prismaAny.partnerProfile.findFirst({
         where: {
-          id,
+          OR: [
+            { id },
+            { userId: id },
+          ],
           accountStatus: 'ACTIVE',
           onboardingStatus: 'APPROVED',
           kycStatus: 'APPROVED',
@@ -604,11 +657,12 @@ export const getDealerListings = async (req: Request, res: Response, next: NextF
     const { id } = req.params;
     const listings = await prismaAny.listing.findMany({
       where: {
-        ...getPublicMarketplaceListingWhere(),
+        ...buildPublicMarketplaceFeedWhere({}),
         partner: {
-          partnerProfile: {
-            id,
-          },
+          OR: [
+            { partnerProfile: { id } },
+            { id: id },
+          ],
         },
       },
       include: {
@@ -730,8 +784,14 @@ export const getInspectionSection = async (req: Request, res: Response, next: Ne
 
 export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { status } = req.query;
+    const whereCondition =
+      typeof status === 'string'
+        ? buildPublicMarketplaceFeedWhere({ status })
+        : buildPublicMarketplaceFeedWhere({});
+
     const listings = await prismaAny.listing.findMany({
-      where: getPublicMarketplaceListingWhere(),
+      where: whereCondition,
       include: {
         media: {
           orderBy: {
@@ -765,6 +825,7 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
             partnerProfile: {
               select: {
                 businessName: true,
+                partnerType: true,
               },
             },
           },
@@ -795,11 +856,12 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
         brand: listing.brand,
         model: listing.model,
         partner: {
-          id: listing.partner?.id,
+          id: listing.partner?.partnerProfile?.id || listing.partner?.id,
           name:
             listing.partner?.partnerProfile?.businessName ||
             listing.partner?.name ||
             'Verified Partner',
+          type: listing.partner?.partnerProfile?.partnerType || 'Partner',
         },
         featuredImage:
           listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
@@ -821,22 +883,9 @@ export const getRecentListings = async (req: Request, res: Response, next: NextF
 
     const listings = await prismaAny.listing.findMany({
       where: {
-        status: {
-          in: getPublicListingStatuses(),
-        },
+        ...buildPublicMarketplaceFeedWhere({}),
         createdAt: {
           gte: freshListingCutoff,
-        },
-        partner: {
-          OR: [
-            {
-              role: 'CUSTOMER',
-              status: 'ACTIVE',
-            },
-            {
-              partnerProfile: getApprovedPartnerProfileWhere(),
-            },
-          ],
         },
       },
       include: {
@@ -913,13 +962,10 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
 
     const listings = await prismaAny.listing.findMany({
       where: {
-        status: {
-          in: getPublicListingStatuses(),
-        },
+        ...buildPublicMarketplaceFeedWhere({}),
         category: {
           partnerProfileId: null,
         },
-        partner: getPublicSellerWhere(),
       },
       orderBy: {
         createdAt: 'desc',
@@ -1013,13 +1059,10 @@ export const getPublicSearchFilters = async (req: Request, res: Response, next: 
   try {
     const listings = await prismaAny.listing.findMany({
       where: {
-        status: {
-          in: getPublicListingStatuses(),
-        },
+        ...buildPublicMarketplaceFeedWhere({}),
         category: {
           partnerProfileId: null,
         },
-        partner: getPublicSellerWhere(),
       },
       select: {
         locationCity: true,
@@ -1159,6 +1202,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
             },
           },
         },
+        saleRecord: true,
       },
     });
 
@@ -1218,7 +1262,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       brand: listing.brand,
       model: listing.model,
       partner: {
-        id: listing.partner?.id,
+        id: listing.partner?.partnerProfile?.id || listing.partner?.id,
         name: sellerPresentation.displayName,
         partnerType: sellerPresentation.partnerType,
         customerCategory: sellerPresentation.partnerType === 'PRIME_CUSTOMER' ? 'PRIME_CUSTOMER' : 'STANDARD_CUSTOMER',
@@ -1240,6 +1284,13 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       mediaCount: listing.media.length,
       createdAt: listing.createdAt,
       updatedAt: listing.updatedAt,
+      saleRecord: listing.status === 'SOLD' && listing.saleRecord ? {
+        buyerName: listing.saleRecord.buyerName,
+        buyerCity: listing.saleRecord.buyerCity,
+        buyerState: listing.saleRecord.buyerState,
+        soldAt: listing.saleRecord.soldAt,
+        soldPrice: Number(listing.saleRecord.soldPrice || 0)
+      } : null,
     };
 
     res.status(200).json({

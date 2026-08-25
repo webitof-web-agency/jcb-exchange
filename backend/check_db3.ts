@@ -4,6 +4,6 @@ async function main() {
     where: { businessName: 'Amar' },
     include: { user: true }
   });
-  console.log(JSON.stringify(profile.user, null, 2));
+  console.log(JSON.stringify(profile?.user ?? null, null, 2));
 }
 main().finally(() => prismaAny.$disconnect());

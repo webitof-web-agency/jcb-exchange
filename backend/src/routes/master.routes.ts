@@ -25,6 +25,10 @@ import {
   getDealerListings,
 } from '../controllers/master.controller';
 import {
+  getTranslationOverrides,
+  registerMissingTranslationKeys,
+} from '../controllers/translation.controller';
+import {
   requireAuth,
   requirePortalOperator,
   requireSuperAdminOrEmployeePermissions,
@@ -79,6 +83,8 @@ router.get('/dealers/:id/listings', getDealerListings);
 router.get('/finance-support', getFinanceSupportItems);
 router.get('/hero-image', getHeroImage);
 router.get('/inspection-section', getInspectionSection);
+router.get('/translations', getTranslationOverrides);
+router.post('/translations/register-missing', registerMissingTranslationKeys);
 router.get('/public-listings', getPublicListings);
 router.get('/public-listings/:id', getPublicListingById);
 router.post('/public-listings/:id/view', incrementListingView);

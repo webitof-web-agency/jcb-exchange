@@ -8,7 +8,7 @@ async function main() {
     const profile = await prisma_1.default.partnerProfile.findFirst({
         where: { businessName: 'Amar' }
     });
-    console.log('businessLogoUrl:', profile.businessLogoUrl);
+    console.log('businessLogoUrl:', profile?.businessLogoUrl ?? null);
 }
 main().finally(() => prisma_1.default.$disconnect());
 //# sourceMappingURL=check_db2.js.map

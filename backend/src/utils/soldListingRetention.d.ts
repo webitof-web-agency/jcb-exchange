@@ -18,7 +18,7 @@ export declare const getSoldAtValueForStatus: ({ nextStatus, previousStatus, pre
     now?: Date;
 }) => Date | null;
 export declare const cleanupExpiredSoldListings: (now?: Date) => Promise<{
-    deletedListingCount: any;
+    deletedListingCount: number;
     detachedLeadCount: number;
     deletedMediaCount: any;
     deletedFileCount: number;

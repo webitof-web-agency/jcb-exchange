@@ -8,11 +8,25 @@ const client_1 = require("@prisma/client");
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const soldListingRetention_1 = require("../utils/soldListingRetention");
 const customerPrimeSubscriptions_1 = require("../utils/customerPrimeSubscriptions");
+const publicListingVisibility_1 = require("../utils/publicListingVisibility");
 const prismaAny = prisma_1.default;
 const REVIEW_PENDING_STATUSES = ['PENDING_APPROVAL', 'CHANGES_REQUESTED'];
 const PUBLIC_LISTING_STATUSES = ['PUBLISHED', 'PAUSED', 'RESERVED', 'SOLD'];
 const isReviewPendingStatus = (status) => REVIEW_PENDING_STATUSES.includes(String(status || '').toUpperCase());
 const isPublicListingStatus = (status) => PUBLIC_LISTING_STATUSES.includes(String(status || '').toUpperCase());
+const isOwnedListingPubliclyVisible = (listing) => {
+    if (!(0, publicListingVisibility_1.isPublicMarketplaceListingVisible)(listing)) {
+        return false;
+    }
+    if (String(listing.status || '').toUpperCase() !== 'SOLD') {
+        return true;
+    }
+    const cutoff = (0, soldListingRetention_1.getSoldListingCutoff)(new Date());
+    if (listing.soldAt) {
+        return listing.soldAt >= cutoff;
+    }
+    return !!listing.updatedAt && listing.updatedAt >= cutoff;
+};
 const getApprovedPartnerProfile = async (userId) => {
     if (!userId) {
         return null;
@@ -175,6 +189,52 @@ const getEmployeePermissions = async (userId) => {
     });
     return userObj?.customRole?.permissions || [];
 };
+const extractSaleRecordPayload = (body) => {
+    const source = body?.buyerDetails || body || {};
+    const buyerName = normalizeText(source.buyerName);
+    const buyerPhone = normalizeText(source.buyerPhone);
+    const buyerCity = normalizeText(source.buyerCity);
+    const buyerState = normalizeText(source.buyerState);
+    const soldPrice = source.soldPrice || source.agreedPrice || source.price;
+    const soldAt = source.soldAt;
+    const invoiceNo = normalizeText(source.invoiceNo);
+    const notes = normalizeText(source.notes);
+    if (!buyerName || !buyerPhone) {
+        return null;
+    }
+    const parsedPrice = parseDecimal(soldPrice) || new client_1.Prisma.Decimal(0);
+    const parsedSoldAt = soldAt ? new Date(soldAt) : new Date();
+    return {
+        buyerName,
+        buyerPhone,
+        buyerCity: buyerCity || null,
+        buyerState: buyerState || null,
+        soldPrice: parsedPrice,
+        soldAt: parsedSoldAt,
+        invoiceNo: invoiceNo || null,
+        notes: notes || null,
+    };
+};
+const handleSaleRecordUpsert = async (listingId, status, body) => {
+    if (status !== 'SOLD') {
+        await prismaAny.saleRecord.deleteMany({
+            where: { listingId },
+        });
+        return;
+    }
+    const payload = extractSaleRecordPayload(body);
+    if (!payload) {
+        return;
+    }
+    await prismaAny.saleRecord.upsert({
+        where: { listingId },
+        update: payload,
+        create: {
+            listingId,
+            ...payload,
+        },
+    });
+};
 const getOwnedListingForUser = async (listingId, userId) => {
     const listing = await prismaAny.listing.findUnique({
         where: { id: listingId },
@@ -183,6 +243,14 @@ const getOwnedListingForUser = async (listingId, userId) => {
                 select: {
                     id: true,
                     role: true,
+                    status: true,
+                    partnerProfile: {
+                        select: {
+                            onboardingStatus: true,
+                            accountStatus: true,
+                            kycStatus: true,
+                        },
+                    },
                 },
             },
             media: true,
@@ -195,12 +263,16 @@ const getOwnedListingForUser = async (listingId, userId) => {
             model: {
                 select: { id: true, name: true },
             },
+            saleRecord: true,
         },
     });
     if (!listing || listing.partnerId !== userId) {
         return null;
     }
-    return listing;
+    return {
+        ...listing,
+        isPubliclyVisible: isOwnedListingPubliclyVisible(listing),
+    };
 };
 const formatListingPriceInLakhs = (price) => {
     const numericPrice = Number(price);
@@ -372,6 +444,7 @@ const createListing = async (req, res, next) => {
             },
         });
         await (0, soldListingRetention_1.setListingSoldAt)(listing.id, soldAt);
+        await handleSaleRecordUpsert(listing.id, initialListingStatus, req.body);
         const responseListing = await getOwnedListingForUser(listing.id, req.user.id);
         return res.status(201).json({
             message: 'Listing submitted successfully. It will go live after admin approval.',
@@ -414,10 +487,14 @@ const getListings = async (req, res, next) => {
                         name: true,
                         email: true,
                         role: true,
+                        status: true,
                         partnerProfile: {
                             select: {
                                 businessName: true,
                                 partnerType: true,
+                                onboardingStatus: true,
+                                accountStatus: true,
+                                kycStatus: true,
                             },
                         },
                         customerPrimeSubscriptions: {
@@ -447,11 +524,13 @@ const getListings = async (req, res, next) => {
                 model: {
                     select: { id: true, name: true },
                 },
+                saleRecord: true,
             },
         });
         return res.json({
             listings: listings.map((listing) => ({
                 ...listing,
+                isPubliclyVisible: isOwnedListingPubliclyVisible(listing),
                 dealer: listing.partner?.partnerProfile?.businessName ||
                     listing.partner?.name ||
                     listing.partner?.email ||
@@ -503,6 +582,7 @@ const getListingById = async (req, res, next) => {
                 model: {
                     select: { id: true, name: true },
                 },
+                saleRecord: true,
             },
         });
         if (!listing) {
@@ -579,6 +659,11 @@ const updateListing = async (req, res, next) => {
                     code: primeEligibility.pendingSubscription ? 'PRIME_PAYMENT_PENDING' : 'PRIME_SUBSCRIPTION_REQUIRED',
                 });
             }
+            if (String(existingListing.status || '').toUpperCase() === 'SOLD') {
+                return res.status(403).json({
+                    error: 'Sold customer listings are view-only and cannot be edited after sale.',
+                });
+            }
         }
         const requestBody = req.body || {};
         const hasOwnField = (field) => Object.prototype.hasOwnProperty.call(requestBody, field);
@@ -588,7 +673,11 @@ const updateListing = async (req, res, next) => {
         const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
         const normalizedTitle = normalizeText(title);
         const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
-        const nextStatus = isAdmin ? normalizedStatus : (existingListing.status || 'PENDING_APPROVAL');
+        const nextStatus = isAdmin
+            ? normalizedStatus
+            : hasOwnField('status') && !isReviewPendingStatus(existingListing.status)
+                ? normalizedStatus
+                : (existingListing.status || 'PENDING_APPROVAL');
         const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
         const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
         const normalizedCondition = hasOwnField('condition') ? normalizeText(condition) : existingListing.condition;
@@ -605,14 +694,14 @@ const updateListing = async (req, res, next) => {
             ? parseDecimal(price) || new client_1.Prisma.Decimal(existingListing.price || 0)
             : new client_1.Prisma.Decimal(existingListing.price || 0);
         const hasMediaField = hasOwnField('media');
-    const normalizedMedia = hasMediaField
-        ? normalizeMedia(media)
-        : existingListing.media.map((item) => ({
-            url: item.url,
-            type: item.type,
-            slot: item.slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
-            isFeatured: item.isFeatured,
-        }));
+        const normalizedMedia = hasMediaField
+            ? normalizeMedia(media)
+            : existingListing.media.map((item) => ({
+                url: item.url,
+                type: item.type,
+                slot: item.slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
+                isFeatured: item.isFeatured,
+            }));
         const nextIsNegotiable = hasOwnField('isNegotiable')
             ? Boolean(isNegotiable)
             : Boolean(existingListing.isNegotiable);
@@ -707,6 +796,7 @@ const updateListing = async (req, res, next) => {
             },
         });
         await (0, soldListingRetention_1.setListingSoldAt)(updatedListing.id, soldAt);
+        await handleSaleRecordUpsert(updatedListing.id, nextStatus, req.body);
         const responseListing = await getOwnedListingForUser(updatedListing.id, req.user.id);
         return res.json({
             message: isAdmin
@@ -753,6 +843,11 @@ const deleteListing = async (req, res, next) => {
         }
         if (existingListing.partner?.role === 'SUPER_ADMIN') {
             return res.status(403).json({ error: 'Super admin listings cannot be deleted.' });
+        }
+        if (req.user.role === 'CUSTOMER' && String(existingListing.status || '').toUpperCase() === 'SOLD') {
+            return res.status(403).json({
+                error: 'Sold customer listings are view-only and cannot be deleted after sale.',
+            });
         }
         await prismaAny.$transaction(async (tx) => {
             await (0, soldListingRetention_1.detachLeadsFromListing)(tx, existingListing);
@@ -900,6 +995,11 @@ const updateListingAvailability = async (req, res, next) => {
                     code: primeEligibility.pendingSubscription ? 'PRIME_PAYMENT_PENDING' : 'PRIME_SUBSCRIPTION_REQUIRED',
                 });
             }
+            if (String(existingListing.status || '').toUpperCase() === 'SOLD') {
+                return res.status(403).json({
+                    error: 'Sold customer listings are view-only and cannot change availability after sale.',
+                });
+            }
         }
         const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
         if (!isAdmin) {
@@ -928,6 +1028,7 @@ const updateListingAvailability = async (req, res, next) => {
             }
         });
         await (0, soldListingRetention_1.setListingSoldAt)(updatedListing.id, soldAt);
+        await handleSaleRecordUpsert(updatedListing.id, normalizedStatus, req.body);
         const responseListing = await getOwnedListingForUser(updatedListing.id, req.user.id);
         return res.json({
             message: 'Availability updated successfully.',

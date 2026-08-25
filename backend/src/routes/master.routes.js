@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const master_controller_1 = require("../controllers/master.controller");
+const translation_controller_1 = require("../controllers/translation.controller");
 const auth_middleware_1 = require("../middlewares/auth.middleware");
 const router = (0, express_1.Router)();
 router.get('/categories', auth_middleware_1.requireAuth, master_controller_1.getCategories);
@@ -21,6 +22,8 @@ router.get('/dealers/:id/listings', master_controller_1.getDealerListings);
 router.get('/finance-support', master_controller_1.getFinanceSupportItems);
 router.get('/hero-image', master_controller_1.getHeroImage);
 router.get('/inspection-section', master_controller_1.getInspectionSection);
+router.get('/translations', translation_controller_1.getTranslationOverrides);
+router.post('/translations/register-missing', translation_controller_1.registerMissingTranslationKeys);
 router.get('/public-listings', master_controller_1.getPublicListings);
 router.get('/public-listings/:id', master_controller_1.getPublicListingById);
 router.post('/public-listings/:id/view', master_controller_1.incrementListingView);

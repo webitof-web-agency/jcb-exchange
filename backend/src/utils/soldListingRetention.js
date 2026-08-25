@@ -55,6 +55,18 @@ const deleteListingMediaFiles = async (urls) => {
     }));
     return results.reduce((total, current) => total + current, 0);
 };
+const normalizeMediaType = (value) => String(value || '').trim().toUpperCase();
+const normalizeMediaSlot = (value) => String(value || '').trim().toLowerCase();
+const getPreservedMediaId = (media) => {
+    const images = media.filter((item) => normalizeMediaType(item.type) === 'IMAGE');
+    if (!images.length) {
+        return null;
+    }
+    const preferredImage = images.find((item) => normalizeMediaSlot(item.slot) === 'front-view') ||
+        images.find((item) => item.isFeatured) ||
+        images[0];
+    return preferredImage?.id ?? null;
+};
 const cleanupExpiredSoldListings = async (now = new Date()) => {
     const cutoff = (0, exports.getSoldListingCutoff)(now);
     const expiredSoldListings = await prismaAny.listing.findMany({
@@ -76,8 +88,15 @@ const cleanupExpiredSoldListings = async (now = new Date()) => {
             locationCity: true,
             locationState: true,
             media: {
+                orderBy: {
+                    createdAt: 'asc',
+                },
                 select: {
+                    id: true,
                     url: true,
+                    type: true,
+                    slot: true,
+                    isFeatured: true,
                 },
             },
         },
@@ -92,32 +111,26 @@ const cleanupExpiredSoldListings = async (now = new Date()) => {
         };
     }
     const listingIds = expiredSoldListings.map((listing) => listing.id);
-    const mediaUrls = expiredSoldListings.flatMap((listing) => listing.media.map((media) => media.url));
-    let detachedLeadCount = 0;
-    await prismaAny.$transaction(async (tx) => {
-        for (const listing of expiredSoldListings) {
-            detachedLeadCount += await (0, exports.detachLeadsFromListing)(tx, listing);
-        }
-        await tx.media.deleteMany({
-            where: {
-                listingId: {
-                    in: listingIds,
-                },
-            },
-        });
-        await tx.listing.deleteMany({
+    const mediaToDelete = expiredSoldListings.flatMap((listing) => {
+        const preservedMediaId = getPreservedMediaId(listing.media);
+        return listing.media.filter((media) => media.id !== preservedMediaId);
+    });
+    const mediaIdsToDelete = mediaToDelete.map((media) => media.id);
+    const mediaUrlsToDelete = mediaToDelete.map((media) => media.url);
+    if (mediaIdsToDelete.length > 0) {
+        await prismaAny.media.deleteMany({
             where: {
                 id: {
-                    in: listingIds,
+                    in: mediaIdsToDelete,
                 },
             },
         });
-    });
-    const deletedFileCount = await deleteListingMediaFiles(mediaUrls);
+    }
+    const deletedFileCount = await deleteListingMediaFiles(mediaUrlsToDelete);
     return {
-        deletedListingCount: listingIds.length,
-        detachedLeadCount,
-        deletedMediaCount: mediaUrls.length,
+        deletedListingCount: 0,
+        detachedLeadCount: 0,
+        deletedMediaCount: mediaIdsToDelete.length,
         deletedFileCount,
         listingIds,
     };

@@ -2,12 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const admin_controller_1 = require("../controllers/admin.controller");
+const translationAdmin_controller_1 = require("../controllers/translationAdmin.controller");
 const auth_middleware_1 = require("../middlewares/auth.middleware");
 const role_controller_1 = require("../controllers/role.controller");
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.requireAuth);
 const canViewDashboard = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['dashboard.view']);
 const canManageSettings = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['settings.manage']);
+const canManageTranslations = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['translations.manage']);
 const canManageRecurrence = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['recurrence.manage']);
 const canViewUsers = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['users.read']);
 const canCreateUsers = (0, auth_middleware_1.requireSuperAdminOrEmployeePermissions)(['users.create']);
@@ -37,6 +39,8 @@ router.get('/inspection-section', canManageSettings, admin_controller_1.getInspe
 router.put('/inspection-section', canManageSettings, admin_controller_1.updateInspectionSectionContent);
 router.get('/settings', canManageSettings, admin_controller_1.getPlatformSettings);
 router.patch('/settings', canManageSettings, admin_controller_1.updatePlatformSettings);
+router.get('/translations/catalog', canManageTranslations, translationAdmin_controller_1.getTranslationCatalog);
+router.put('/translations/catalog', canManageTranslations, translationAdmin_controller_1.saveTranslationCatalog);
 router.get('/customer-prime-payments', canManageRecurrence, admin_controller_1.getCustomerPrimePayments);
 router.patch('/customer-prime-payments/:id/status', canManageRecurrence, admin_controller_1.updateCustomerPrimePaymentStatus);
 router.get('/users', canViewUsers, admin_controller_1.getAdminUsers);

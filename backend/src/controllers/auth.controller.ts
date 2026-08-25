@@ -1662,7 +1662,7 @@ export const savePartnerOnboarding = async (req: Request, res: Response, next: N
 
     await saveOnboardingData({
       userId: req.user.id,
-      userEmail: req.user.email,
+      ...(req.user.email !== undefined ? { userEmail: req.user.email } : {}),
       profile,
       kycDocuments,
       agreementTypes: agreements,
@@ -1717,7 +1717,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
 
     await saveOnboardingData({
       userId: req.user.id,
-      userEmail: req.user.email,
+      ...(req.user.email !== undefined ? { userEmail: req.user.email } : {}),
       profile,
       kycDocuments,
       agreementTypes: agreements,

@@ -24,6 +24,14 @@ type ListingSnapshot = {
   locationState?: string | null;
 };
 
+type ListingMediaSnapshot = {
+  id: string;
+  url: string;
+  type: string | null;
+  slot: string | null;
+  isFeatured: boolean;
+};
+
 export const getSoldAtValueForStatus = ({
   nextStatus,
   previousStatus,
@@ -84,6 +92,25 @@ const deleteListingMediaFiles = async (urls: string[]) => {
   return results.reduce<number>((total, current) => total + current, 0);
 };
 
+const normalizeMediaType = (value: unknown) => String(value || '').trim().toUpperCase();
+
+const normalizeMediaSlot = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const getPreservedMediaId = (media: ListingMediaSnapshot[]) => {
+  const images = media.filter((item) => normalizeMediaType(item.type) === 'IMAGE');
+
+  if (!images.length) {
+    return null;
+  }
+
+  const preferredImage =
+    images.find((item) => normalizeMediaSlot(item.slot) === 'front-view') ||
+    images.find((item) => item.isFeatured) ||
+    images[0];
+
+  return preferredImage?.id ?? null;
+};
+
 export const cleanupExpiredSoldListings = async (now = new Date()) => {
   const cutoff = getSoldListingCutoff(now);
   const expiredSoldListings = await prismaAny.listing.findMany({
@@ -105,8 +132,15 @@ export const cleanupExpiredSoldListings = async (now = new Date()) => {
       locationCity: true,
       locationState: true,
       media: {
+        orderBy: {
+          createdAt: 'asc',
+        },
         select: {
+          id: true,
           url: true,
+          type: true,
+          slot: true,
+          isFeatured: true,
         },
       },
     },
@@ -123,39 +157,32 @@ export const cleanupExpiredSoldListings = async (now = new Date()) => {
   }
 
   const listingIds = expiredSoldListings.map((listing: { id: string }) => listing.id);
-  const mediaUrls = expiredSoldListings.flatMap((listing: { media: Array<{ url: string }> }) =>
-    listing.media.map((media) => media.url)
+  const mediaToDelete = expiredSoldListings.flatMap(
+    (listing: { media: ListingMediaSnapshot[] }) => {
+      const preservedMediaId = getPreservedMediaId(listing.media);
+
+      return listing.media.filter((media: ListingMediaSnapshot) => media.id !== preservedMediaId);
+    },
   );
+  const mediaIdsToDelete = mediaToDelete.map((media: ListingMediaSnapshot) => media.id);
+  const mediaUrlsToDelete = mediaToDelete.map((media: ListingMediaSnapshot) => media.url);
 
-  let detachedLeadCount = 0;
-
-  await prismaAny.$transaction(async (tx: any) => {
-    for (const listing of expiredSoldListings) {
-      detachedLeadCount += await detachLeadsFromListing(tx, listing);
-    }
-
-    await tx.media.deleteMany({
-      where: {
-        listingId: {
-          in: listingIds,
-        },
-      },
-    });
-
-    await tx.listing.deleteMany({
+  if (mediaIdsToDelete.length > 0) {
+    await prismaAny.media.deleteMany({
       where: {
         id: {
-          in: listingIds,
+          in: mediaIdsToDelete,
         },
       },
     });
-  });
-  const deletedFileCount = await deleteListingMediaFiles(mediaUrls);
+  }
+
+  const deletedFileCount = await deleteListingMediaFiles(mediaUrlsToDelete);
 
   return {
-    deletedListingCount: listingIds.length,
-    detachedLeadCount,
-    deletedMediaCount: mediaUrls.length,
+    deletedListingCount: 0,
+    detachedLeadCount: 0,
+    deletedMediaCount: mediaIdsToDelete.length,
     deletedFileCount,
     listingIds,
   };

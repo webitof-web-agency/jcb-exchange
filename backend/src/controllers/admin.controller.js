@@ -456,8 +456,10 @@ const updatePlatformSettings = async (req, res, next) => {
             updatedByUserId: req.user?.id || null,
         };
         if (googleClientId !== undefined || googleAuthEnabled !== undefined) {
-            settingsPayload.googleClientId = googleClientId;
             settingsPayload.googleAuthEnabled = googleAuthEnabled === true;
+            if (googleClientId !== undefined) {
+                settingsPayload.googleClientId = googleClientId;
+            }
         }
         if (mobileOtp) {
             settingsPayload.mobileOtp = {

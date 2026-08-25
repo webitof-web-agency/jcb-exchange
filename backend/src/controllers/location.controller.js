@@ -22,8 +22,15 @@ exports.getCountries = getCountries;
 const getStatesByCountry = async (req, res) => {
     try {
         const { countryId } = req.params;
+        if (typeof countryId !== 'string') {
+            return res.status(400).json({ error: 'Country id is required' });
+        }
+        const normalizedCountryId = Number.parseInt(countryId, 10);
+        if (!Number.isFinite(normalizedCountryId)) {
+            return res.status(400).json({ error: 'Invalid country id' });
+        }
         const states = await prisma_1.default.state.findMany({
-            where: { countryId: parseInt(countryId, 10) },
+            where: { countryId: normalizedCountryId },
             orderBy: { name: 'asc' },
             select: { id: true, name: true, stateCode: true },
         });
@@ -38,8 +45,15 @@ exports.getStatesByCountry = getStatesByCountry;
 const getCitiesByState = async (req, res) => {
     try {
         const { stateId } = req.params;
+        if (typeof stateId !== 'string') {
+            return res.status(400).json({ error: 'State id is required' });
+        }
+        const normalizedStateId = Number.parseInt(stateId, 10);
+        if (!Number.isFinite(normalizedStateId)) {
+            return res.status(400).json({ error: 'Invalid state id' });
+        }
         const cities = await prisma_1.default.city.findMany({
-            where: { stateId: parseInt(stateId, 10) },
+            where: { stateId: normalizedStateId },
             orderBy: { name: 'asc' },
             select: { id: true, name: true },
         });

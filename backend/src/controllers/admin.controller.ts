@@ -588,8 +588,10 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
     };
 
     if (googleClientId !== undefined || googleAuthEnabled !== undefined) {
-      settingsPayload.googleClientId = googleClientId;
       settingsPayload.googleAuthEnabled = googleAuthEnabled === true;
+      if (googleClientId !== undefined) {
+        settingsPayload.googleClientId = googleClientId;
+      }
     }
 
     if (mobileOtp) {

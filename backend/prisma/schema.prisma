@@ -385,14 +385,34 @@ model Listing {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  partner  User     @relation(fields: [partnerId], references: [id])
-  category Category @relation(fields: [categoryId], references: [id])
-  brand    Brand    @relation(fields: [brandId], references: [id])
-  model    Model    @relation(fields: [modelId], references: [id])
-  media    Media[]
-  leads    Lead[]
+  partner    User        @relation(fields: [partnerId], references: [id])
+  category   Category    @relation(fields: [categoryId], references: [id])
+  brand      Brand       @relation(fields: [brandId], references: [id])
+  model      Model       @relation(fields: [modelId], references: [id])
+  media      Media[]
+  leads      Lead[]
+  saleRecord SaleRecord?
 
   @@index([status, soldAt])
+}
+
+model SaleRecord {
+  id         String   @id @default(uuid())
+  listingId  String   @unique
+  buyerName  String
+  buyerPhone String
+  buyerCity  String?
+  buyerState String?
+  soldPrice  Decimal  @db.Decimal(12, 2)
+  soldAt     DateTime @default(now())
+  invoiceNo  String?
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([soldAt])
 }
 
 model Media {
@@ -592,6 +612,38 @@ model CustomerPrimeSubscription {
   @@index([userId, status])
   @@index([status, expiresAt])
   @@index([submittedAt])
+}
+
+model TranslationOverride {
+  id             String   @id @default(uuid())
+  app            String
+  locale         String
+  translationKey String   @map("translation_key")
+  value          String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([app, locale, translationKey])
+  @@index([app, locale])
+  @@map("translation_overrides")
+}
+
+model TranslationKeyRegistry {
+  id             String   @id @default(uuid())
+  app            String
+  translationKey String   @map("translation_key")
+  baseValue      String   @db.Text @map("base_value")
+  namespace      String
+  firstSeenAt    DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([app, translationKey])
+  @@index([app])
+  @@index([app, namespace])
+  @@index([app, lastSeenAt])
+  @@map("translation_key_registry")
 }
 
 model Country {

@@ -16,10 +16,16 @@ const expiredSoldAt = new Date(now.getTime() - (soldListingRetention_1.SOLD_LIST
 const activeSoldAt = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 const expiredMediaFileName = `${uniqueSuffix}-expired.webp`;
 const freshMediaFileName = `${uniqueSuffix}-fresh.webp`;
+const expiredGalleryFileName = `${uniqueSuffix}-expired-gallery.webp`;
+const expiredVideoFileName = `${uniqueSuffix}-expired-video.mp4`;
 const expiredMediaUrl = `/uploads/public/listings/${expiredMediaFileName}`;
 const freshMediaUrl = `/uploads/public/listings/${freshMediaFileName}`;
+const expiredGalleryUrl = `/uploads/public/listings/${expiredGalleryFileName}`;
+const expiredVideoUrl = `/uploads/public/listings/${expiredVideoFileName}`;
 const expiredMediaPath = node_path_1.default.join(documentUpload_1.publicListingMediaUploadDir, expiredMediaFileName);
 const freshMediaPath = node_path_1.default.join(documentUpload_1.publicListingMediaUploadDir, freshMediaFileName);
+const expiredGalleryPath = node_path_1.default.join(documentUpload_1.publicListingMediaUploadDir, expiredGalleryFileName);
+const expiredVideoPath = node_path_1.default.join(documentUpload_1.publicListingMediaUploadDir, expiredVideoFileName);
 const cleanupTestData = async (ids) => {
     if (ids.expiredListingId || ids.freshListingId) {
         const listingIds = [ids.expiredListingId, ids.freshListingId].filter(Boolean);
@@ -56,6 +62,8 @@ const cleanupTestData = async (ids) => {
     }
     await (0, promises_1.rm)(expiredMediaPath, { force: true });
     await (0, promises_1.rm)(freshMediaPath, { force: true });
+    await (0, promises_1.rm)(expiredGalleryPath, { force: true });
+    await (0, promises_1.rm)(expiredVideoPath, { force: true });
 };
 const run = async () => {
     const ids = {};
@@ -63,6 +71,8 @@ const run = async () => {
         await (0, promises_1.mkdir)(documentUpload_1.publicListingMediaUploadDir, { recursive: true });
         await (0, promises_1.writeFile)(expiredMediaPath, 'expired-media');
         await (0, promises_1.writeFile)(freshMediaPath, 'fresh-media');
+        await (0, promises_1.writeFile)(expiredGalleryPath, 'expired-gallery-media');
+        await (0, promises_1.writeFile)(expiredVideoPath, 'expired-video-media');
         const partnerUser = await prismaAny.user.create({
             data: {
                 email: `${uniqueSuffix}-partner@example.com`,
@@ -127,7 +137,19 @@ const run = async () => {
                         {
                             url: expiredMediaUrl,
                             type: 'IMAGE',
+                            slot: 'front-view',
                             isFeatured: true,
+                        },
+                        {
+                            url: expiredGalleryUrl,
+                            type: 'IMAGE',
+                            slot: 'left-view',
+                            isFeatured: false,
+                        },
+                        {
+                            url: expiredVideoUrl,
+                            type: 'VIDEO',
+                            isFeatured: false,
                         },
                     ],
                 },
@@ -170,14 +192,14 @@ const run = async () => {
             },
         });
         const result = await (0, soldListingRetention_1.cleanupExpiredSoldListings)(now);
-        strict_1.default.equal(result.deletedListingCount, 1, 'Exactly one expired sold listing should be deleted.');
-        strict_1.default.equal(result.detachedLeadCount, 1, 'Related lead should be detached and preserved.');
-        strict_1.default.equal(result.deletedMediaCount, 1, 'Related media record should be deleted with the expired sold listing.');
-        strict_1.default.ok(result.listingIds.includes(expiredListing.id), 'Expired listing id should be reported as deleted.');
-        strict_1.default.ok(!result.listingIds.includes(freshListing.id), 'Fresh sold listing should not be deleted.');
-        const deletedListing = await prismaAny.listing.findUnique({ where: { id: expiredListing.id } });
+        strict_1.default.equal(result.deletedListingCount, 0, 'Expired sold listing should remain in the database.');
+        strict_1.default.equal(result.detachedLeadCount, 0, 'Lead linkage should remain untouched for retained sold listings.');
+        strict_1.default.equal(result.deletedMediaCount, 2, 'Only gallery image and video should be removed for the expired sold listing.');
+        strict_1.default.ok(result.listingIds.includes(expiredListing.id), 'Expired listing id should still be reported as processed.');
+        strict_1.default.ok(!result.listingIds.includes(freshListing.id), 'Fresh sold listing should not be processed.');
+        const retainedExpiredListing = await prismaAny.listing.findUnique({ where: { id: expiredListing.id } });
         const survivingListing = await prismaAny.listing.findUnique({ where: { id: freshListing.id } });
-        const detachedLead = await prismaAny.lead.findFirst({
+        const preservedLead = await prismaAny.lead.findFirst({
             where: { dealerId: partnerUser.id },
             select: {
                 listingId: true,
@@ -188,21 +210,33 @@ const run = async () => {
                 listingLocationStateSnapshot: true,
             },
         });
-        const deletedMediaCount = await prismaAny.media.count({ where: { listingId: expiredListing.id } });
-        strict_1.default.equal(deletedListing, null, 'Expired sold listing should no longer exist in the database.');
+        const retainedExpiredMedia = await prismaAny.media.findMany({
+            where: { listingId: expiredListing.id },
+            orderBy: { createdAt: 'asc' },
+            select: {
+                url: true,
+                type: true,
+                slot: true,
+            },
+        });
+        strict_1.default.ok(retainedExpiredListing, 'Expired sold listing should still exist in the database.');
         strict_1.default.ok(survivingListing, 'Fresh sold listing should still exist in the database.');
-        strict_1.default.ok(detachedLead, 'Expired sold listing lead should still exist.');
-        strict_1.default.equal(detachedLead?.listingId ?? null, null, 'Expired sold listing lead should be detached from the listing.');
-        strict_1.default.equal(detachedLead?.listingTitleSnapshot, `Expired Sold Listing ${uniqueSuffix}`, 'Lead should retain listing title snapshot.');
-        strict_1.default.equal(detachedLead?.listingStatusSnapshot, 'SOLD', 'Lead should retain listing status snapshot.');
-        strict_1.default.equal(Number(detachedLead?.listingPriceSnapshot || 0), 100000, 'Lead should retain listing price snapshot.');
-        strict_1.default.equal(detachedLead?.listingLocationCitySnapshot, 'Raipur', 'Lead should retain listing city snapshot.');
-        strict_1.default.equal(detachedLead?.listingLocationStateSnapshot, 'Chhattisgarh', 'Lead should retain listing state snapshot.');
-        strict_1.default.equal(deletedMediaCount, 0, 'Expired sold listing media records should be removed.');
-        await strict_1.default.rejects(() => prismaAny.media.findFirstOrThrow({ where: { listingId: expiredListing.id } }));
+        strict_1.default.ok(preservedLead, 'Lead should still exist for the retained sold listing.');
+        strict_1.default.equal(preservedLead?.listingId ?? null, expiredListing.id, 'Lead should remain attached to the sold listing.');
+        strict_1.default.equal(preservedLead?.listingTitleSnapshot ?? null, null, 'Lead snapshot should stay untouched when listing remains.');
+        strict_1.default.equal(preservedLead?.listingStatusSnapshot ?? null, null, 'Lead status snapshot should stay untouched when listing remains.');
+        strict_1.default.equal(Number(preservedLead?.listingPriceSnapshot || 0), 0, 'Lead price snapshot should stay untouched when listing remains.');
+        strict_1.default.equal(preservedLead?.listingLocationCitySnapshot ?? null, null, 'Lead city snapshot should stay untouched when listing remains.');
+        strict_1.default.equal(preservedLead?.listingLocationStateSnapshot ?? null, null, 'Lead state snapshot should stay untouched when listing remains.');
+        strict_1.default.equal(retainedExpiredMedia.length, 1, 'Exactly one media record should remain on the expired sold listing.');
+        strict_1.default.equal(retainedExpiredMedia[0]?.url, expiredMediaUrl, 'Front-view image should be preserved.');
+        strict_1.default.equal(retainedExpiredMedia[0]?.type, 'IMAGE', 'Preserved sold listing media should remain an image.');
+        strict_1.default.equal(retainedExpiredMedia[0]?.slot, 'front-view', 'Preserved sold listing media should be the front-view slot.');
         await strict_1.default.doesNotReject(() => prismaAny.media.findFirstOrThrow({ where: { listingId: freshListing.id } }));
-        await strict_1.default.rejects(() => (0, promises_1.rm)(expiredMediaPath));
+        await strict_1.default.doesNotReject(() => (0, promises_1.rm)(expiredMediaPath));
         await strict_1.default.doesNotReject(() => (0, promises_1.rm)(freshMediaPath));
+        await strict_1.default.rejects(() => (0, promises_1.rm)(expiredGalleryPath));
+        await strict_1.default.rejects(() => (0, promises_1.rm)(expiredVideoPath));
         console.log('Sold listing retention cleanup test passed.');
     }
     finally {

@@ -5,32 +5,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.markAllAsRead = exports.markAsRead = exports.getNotifications = void 0;
 const prisma_1 = __importDefault(require("../lib/prisma"));
-const vehicleNotificationTypes = new Set(['NEW_LISTING', 'LISTING_UPDATE']);
-const getNotificationScope = (value) => {
-    if (typeof value !== 'string') {
-        return 'all';
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized === 'vehicle' ? 'vehicle' : 'all';
-};
+const notificationFilters_1 = require("../utils/notificationFilters");
 const getNotifications = async (req, res, next) => {
     try {
         const userId = req.user?.id;
         if (!userId) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
-        const scope = getNotificationScope(req.query.scope);
+        const scope = (0, notificationFilters_1.getNotificationScope)(req.query.scope);
+        const status = (0, notificationFilters_1.getNotificationStatus)(req.query.status);
         const notifications = await prisma_1.default.notification.findMany({
-            where: {
-                userId,
-                ...(scope === 'vehicle'
-                    ? {
-                        type: {
-                            in: Array.from(vehicleNotificationTypes),
-                        },
-                    }
-                    : {}),
-            },
+            where: (0, notificationFilters_1.buildNotificationWhereClause)(userId, { scope, status }),
             orderBy: { createdAt: 'desc' },
             take: 50,
         });
@@ -71,19 +56,9 @@ const markAllAsRead = async (req, res, next) => {
         const userId = req.user?.id;
         if (!userId)
             return res.status(401).json({ error: 'Unauthorized' });
-        const scope = getNotificationScope(req.query.scope);
+        const scope = (0, notificationFilters_1.getNotificationScope)(req.query.scope);
         await prisma_1.default.notification.updateMany({
-            where: {
-                userId,
-                isRead: false,
-                ...(scope === 'vehicle'
-                    ? {
-                        type: {
-                            in: Array.from(vehicleNotificationTypes),
-                        },
-                    }
-                    : {}),
-            },
+            where: (0, notificationFilters_1.buildNotificationWhereClause)(userId, { scope, status: 'unread' }),
             data: { isRead: true },
         });
         res.status(200).json({ success: true });
