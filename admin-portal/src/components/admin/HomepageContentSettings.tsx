@@ -13,11 +13,13 @@ import {
   MAX_HERO_IMAGE_INPUT_SIZE,
   MAX_INSPECTION_SECTION_IMAGE_INPUT_SIZE,
   MAX_SITE_FAVICON_IMAGE_INPUT_SIZE,
+  MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE,
   MAX_SITE_LOGO_IMAGE_INPUT_SIZE,
   uploadFinanceSupportImageToServer,
   uploadHeroImageToServer,
   uploadInspectionSectionImageToServer,
   uploadSiteFaviconImageToServer,
+  uploadSiteManifestIconImageToServer,
   uploadSiteLogoImageToServer,
 } from '@/lib/fileUpload';
 
@@ -45,6 +47,7 @@ type InspectionSectionResponse = {
 type SiteLogoResponse = {
   imageUrl?: string | null;
   faviconUrl?: string | null;
+  manifestIconUrl?: string | null;
 };
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
@@ -68,6 +71,8 @@ export default function HomepageContentSettings() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
+  const [manifestIconUrl, setManifestIconUrl] = useState<string | null>(null);
+  const [manifestIconPreviewUrl, setManifestIconPreviewUrl] = useState<string | null>(null);
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
   const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState<string | null>(null);
   const [heroHeadline, setHeroHeadline] = useState('');
@@ -137,11 +142,15 @@ export default function HomepageContentSettings() {
           setLogoPreviewUrl(getAbsoluteFileUrl(siteLogoResult.value.data.imageUrl || null));
           setFaviconUrl(siteLogoResult.value.data.faviconUrl || null);
           setFaviconPreviewUrl(getAbsoluteFileUrl(siteLogoResult.value.data.faviconUrl || null));
+          setManifestIconUrl(siteLogoResult.value.data.manifestIconUrl || null);
+          setManifestIconPreviewUrl(getAbsoluteFileUrl(siteLogoResult.value.data.manifestIconUrl || null));
         } else {
           setLogoUrl(null);
           setLogoPreviewUrl(null);
           setFaviconUrl(null);
           setFaviconPreviewUrl(null);
+          setManifestIconUrl(null);
+          setManifestIconPreviewUrl(null);
         }
 
         if (financeResult.status === 'rejected' && heroResult.status === 'rejected' && inspectionResult.status === 'rejected' && siteLogoResult.status === 'rejected') {
@@ -261,8 +270,10 @@ export default function HomepageContentSettings() {
 
     try {
       const uploaded = await uploadSiteLogoImageToServer(file);
-      setLogoUrl(uploaded.fileUrl);
-      setLogoPreviewUrl(uploaded.absoluteUrl);
+      await persistSiteLogoSettings({
+        nextLogoUrl: uploaded.fileUrl,
+        nextLogoPreviewUrl: uploaded.absoluteUrl,
+      });
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to upload logo.'));
     } finally {
@@ -275,13 +286,68 @@ export default function HomepageContentSettings() {
 
     try {
       const uploaded = await uploadSiteFaviconImageToServer(file);
-      setFaviconUrl(uploaded.fileUrl);
-      setFaviconPreviewUrl(uploaded.absoluteUrl);
+      await persistSiteLogoSettings({
+        nextFaviconUrl: uploaded.fileUrl,
+        nextFaviconPreviewUrl: uploaded.absoluteUrl,
+      });
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to upload favicon.'));
     } finally {
       setUploadingId(null);
     }
+  };
+
+  const handleSiteManifestIconUpload = async (file: File) => {
+    setUploadingId('site-manifest-icon');
+
+    try {
+      const uploaded = await uploadSiteManifestIconImageToServer(file);
+      await persistSiteLogoSettings({
+        nextManifestIconUrl: uploaded.fileUrl,
+        nextManifestIconPreviewUrl: uploaded.absoluteUrl,
+      });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to upload manifest icon.'));
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const persistSiteLogoSettings = async ({
+    nextLogoUrl = logoUrl,
+    nextLogoPreviewUrl = logoPreviewUrl,
+    nextFaviconUrl = faviconUrl,
+    nextFaviconPreviewUrl = faviconPreviewUrl,
+    nextManifestIconUrl = manifestIconUrl,
+    nextManifestIconPreviewUrl = manifestIconPreviewUrl,
+    successMessage,
+  }: {
+    nextLogoUrl?: string | null;
+    nextLogoPreviewUrl?: string | null;
+    nextFaviconUrl?: string | null;
+    nextFaviconPreviewUrl?: string | null;
+    nextManifestIconUrl?: string | null;
+    nextManifestIconPreviewUrl?: string | null;
+    successMessage?: string;
+  }) => {
+    const response = await api.put<{
+      message: string;
+      imageUrl: string | null;
+      faviconUrl: string | null;
+      manifestIconUrl: string | null;
+    }>('/superadmin/site-logo', {
+      imageUrl: nextLogoUrl,
+      faviconUrl: nextFaviconUrl,
+      manifestIconUrl: nextManifestIconUrl,
+    });
+
+    setLogoUrl(response.data.imageUrl);
+    setLogoPreviewUrl(nextLogoPreviewUrl ?? getAbsoluteFileUrl(response.data.imageUrl));
+    setFaviconUrl(response.data.faviconUrl);
+    setFaviconPreviewUrl(nextFaviconPreviewUrl ?? getAbsoluteFileUrl(response.data.faviconUrl));
+    setManifestIconUrl(response.data.manifestIconUrl);
+    setManifestIconPreviewUrl(nextManifestIconPreviewUrl ?? getAbsoluteFileUrl(response.data.manifestIconUrl));
+    toast.success(successMessage || response.data.message);
   };
 
   const handleSave = async () => {
@@ -356,20 +422,7 @@ export default function HomepageContentSettings() {
 
     if (activeTab === 'site-logo') {
       try {
-        const response = await api.put<{
-          message: string;
-          imageUrl: string | null;
-          faviconUrl: string | null;
-        }>('/superadmin/site-logo', {
-          imageUrl: logoUrl,
-          faviconUrl,
-        });
-
-        setLogoUrl(response.data.imageUrl);
-        setLogoPreviewUrl(getAbsoluteFileUrl(response.data.imageUrl));
-        setFaviconUrl(response.data.faviconUrl);
-        setFaviconPreviewUrl(getAbsoluteFileUrl(response.data.faviconUrl));
-        toast.success(response.data.message);
+        await persistSiteLogoSettings();
       } catch (err) {
         toast.error(getApiErrorMessage(err, 'Failed to save site logo.'));
       } finally {
@@ -569,15 +622,17 @@ export default function HomepageContentSettings() {
                     {t('homepageSettings.addBrand')}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving || loading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? t('homepageSettings.saving') : t('homepageSettings.saveChanges')}
-                </button>
+                {activeTab !== 'site-logo' ? (
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving || loading}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Save className="h-4 w-4" />
+                    {saving ? t('homepageSettings.saving') : t('homepageSettings.saveChanges')}
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -591,14 +646,14 @@ export default function HomepageContentSettings() {
                   {t('homepageSettings.emptyFinanceSupport')}
                 </div>
               ) : (
-                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                   <div className="space-y-4">
                     {items.map((item) => renderFinanceSupportItem(item))}
                   </div>
                 </div>
               )
             ) : activeTab === 'hero-image' ? (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 <div className="mb-5">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('homepageSettings.heroHeadingText')}</span>
@@ -667,7 +722,7 @@ export default function HomepageContentSettings() {
                 ) : null}
               </div>
             ) : activeTab === 'inspection-section' ? (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 <div className="mb-5">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('homepageSettings.sectionTitle')}</span>
@@ -750,13 +805,14 @@ export default function HomepageContentSettings() {
                 ) : null}
               </div>
             ) : activeTab === 'site-logo' ? (
-              <div className="space-y-6">
+              <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">{t('homepageSettings.platformLogoSettings')}</h3>
                   <p className="text-sm text-gray-500">{t('homepageSettings.platformLogoDescription')}</p>
+                  <p className="mt-2 text-xs font-medium text-emerald-700">{t('homepageSettings.siteLogoAutoSaveHelp')}</p>
                 </div>
 
-                <div className="grid gap-6 xl:grid-cols-2">
+                <div className="grid gap-6 xl:grid-cols-3">
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.siteLogoCardTitle')}</h4>
                     {logoPreviewUrl ? (
@@ -811,10 +867,11 @@ export default function HomepageContentSettings() {
                     {logoPreviewUrl ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setLogoUrl(null);
-                          setLogoPreviewUrl(null);
-                        }}
+                        onClick={() => void persistSiteLogoSettings({
+                          nextLogoUrl: null,
+                          nextLogoPreviewUrl: null,
+                          successMessage: t('homepageSettings.siteLogoRemoved'),
+                        })}
                         className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -877,10 +934,72 @@ export default function HomepageContentSettings() {
                     {faviconPreviewUrl ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setFaviconUrl(null);
-                          setFaviconPreviewUrl(null);
-                        }}
+                        onClick={() => void persistSiteLogoSettings({
+                          nextFaviconUrl: null,
+                          nextFaviconPreviewUrl: null,
+                          successMessage: t('homepageSettings.faviconRemoved'),
+                        })}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {t('homepageSettings.removeImage')}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
+                    <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.manifestIconCardTitle')}</h4>
+                    {manifestIconPreviewUrl ? (
+                      <div className="relative mb-4 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4">
+                        <Image
+                          src={manifestIconPreviewUrl}
+                          alt="Manifest Icon Preview"
+                          width={96}
+                          height={96}
+                          unoptimized
+                          className="object-contain max-h-24 max-w-24"
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-center">
+                      <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-gray-300 bg-white py-10 transition hover:border-[#FFC107] hover:bg-[#FFFDF7]">
+                        <div className="rounded-full bg-gray-100 p-3 text-gray-500">
+                          <UploadCloud className="h-6 w-6" />
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-gray-800">
+                            {uploadingId === 'site-manifest-icon' ? t('homepageSettings.uploading') : t('homepageSettings.uploadManifestIcon')}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {t('homepageSettings.manifestIconUploadHelp', {
+                              size: Math.round(MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE / (1024 * 1024)),
+                            })}
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) {
+                              void handleSiteManifestIconUpload(file);
+                            }
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {manifestIconPreviewUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => void persistSiteLogoSettings({
+                          nextManifestIconUrl: null,
+                          nextManifestIconPreviewUrl: null,
+                          successMessage: t('homepageSettings.manifestIconRemoved'),
+                        })}
                         className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
                       >
                         <Trash2 className="h-4 w-4" />
