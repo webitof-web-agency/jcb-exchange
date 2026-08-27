@@ -329,7 +329,7 @@ export default function HomepageContentSettings() {
     nextManifestIconUrl?: string | null;
     nextManifestIconPreviewUrl?: string | null;
     successMessage?: string;
-  }) => {
+  } = {}) => {
     const response = await api.put<{
       message: string;
       imageUrl: string | null;
@@ -812,7 +812,7 @@ export default function HomepageContentSettings() {
                   <p className="mt-2 text-xs font-medium text-emerald-700">{t('homepageSettings.siteLogoAutoSaveHelp')}</p>
                 </div>
 
-                <div className="grid gap-6 xl:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.siteLogoCardTitle')}</h4>
                     {logoPreviewUrl ? (
