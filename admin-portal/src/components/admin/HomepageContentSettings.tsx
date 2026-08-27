@@ -187,13 +187,13 @@ export default function HomepageContentSettings() {
       current.map((item, index) =>
         item.id === id
           ? {
-              ...updater(item),
-              displayOrder: index,
-            }
+            ...updater(item),
+            displayOrder: index,
+          }
           : {
-              ...item,
-              displayOrder: index,
-            }
+            ...item,
+            displayOrder: index,
+          }
       )
     );
   };
@@ -561,11 +561,10 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('finance-support')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeTab === 'finance-support'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'finance-support'
                     ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                     : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
-                }`}
+                  }`}
               >
                 <ImagePlus className="h-4 w-4" />
                 {t('homepageSettings.financeSupport')}
@@ -573,11 +572,10 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('hero-image')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeTab === 'hero-image'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'hero-image'
                     ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                     : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
-                }`}
+                  }`}
               >
                 <ImagePlus className="h-4 w-4" />
                 {t('homepageSettings.heroImage')}
@@ -585,11 +583,10 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('inspection-section')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeTab === 'inspection-section'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'inspection-section'
                     ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                     : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
-                }`}
+                  }`}
               >
                 <ImagePlus className="h-4 w-4" />
                 {t('homepageSettings.certifiedSection')}
@@ -597,11 +594,10 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('site-logo')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeTab === 'site-logo'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'site-logo'
                     ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                     : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
-                }`}
+                  }`}
               >
                 <ImagePlus className="h-4 w-4" />
                 {t('homepageSettings.siteLogo')}
@@ -812,17 +808,24 @@ export default function HomepageContentSettings() {
                   <p className="mt-2 text-xs font-medium text-emerald-700">{t('homepageSettings.siteLogoAutoSaveHelp')}</p>
                 </div>
 
-                <div className="grid gap-6 grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 xl:grid-cols-2">
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.siteLogoCardTitle')}</h4>
                     {logoPreviewUrl ? (
-                      <div 
-                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
+                      <div
+                        className="relative mb-4 overflow-hidden rounded-xl shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4"
+                        style={{
+                          backgroundColor: '#ffffff',
+                          backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h12v12H0zm12 12h12v12H12z\' fill=\'%23f3f4f6\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'
+                        }}
+                      >
                         <Image
                           src={logoPreviewUrl}
-                          alt="Site Logo Preview"
-                          fill
-                          className="object-contain p-2"
+                          alt="Logo Preview"
+                          width={200}
+                          height={80}
+                          unoptimized
+                          className="object-contain max-h-full"
                         />
                       </div>
                     ) : null}
@@ -876,14 +879,20 @@ export default function HomepageContentSettings() {
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.faviconCardTitle')}</h4>
                     {faviconPreviewUrl ? (
-                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
+                      <div
+                        className="relative mb-4 overflow-hidden rounded-xl shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4"
+                        style={{
+                          backgroundColor: '#ffffff',
+                          backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h12v12H0zm12 12h12v12H12z\' fill=\'%23f3f4f6\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'
+                        }}
+                      >
                         <Image
                           src={faviconPreviewUrl}
                           alt="Favicon Preview"
-                          width={96}
-                          height={96}
+                          width={64}
+                          height={64}
                           unoptimized
-                          className="object-contain max-h-24 max-w-24"
+                          className="object-contain max-h-16 max-w-16"
                         />
                       </div>
                     ) : null}
@@ -937,7 +946,7 @@ export default function HomepageContentSettings() {
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.manifestIconCardTitle')}</h4>
                     {manifestIconPreviewUrl ? (
-                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
+                      <div className="relative mb-4 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4">
                         <Image
                           src={manifestIconPreviewUrl}
                           alt="Manifest Icon Preview"
