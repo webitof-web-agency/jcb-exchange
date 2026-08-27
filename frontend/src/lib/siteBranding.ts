@@ -1,12 +1,11 @@
 import { SITE_DESCRIPTION, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '@/lib/site';
 
 export type SiteBranding = {
-  logoUrl: string;
-  faviconUrl: string;
+  logoUrl: string | null;
+  faviconUrl: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
-const DEFAULT_FAVICON_URL = `${SITE_URL}/icon.svg`;
 
 const toAbsoluteUrl = (value?: string | null) => {
   if (!value) {
@@ -38,13 +37,13 @@ export const getSiteBranding = async (): Promise<SiteBranding> => {
     };
 
     return {
-      logoUrl: toAbsoluteUrl(payload.data?.imageUrl) || SITE_LOGO_URL,
-      faviconUrl: toAbsoluteUrl(payload.data?.faviconUrl) || DEFAULT_FAVICON_URL,
+      logoUrl: toAbsoluteUrl(payload.data?.imageUrl),
+      faviconUrl: toAbsoluteUrl(payload.data?.faviconUrl),
     };
   } catch {
     return {
-      logoUrl: SITE_LOGO_URL,
-      faviconUrl: DEFAULT_FAVICON_URL,
+      logoUrl: null,
+      faviconUrl: null,
     };
   }
 };

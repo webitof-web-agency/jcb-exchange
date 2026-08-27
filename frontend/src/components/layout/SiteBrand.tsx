@@ -66,15 +66,7 @@ export default function SiteBrand({
             className={`object-contain object-left ${variant === 'footer' ? 'max-h-[80px]' : 'max-h-[64px]'}`}
           />
         </div>
-      ) : (
-        variant === 'footer' ? (
-          <span className={fallbackClass}>JCB EXCHANGE</span>
-        ) : (
-          <span className={fallbackClass}>
-            JCB<span className="text-white">EXCHANGE</span>
-          </span>
-        )
-      )}
+      ) : null}
     </Link>
   );
 }

@@ -23,11 +23,11 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     },
     manifest: "/manifest.webmanifest",
-    icons: {
+    icons: branding.faviconUrl ? {
       icon: [{ url: branding.faviconUrl, type: 'image/png', sizes: '512x512' }],
       apple: [{ url: branding.faviconUrl, type: 'image/png', sizes: '180x180' }],
       shortcut: [branding.faviconUrl],
-    },
+    } : undefined,
   };
 }
 

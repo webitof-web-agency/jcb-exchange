@@ -68,11 +68,7 @@ export default function PortalBrand({
               className={`w-full h-auto object-contain object-left ${maxHeightClass}`}
             />
           </div>
-        ) : (
-          <span className={fallbackClass}>
-            JCB<span className="text-white">EXCHANGE</span>
-          </span>
-        )}
+        ) : null}
       </Link>
       {subtitle ? (
         <p className="mt-1 text-xs uppercase tracking-widest text-gray-400">{subtitle}</p>
