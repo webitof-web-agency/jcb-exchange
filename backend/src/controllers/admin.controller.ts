@@ -809,6 +809,7 @@ export const getSiteLogoContent = async (req: Request, res: Response, next: Next
     res.json({
       imageUrl: settings.siteLogo.imageUrl,
       faviconUrl: settings.siteLogo.faviconUrl,
+      manifestIconUrl: settings.siteLogo.manifestIconUrl,
     });
   } catch (error) {
     next(error);
@@ -862,10 +863,12 @@ export const updateSiteLogoContent = async (req: Request, res: Response, next: N
   try {
     const imageUrl = req.body?.imageUrl;
     const faviconUrl = req.body?.faviconUrl;
+    const manifestIconUrl = req.body?.manifestIconUrl;
 
     const settings = await updateSiteLogoSettings({
       imageUrl,
       faviconUrl,
+      manifestIconUrl,
       updatedByUserId: req.user?.id || null,
     });
 

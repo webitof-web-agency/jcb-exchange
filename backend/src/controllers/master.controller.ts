@@ -812,6 +812,7 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
       data: {
         imageUrl: settings.siteLogo.imageUrl,
         faviconUrl: settings.siteLogo.faviconUrl,
+        manifestIconUrl: settings.siteLogo.manifestIconUrl,
       },
     });
   } catch (error) {

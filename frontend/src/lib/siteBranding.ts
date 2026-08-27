@@ -1,8 +1,9 @@
-import { SITE_DESCRIPTION, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '@/lib/site';
+import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/site';
 
 export type SiteBranding = {
   logoUrl: string | null;
   faviconUrl: string | null;
+  manifestIconUrl: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
@@ -33,17 +34,20 @@ export const getSiteBranding = async (): Promise<SiteBranding> => {
       data?: {
         imageUrl?: string | null;
         faviconUrl?: string | null;
+        manifestIconUrl?: string | null;
       };
     };
 
     return {
       logoUrl: toAbsoluteUrl(payload.data?.imageUrl),
       faviconUrl: toAbsoluteUrl(payload.data?.faviconUrl),
+      manifestIconUrl: toAbsoluteUrl(payload.data?.manifestIconUrl),
     };
   } catch {
     return {
       logoUrl: null,
       faviconUrl: null,
+      manifestIconUrl: null,
     };
   }
 };

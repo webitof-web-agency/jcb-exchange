@@ -4,7 +4,15 @@ import { existsSync, mkdirSync } from 'fs';
 import crypto from 'crypto';
 
 export type UploadVisibility = 'public' | 'secure';
-export type UploadPurpose = 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon';
+export type UploadPurpose =
+  | 'document'
+  | 'listing-media'
+  | 'finance-support'
+  | 'hero-image'
+  | 'inspection-section'
+  | 'site-logo'
+  | 'site-favicon'
+  | 'site-manifest-icon';
 
 const allowedDocumentMimeTypes = new Set([
   'image/jpeg',
@@ -45,6 +53,7 @@ export const MAX_HERO_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;
 export const MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;
 export const MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE = 2 * 1024 * 1024;
 export const MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE = 512 * 1024;
+export const MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE = 1024 * 1024;
 
 export const uploadRootDir = path.join(process.cwd(), 'uploads');
 export const publicUploadDir = path.join(uploadRootDir, 'public');
@@ -55,6 +64,7 @@ export const publicHeroImageUploadDir = path.join(publicUploadDir, 'hero-image')
 export const publicInspectionSectionUploadDir = path.join(publicUploadDir, 'inspection-section');
 export const publicSiteLogoUploadDir = path.join(publicUploadDir, 'site-logo');
 export const publicSiteFaviconUploadDir = path.join(publicUploadDir, 'site-favicon');
+export const publicSiteManifestIconUploadDir = path.join(publicUploadDir, 'site-manifest-icon');
 
 const ensureDirectory = (directoryPath: string) => {
   if (!existsSync(directoryPath)) {
@@ -71,6 +81,7 @@ export const ensureUploadDirectories = () => {
   ensureDirectory(publicInspectionSectionUploadDir);
   ensureDirectory(publicSiteLogoUploadDir);
   ensureDirectory(publicSiteFaviconUploadDir);
+  ensureDirectory(publicSiteManifestIconUploadDir);
 };
 
 const getUploadDirectory = (visibility: UploadVisibility, purpose: UploadPurpose) => {
@@ -92,6 +103,10 @@ const getUploadDirectory = (visibility: UploadVisibility, purpose: UploadPurpose
 
   if (visibility === 'public' && purpose === 'site-favicon') {
     return publicSiteFaviconUploadDir;
+  }
+
+  if (visibility === 'public' && purpose === 'site-manifest-icon') {
+    return publicSiteManifestIconUploadDir;
   }
 
   if (visibility === 'public' && purpose === 'listing-media') {
@@ -153,7 +168,7 @@ export const getDocumentUploadMiddleware = (
       const allowed =
         purpose === 'listing-media'
           ? isAllowedListingMediaFile(file.mimetype, file.originalname)
-          : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon'
+          : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
             ? isAllowedFinanceSupportImageFile(file.mimetype, file.originalname)
             : isAllowedDocumentFile(file.mimetype, file.originalname);
 
@@ -162,7 +177,7 @@ export const getDocumentUploadMiddleware = (
           new Error(
             purpose === 'listing-media'
               ? 'Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.'
-              : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon'
+              : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
                 ? 'Only JPG, PNG, and WEBP images are allowed.'
               : 'Only JPG, PNG, WEBP, and PDF files are allowed.'
           )
@@ -182,6 +197,8 @@ export const getDocumentUploadMiddleware = (
             ? MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE
           : purpose === 'site-favicon'
             ? MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE
+          : purpose === 'site-manifest-icon'
+            ? MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE
           : purpose === 'hero-image'
             ? MAX_HERO_IMAGE_UPLOAD_SIZE
           : purpose === 'finance-support'
@@ -203,3 +220,4 @@ export const getPublicHeroImageUrl = (fileName: string) => `/uploads/public/hero
 export const getPublicInspectionSectionImageUrl = (fileName: string) => `/uploads/public/inspection-section/${fileName}`;
 export const getPublicSiteLogoUrl = (fileName: string) => `/uploads/public/site-logo/${fileName}`;
 export const getPublicSiteFaviconUrl = (fileName: string) => `/uploads/public/site-favicon/${fileName}`;
+export const getPublicSiteManifestIconUrl = (fileName: string) => `/uploads/public/site-manifest-icon/${fileName}`;

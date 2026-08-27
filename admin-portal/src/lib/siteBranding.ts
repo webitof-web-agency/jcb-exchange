@@ -1,6 +1,7 @@
 export type SiteBranding = {
   logoUrl: string | null;
   faviconUrl: string | null;
+  manifestIconUrl: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
@@ -31,17 +32,20 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
       data?: {
         imageUrl?: string | null;
         faviconUrl?: string | null;
+        manifestIconUrl?: string | null;
       };
     };
 
     return {
       logoUrl: toAbsoluteUrl(payload.data?.imageUrl),
       faviconUrl: toAbsoluteUrl(payload.data?.faviconUrl),
+      manifestIconUrl: toAbsoluteUrl(payload.data?.manifestIconUrl),
     };
   } catch {
     return {
       logoUrl: null,
       faviconUrl: null,
+      manifestIconUrl: null,
     };
   }
 };

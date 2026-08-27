@@ -11,6 +11,7 @@ export const MAX_HERO_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_INSPECTION_SECTION_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_SITE_LOGO_IMAGE_INPUT_SIZE = 2 * 1024 * 1024;
 export const MAX_SITE_FAVICON_IMAGE_INPUT_SIZE = 1024 * 1024;
+export const MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE = 1024 * 1024;
 const MAX_IMAGE_WIDTH = 1920;
 const MAX_IMAGE_HEIGHT = 1080;
 const TARGET_MIN_IMAGE_SIZE = 200 * 1024;
@@ -27,6 +28,8 @@ const SITE_LOGO_TARGET_MIN_IMAGE_SIZE = 80 * 1024;
 const SITE_LOGO_TARGET_MAX_IMAGE_SIZE = 220 * 1024;
 const SITE_FAVICON_TARGET_MAX_IMAGE_SIZE = 80 * 1024;
 const SITE_FAVICON_MAX_DIMENSION = 512;
+const SITE_MANIFEST_ICON_TARGET_MAX_IMAGE_SIZE = 160 * 1024;
+const SITE_MANIFEST_ICON_DIMENSION = 512;
 
 const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const allowedPdfTypes = new Set(['application/pdf']);
@@ -168,6 +171,18 @@ export const validateSiteFaviconImageFile = async (file: File) => {
 
   if (file.size > MAX_SITE_FAVICON_IMAGE_INPUT_SIZE) {
     throw new Error(`Favicon image must be ${bytesToReadableLimit(MAX_SITE_FAVICON_IMAGE_INPUT_SIZE)} or smaller.`);
+  }
+};
+
+export const validateSiteManifestIconImageFile = async (file: File) => {
+  const isImage = allowedImageTypes.has(file.type);
+
+  if (!isImage) {
+    throw new Error('Only JPG, PNG, and WEBP images are allowed.');
+  }
+
+  if (file.size > MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE) {
+    throw new Error(`Manifest icon image must be ${bytesToReadableLimit(MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE)} or smaller.`);
   }
 };
 
@@ -434,6 +449,70 @@ export const prepareSiteFaviconImageForUpload = async (file: File) => {
   return blobToFile(blob, `${outputName}.png`);
 };
 
+export const prepareSiteManifestIconImageForUpload = async (file: File) => {
+  await validateSiteManifestIconImageFile(file);
+
+  const image = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = SITE_MANIFEST_ICON_DIMENSION;
+  canvas.height = SITE_MANIFEST_ICON_DIMENSION;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Unable to initialize manifest icon compression.');
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  const dimensions = fitImageWithinCustomBounds(
+    image.width,
+    image.height,
+    SITE_MANIFEST_ICON_DIMENSION,
+    SITE_MANIFEST_ICON_DIMENSION
+  );
+  const offsetX = Math.round((SITE_MANIFEST_ICON_DIMENSION - dimensions.width) / 2);
+  const offsetY = Math.round((SITE_MANIFEST_ICON_DIMENSION - dimensions.height) / 2);
+
+  context.drawImage(image, offsetX, offsetY, dimensions.width, dimensions.height);
+
+  const toPngBlob = () =>
+    new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Unable to compress the selected manifest icon.'));
+            return;
+          }
+
+          resolve(blob);
+        },
+        'image/png',
+        0.92
+      );
+    });
+
+  let blob = await toPngBlob();
+  if (blob.size > SITE_MANIFEST_ICON_TARGET_MAX_IMAGE_SIZE) {
+    const shrinkDimension = 384;
+    canvas.width = shrinkDimension;
+    canvas.height = shrinkDimension;
+    context.clearRect(0, 0, shrinkDimension, shrinkDimension);
+    const nextDimensions = fitImageWithinCustomBounds(
+      image.width,
+      image.height,
+      shrinkDimension,
+      shrinkDimension
+    );
+    const nextOffsetX = Math.round((shrinkDimension - nextDimensions.width) / 2);
+    const nextOffsetY = Math.round((shrinkDimension - nextDimensions.height) / 2);
+    context.drawImage(image, nextOffsetX, nextOffsetY, nextDimensions.width, nextDimensions.height);
+    blob = await toPngBlob();
+  }
+
+  const outputName = file.name.replace(/\.[^.]+$/, '') || 'manifest-icon';
+  return blobToFile(blob, `${outputName}.png`);
+};
+
 export const uploadFileToServer = async ({
   file,
   visibility,
@@ -557,6 +636,24 @@ export const uploadSiteFaviconImageToServer = async (file: File) => {
 
   const response = await api.post<{ file: UploadedFileResult }>(
     '/documents/upload/public/site-favicon',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+
+  return response.data.file;
+};
+
+export const uploadSiteManifestIconImageToServer = async (file: File) => {
+  const preparedFile = await prepareSiteManifestIconImageForUpload(file);
+  const formData = new FormData();
+  formData.append('file', preparedFile);
+
+  const response = await api.post<{ file: UploadedFileResult }>(
+    '/documents/upload/public/site-manifest-icon',
     formData,
     {
       headers: {

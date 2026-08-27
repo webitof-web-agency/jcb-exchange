@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { request } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const runtimeDir = resolve(rootDir, 'runtime');
+const sourceDir = resolve(rootDir, 'src');
 const pidFilePath = resolve(runtimeDir, 'backend-dev-server.json');
 const command = process.argv[2] || 'start';
 
@@ -34,6 +35,42 @@ const host = process.env.HOSTNAME || 'localhost';
 
 const ensureRuntimeDir = () => {
   mkdirSync(runtimeDir, { recursive: true });
+};
+
+const staleSourceArtifactSuffixes = ['.js', '.js.map', '.d.ts', '.d.ts.map'];
+
+const getTypeScriptSiblingPath = (filePath) => {
+  for (const suffix of staleSourceArtifactSuffixes) {
+    if (filePath.endsWith(suffix)) {
+      return `${filePath.slice(0, -suffix.length)}.ts`;
+    }
+  }
+
+  return null;
+};
+
+const removeStaleSourceArtifacts = (directoryPath) => {
+  for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
+    const entryPath = resolve(directoryPath, entry.name);
+
+    if (entry.isDirectory()) {
+      removeStaleSourceArtifacts(entryPath);
+      continue;
+    }
+
+    const siblingTypeScriptPath = getTypeScriptSiblingPath(entryPath);
+    if (!siblingTypeScriptPath || !existsSync(siblingTypeScriptPath)) {
+      continue;
+    }
+
+    const entryStats = statSync(entryPath);
+    const sourceStats = statSync(siblingTypeScriptPath);
+
+    // Only remove generated sidecars when the TypeScript source still exists.
+    if (entryStats.isFile() && sourceStats.isFile()) {
+      unlinkSync(entryPath);
+    }
+  }
 };
 
 const readPidFile = () => {
@@ -210,6 +247,8 @@ if (!(await canListen(port))) {
   console.error('Stop that process or set PORT to a free port.');
   process.exit(1);
 }
+
+removeStaleSourceArtifacts(sourceDir);
 
 const tsxCliPath = resolve(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 

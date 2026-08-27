@@ -47,6 +47,7 @@ export type InspectionSectionSettings = {
 export type SiteLogoSettings = {
   imageUrl: string | null;
   faviconUrl: string | null;
+  manifestIconUrl: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
@@ -80,6 +81,7 @@ const settingsFileCandidates = Array.from(
 );
 const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
 const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
+const siteManifestIconPublicUrlPrefix = '/uploads/public/site-manifest-icon/';
 
 const defaultSettings: AppSettings = {
   googleAuth: {
@@ -128,6 +130,7 @@ const defaultSettings: AppSettings = {
   siteLogo: {
     imageUrl: null,
     faviconUrl: null,
+    manifestIconUrl: null,
     updatedAt: null,
     updatedByUserId: null,
   },
@@ -156,7 +159,8 @@ const isMeaningfulSettings = (settings: AppSettings) =>
       settings.inspectionSection.description ||
       settings.inspectionSection.imageUrl ||
       settings.siteLogo.imageUrl ||
-      settings.siteLogo.faviconUrl,
+      settings.siteLogo.faviconUrl ||
+      settings.siteLogo.manifestIconUrl,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -223,6 +227,10 @@ const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
   }
 
   if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
+    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+  }
+
+  if (normalizedUrl.startsWith(siteManifestIconPublicUrlPrefix)) {
     return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
   }
 
@@ -315,6 +323,7 @@ export const getAppSettings = async (): Promise<AppSettings> => {
             siteLogo: {
               imageUrl: parsed.siteLogo?.imageUrl?.trim() || null,
               faviconUrl: parsed.siteLogo?.faviconUrl?.trim() || null,
+              manifestIconUrl: parsed.siteLogo?.manifestIconUrl?.trim() || null,
               updatedAt: parsed.siteLogo?.updatedAt || null,
               updatedByUserId: parsed.siteLogo?.updatedByUserId || null,
             },
@@ -553,24 +562,29 @@ export const updateInspectionSectionSettings = async ({
 export const updateSiteLogoSettings = async ({
   imageUrl,
   faviconUrl,
+  manifestIconUrl,
   updatedByUserId,
 }: {
   imageUrl?: string | null;
   faviconUrl?: string | null;
+  manifestIconUrl?: string | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
   const normalizedImageUrl = imageUrl?.trim() || null;
   const normalizedFaviconUrl = faviconUrl?.trim() || null;
+  const normalizedManifestIconUrl = manifestIconUrl?.trim() || null;
 
   const previousImageUrl = currentSettings.siteLogo.imageUrl;
   const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
+  const previousManifestIconUrl = currentSettings.siteLogo.manifestIconUrl;
 
   const nextSettings: AppSettings = {
     ...currentSettings,
     siteLogo: {
       imageUrl: normalizedImageUrl,
       faviconUrl: normalizedFaviconUrl,
+      manifestIconUrl: normalizedManifestIconUrl,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },
@@ -585,6 +599,9 @@ export const updateSiteLogoSettings = async ({
   }
   if (previousFaviconUrl && previousFaviconUrl !== normalizedFaviconUrl) {
     cleanupTargets.push(previousFaviconUrl);
+  }
+  if (previousManifestIconUrl && previousManifestIconUrl !== normalizedManifestIconUrl) {
+    cleanupTargets.push(previousManifestIconUrl);
   }
 
   await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));

@@ -7,6 +7,7 @@ import {
   getPublicFinanceSupportImageUrl,
   getPublicInspectionSectionImageUrl,
   getPublicListingMediaUrl,
+  getPublicSiteManifestIconUrl,
   getPublicSiteFaviconUrl,
   getPublicSiteLogoUrl,
   getSecureDocumentUrl,
@@ -15,6 +16,7 @@ import {
   MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE,
   MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE,
   MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE,
+  MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE,
   isPdfMimeType,
   isVideoMimeType,
   MAX_DOCUMENT_UPLOAD_SIZE,
@@ -43,7 +45,7 @@ const cleanupFile = async (filePath?: string) => {
 
 const enforceStoredFileSizePolicy = async (
   file: Express.Multer.File,
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
   if (isPdfMimeType(file.mimetype) && file.size > 3 * 1024 * 1024) {
     await cleanupFile(file.path);
@@ -91,6 +93,11 @@ const enforceStoredFileSizePolicy = async (
     await cleanupFile(file.path);
     throw new Error('Favicon image must be 512KB or smaller.');
   }
+
+  if (purpose === 'site-manifest-icon' && file.size > MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE) {
+    await cleanupFile(file.path);
+    throw new Error('Manifest icon image must be 1MB or smaller.');
+  }
 };
 
 const getSafeFileName = (fileName: string) => path.basename(fileName);
@@ -126,7 +133,7 @@ const buildUploadResponse = (
   req: Request,
   file: Express.Multer.File,
   visibility: 'public' | 'secure',
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
   const fileUrl = visibility === 'public'
     ? purpose === 'listing-media'
@@ -141,6 +148,8 @@ const buildUploadResponse = (
             ? getPublicSiteLogoUrl(file.filename)
           : purpose === 'site-favicon'
             ? getPublicSiteFaviconUrl(file.filename)
+          : purpose === 'site-manifest-icon'
+            ? getPublicSiteManifestIconUrl(file.filename)
           : getPublicDocumentUrl(file.filename)
     : getSecureDocumentUrl(file.filename);
 
@@ -296,6 +305,21 @@ export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, 
 
     await enforceStoredFileSizePolicy(file, 'site-favicon');
     res.status(201).json(buildUploadResponse(req, file, 'public', 'site-favicon'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadPublicSiteManifestIconImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const file = getUploadedFile(req);
+
+    if (!file) {
+      return res.status(400).json({ error: 'A file is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'site-manifest-icon');
+    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-manifest-icon'));
   } catch (error) {
     next(error);
   }

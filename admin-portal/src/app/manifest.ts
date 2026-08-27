@@ -12,7 +12,14 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#1e293b',
-    icons: branding.faviconUrl ? [
+    icons: branding.manifestIconUrl ? [
+      {
+        src: branding.manifestIconUrl,
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+    ] : branding.faviconUrl ? [
       {
         src: branding.faviconUrl,
         sizes: '512x512',
