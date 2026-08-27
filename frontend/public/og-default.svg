@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">JCB Exchange Social Preview</title>
+  <desc id="desc">Social preview image for JCB Exchange marketplace.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111111" />
+      <stop offset="55%" stop-color="#1b1b1b" />
+      <stop offset="100%" stop-color="#312700" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.1" cy="0.1" r="0.7">
+      <stop offset="0%" stop-color="rgba(255,191,0,0.28)" />
+      <stop offset="100%" stop-color="rgba(255,191,0,0)" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+  <text x="72" y="94" fill="#ffbf00" font-family="Arial, Helvetica, sans-serif" font-size="46" font-style="italic" font-weight="900">JCB</text>
+  <text x="180" y="94" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="900">EXCHANGE</text>
+  <text x="72" y="170" fill="#ffd24d" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="4">HEAVY MACHINERY MARKETPLACE</text>
+  <text x="72" y="296" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="900">Find the Right Machine</text>
+  <text x="72" y="382" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="900">for Your Next Job</text>
+  <text x="72" y="458" fill="rgba(255,255,255,0.82)" font-family="Arial, Helvetica, sans-serif" font-size="29">
+    India's trusted marketplace for heavy machinery. Buy, sell and rent JCBs,
+  </text>
+  <text x="72" y="498" fill="rgba(255,255,255,0.82)" font-family="Arial, Helvetica, sans-serif" font-size="29">
+    excavators and more.
+  </text>
+  <rect x="855" y="516" width="273" height="56" rx="28" fill="none" stroke="rgba(255,191,0,0.55)" stroke-width="2" />
+  <text x="991.5" y="551" fill="#ffcf33" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" text-anchor="middle">JCB EXCHANGE</text>
+</svg>

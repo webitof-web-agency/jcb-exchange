@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@theme {
+  --color-jcb-yellow: #FFC107;
+  --color-jcb-dark: #1A1A1A;
+  --color-jcb-cream: #FDFBF7;
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+  --font-sans: "Inter", var(--font-geist-sans);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  @apply antialiased;
+}
+
+@keyframes marqueeLeft {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes marqueeRight {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100vw); }
+}
+
+.animate-marquee-left {
+  animation: marqueeLeft 10s linear infinite;
+  display: flex;
+  width: max-content;
+}
+
+.animate-marquee-right {
+  animation: marqueeRight 10s linear infinite;
+  display: flex;
+  width: max-content;
+}
+
+.finance-marquee-shell {
+  position: relative;
+}
+
+.finance-marquee-shell::before,
+.finance-marquee-shell::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 72px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+
+
+.finance-marquee-bleed {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+}
+/* Range Slider Styles */
+.thumb,
+.thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.thumb {
+  pointer-events: none;
+  position: absolute;
+  height: 0;
+  width: 100%;
+  outline: none;
+}
+
+.thumb-left {
+  z-index: 3;
+}
+
+.thumb-right {
+  z-index: 4;
+}
+
+/* For Chrome browsers */
+.thumb::-webkit-slider-thumb {
+  background-color: #f1f5f9;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 0 1px 1px #ced4da;
+  cursor: pointer;
+  height: 18px;
+  width: 18px;
+  margin-top: 4px;
+  pointer-events: all;
+  position: relative;
+}
+
+/* For Firefox browsers */
+.thumb::-moz-range-thumb {
+  background-color: #f1f5f9;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 0 1px 1px #ced4da;
+  cursor: pointer;
+  height: 18px;
+  width: 18px;
+  margin-top: 4px;
+  pointer-events: all;
+  position: relative;
+}

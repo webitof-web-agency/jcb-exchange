@@ -1,0 +1,11 @@
+import KycOnboardingClient from '@/components/kyc/KycOnboardingClient';
+
+export default async function EmployeePartnerOnboardingEditor({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  return <KycOnboardingClient partnerId={id} />;
+}
