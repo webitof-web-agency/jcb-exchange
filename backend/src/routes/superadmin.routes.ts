@@ -10,6 +10,7 @@ import {
   getFinanceSupportContent,
   getHeroImageContent,
   getInspectionSectionContent,
+  getSiteLogoContent,
   getPlatformSettings,
   getAdminUsers,
   getCustomerVisitors,
@@ -29,6 +30,7 @@ import {
   updateFinanceSupportContent,
   updateHeroImageContent,
   updateInspectionSectionContent,
+  updateSiteLogoContent,
   updateCustomerPrimePaymentStatus,
   updateVerificationStatus,
 } from '../controllers/admin.controller';
@@ -75,6 +77,8 @@ router.get('/hero-image', canManageSettings, getHeroImageContent);
 router.put('/hero-image', canManageSettings, updateHeroImageContent);
 router.get('/inspection-section', canManageSettings, getInspectionSectionContent);
 router.put('/inspection-section', canManageSettings, updateInspectionSectionContent);
+router.get('/site-logo', canManageSettings, getSiteLogoContent);
+router.put('/site-logo', canManageSettings, updateSiteLogoContent);
 router.get('/settings', canManageSettings, getPlatformSettings);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
 router.get('/translations/catalog', canManageTranslations, getTranslationCatalog);

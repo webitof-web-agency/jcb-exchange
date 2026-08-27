@@ -37,6 +37,8 @@ router.get('/hero-image', canManageSettings, admin_controller_1.getHeroImageCont
 router.put('/hero-image', canManageSettings, admin_controller_1.updateHeroImageContent);
 router.get('/inspection-section', canManageSettings, admin_controller_1.getInspectionSectionContent);
 router.put('/inspection-section', canManageSettings, admin_controller_1.updateInspectionSectionContent);
+router.get('/site-logo', canManageSettings, admin_controller_1.getSiteLogoContent);
+router.put('/site-logo', canManageSettings, admin_controller_1.updateSiteLogoContent);
 router.get('/settings', canManageSettings, admin_controller_1.getPlatformSettings);
 router.patch('/settings', canManageSettings, admin_controller_1.updatePlatformSettings);
 router.get('/translations/catalog', canManageTranslations, translationAdmin_controller_1.getTranslationCatalog);

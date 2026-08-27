@@ -7,10 +7,14 @@ import {
   getPublicFinanceSupportImageUrl,
   getPublicInspectionSectionImageUrl,
   getPublicListingMediaUrl,
+  getPublicSiteFaviconUrl,
+  getPublicSiteLogoUrl,
   getSecureDocumentUrl,
   MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE,
   MAX_HERO_IMAGE_UPLOAD_SIZE,
   MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE,
+  MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE,
+  MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE,
   isPdfMimeType,
   isVideoMimeType,
   MAX_DOCUMENT_UPLOAD_SIZE,
@@ -39,7 +43,7 @@ const cleanupFile = async (filePath?: string) => {
 
 const enforceStoredFileSizePolicy = async (
   file: Express.Multer.File,
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' = 'document'
 ) => {
   if (isPdfMimeType(file.mimetype) && file.size > 3 * 1024 * 1024) {
     await cleanupFile(file.path);
@@ -77,6 +81,16 @@ const enforceStoredFileSizePolicy = async (
     await cleanupFile(file.path);
     throw new Error('Inspection section image must be 5MB or smaller.');
   }
+
+  if (purpose === 'site-logo' && file.size > MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE) {
+    await cleanupFile(file.path);
+    throw new Error('Site logo image must be 2MB or smaller.');
+  }
+
+  if (purpose === 'site-favicon' && file.size > MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE) {
+    await cleanupFile(file.path);
+    throw new Error('Favicon image must be 512KB or smaller.');
+  }
 };
 
 const getSafeFileName = (fileName: string) => path.basename(fileName);
@@ -112,7 +126,7 @@ const buildUploadResponse = (
   req: Request,
   file: Express.Multer.File,
   visibility: 'public' | 'secure',
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' = 'document'
 ) => {
   const fileUrl = visibility === 'public'
     ? purpose === 'listing-media'
@@ -123,6 +137,10 @@ const buildUploadResponse = (
           ? getPublicHeroImageUrl(file.filename)
           : purpose === 'inspection-section'
             ? getPublicInspectionSectionImageUrl(file.filename)
+          : purpose === 'site-logo'
+            ? getPublicSiteLogoUrl(file.filename)
+          : purpose === 'site-favicon'
+            ? getPublicSiteFaviconUrl(file.filename)
           : getPublicDocumentUrl(file.filename)
     : getSecureDocumentUrl(file.filename);
 
@@ -248,6 +266,36 @@ export const uploadPublicInspectionSectionImage = async (req: Request, res: Resp
 
     await enforceStoredFileSizePolicy(file, 'inspection-section');
     res.status(201).json(buildUploadResponse(req, file, 'public', 'inspection-section'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadPublicSiteLogoImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const file = getUploadedFile(req);
+
+    if (!file) {
+      return res.status(400).json({ error: 'A file is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'site-logo');
+    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-logo'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const file = getUploadedFile(req);
+
+    if (!file) {
+      return res.status(400).json({ error: 'A file is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'site-favicon');
+    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-favicon'));
   } catch (error) {
     next(error);
   }

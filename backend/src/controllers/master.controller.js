@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.incrementListingView = exports.getPublicListingById = exports.getPublicSearchFilters = exports.getPublicCategories = exports.getRecentListings = exports.getPublicListings = exports.getInspectionSection = exports.getHeroImage = exports.getFinanceSupportItems = exports.getDealerListings = exports.getDealerById = exports.getApprovedDealers = exports.createIcon = exports.getIcons = exports.getModels = exports.deleteBrand = exports.updateBrand = exports.createBrand = exports.getBrands = exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategories = void 0;
+exports.incrementListingView = exports.getPublicListingById = exports.getPublicSearchFilters = exports.getPublicCategories = exports.getRecentListings = exports.getPublicListings = exports.getSiteLogo = exports.getInspectionSection = exports.getHeroImage = exports.getFinanceSupportItems = exports.getDealerListings = exports.getDealerById = exports.getApprovedDealers = exports.createIcon = exports.getIcons = exports.getModels = exports.deleteBrand = exports.updateBrand = exports.createBrand = exports.getBrands = exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategories = void 0;
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const appSettings_1 = require("../utils/appSettings");
 const soldListingRetention_1 = require("../utils/soldListingRetention");
@@ -20,6 +20,14 @@ const buildVisibleSoldListingWhere = (now = new Date()) => {
             },
         ],
     };
+};
+const getPublicListingPrice = (listing) => {
+    const basePrice = Number(listing.price || 0);
+    const soldPrice = Number(listing.saleRecord?.soldPrice || 0);
+    if (String(listing.status || '').toUpperCase() === 'SOLD' && Number.isFinite(soldPrice) && soldPrice > 0) {
+        return soldPrice;
+    }
+    return Number.isFinite(basePrice) ? basePrice : 0;
 };
 const buildPublicMarketplaceFeedWhere = ({ status, now = new Date(), }) => {
     const baseWhere = (0, publicListingVisibility_1.getPublicMarketplaceListingWhere)();
@@ -617,6 +625,7 @@ const getDealerListings = async (req, res, next) => {
                         },
                     },
                 },
+                saleRecord: true,
             },
             orderBy: [
                 {
@@ -626,20 +635,21 @@ const getDealerListings = async (req, res, next) => {
         });
         res.status(200).json({
             success: true,
-            data: listings.map((listing) => ({
-                id: listing.id,
-                title: listing.title,
-                price: Number(listing.price || 0),
-                isNegotiable: Boolean(listing.isNegotiable),
+        data: listings.map((listing) => ({
+            id: listing.id,
+            title: listing.title,
+            price: getPublicListingPrice(listing),
+            isNegotiable: Boolean(listing.isNegotiable),
                 manufacturingYear: listing.manufacturingYear,
                 operatingHours: listing.operatingHours,
                 locationCity: listing.locationCity,
                 locationState: listing.locationState,
                 condition: listing.condition,
                 grossPower: listing.grossPower,
-                status: listing.status,
-                createdAt: listing.createdAt,
-                brandName: listing.brand?.name,
+            status: listing.status,
+            createdAt: listing.createdAt,
+            updatedAt: listing.updatedAt,
+            brandName: listing.brand?.name,
                 modelName: listing.model?.name,
                 categoryName: listing.category?.name,
                 categoryId: listing.category?.id,
@@ -696,6 +706,22 @@ const getInspectionSection = async (req, res, next) => {
     }
 };
 exports.getInspectionSection = getInspectionSection;
+const getSiteLogo = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.status(200).json({
+            success: true,
+            data: {
+                imageUrl: settings.siteLogo.imageUrl,
+                faviconUrl: settings.siteLogo.faviconUrl,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getSiteLogo = getSiteLogo;
 const getPublicListings = async (req, res, next) => {
     try {
         const { status } = req.query;
@@ -741,6 +767,7 @@ const getPublicListings = async (req, res, next) => {
                         },
                     },
                 },
+                saleRecord: true,
             },
             orderBy: [
                 {
@@ -750,11 +777,11 @@ const getPublicListings = async (req, res, next) => {
         });
         res.status(200).json({
             success: true,
-            data: listings.map((listing) => ({
-                id: listing.id,
-                title: listing.title,
-                price: Number(listing.price || 0),
-                isNegotiable: Boolean(listing.isNegotiable),
+        data: listings.map((listing) => ({
+            id: listing.id,
+            title: listing.title,
+            price: getPublicListingPrice(listing),
+            isNegotiable: Boolean(listing.isNegotiable),
                 manufacturingYear: listing.manufacturingYear,
                 operatingHours: listing.operatingHours,
                 locationCity: listing.locationCity,
@@ -774,10 +801,11 @@ const getPublicListings = async (req, res, next) => {
                 featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
                     listing.media.find((media) => media.type === 'IMAGE')?.url ||
                     null,
-                mediaCount: listing.media.length,
-                createdAt: listing.createdAt,
-            })),
-        });
+            mediaCount: listing.media.length,
+            createdAt: listing.createdAt,
+            updatedAt: listing.updatedAt,
+        })),
+    });
     }
     catch (error) {
         next(error);
@@ -828,6 +856,7 @@ const getRecentListings = async (req, res, next) => {
                         },
                     },
                 },
+                saleRecord: true,
             },
             orderBy: {
                 createdAt: 'desc',
@@ -836,24 +865,25 @@ const getRecentListings = async (req, res, next) => {
         });
         res.status(200).json({
             success: true,
-            data: listings.map((listing) => ({
-                id: listing.id,
-                title: listing.title,
-                price: Number(listing.price || 0),
-                locationCity: listing.locationCity,
-                locationState: listing.locationState,
-                status: listing.status,
+        data: listings.map((listing) => ({
+            id: listing.id,
+            title: listing.title,
+            price: getPublicListingPrice(listing),
+            locationCity: listing.locationCity,
+            locationState: listing.locationState,
+            status: listing.status,
                 categoryName: listing.category?.name,
                 brandName: listing.brand?.name,
                 partnerName: listing.partner?.partnerProfile?.businessName ||
                     listing.partner?.name ||
                     'Verified Partner',
-                featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-                    listing.media.find((media) => media.type === 'IMAGE')?.url ||
-                    null,
-                createdAt: listing.createdAt,
-            })),
-        });
+            featuredImage: listing.media.find((media) => media.type === 'IMAGE' && media.isFeatured)?.url ||
+                listing.media.find((media) => media.type === 'IMAGE')?.url ||
+                null,
+            createdAt: listing.createdAt,
+            updatedAt: listing.updatedAt,
+        })),
+    });
     }
     catch (error) {
         next(error);

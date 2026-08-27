@@ -3,6 +3,8 @@ import {
   uploadPublicFinanceSupportImage,
   uploadPublicHeroImage,
   uploadPublicInspectionSectionImage,
+  uploadPublicSiteFaviconImage,
+  uploadPublicSiteLogoImage,
   getSecureDocument,
   uploadPublicListingMedia,
   uploadPublicDocument,
@@ -20,6 +22,8 @@ const publicListingMediaUpload = getDocumentUploadMiddleware('public', 'listing-
 const publicFinanceSupportUpload = getDocumentUploadMiddleware('public', 'finance-support');
 const publicHeroImageUpload = getDocumentUploadMiddleware('public', 'hero-image');
 const publicInspectionSectionUpload = getDocumentUploadMiddleware('public', 'inspection-section');
+const publicSiteLogoUpload = getDocumentUploadMiddleware('public', 'site-logo');
+const publicSiteFaviconUpload = getDocumentUploadMiddleware('public', 'site-favicon');
 
 router.post('/upload/secure', requireAuth, requirePortalOperator, secureUpload.single('file'), uploadSecureDocument);
 router.post('/upload/public', requireAuth, requirePortalOperator, publicUpload.single('file'), uploadPublicDocument);
@@ -44,6 +48,20 @@ router.post(
   requirePortalOperator,
   publicInspectionSectionUpload.single('file'),
   uploadPublicInspectionSectionImage
+);
+router.post(
+  '/upload/public/site-logo',
+  requireAuth,
+  requirePortalOperator,
+  publicSiteLogoUpload.single('file'),
+  uploadPublicSiteLogoImage
+);
+router.post(
+  '/upload/public/site-favicon',
+  requireAuth,
+  requirePortalOperator,
+  publicSiteFaviconUpload.single('file'),
+  uploadPublicSiteFaviconImage
 );
 router.post(
   '/upload/public/listing-media',

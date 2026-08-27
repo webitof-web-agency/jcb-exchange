@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSecureDocument = exports.uploadPublicInspectionSectionImage = exports.uploadPublicHeroImage = exports.uploadPublicFinanceSupportImage = exports.uploadPublicListingMedia = exports.uploadCustomerPrimeReceipt = exports.uploadPublicDocument = exports.uploadSecureDocument = void 0;
+exports.getSecureDocument = exports.uploadPublicSiteFaviconImage = exports.uploadPublicSiteLogoImage = exports.uploadPublicInspectionSectionImage = exports.uploadPublicHeroImage = exports.uploadPublicFinanceSupportImage = exports.uploadPublicListingMedia = exports.uploadCustomerPrimeReceipt = exports.uploadPublicDocument = exports.uploadSecureDocument = void 0;
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const prisma_1 = __importDefault(require("../lib/prisma"));
@@ -53,6 +53,14 @@ const enforceStoredFileSizePolicy = async (file, purpose = 'document') => {
         await cleanupFile(file.path);
         throw new Error('Inspection section image must be 5MB or smaller.');
     }
+    if (purpose === 'site-logo' && file.size > documentUpload_1.MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE) {
+        await cleanupFile(file.path);
+        throw new Error('Site logo image must be 2MB or smaller.');
+    }
+    if (purpose === 'site-favicon' && file.size > documentUpload_1.MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE) {
+        await cleanupFile(file.path);
+        throw new Error('Favicon image must be 512KB or smaller.');
+    }
 };
 const getSafeFileName = (fileName) => path_1.default.basename(fileName);
 const isSecureDocumentOwner = async (userId, fileUrl) => {
@@ -87,6 +95,10 @@ const buildUploadResponse = (req, file, visibility, purpose = 'document') => {
                     ? (0, documentUpload_1.getPublicHeroImageUrl)(file.filename)
                     : purpose === 'inspection-section'
                         ? (0, documentUpload_1.getPublicInspectionSectionImageUrl)(file.filename)
+                        : purpose === 'site-logo'
+                            ? (0, documentUpload_1.getPublicSiteLogoUrl)(file.filename)
+                            : purpose === 'site-favicon'
+                                ? (0, documentUpload_1.getPublicSiteFaviconUrl)(file.filename)
                         : (0, documentUpload_1.getPublicDocumentUrl)(file.filename)
         : (0, documentUpload_1.getSecureDocumentUrl)(file.filename);
     return {
@@ -206,6 +218,34 @@ const uploadPublicInspectionSectionImage = async (req, res, next) => {
     }
 };
 exports.uploadPublicInspectionSectionImage = uploadPublicInspectionSectionImage;
+const uploadPublicSiteLogoImage = async (req, res, next) => {
+    try {
+        const file = getUploadedFile(req);
+        if (!file) {
+            return res.status(400).json({ error: 'A file is required.' });
+        }
+        await enforceStoredFileSizePolicy(file, 'site-logo');
+        res.status(201).json(buildUploadResponse(req, file, 'public', 'site-logo'));
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.uploadPublicSiteLogoImage = uploadPublicSiteLogoImage;
+const uploadPublicSiteFaviconImage = async (req, res, next) => {
+    try {
+        const file = getUploadedFile(req);
+        if (!file) {
+            return res.status(400).json({ error: 'A file is required.' });
+        }
+        await enforceStoredFileSizePolicy(file, 'site-favicon');
+        res.status(201).json(buildUploadResponse(req, file, 'public', 'site-favicon'));
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.uploadPublicSiteFaviconImage = uploadPublicSiteFaviconImage;
 const getSecureDocument = async (req, res, next) => {
     try {
         if (!req.user?.id) {

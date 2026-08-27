@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRuntimeGoogleClientId = exports.updateInspectionSectionSettings = exports.updateHeroImageSettings = exports.updateFinanceSupportSettings = exports.updatePlatformRuntimeSettings = exports.updateGoogleAuthSettings = exports.getAppSettings = void 0;
+exports.getRuntimeGoogleClientId = exports.updateSiteLogoSettings = exports.updateInspectionSectionSettings = exports.updateHeroImageSettings = exports.updateFinanceSupportSettings = exports.updatePlatformRuntimeSettings = exports.updateGoogleAuthSettings = exports.getAppSettings = void 0;
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const crypto_1 = require("crypto");
@@ -16,6 +16,8 @@ const settingsFilePath = path_1.default.join(settingsDirectory, 'app-settings.js
 const legacySettingsFilePath = path_1.default.join(legacySettingsDirectory, 'app-settings.json');
 const repoRootLegacySettingsFilePath = path_1.default.join(repoRootLegacySettingsDirectory, 'app-settings.json');
 const settingsFileCandidates = Array.from(new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]));
+const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
+const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
 const defaultSettings = {
     googleAuth: {
         enabled: false,
@@ -60,6 +62,12 @@ const defaultSettings = {
         updatedAt: null,
         updatedByUserId: null,
     },
+    siteLogo: {
+        imageUrl: null,
+        faviconUrl: null,
+        updatedAt: null,
+        updatedByUserId: null,
+    },
 };
 const isMeaningfulSettings = (settings) => Boolean(settings.googleAuth.enabled ||
     settings.googleAuth.clientId ||
@@ -80,7 +88,9 @@ const isMeaningfulSettings = (settings) => Boolean(settings.googleAuth.enabled |
     settings.heroImage.headline ||
     settings.inspectionSection.title ||
     settings.inspectionSection.description ||
-    settings.inspectionSection.imageUrl);
+    settings.inspectionSection.imageUrl ||
+    settings.siteLogo.imageUrl ||
+    settings.siteLogo.faviconUrl);
 const normalizeClientId = (value) => {
     const trimmedValue = value?.trim();
     if (!trimmedValue || trimmedValue.startsWith('YOUR_')) {
@@ -123,6 +133,34 @@ const normalizeFinanceSupportItems = (items) => {
         ...item,
         displayOrder: index,
     }));
+};
+const resolveManagedBrandingFilePath = (fileUrl) => {
+    const normalizedUrl = fileUrl?.trim();
+    if (!normalizedUrl) {
+        return null;
+    }
+    if (normalizedUrl.startsWith(siteLogoPublicUrlPrefix)) {
+        return path_1.default.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+    }
+    if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
+        return path_1.default.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+    }
+    return null;
+};
+const removeManagedBrandingFile = async (fileUrl) => {
+    const absolutePath = resolveManagedBrandingFilePath(fileUrl);
+    if (!absolutePath) {
+        return;
+    }
+    try {
+        await fs_1.promises.unlink(absolutePath);
+    }
+    catch (error) {
+        const nodeError = error;
+        if (nodeError.code !== 'ENOENT') {
+            throw error;
+        }
+    }
 };
 const ensureSettingsFile = async () => {
     await fs_1.promises.mkdir(settingsDirectory, { recursive: true });
@@ -181,6 +219,12 @@ const getAppSettings = async () => {
                         imageUrl: parsed.inspectionSection?.imageUrl?.trim() || null,
                         updatedAt: parsed.inspectionSection?.updatedAt || null,
                         updatedByUserId: parsed.inspectionSection?.updatedByUserId || null,
+                    },
+                    siteLogo: {
+                        imageUrl: parsed.siteLogo?.imageUrl?.trim() || null,
+                        faviconUrl: parsed.siteLogo?.faviconUrl?.trim() || null,
+                        updatedAt: parsed.siteLogo?.updatedAt || null,
+                        updatedByUserId: parsed.siteLogo?.updatedByUserId || null,
                     },
                 };
                 return {
@@ -329,6 +373,34 @@ const updateInspectionSectionSettings = async ({ title, description, imageUrl, u
     return nextSettings;
 };
 exports.updateInspectionSectionSettings = updateInspectionSectionSettings;
+const updateSiteLogoSettings = async ({ imageUrl, faviconUrl, updatedByUserId, }) => {
+    const currentSettings = await (0, exports.getAppSettings)();
+    const normalizedImageUrl = imageUrl?.trim() || null;
+    const normalizedFaviconUrl = faviconUrl?.trim() || null;
+    const previousImageUrl = currentSettings.siteLogo.imageUrl;
+    const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
+    const nextSettings = {
+        ...currentSettings,
+        siteLogo: {
+            imageUrl: normalizedImageUrl,
+            faviconUrl: normalizedFaviconUrl,
+            updatedAt: new Date().toISOString(),
+            updatedByUserId: updatedByUserId || null,
+        },
+    };
+    await ensureSettingsFile();
+    await fs_1.promises.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+    const cleanupTargets = [];
+    if (previousImageUrl && previousImageUrl !== normalizedImageUrl) {
+        cleanupTargets.push(previousImageUrl);
+    }
+    if (previousFaviconUrl && previousFaviconUrl !== normalizedFaviconUrl) {
+        cleanupTargets.push(previousFaviconUrl);
+    }
+    await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));
+    return nextSettings;
+};
+exports.updateSiteLogoSettings = updateSiteLogoSettings;
 const getRuntimeGoogleClientId = async () => {
     const settings = await (0, exports.getAppSettings)();
     const runtimeClientId = settings.googleAuth.clientId || normalizeClientId(process.env.GOOGLE_CLIENT_ID) || null;

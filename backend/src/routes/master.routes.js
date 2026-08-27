@@ -22,6 +22,7 @@ router.get('/dealers/:id/listings', master_controller_1.getDealerListings);
 router.get('/finance-support', master_controller_1.getFinanceSupportItems);
 router.get('/hero-image', master_controller_1.getHeroImage);
 router.get('/inspection-section', master_controller_1.getInspectionSection);
+router.get('/site-logo', master_controller_1.getSiteLogo);
 router.get('/translations', translation_controller_1.getTranslationOverrides);
 router.post('/translations/register-missing', translation_controller_1.registerMissingTranslationKeys);
 router.get('/public-listings', master_controller_1.getPublicListings);

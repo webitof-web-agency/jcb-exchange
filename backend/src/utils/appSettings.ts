@@ -44,6 +44,13 @@ export type InspectionSectionSettings = {
   updatedByUserId: string | null;
 };
 
+export type SiteLogoSettings = {
+  imageUrl: string | null;
+  faviconUrl: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
 type AppSettings = {
   googleAuth: GoogleAuthSettings;
   mobileOtp: MobileOtpSettings;
@@ -59,6 +66,7 @@ type AppSettings = {
     updatedByUserId: string | null;
   };
   inspectionSection: InspectionSectionSettings;
+  siteLogo: SiteLogoSettings;
 };
 
 const settingsDirectory = path.resolve(process.cwd(), 'runtime');
@@ -70,6 +78,8 @@ const repoRootLegacySettingsFilePath = path.join(repoRootLegacySettingsDirectory
 const settingsFileCandidates = Array.from(
   new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]),
 );
+const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
+const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
 
 const defaultSettings: AppSettings = {
   googleAuth: {
@@ -115,6 +125,12 @@ const defaultSettings: AppSettings = {
     updatedAt: null,
     updatedByUserId: null,
   },
+  siteLogo: {
+    imageUrl: null,
+    faviconUrl: null,
+    updatedAt: null,
+    updatedByUserId: null,
+  },
 };
 
 const isMeaningfulSettings = (settings: AppSettings) =>
@@ -138,7 +154,9 @@ const isMeaningfulSettings = (settings: AppSettings) =>
       settings.heroImage.headline ||
       settings.inspectionSection.title ||
       settings.inspectionSection.description ||
-      settings.inspectionSection.imageUrl,
+      settings.inspectionSection.imageUrl ||
+      settings.siteLogo.imageUrl ||
+      settings.siteLogo.faviconUrl,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -192,6 +210,39 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
       ...item,
       displayOrder: index,
     }));
+};
+
+const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
+  const normalizedUrl = fileUrl?.trim();
+  if (!normalizedUrl) {
+    return null;
+  }
+
+  if (normalizedUrl.startsWith(siteLogoPublicUrlPrefix)) {
+    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+  }
+
+  if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
+    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+  }
+
+  return null;
+};
+
+const removeManagedBrandingFile = async (fileUrl?: string | null) => {
+  const absolutePath = resolveManagedBrandingFilePath(fileUrl);
+  if (!absolutePath) {
+    return;
+  }
+
+  try {
+    await fs.unlink(absolutePath);
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code !== 'ENOENT') {
+      throw error;
+    }
+  }
 };
 
 const ensureSettingsFile = async () => {
@@ -260,6 +311,12 @@ export const getAppSettings = async (): Promise<AppSettings> => {
               imageUrl: parsed.inspectionSection?.imageUrl?.trim() || null,
               updatedAt: parsed.inspectionSection?.updatedAt || null,
               updatedByUserId: parsed.inspectionSection?.updatedByUserId || null,
+            },
+            siteLogo: {
+              imageUrl: parsed.siteLogo?.imageUrl?.trim() || null,
+              faviconUrl: parsed.siteLogo?.faviconUrl?.trim() || null,
+              updatedAt: parsed.siteLogo?.updatedAt || null,
+              updatedByUserId: parsed.siteLogo?.updatedByUserId || null,
             },
           };
 
@@ -489,6 +546,48 @@ export const updateInspectionSectionSettings = async ({
 
   await ensureSettingsFile();
   await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+
+  return nextSettings;
+};
+
+export const updateSiteLogoSettings = async ({
+  imageUrl,
+  faviconUrl,
+  updatedByUserId,
+}: {
+  imageUrl?: string | null;
+  faviconUrl?: string | null;
+  updatedByUserId?: string | null;
+}) => {
+  const currentSettings = await getAppSettings();
+  const normalizedImageUrl = imageUrl?.trim() || null;
+  const normalizedFaviconUrl = faviconUrl?.trim() || null;
+
+  const previousImageUrl = currentSettings.siteLogo.imageUrl;
+  const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
+
+  const nextSettings: AppSettings = {
+    ...currentSettings,
+    siteLogo: {
+      imageUrl: normalizedImageUrl,
+      faviconUrl: normalizedFaviconUrl,
+      updatedAt: new Date().toISOString(),
+      updatedByUserId: updatedByUserId || null,
+    },
+  };
+
+  await ensureSettingsFile();
+  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+
+  const cleanupTargets: Array<string | null | undefined> = [];
+  if (previousImageUrl && previousImageUrl !== normalizedImageUrl) {
+    cleanupTargets.push(previousImageUrl);
+  }
+  if (previousFaviconUrl && previousFaviconUrl !== normalizedFaviconUrl) {
+    cleanupTargets.push(previousFaviconUrl);
+  }
+
+  await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));
 
   return nextSettings;
 };

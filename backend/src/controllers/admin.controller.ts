@@ -16,6 +16,7 @@ import {
   updateFinanceSupportSettings,
   updateHeroImageSettings,
   updateInspectionSectionSettings,
+  updateSiteLogoSettings,
 } from '../utils/appSettings';
 import { getCustomerPrimeAccessState, normalizePrimeValidityUnit } from '../utils/customerPrime';
 import {
@@ -801,6 +802,19 @@ export const getInspectionSectionContent = async (req: Request, res: Response, n
   }
 };
 
+export const getSiteLogoContent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.json({
+      imageUrl: settings.siteLogo.imageUrl,
+      faviconUrl: settings.siteLogo.faviconUrl,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateHeroImageContent = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const imageUrl = req.body?.imageUrl;
@@ -838,6 +852,26 @@ export const updateInspectionSectionContent = async (req: Request, res: Response
     res.json({
       message: 'Inspection section updated successfully.',
       ...settings.inspectionSection,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateSiteLogoContent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const imageUrl = req.body?.imageUrl;
+    const faviconUrl = req.body?.faviconUrl;
+
+    const settings = await updateSiteLogoSettings({
+      imageUrl,
+      faviconUrl,
+      updatedByUserId: req.user?.id || null,
+    });
+
+    res.json({
+      message: 'Site logo updated successfully.',
+      ...settings.siteLogo,
     });
   } catch (error) {
     next(error);

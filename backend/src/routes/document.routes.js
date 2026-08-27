@@ -11,12 +11,16 @@ const publicListingMediaUpload = (0, documentUpload_1.getDocumentUploadMiddlewar
 const publicFinanceSupportUpload = (0, documentUpload_1.getDocumentUploadMiddleware)('public', 'finance-support');
 const publicHeroImageUpload = (0, documentUpload_1.getDocumentUploadMiddleware)('public', 'hero-image');
 const publicInspectionSectionUpload = (0, documentUpload_1.getDocumentUploadMiddleware)('public', 'inspection-section');
+const publicSiteLogoUpload = (0, documentUpload_1.getDocumentUploadMiddleware)('public', 'site-logo');
+const publicSiteFaviconUpload = (0, documentUpload_1.getDocumentUploadMiddleware)('public', 'site-favicon');
 router.post('/upload/secure', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, secureUpload.single('file'), document_controller_1.uploadSecureDocument);
 router.post('/upload/public', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicUpload.single('file'), document_controller_1.uploadPublicDocument);
 router.post('/upload/public/customer-prime-receipt', auth_middleware_1.requireAuth, publicUpload.single('file'), document_controller_1.uploadCustomerPrimeReceipt);
 router.post('/upload/public/finance-support', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicFinanceSupportUpload.single('file'), document_controller_1.uploadPublicFinanceSupportImage);
 router.post('/upload/public/hero-image', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicHeroImageUpload.single('file'), document_controller_1.uploadPublicHeroImage);
 router.post('/upload/public/inspection-section', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicInspectionSectionUpload.single('file'), document_controller_1.uploadPublicInspectionSectionImage);
+router.post('/upload/public/site-logo', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicSiteLogoUpload.single('file'), document_controller_1.uploadPublicSiteLogoImage);
+router.post('/upload/public/site-favicon', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, publicSiteFaviconUpload.single('file'), document_controller_1.uploadPublicSiteFaviconImage);
 router.post('/upload/public/listing-media', auth_middleware_1.requireAuth, publicListingMediaUpload.single('file'), document_controller_1.uploadPublicListingMedia);
 router.get('/secure/:filename', auth_middleware_1.requireAuth, auth_middleware_1.requirePortalOperator, document_controller_1.getSecureDocument);
 exports.default = router;

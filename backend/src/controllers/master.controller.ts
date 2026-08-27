@@ -25,6 +25,23 @@ const buildVisibleSoldListingWhere = (now = new Date()) => {
   };
 };
 
+const getPublicListingPrice = (listing: {
+  status?: string | null;
+  price?: unknown;
+  saleRecord?: {
+    soldPrice?: unknown;
+  } | null;
+}) => {
+  const basePrice = Number(listing.price || 0);
+  const soldPrice = Number(listing.saleRecord?.soldPrice || 0);
+
+  if (String(listing.status || '').toUpperCase() === 'SOLD' && Number.isFinite(soldPrice) && soldPrice > 0) {
+    return soldPrice;
+  }
+
+  return Number.isFinite(basePrice) ? basePrice : 0;
+};
+
 const buildPublicMarketplaceFeedWhere = ({
   status,
   now = new Date(),
@@ -545,6 +562,7 @@ export const getApprovedDealers = async (req: Request, res: Response, next: Next
         },
         select: {
           id: true,
+          userId: true,
           businessName: true,
           businessLogoUrl: true,
           district: true,
@@ -607,6 +625,7 @@ export const getDealerById = async (req: Request, res: Response, next: NextFunct
         },
         select: {
           id: true,
+          userId: true,
           businessName: true,
           businessLogoUrl: true,
           district: true,
@@ -702,6 +721,7 @@ export const getDealerListings = async (req: Request, res: Response, next: NextF
             },
           },
         },
+        saleRecord: true,
       },
       orderBy: [
         {
@@ -715,7 +735,7 @@ export const getDealerListings = async (req: Request, res: Response, next: NextF
       data: listings.map((listing: any) => ({
         id: listing.id,
         title: listing.title,
-        price: Number(listing.price || 0),
+        price: getPublicListingPrice(listing),
         isNegotiable: Boolean(listing.isNegotiable),
         manufacturingYear: listing.manufacturingYear,
         operatingHours: listing.operatingHours,
@@ -725,6 +745,7 @@ export const getDealerListings = async (req: Request, res: Response, next: NextF
         grossPower: listing.grossPower,
         status: listing.status,
         createdAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
         brandName: listing.brand?.name,
         modelName: listing.model?.name,
         categoryName: listing.category?.name,
@@ -782,6 +803,22 @@ export const getInspectionSection = async (req: Request, res: Response, next: Ne
   }
 };
 
+export const getSiteLogo = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        imageUrl: settings.siteLogo.imageUrl,
+        faviconUrl: settings.siteLogo.faviconUrl,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.query;
@@ -824,12 +861,14 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
             },
             partnerProfile: {
               select: {
+                id: true,
                 businessName: true,
                 partnerType: true,
               },
             },
           },
         },
+        saleRecord: true,
       },
       orderBy: [
         {
@@ -843,7 +882,7 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
       data: listings.map((listing: any) => ({
         id: listing.id,
         title: listing.title,
-        price: Number(listing.price || 0),
+        price: getPublicListingPrice(listing),
         isNegotiable: Boolean(listing.isNegotiable),
         manufacturingYear: listing.manufacturingYear,
         operatingHours: listing.operatingHours,
@@ -869,6 +908,7 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
           null,
         mediaCount: listing.media.length,
         createdAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
       })),
     });
   } catch (error) {
@@ -921,6 +961,7 @@ export const getRecentListings = async (req: Request, res: Response, next: NextF
             },
           },
         },
+        saleRecord: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -933,7 +974,7 @@ export const getRecentListings = async (req: Request, res: Response, next: NextF
       data: listings.map((listing: any) => ({
         id: listing.id,
         title: listing.title,
-        price: Number(listing.price || 0),
+        price: getPublicListingPrice(listing),
         locationCity: listing.locationCity,
         locationState: listing.locationState,
         status: listing.status,
@@ -948,6 +989,7 @@ export const getRecentListings = async (req: Request, res: Response, next: NextF
           listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
           null,
         createdAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
       })),
     });
   } catch (error) {
@@ -1187,6 +1229,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
             },
             partnerProfile: {
               select: {
+                id: true,
                 businessName: true,
                 partnerType: true,
                 onboardingStatus: true,

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getModuleBadges = exports.submitAdminPartnerOnboarding = exports.saveAdminPartnerOnboarding = exports.getAdminPartnerOnboarding = exports.deletePartnerUser = exports.updatePartnerUser = exports.updateAdminUserStatus = exports.updateAdminListingStatus = exports.updateVerificationStatus = exports.getAdminListings = exports.getVerificationDetail = exports.getPendingVerifications = exports.createPartnerUser = exports.createManagedUser = exports.deleteManagedUser = exports.resetManagedUserPassword = exports.updateManagedUserAccount = exports.getCustomerVisitors = exports.getAdminPartners = exports.getAdminUsers = exports.updateInspectionSectionContent = exports.updateHeroImageContent = exports.getInspectionSectionContent = exports.getHeroImageContent = exports.updateFinanceSupportContent = exports.getFinanceSupportContent = exports.updateCustomerPrimePaymentStatus = exports.getCustomerPrimePayments = exports.updatePlatformSettings = exports.getPlatformSettings = exports.getDashboardSummary = void 0;
+exports.getModuleBadges = exports.submitAdminPartnerOnboarding = exports.saveAdminPartnerOnboarding = exports.getAdminPartnerOnboarding = exports.deletePartnerUser = exports.updatePartnerUser = exports.updateAdminUserStatus = exports.updateAdminListingStatus = exports.updateVerificationStatus = exports.getAdminListings = exports.getVerificationDetail = exports.getPendingVerifications = exports.createPartnerUser = exports.createManagedUser = exports.deleteManagedUser = exports.resetManagedUserPassword = exports.updateManagedUserAccount = exports.getCustomerVisitors = exports.getAdminPartners = exports.getAdminUsers = exports.updateSiteLogoContent = exports.updateInspectionSectionContent = exports.updateHeroImageContent = exports.getSiteLogoContent = exports.getInspectionSectionContent = exports.getHeroImageContent = exports.updateFinanceSupportContent = exports.getFinanceSupportContent = exports.updateCustomerPrimePaymentStatus = exports.getCustomerPrimePayments = exports.updatePlatformSettings = exports.getPlatformSettings = exports.getDashboardSummary = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const auth_controller_1 = require("./auth.controller");
@@ -648,6 +648,19 @@ const getInspectionSectionContent = async (req, res, next) => {
     }
 };
 exports.getInspectionSectionContent = getInspectionSectionContent;
+const getSiteLogoContent = async (req, res, next) => {
+    try {
+        const settings = await (0, appSettings_1.getAppSettings)();
+        res.json({
+            imageUrl: settings.siteLogo.imageUrl,
+            faviconUrl: settings.siteLogo.faviconUrl,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getSiteLogoContent = getSiteLogoContent;
 const updateHeroImageContent = async (req, res, next) => {
     try {
         const imageUrl = req.body?.imageUrl;
@@ -689,6 +702,25 @@ const updateInspectionSectionContent = async (req, res, next) => {
     }
 };
 exports.updateInspectionSectionContent = updateInspectionSectionContent;
+const updateSiteLogoContent = async (req, res, next) => {
+    try {
+        const imageUrl = req.body?.imageUrl;
+        const faviconUrl = req.body?.faviconUrl;
+        const settings = await (0, appSettings_1.updateSiteLogoSettings)({
+            imageUrl,
+            faviconUrl,
+            updatedByUserId: req.user?.id || null,
+        });
+        res.json({
+            message: 'Site logo updated successfully.',
+            ...settings.siteLogo,
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.updateSiteLogoContent = updateSiteLogoContent;
 const getAdminUsers = async (req, res, next) => {
     try {
         const users = await prisma_1.default.user.findMany({
