@@ -817,19 +817,12 @@ export default function HomepageContentSettings() {
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.siteLogoCardTitle')}</h4>
                     {logoPreviewUrl ? (
                       <div 
-                        className="relative mb-4 overflow-hidden rounded-xl shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4"
-                        style={{
-                          backgroundColor: '#ffffff',
-                          backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h12v12H0zm12 12h12v12H12z\' fill=\'%23f3f4f6\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'
-                        }}
-                      >
+                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
                         <Image
                           src={logoPreviewUrl}
-                          alt="Logo Preview"
-                          width={200}
-                          height={80}
-                          unoptimized
-                          className="object-contain max-h-full"
+                          alt="Site Logo Preview"
+                          fill
+                          className="object-contain p-2"
                         />
                       </div>
                     ) : null}
@@ -883,20 +876,14 @@ export default function HomepageContentSettings() {
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.faviconCardTitle')}</h4>
                     {faviconPreviewUrl ? (
-                      <div 
-                        className="relative mb-4 overflow-hidden rounded-xl shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4"
-                        style={{
-                          backgroundColor: '#ffffff',
-                          backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h12v12H0zm12 12h12v12H12z\' fill=\'%23f3f4f6\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'
-                        }}
-                      >
+                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
                         <Image
                           src={faviconPreviewUrl}
                           alt="Favicon Preview"
-                          width={64}
-                          height={64}
+                          width={96}
+                          height={96}
                           unoptimized
-                          className="object-contain max-h-16 max-w-16"
+                          className="object-contain max-h-24 max-w-24"
                         />
                       </div>
                     ) : null}
@@ -950,7 +937,7 @@ export default function HomepageContentSettings() {
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6">
                     <h4 className="mb-4 text-sm font-semibold text-gray-900">{t('homepageSettings.manifestIconCardTitle')}</h4>
                     {manifestIconPreviewUrl ? (
-                      <div className="relative mb-4 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4">
+                      <div className="relative mb-4 overflow-hidden rounded-xl bg-[linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa),linear-gradient(45deg,#f8f9fa_25%,transparent_25%,transparent_75%,#f8f9fa_75%,#f8f9fa)] shadow-sm ring-1 ring-gray-900/5 h-32 w-full flex items-center justify-center p-4" style={{ backgroundSize: '16px 16px', backgroundPosition: '0 0, 8px 8px' }}>
                         <Image
                           src={manifestIconPreviewUrl}
                           alt="Manifest Icon Preview"
