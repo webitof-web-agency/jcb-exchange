@@ -62,3 +62,9 @@ ehthumbs.db
 *.tsbuildinfo
 next-env.d.ts
 */next-env.d.ts
+
+# Faltu scratch files ignore karein
+/*.md
+/*.txt
+/*.csv
+!README.md
