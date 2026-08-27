@@ -9,7 +9,8 @@ export function startKeepAlive(port: string | number) {
   setInterval(() => {
     // If you have your live Render URL, you should add it to your Render Environment Variables
     // as RENDER_EXTERNAL_URL (e.g., https://jcb-exchange-xxx.onrender.com)
-    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+    const url = `${baseUrl}/health`;
     
     const client = url.startsWith('https') ? https : http;
 
