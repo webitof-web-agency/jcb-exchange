@@ -264,17 +264,15 @@ export default function Home() {
       <section className="relative w-full min-h-[500px] md:h-[600px] flex flex-col items-center justify-center pt-24 pb-16 md:py-0">
         {/* Background Image with Overlay */}
         <div className="absolute inset-0 z-0 bg-[#1C1C1C]">
-          {heroImageUrl ? (
-            <Image
-              src={getMediaUrl(heroImageUrl) || heroImageUrl}
-              alt="Heavy machinery marketplace hero banner"
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover"
-            />
-          ) : null}
-          <div className={`absolute inset-0 ${heroImageUrl ? 'bg-black/40' : 'bg-[linear-gradient(135deg,rgba(18,18,18,0.88),rgba(32,32,32,0.82))]'}`} />
+          <Image
+            src={heroImageUrl ? (getMediaUrl(heroImageUrl) || heroImageUrl) : "/images/jcbhero.png"}
+            alt="Heavy machinery marketplace hero banner"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-black/40" />
         </div>
 
         {/* Hero Content */}
