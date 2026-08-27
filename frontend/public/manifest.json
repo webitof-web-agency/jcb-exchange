@@ -1,16 +1,20 @@
 {
+  "id": "/",
   "name": "JCB Exchange",
   "short_name": "JCB Exchange",
   "description": "Buy and sell used heavy machinery",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "prefer_related_applications": false,
   "background_color": "#ffffff",
   "theme_color": "#FFC107",
   "icons": [
     {
       "src": "/icon.svg",
-      "sizes": "192x192 512x512 any",
-      "type": "image/svg+xml"
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
