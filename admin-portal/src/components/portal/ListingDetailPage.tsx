@@ -552,7 +552,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     return [...listing.media].sort((a, b) => {
       if (a.isFeatured) return -1;
       if (b.isFeatured) return 1;
-      return 0;
+      if (a.type === b.type) return 0;
+      return a.type === 'IMAGE' ? -1 : 1;
     });
   }, [listing]);
 

@@ -50,6 +50,22 @@ export type UploadedFileResult = {
   absoluteUrl: string;
 };
 
+const normalizeUploadPath = (fileUrl: string) => {
+  const trimmed = fileUrl.trim();
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.pathname.replace(/^\/api(?=\/uploads\/)/i, '');
+    } catch {
+      return trimmed;
+    }
+  }
+
+  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return normalizedPath.replace(/^\/api(?=\/uploads\/)/i, '');
+};
+
 const bytesToReadableLimit = (bytes: number) => `${Math.round(bytes / (1024 * 1024))}MB`;
 
 export const getUploadValidationError = (file: File) => {
@@ -77,7 +93,10 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   if (/^https?:\/\//i.test(fileUrl)) {
-    return fileUrl;
+    const normalizedPath = normalizeUploadPath(fileUrl);
+    if (/^https?:\/\//i.test(normalizedPath)) {
+      return normalizedPath;
+    }
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -86,7 +105,7 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   const origin = apiUrl.replace(/\/api\/?$/, '');
-  const normalizedPath = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
+  const normalizedPath = normalizeUploadPath(fileUrl);
   return `${origin}${normalizedPath}`;
 };
 
