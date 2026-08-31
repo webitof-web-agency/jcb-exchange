@@ -420,9 +420,8 @@ const createCustomerListingNotifications = async ({
     return;
   }
 
-  const notificationTitle = `New vehicle listed: ${title}`;
+  const notificationTitle = `New ${categoryName || 'vehicle'} listed: ${title}`;
   const notificationMessage = [
-    categoryName || 'Equipment',
     formatListingPriceInLakhs(price),
     [locationCity, locationState].filter(Boolean).join(', '),
   ]

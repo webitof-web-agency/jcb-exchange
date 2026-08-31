@@ -2,7 +2,7 @@
   "common": {
     "language": "భాష",
     "notifications": "నోటిఫికేషన్లు",
-    "viewAll": "అన్నీ చూడండి",
+    "viewAll": "చూడండి",
     "markAllRead": "అన్నీ చదివినవిగా మార్క్ చేయండి",
     "noNotifications": "ఇప్పుడు ఎలాంటి నోటిఫికేషన్లు లేవు.",
     "loginToViewNotifications": "నోటిఫికేషన్లు చూడడానికి customer గా login అవ్వండి.",

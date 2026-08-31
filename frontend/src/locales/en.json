@@ -2,7 +2,7 @@
   "common": {
     "language": "Language",
     "notifications": "Notifications",
-    "viewAll": "View all",
+    "viewAll": "View",
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications yet.",
     "loginToViewNotifications": "Login as customer to view notifications.",

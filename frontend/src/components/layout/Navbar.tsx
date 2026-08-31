@@ -317,8 +317,13 @@ export default function Navbar() {
                           </button>
                         ) : null}
                         <Link
-                          href="/machines"
-                          onClick={() => setIsDropdownOpen(false)}
+                          href={notifications[0]?.link || '/machines'}
+                          onClick={() => {
+                            if (notifications[0]) {
+                              void markNotificationAsRead(notifications[0].id);
+                            }
+                            setIsDropdownOpen(false);
+                          }}
                           className="text-xs font-semibold text-blue-600 hover:underline"
                         >
                           {t('common.viewAll')}
@@ -350,12 +355,17 @@ export default function Navbar() {
                             <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]">
                               <Package size={16} />
                             </div>
-                            <div className="min-w-0">
+                            <div className="flex-1 min-w-0">
                               <p className="line-clamp-1 text-xs font-bold text-gray-900">{notification.title}</p>
                               <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-600">{notification.message}</p>
-                              <p className="mt-1 text-[10px] text-gray-400">
-                                {formatDateTime(notification.createdAt, locale)}
-                              </p>
+                              <div className="mt-1 flex items-center justify-between">
+                                <p className="text-[10px] text-gray-400">
+                                  {formatDateTime(notification.createdAt, locale)}
+                                </p>
+                                <span className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5">
+                                  {t('common.viewAll')} &rarr;
+                                </span>
+                              </div>
                             </div>
                           </Link>
                         ))
