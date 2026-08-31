@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import prisma from '../lib/prisma';
 import {
   type CustomerPrimeSettings,
   normalizeCustomerPrimeSettings,
@@ -70,6 +71,9 @@ type AppSettings = {
   siteLogo: SiteLogoSettings;
 };
 
+const platformRuntimeSettingsKey = 'platform';
+const prismaAny = prisma as any;
+
 const settingsDirectory = path.resolve(process.cwd(), 'runtime');
 const legacySettingsDirectory = path.resolve(__dirname, '..', '..', 'runtime');
 const repoRootLegacySettingsDirectory = path.resolve(__dirname, '..', '..', '..', 'runtime');
@@ -135,6 +139,47 @@ const defaultSettings: AppSettings = {
     updatedByUserId: null,
   },
 };
+
+const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): AppSettings => ({
+  googleAuth: {
+    enabled: parsed?.googleAuth?.enabled === true,
+    clientId: normalizeClientId(parsed?.googleAuth?.clientId) || null,
+    updatedAt: parsed?.googleAuth?.updatedAt || null,
+    updatedByUserId: parsed?.googleAuth?.updatedByUserId || null,
+  },
+  mobileOtp: normalizeMobileOtpSettings(parsed?.mobileOtp),
+  publicLeadRouting: {
+    useSellerContact: parsed?.publicLeadRouting?.useSellerContact === true,
+    adminCallNumber: normalizePhoneNumber(parsed?.publicLeadRouting?.adminCallNumber) || null,
+    adminWhatsappNumber: normalizePhoneNumber(parsed?.publicLeadRouting?.adminWhatsappNumber) || null,
+    updatedAt: parsed?.publicLeadRouting?.updatedAt || null,
+    updatedByUserId: parsed?.publicLeadRouting?.updatedByUserId || null,
+  },
+  customerPrime: normalizeCustomerPrimeSettings(parsed?.customerPrime),
+  financeSupport: {
+    items: normalizeFinanceSupportItems(parsed?.financeSupport?.items),
+  },
+  heroImage: {
+    imageUrl: parsed?.heroImage?.imageUrl?.trim() || null,
+    headline: parsed?.heroImage?.headline?.trim() || null,
+    updatedAt: parsed?.heroImage?.updatedAt || null,
+    updatedByUserId: parsed?.heroImage?.updatedByUserId || null,
+  },
+  inspectionSection: {
+    title: parsed?.inspectionSection?.title?.trim() || null,
+    description: parsed?.inspectionSection?.description?.trim() || null,
+    imageUrl: parsed?.inspectionSection?.imageUrl?.trim() || null,
+    updatedAt: parsed?.inspectionSection?.updatedAt || null,
+    updatedByUserId: parsed?.inspectionSection?.updatedByUserId || null,
+  },
+  siteLogo: {
+    imageUrl: parsed?.siteLogo?.imageUrl?.trim() || null,
+    faviconUrl: parsed?.siteLogo?.faviconUrl?.trim() || null,
+    manifestIconUrl: parsed?.siteLogo?.manifestIconUrl?.trim() || null,
+    updatedAt: parsed?.siteLogo?.updatedAt || null,
+    updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
+  },
+});
 
 const isMeaningfulSettings = (settings: AppSettings) =>
   Boolean(
@@ -278,78 +323,100 @@ const ensureSettingsFile = async () => {
   await fs.writeFile(settingsFilePath, JSON.stringify(defaultSettings, null, 2), 'utf8');
 };
 
+const writeSettingsFileSnapshot = async (settings: AppSettings) => {
+  await ensureSettingsFile();
+  await fs.writeFile(settingsFilePath, JSON.stringify(settings, null, 2), 'utf8');
+};
+
+const readDatabaseSettings = async (): Promise<AppSettings | null> => {
+  try {
+    const record = await prismaAny.platformRuntimeSettings.findUnique({
+      where: { key: platformRuntimeSettingsKey },
+      select: { payload: true },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    return normalizeAppSettingsSnapshot(record.payload as Partial<AppSettings>);
+  } catch {
+    return null;
+  }
+};
+
+const persistDatabaseSettings = async (settings: AppSettings) => {
+  try {
+    await prismaAny.platformRuntimeSettings.upsert({
+      where: { key: platformRuntimeSettingsKey },
+      update: {
+        payload: settings,
+      },
+      create: {
+        key: platformRuntimeSettingsKey,
+        payload: settings,
+      },
+    });
+  } catch {
+    // File fallback remains available when the database record cannot be written.
+  }
+};
+
+const readFileSettings = async (): Promise<AppSettings> => {
+  const candidateSnapshots = await Promise.all(
+    settingsFileCandidates.map(async (candidatePath) => {
+      try {
+        const content = await fs.readFile(candidatePath, 'utf8');
+        const parsed = JSON.parse(content) as Partial<AppSettings>;
+        const snapshot = normalizeAppSettingsSnapshot(parsed);
+
+        return {
+          candidatePath,
+          snapshot,
+          meaningful: isMeaningfulSettings(snapshot),
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const preferredSnapshot =
+    candidateSnapshots.find((entry) => entry?.meaningful)?.snapshot ||
+    candidateSnapshots.find((entry) => entry?.snapshot)?.snapshot ||
+    defaultSettings;
+
+  if (!candidateSnapshots.some((entry) => entry?.candidatePath === settingsFilePath && entry.snapshot)) {
+    await writeSettingsFileSnapshot(preferredSnapshot);
+  }
+
+  return preferredSnapshot;
+};
+
+const persistSettings = async (settings: AppSettings) => {
+  await Promise.all([
+    persistDatabaseSettings(settings),
+    writeSettingsFileSnapshot(settings),
+  ]);
+};
+
 export const getAppSettings = async (): Promise<AppSettings> => {
   await ensureSettingsFile();
 
   try {
-    const candidateSnapshots = await Promise.all(
-      settingsFileCandidates.map(async (candidatePath) => {
-        try {
-          const content = await fs.readFile(candidatePath, 'utf8');
-          const parsed = JSON.parse(content) as Partial<AppSettings>;
-
-          const snapshot: AppSettings = {
-            googleAuth: {
-              enabled: parsed.googleAuth?.enabled === true,
-              clientId: normalizeClientId(parsed.googleAuth?.clientId) || null,
-              updatedAt: parsed.googleAuth?.updatedAt || null,
-              updatedByUserId: parsed.googleAuth?.updatedByUserId || null,
-            },
-            mobileOtp: normalizeMobileOtpSettings(parsed.mobileOtp),
-            publicLeadRouting: {
-              useSellerContact: parsed.publicLeadRouting?.useSellerContact === true,
-              adminCallNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminCallNumber) || null,
-              adminWhatsappNumber: normalizePhoneNumber(parsed.publicLeadRouting?.adminWhatsappNumber) || null,
-              updatedAt: parsed.publicLeadRouting?.updatedAt || null,
-              updatedByUserId: parsed.publicLeadRouting?.updatedByUserId || null,
-            },
-            customerPrime: normalizeCustomerPrimeSettings(parsed.customerPrime),
-            financeSupport: {
-              items: normalizeFinanceSupportItems(parsed.financeSupport?.items),
-            },
-            heroImage: {
-              imageUrl: parsed.heroImage?.imageUrl?.trim() || null,
-              headline: parsed.heroImage?.headline?.trim() || null,
-              updatedAt: parsed.heroImage?.updatedAt || null,
-              updatedByUserId: parsed.heroImage?.updatedByUserId || null,
-            },
-            inspectionSection: {
-              title: parsed.inspectionSection?.title?.trim() || null,
-              description: parsed.inspectionSection?.description?.trim() || null,
-              imageUrl: parsed.inspectionSection?.imageUrl?.trim() || null,
-              updatedAt: parsed.inspectionSection?.updatedAt || null,
-              updatedByUserId: parsed.inspectionSection?.updatedByUserId || null,
-            },
-            siteLogo: {
-              imageUrl: parsed.siteLogo?.imageUrl?.trim() || null,
-              faviconUrl: parsed.siteLogo?.faviconUrl?.trim() || null,
-              manifestIconUrl: parsed.siteLogo?.manifestIconUrl?.trim() || null,
-              updatedAt: parsed.siteLogo?.updatedAt || null,
-              updatedByUserId: parsed.siteLogo?.updatedByUserId || null,
-            },
-          };
-
-          return {
-            candidatePath,
-            snapshot,
-            meaningful: isMeaningfulSettings(snapshot),
-          };
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    const preferredSnapshot =
-      candidateSnapshots.find((entry) => entry?.meaningful)?.snapshot ||
-      candidateSnapshots.find((entry) => entry?.snapshot)?.snapshot ||
-      defaultSettings;
-
-    if (!candidateSnapshots.some((entry) => entry?.candidatePath === settingsFilePath && entry.snapshot)) {
-      await fs.writeFile(settingsFilePath, JSON.stringify(preferredSnapshot, null, 2), 'utf8');
+    const databaseSettings = await readDatabaseSettings();
+    if (databaseSettings && isMeaningfulSettings(databaseSettings)) {
+      await writeSettingsFileSnapshot(databaseSettings);
+      return databaseSettings;
     }
 
-    return preferredSnapshot;
+    const fileSettings = await readFileSettings();
+
+    if (isMeaningfulSettings(fileSettings)) {
+      await persistDatabaseSettings(fileSettings);
+    }
+
+    return databaseSettings || fileSettings;
   } catch {
     return defaultSettings;
   }
@@ -376,8 +443,7 @@ export const updateGoogleAuthSettings = async ({
     },
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };
@@ -469,8 +535,7 @@ export const updatePlatformRuntimeSettings = async ({
       : currentSettings.customerPrime,
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };
@@ -496,8 +561,7 @@ export const updateFinanceSupportSettings = async ({
     },
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };
@@ -523,8 +587,7 @@ export const updateHeroImageSettings = async ({
     },
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };
@@ -553,8 +616,7 @@ export const updateInspectionSectionSettings = async ({
     },
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };
@@ -590,8 +652,7 @@ export const updateSiteLogoSettings = async ({
     },
   };
 
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(nextSettings, null, 2), 'utf8');
+  await persistSettings(nextSettings);
 
   const cleanupTargets: Array<string | null | undefined> = [];
   if (previousImageUrl && previousImageUrl !== normalizedImageUrl) {

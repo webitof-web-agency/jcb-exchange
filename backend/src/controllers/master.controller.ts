@@ -93,6 +93,56 @@ const normalizePhoneNumber = (value?: string | null) => {
   return normalizedDigits;
 };
 
+const shortDealerSuffixRegex = /([0-9a-f]{8}-[0-9a-f]{4})$/i;
+
+const getShortDealerSuffix = (value?: string | null) => {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return normalizedValue.match(shortDealerSuffixRegex)?.[1]?.toLowerCase() || null;
+};
+
+const buildDealerProfileWhere = (rawDealerParam: string) => {
+  const normalizedParam = String(rawDealerParam || '').trim();
+  const shortSuffix = getShortDealerSuffix(normalizedParam);
+
+  return {
+    OR: [
+      { id: normalizedParam },
+      { userId: normalizedParam },
+      ...(shortSuffix
+        ? [
+            { id: { startsWith: shortSuffix } },
+            { userId: { startsWith: shortSuffix } },
+          ]
+        : []),
+    ],
+    accountStatus: 'ACTIVE',
+    onboardingStatus: 'APPROVED',
+    kycStatus: 'APPROVED',
+  };
+};
+
+const buildDealerListingPartnerWhere = (rawDealerParam: string) => {
+  const normalizedParam = String(rawDealerParam || '').trim();
+  const shortSuffix = getShortDealerSuffix(normalizedParam);
+
+  return {
+    OR: [
+      { partnerProfile: { id: normalizedParam } },
+      { id: normalizedParam },
+      ...(shortSuffix
+        ? [
+            { id: { startsWith: shortSuffix } },
+            { partnerProfile: { id: { startsWith: shortSuffix } } },
+          ]
+        : []),
+    ],
+  };
+};
+
 const resolvePublicLeadContact = ({
   useSellerContact,
   adminCallNumber,
@@ -609,20 +659,12 @@ export const getApprovedDealers = async (req: Request, res: Response, next: Next
 
 export const getDealerById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || '');
     const [settings, defaultSuperAdminContact, dealer] = await Promise.all([
       getAppSettings(),
       getDefaultSuperAdminContact(),
       prismaAny.partnerProfile.findFirst({
-        where: {
-          OR: [
-            { id },
-            { userId: id },
-          ],
-          accountStatus: 'ACTIVE',
-          onboardingStatus: 'APPROVED',
-          kycStatus: 'APPROVED',
-        },
+        where: buildDealerProfileWhere(id),
         select: {
           id: true,
           userId: true,
@@ -673,16 +715,11 @@ export const getDealerById = async (req: Request, res: Response, next: NextFunct
 
 export const getDealerListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || '');
     const listings = await prismaAny.listing.findMany({
       where: {
         ...buildPublicMarketplaceFeedWhere({}),
-        partner: {
-          OR: [
-            { partnerProfile: { id } },
-            { id: id },
-          ],
-        },
+        partner: buildDealerListingPartnerWhere(id),
       },
       include: {
         media: {

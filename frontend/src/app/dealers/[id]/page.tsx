@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { resolvePublicDealerId } from '@/lib/publicRouteResolvers';
 import { generateDealerSlugPath } from '@/lib/seoUtils';
 import DealerDetailPageClient from './DealerDetailPageClient';
 import { getAbsoluteDealerAssetUrl, getDealerDetail, getDealerListings } from './data';
@@ -13,8 +12,7 @@ export async function generateMetadata({
   params,
 }: DealerDetailPageProps): Promise<Metadata> {
   const { id: rawDealerId } = await params;
-  const id = (await resolvePublicDealerId(rawDealerId)) || rawDealerId;
-  const dealer = await getDealerDetail(id);
+  const dealer = await getDealerDetail(rawDealerId);
 
   if (!dealer) {
     return {
@@ -63,9 +61,9 @@ export async function generateMetadata({
 
 export default async function DealerDetailPage({ params }: DealerDetailPageProps) {
   const { id: rawDealerId } = await params;
-  const id = (await resolvePublicDealerId(rawDealerId)) || rawDealerId;
-  const dealer = await getDealerDetail(id);
-  const listings = dealer ? await getDealerListings(id) : [];
+  const dealer = await getDealerDetail(rawDealerId);
+  const dealerLookupId = dealer?.userId || dealer?.id || rawDealerId;
+  const listings = dealer ? await getDealerListings(dealerLookupId) : [];
 
   if (dealer) {
     const canonicalPath = generateDealerSlugPath(dealer);
@@ -76,7 +74,7 @@ export default async function DealerDetailPage({ params }: DealerDetailPageProps
 
   const canonicalUrl = dealer
     ? `https://jcbexchange.com${generateDealerSlugPath(dealer)}`
-    : `https://jcbexchange.com/dealers/${id}`;
+    : `https://jcbexchange.com/dealers/${rawDealerId}`;
   const logoUrl = getAbsoluteDealerAssetUrl(dealer?.businessLogoUrl);
   const localBusinessSchema = dealer
     ? {
@@ -113,7 +111,7 @@ export default async function DealerDetailPage({ params }: DealerDetailPageProps
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
         />
       ) : null}
-      <DealerDetailPageClient dealerId={id} initialDealer={dealer} initialListings={listings} />
+      <DealerDetailPageClient dealerId={dealerLookupId} initialDealer={dealer} initialListings={listings} />
     </>
   );
 }

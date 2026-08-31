@@ -62,7 +62,7 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
     }
 
     const data = (await response.json()) as PublicListingsResponse;
-    return findUniqueDealerIdByPrefix(data.data || [], parsed.shortSuffix);
+    return findUniqueIdByPrefix(data.data || [], parsed.shortSuffix);
   } catch {
     return null;
   }
@@ -89,7 +89,7 @@ export const resolvePublicDealerId = async (rawParam: string): Promise<string | 
     }
 
     const data = (await response.json()) as DealersResponse;
-    return findUniqueIdByPrefix(data.data || [], parsed.shortSuffix);
+    return findUniqueDealerIdByPrefix(data.data || [], parsed.shortSuffix);
   } catch {
     return null;
   }

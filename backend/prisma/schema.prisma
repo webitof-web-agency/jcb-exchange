@@ -646,6 +646,15 @@ model TranslationKeyRegistry {
   @@map("translation_key_registry")
 }
 
+model PlatformRuntimeSettings {
+  key       String   @id
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_runtime_settings")
+}
+
 model Country {
   id              Int     @id
   name            String
