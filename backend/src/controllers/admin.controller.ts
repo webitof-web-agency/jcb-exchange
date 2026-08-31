@@ -2100,9 +2100,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
           },
         },
       }),
-      (prisma as any).customerPrimeSubscription.count({
-        where: { status: 'PENDING' },
-      }),
+      (prisma as any).customerPrimeSubscription.count(),
       (prisma as any).listing.count({
         where: {
           status: {

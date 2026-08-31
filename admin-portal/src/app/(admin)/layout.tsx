@@ -103,6 +103,7 @@ export default function AdminLayout({
     listingsPendingApproval: number;
     clearedEnquiries: number;
     clearedVisitors: number;
+    clearedRecurrence: number;
   }>({
     enquiries: 0,
     verifications: 0,
@@ -111,6 +112,7 @@ export default function AdminLayout({
     listingsPendingApproval: 0,
     clearedEnquiries: 0,
     clearedVisitors: 0,
+    clearedRecurrence: 0,
   });
   const hasCompletedInitialSessionCheck = useRef(false);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -288,9 +290,11 @@ export default function AdminLayout({
           const backendBadges = response.data.badges;
           const backendEnquiries = backendBadges.enquiries || 0;
           const backendVisitors = backendBadges.visitors || 0;
+          const backendRecurrence = backendBadges.recurrence || 0;
           
           let currentClearedEnquiries = parseInt(localStorage.getItem(`cleared_enquiries_${user?.id}`) || '0');
           let currentClearedVisitors = parseInt(localStorage.getItem(`cleared_visitors_${user?.id}`) || '0');
+          let currentClearedRecurrence = parseInt(localStorage.getItem(`cleared_recurrence_${user?.id}`) || '0');
 
           if (backendEnquiries < currentClearedEnquiries) {
             currentClearedEnquiries = backendEnquiries;
@@ -300,6 +304,11 @@ export default function AdminLayout({
           if (backendVisitors < currentClearedVisitors) {
             currentClearedVisitors = backendVisitors;
             localStorage.setItem(`cleared_visitors_${user?.id}`, currentClearedVisitors.toString());
+          }
+
+          if (backendRecurrence < currentClearedRecurrence) {
+            currentClearedRecurrence = backendRecurrence;
+            localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
           }
 
           if ((pathname.startsWith('/superadmin/enquiries') || pathname.startsWith('/employee/enquiries')) && backendEnquiries > currentClearedEnquiries) {
@@ -312,14 +321,20 @@ export default function AdminLayout({
             localStorage.setItem(`cleared_visitors_${user?.id}`, currentClearedVisitors.toString());
           }
 
+          if ((pathname.startsWith('/superadmin/recurrence') || pathname.startsWith('/employee/recurrence')) && backendRecurrence > currentClearedRecurrence) {
+            currentClearedRecurrence = backendRecurrence;
+            localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
+          }
+
           setBadges({
             enquiries: backendBadges.enquiries || 0,
             verifications: backendBadges.verifications || 0,
             visitors: backendVisitors,
-            recurrence: backendBadges.recurrence || 0,
+            recurrence: backendRecurrence,
             listingsPendingApproval: backendBadges.listingsPendingApproval || 0,
             clearedEnquiries: currentClearedEnquiries,
             clearedVisitors: currentClearedVisitors,
+            clearedRecurrence: currentClearedRecurrence,
           });
         }
       } catch {
@@ -486,7 +501,7 @@ export default function AdminLayout({
             else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
             else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
             else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
-            else if (item.href.includes('recurrence')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.recurrence;
+            else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
 
             return (
               <Link
