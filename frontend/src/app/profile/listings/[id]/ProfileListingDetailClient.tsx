@@ -410,22 +410,25 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
               </div>
 
               {images.length > 1 ? (
-                <div className="grid grid-cols-3 gap-3 border-t border-gray-100 p-3 sm:grid-cols-5 sm:p-4">
+                <div 
+                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
                   {images.map((image, index) => (
                     <button
                       key={image.id}
                       type="button"
                       onClick={() => setActiveImageIndex(index)}
-                      className={`relative aspect-[4/3] overflow-hidden rounded-2xl border-2 transition ${
+                      className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-2xl border-2 transition snap-center ${
                         activeImageIndex === index ? 'border-[#FFC107]' : 'border-transparent hover:border-gray-200'
                       }`}
                     >
-                      <SafeListingImage
-                        key={image.url}
-                        sources={[image.url]}
+                      <Image
+                        src={getAbsoluteMediaUrl(image.url)}
                         alt={`${listing.title} ${index + 1}`}
+                        fill
+                        unoptimized
                         className="object-cover"
-                        iconClassName="h-8 w-8"
                       />
                     </button>
                   ))}
