@@ -50,6 +50,8 @@ export type SiteLogoSettings = {
   imageUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
+  pwaBackgroundColor: string | null;
+  pwaThemeColor: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
@@ -151,6 +153,8 @@ const defaultSettings: AppSettings = {
     imageUrl: null,
     faviconUrl: null,
     manifestIconUrl: null,
+    pwaBackgroundColor: '#121212',
+    pwaThemeColor: '#ffbf00',
     updatedAt: null,
     updatedByUserId: null,
   },
@@ -192,6 +196,8 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     imageUrl: parsed?.siteLogo?.imageUrl?.trim() || null,
     faviconUrl: parsed?.siteLogo?.faviconUrl?.trim() || null,
     manifestIconUrl: parsed?.siteLogo?.manifestIconUrl?.trim() || null,
+    pwaBackgroundColor: parsed?.siteLogo?.pwaBackgroundColor?.trim() || '#121212',
+    pwaThemeColor: parsed?.siteLogo?.pwaThemeColor?.trim() || '#ffbf00',
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
@@ -641,17 +647,23 @@ export const updateSiteLogoSettings = async ({
   imageUrl,
   faviconUrl,
   manifestIconUrl,
+  pwaBackgroundColor,
+  pwaThemeColor,
   updatedByUserId,
 }: {
   imageUrl?: string | null;
   faviconUrl?: string | null;
   manifestIconUrl?: string | null;
+  pwaBackgroundColor?: string | null;
+  pwaThemeColor?: string | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
   const normalizedImageUrl = imageUrl?.trim() || null;
   const normalizedFaviconUrl = faviconUrl?.trim() || null;
   const normalizedManifestIconUrl = manifestIconUrl?.trim() || null;
+  const normalizedPwaBackgroundColor = pwaBackgroundColor?.trim() || '#121212';
+  const normalizedPwaThemeColor = pwaThemeColor?.trim() || '#ffbf00';
 
   const previousImageUrl = currentSettings.siteLogo.imageUrl;
   const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
@@ -663,6 +675,8 @@ export const updateSiteLogoSettings = async ({
       imageUrl: normalizedImageUrl,
       faviconUrl: normalizedFaviconUrl,
       manifestIconUrl: normalizedManifestIconUrl,
+      pwaBackgroundColor: normalizedPwaBackgroundColor,
+      pwaThemeColor: normalizedPwaThemeColor,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },

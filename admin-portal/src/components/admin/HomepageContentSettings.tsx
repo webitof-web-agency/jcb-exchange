@@ -48,6 +48,8 @@ type SiteLogoResponse = {
   imageUrl?: string | null;
   faviconUrl?: string | null;
   manifestIconUrl?: string | null;
+  pwaBackgroundColor?: string | null;
+  pwaThemeColor?: string | null;
 };
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
@@ -73,6 +75,8 @@ export default function HomepageContentSettings() {
   const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
   const [manifestIconUrl, setManifestIconUrl] = useState<string | null>(null);
   const [manifestIconPreviewUrl, setManifestIconPreviewUrl] = useState<string | null>(null);
+  const [pwaBackgroundColor, setPwaBackgroundColor] = useState<string>('#121212');
+  const [pwaThemeColor, setPwaThemeColor] = useState<string>('#ffbf00');
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
   const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState<string | null>(null);
   const [heroHeadline, setHeroHeadline] = useState('');
@@ -144,6 +148,8 @@ export default function HomepageContentSettings() {
           setFaviconPreviewUrl(getAbsoluteFileUrl(siteLogoResult.value.data.faviconUrl || null));
           setManifestIconUrl(siteLogoResult.value.data.manifestIconUrl || null);
           setManifestIconPreviewUrl(getAbsoluteFileUrl(siteLogoResult.value.data.manifestIconUrl || null));
+          setPwaBackgroundColor(siteLogoResult.value.data.pwaBackgroundColor || '#121212');
+          setPwaThemeColor(siteLogoResult.value.data.pwaThemeColor || '#ffbf00');
         } else {
           setLogoUrl(null);
           setLogoPreviewUrl(null);
@@ -151,6 +157,8 @@ export default function HomepageContentSettings() {
           setFaviconPreviewUrl(null);
           setManifestIconUrl(null);
           setManifestIconPreviewUrl(null);
+          setPwaBackgroundColor('#121212');
+          setPwaThemeColor('#ffbf00');
         }
 
         if (financeResult.status === 'rejected' && heroResult.status === 'rejected' && inspectionResult.status === 'rejected' && siteLogoResult.status === 'rejected') {
@@ -320,6 +328,8 @@ export default function HomepageContentSettings() {
     nextFaviconPreviewUrl = faviconPreviewUrl,
     nextManifestIconUrl = manifestIconUrl,
     nextManifestIconPreviewUrl = manifestIconPreviewUrl,
+    nextPwaBackgroundColor = pwaBackgroundColor,
+    nextPwaThemeColor = pwaThemeColor,
     successMessage,
   }: {
     nextLogoUrl?: string | null;
@@ -328,6 +338,8 @@ export default function HomepageContentSettings() {
     nextFaviconPreviewUrl?: string | null;
     nextManifestIconUrl?: string | null;
     nextManifestIconPreviewUrl?: string | null;
+    nextPwaBackgroundColor?: string;
+    nextPwaThemeColor?: string;
     successMessage?: string;
   } = {}) => {
     const response = await api.put<{
@@ -335,10 +347,14 @@ export default function HomepageContentSettings() {
       imageUrl: string | null;
       faviconUrl: string | null;
       manifestIconUrl: string | null;
+      pwaBackgroundColor: string | null;
+      pwaThemeColor: string | null;
     }>('/superadmin/site-logo', {
       imageUrl: nextLogoUrl,
       faviconUrl: nextFaviconUrl,
       manifestIconUrl: nextManifestIconUrl,
+      pwaBackgroundColor: nextPwaBackgroundColor,
+      pwaThemeColor: nextPwaThemeColor,
     });
 
     setLogoUrl(response.data.imageUrl);
@@ -347,6 +363,8 @@ export default function HomepageContentSettings() {
     setFaviconPreviewUrl(nextFaviconPreviewUrl ?? getAbsoluteFileUrl(response.data.faviconUrl));
     setManifestIconUrl(response.data.manifestIconUrl);
     setManifestIconPreviewUrl(nextManifestIconPreviewUrl ?? getAbsoluteFileUrl(response.data.manifestIconUrl));
+    setPwaBackgroundColor(response.data.pwaBackgroundColor || '#121212');
+    setPwaThemeColor(response.data.pwaThemeColor || '#ffbf00');
     toast.success(successMessage || response.data.message);
   };
 
@@ -618,17 +636,15 @@ export default function HomepageContentSettings() {
                     {t('homepageSettings.addBrand')}
                   </button>
                 ) : null}
-                {activeTab !== 'site-logo' ? (
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={saving || loading}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Save className="h-4 w-4" />
-                    {saving ? t('homepageSettings.saving') : t('homepageSettings.saveChanges')}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || loading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? t('homepageSettings.saving') : t('homepageSettings.saveChanges')}
+                </button>
               </div>
             </div>
 
@@ -1002,6 +1018,51 @@ export default function HomepageContentSettings() {
                         {t('homepageSettings.removeImage')}
                       </button>
                     ) : null}
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-6 space-y-6">
+                    <h4 className="text-sm font-semibold text-gray-900">PWA Colors Settings</h4>
+                    <p className="text-xs text-gray-500">
+                      These colors are dynamically loaded in the PWA manifest. Background Color sets the loading splash screen color, and Theme Color sets the browser bar styling.
+                    </p>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-gray-700">PWA Background Color (Splash Screen)</label>
+                        <div className="flex gap-3">
+                          <input
+                            type="color"
+                            value={pwaBackgroundColor}
+                            onChange={(e) => setPwaBackgroundColor(e.target.value)}
+                            className="h-10 w-20 cursor-pointer rounded-lg border border-gray-300 bg-white p-1"
+                          />
+                          <input
+                            type="text"
+                            value={pwaBackgroundColor}
+                            onChange={(e) => setPwaBackgroundColor(e.target.value)}
+                            className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 focus:border-[#FFC107] focus:outline-none"
+                            placeholder="#121212"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-gray-700">PWA Theme Color</label>
+                        <div className="flex gap-3">
+                          <input
+                            type="color"
+                            value={pwaThemeColor}
+                            onChange={(e) => setPwaThemeColor(e.target.value)}
+                            className="h-10 w-20 cursor-pointer rounded-lg border border-gray-300 bg-white p-1"
+                          />
+                          <input
+                            type="text"
+                            value={pwaThemeColor}
+                            onChange={(e) => setPwaThemeColor(e.target.value)}
+                            className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 focus:border-[#FFC107] focus:outline-none"
+                            placeholder="#ffbf00"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

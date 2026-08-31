@@ -864,11 +864,15 @@ export const updateSiteLogoContent = async (req: Request, res: Response, next: N
     const imageUrl = req.body?.imageUrl;
     const faviconUrl = req.body?.faviconUrl;
     const manifestIconUrl = req.body?.manifestIconUrl;
+    const pwaBackgroundColor = req.body?.pwaBackgroundColor;
+    const pwaThemeColor = req.body?.pwaThemeColor;
 
     const settings = await updateSiteLogoSettings({
       imageUrl,
       faviconUrl,
       manifestIconUrl,
+      pwaBackgroundColor,
+      pwaThemeColor,
       updatedByUserId: req.user?.id || null,
     });
 

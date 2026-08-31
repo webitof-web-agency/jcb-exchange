@@ -2,6 +2,8 @@ export type SiteBranding = {
   logoUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
+  pwaBackgroundColor: string | null;
+  pwaThemeColor: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
@@ -33,6 +35,8 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
         imageUrl?: string | null;
         faviconUrl?: string | null;
         manifestIconUrl?: string | null;
+        pwaBackgroundColor?: string | null;
+        pwaThemeColor?: string | null;
       };
     };
 
@@ -40,12 +44,16 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
       logoUrl: toAbsoluteUrl(payload.data?.imageUrl),
       faviconUrl: toAbsoluteUrl(payload.data?.faviconUrl),
       manifestIconUrl: toAbsoluteUrl(payload.data?.manifestIconUrl),
+      pwaBackgroundColor: payload.data?.pwaBackgroundColor || null,
+      pwaThemeColor: payload.data?.pwaThemeColor || null,
     };
   } catch {
     return {
       logoUrl: null,
       faviconUrl: null,
       manifestIconUrl: null,
+      pwaBackgroundColor: null,
+      pwaThemeColor: null,
     };
   }
 };

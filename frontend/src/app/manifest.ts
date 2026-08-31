@@ -37,8 +37,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: '/',
     display: 'standalone',
     prefer_related_applications: false,
-    background_color: '#121212',
-    theme_color: '#ffbf00',
+    background_color: branding.pwaBackgroundColor || '#121212',
+    theme_color: branding.pwaThemeColor || '#ffbf00',
     icons,
   };
 }
