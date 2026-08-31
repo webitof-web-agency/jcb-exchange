@@ -1078,6 +1078,7 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
         count: number;
         featuredImage: string | null;
         icon: { id: string; name: string; svgData: string } | null;
+        latestListingCreatedAt: number;
       }
     >();
 
@@ -1102,6 +1103,7 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
           name: listing.category.name,
           count: 1,
           featuredImage,
+          latestListingCreatedAt: new Date(listing.createdAt).getTime(),
           icon: listing.category.icon
             ? {
                 id: listing.category.icon.id,
@@ -1114,10 +1116,18 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
       }
 
       existing.count += 1;
+      existing.latestListingCreatedAt = Math.max(
+        existing.latestListingCreatedAt,
+        new Date(listing.createdAt).getTime(),
+      );
     }
 
     const data = Array.from(categoryMap.values())
       .sort((left, right) => {
+        if (right.latestListingCreatedAt !== left.latestListingCreatedAt) {
+          return right.latestListingCreatedAt - left.latestListingCreatedAt;
+        }
+
         if (right.count !== left.count) {
           return right.count - left.count;
         }
@@ -1140,9 +1150,6 @@ export const getPublicSearchFilters = async (req: Request, res: Response, next: 
     const listings = await prismaAny.listing.findMany({
       where: {
         ...buildPublicMarketplaceFeedWhere({}),
-        category: {
-          partnerProfileId: null,
-        },
       },
       select: {
         locationCity: true,
