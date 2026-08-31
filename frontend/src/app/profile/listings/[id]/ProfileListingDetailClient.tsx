@@ -24,7 +24,7 @@ import {
   UserRound,
   Wrench,
 } from 'lucide-react';
-import api, { API_ORIGIN } from '@/lib/api';
+import api, { getAbsoluteMediaUrl } from '@/lib/api';
 import { resolveOwnedListingId } from '@/lib/privateRouteResolvers';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { generateProfileListingDetailPath } from '@/lib/privateRoutePaths';
@@ -193,12 +193,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
   return parsed;
 };
 
-const getAbsoluteMediaUrl = (url?: string | null) => {
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
-};
-
 const formatCurrency = (amount?: string | number | null) => {
   const numericAmount = typeof amount === 'number' ? amount : Number(amount);
   if (!Number.isFinite(numericAmount)) {
@@ -281,7 +275,8 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
         const nextListing = response.data.listing || null;
         setListing(nextListing);
 
-        const featuredIndex = nextListing?.media?.findIndex((item) => item.isFeatured && item.type === 'IMAGE') ?? -1;
+        const imageMedia = nextListing?.media?.filter((item) => item.type === 'IMAGE') || [];
+        const featuredIndex = imageMedia.findIndex((item) => item.isFeatured);
         setActiveImageIndex(featuredIndex >= 0 ? featuredIndex : 0);
       } catch (fetchError) {
         console.error('Failed to load owned listing detail', fetchError);
@@ -318,7 +313,8 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
   const overviewText = useMemo(() => getOverviewText(parsedDetails), [parsedDetails]);
   const images = useMemo(() => listing?.media?.filter((item) => item.type === 'IMAGE') || [], [listing?.media]);
   const videos = useMemo(() => listing?.media?.filter((item) => item.type === 'VIDEO') || [], [listing?.media]);
-  const mainImage = images[activeImageIndex]?.url || images[0]?.url || null;
+  const imageSources = useMemo(() => images.map((item) => item.url).filter(Boolean), [images]);
+  const mainImage = images[activeImageIndex]?.url || imageSources[0] || null;
   const locationLabel = getLocationLabel(listing) || t('machineDetails.locationNotAvailable');
   const soldDateLabel = formatDate(listing?.saleRecord?.soldAt) || t('profile.notSpecified');
   const createdAtLabel = formatDate(listing?.createdAt) || t('profile.notSpecified');
@@ -404,19 +400,13 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
           <div className="min-w-0 space-y-6">
             <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
               <div className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10]">
-                {mainImage ? (
-                  <Image
-                    src={getAbsoluteMediaUrl(mainImage)}
-                    alt={listing.title}
-                    fill
-                    unoptimized
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ImageIcon className="h-16 w-16" />
-                  </div>
-                )}
+                    <SafeListingImage
+                      key={[mainImage, ...imageSources].join('|') || listing.id}
+                      sources={mainImage ? [mainImage, ...imageSources.filter((source) => source !== mainImage)] : imageSources}
+                      alt={listing.title}
+                      className="object-cover"
+                      iconClassName="h-16 w-16"
+                    />
               </div>
 
               {images.length > 1 ? (
@@ -430,12 +420,12 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                         activeImageIndex === index ? 'border-[#FFC107]' : 'border-transparent hover:border-gray-200'
                       }`}
                     >
-                      <Image
-                        src={getAbsoluteMediaUrl(image.url)}
+                      <SafeListingImage
+                        key={image.url}
+                        sources={[image.url]}
                         alt={`${listing.title} ${index + 1}`}
-                        fill
-                        unoptimized
                         className="object-cover"
+                        iconClassName="h-8 w-8"
                       />
                     </button>
                   ))}
@@ -562,7 +552,16 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                   {videos.map((video) => (
                     <div key={video.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-black">
                       <video controls className="h-auto max-h-[70vh] w-full object-contain" preload="metadata">
-                        <source src={getAbsoluteMediaUrl(video.url)} type={video.url.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                        <source
+                          src={getAbsoluteMediaUrl(video.url)}
+                          type={
+                            video.url.endsWith('.webm')
+                              ? 'video/webm'
+                              : video.url.endsWith('.mov')
+                                ? 'video/quicktime'
+                                : 'video/mp4'
+                          }
+                        />
                         Your browser does not support the video tag.
                       </video>
                     </div>
@@ -715,5 +714,42 @@ function InlineInfo({ label, value }: { label: string; value: string }) {
       <span className="shrink-0 text-[11px] sm:text-xs font-bold uppercase tracking-[0.16em] text-gray-500">{label}</span>
       <span className="min-w-0 break-words text-right text-sm font-semibold text-gray-900">{value}</span>
     </div>
+  );
+}
+
+function SafeListingImage({
+  sources,
+  alt,
+  className,
+  iconClassName = 'h-10 w-10',
+}: {
+  sources: string[];
+  alt: string;
+  className?: string;
+  iconClassName?: string;
+}) {
+  const availableSources = sources.filter(Boolean);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const activeSource = availableSources[currentIndex] || '';
+
+  if (!activeSource) {
+    return (
+      <div className="flex h-full items-center justify-center text-gray-300">
+        <ImageIcon className={iconClassName} />
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={getAbsoluteMediaUrl(activeSource)}
+      alt={alt}
+      fill
+      unoptimized
+      onError={() => {
+        setCurrentIndex((previousIndex) => previousIndex + 1);
+      }}
+      className={className}
+    />
   );
 }

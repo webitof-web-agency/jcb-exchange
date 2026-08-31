@@ -85,8 +85,9 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
     throw new Error('NEXT_PUBLIC_API_URL is not set');
   }
 
-  const origin = apiUrl.replace(/\/api$/, '');
-  return `${origin}${fileUrl}`;
+  const origin = apiUrl.replace(/\/api\/?$/, '');
+  const normalizedPath = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
+  return `${origin}${normalizedPath}`;
 };
 
 const blobToFile = (blob: Blob, fileName: string) =>

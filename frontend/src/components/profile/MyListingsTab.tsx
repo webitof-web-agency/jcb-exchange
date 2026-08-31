@@ -51,9 +51,14 @@ const getListingTitle = (listing: ListingItem) => {
   return listing.title || composedTitle || 'Untitled listing';
 };
 
-const getListingImage = (listing: ListingItem) => {
-  const featuredImage = listing.media?.find((item) => item.isFeatured && item.url);
-  return featuredImage?.url || listing.media?.[0]?.url || null;
+const getListingImageCandidates = (listing: ListingItem) => {
+  const imageMedia = (listing.media || []).filter((item) => item.type === 'IMAGE' && item.url);
+  const featuredImage = imageMedia.find((item) => item.isFeatured);
+
+  return [
+    featuredImage?.url || null,
+    ...imageMedia.map((item) => item.url),
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
 };
 
 const getStatusClassName = (status?: string | null) => {
@@ -235,26 +240,19 @@ export default function MyListingsTab() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2">
             {listings.map((listing) => {
               const title = getListingTitle(listing);
-              const imageUrl = getListingImage(listing);
+              const imageCandidates = getListingImageCandidates(listing);
               const locationLabel = [listing.locationCity, listing.locationState].filter(Boolean).join(', ');
               const isReadOnlySoldListing = isCustomerUser && isSoldListing(listing.status);
 
               return (
                 <div key={listing.id} className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition-all hover:border-gray-200 hover:shadow-lg">
                   <Link href={generateProfileListingDetailPath(listing)} className="relative block aspect-video w-full overflow-hidden bg-gray-100">
-                    {imageUrl ? (
-                      <Image
-                        src={getAbsoluteMediaUrl(imageUrl)}
-                        alt={title}
-                        fill
-                        unoptimized
-                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <ImageIcon className="h-10 w-10 text-gray-300" />
-                      </div>
-                    )}
+                    <SafeListingImage
+                      key={imageCandidates.join('|') || `listing-${listing.id}`}
+                      sources={imageCandidates}
+                      alt={title}
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
 
                     <div className="absolute right-3 top-3 rounded-md bg-white/90 px-2.5 py-1 text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm">
                       <span className={getStatusClassName(listing.status)}>{String(listing.status || 'UNKNOWN')}</span>
@@ -393,5 +391,40 @@ export default function MyListingsTab() {
         </div>
       )}
     </>
+  );
+}
+
+function SafeListingImage({
+  sources,
+  alt,
+  className,
+}: {
+  sources: string[];
+  alt: string;
+  className?: string;
+}) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const availableSources = sources.filter(Boolean);
+  const activeSource = availableSources[currentIndex] || '';
+
+  if (!activeSource) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <ImageIcon className="h-10 w-10 text-gray-300" />
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={getAbsoluteMediaUrl(activeSource)}
+      alt={alt}
+      fill
+      unoptimized
+      onError={() => {
+        setCurrentIndex((previousIndex) => previousIndex + 1);
+      }}
+      className={className}
+    />
   );
 }
