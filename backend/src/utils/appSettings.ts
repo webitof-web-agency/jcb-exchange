@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma';
+import { uploadRootDir } from './documentUpload';
 import {
   type CustomerPrimeSettings,
   normalizeCustomerPrimeSettings,
@@ -74,7 +75,22 @@ type AppSettings = {
 const platformRuntimeSettingsKey = 'platform';
 const prismaAny = prisma as any;
 
-const settingsDirectory = path.resolve(process.cwd(), 'runtime');
+const resolveRuntimeStorageBaseDir = () => {
+  const configuredDirectory =
+    process.env.APP_RUNTIME_STORAGE_DIR?.trim() ||
+    process.env.APP_STORAGE_DIR?.trim();
+
+  if (!configuredDirectory) {
+    return process.cwd();
+  }
+
+  return path.isAbsolute(configuredDirectory)
+    ? configuredDirectory
+    : path.resolve(process.cwd(), configuredDirectory);
+};
+
+const runtimeStorageBaseDir = resolveRuntimeStorageBaseDir();
+const settingsDirectory = path.resolve(runtimeStorageBaseDir, 'runtime');
 const legacySettingsDirectory = path.resolve(__dirname, '..', '..', 'runtime');
 const repoRootLegacySettingsDirectory = path.resolve(__dirname, '..', '..', '..', 'runtime');
 const settingsFilePath = path.join(settingsDirectory, 'app-settings.json');
@@ -268,15 +284,15 @@ const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
   }
 
   if (normalizedUrl.startsWith(siteLogoPublicUrlPrefix)) {
-    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+    return path.join(uploadRootDir, normalizedUrl.replace(siteLogoPublicUrlPrefix, `public${path.sep}site-logo${path.sep}`));
   }
 
   if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
-    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+    return path.join(uploadRootDir, normalizedUrl.replace(siteFaviconPublicUrlPrefix, `public${path.sep}site-favicon${path.sep}`));
   }
 
   if (normalizedUrl.startsWith(siteManifestIconPublicUrlPrefix)) {
-    return path.join(process.cwd(), normalizedUrl.replace(/^\/+/, ''));
+    return path.join(uploadRootDir, normalizedUrl.replace(siteManifestIconPublicUrlPrefix, `public${path.sep}site-manifest-icon${path.sep}`));
   }
 
   return null;

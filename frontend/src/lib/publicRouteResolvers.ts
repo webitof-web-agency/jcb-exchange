@@ -26,19 +26,19 @@ const findUniqueIdByPrefix = <T extends { id: string }>(items: T[], shortSuffix:
   return matches.length === 1 ? matches[0].id : null;
 };
 
+const getCanonicalDealerLookupId = (dealer: DealerSummary): string => dealer.userId || dealer.id;
+
 const findUniqueDealerIdByPrefix = (items: DealerSummary[], shortSuffix: string): string | null => {
   const normalizedSuffix = shortSuffix.trim().toLowerCase();
-  const matches = items.filter(
-    (item) =>
-      item.id?.toLowerCase().startsWith(normalizedSuffix) ||
-      item.userId?.toLowerCase().startsWith(normalizedSuffix)
+  const matches = items.filter((item) =>
+    getCanonicalDealerLookupId(item)?.toLowerCase().startsWith(normalizedSuffix)
   );
 
   if (matches.length !== 1) {
     return null;
   }
 
-  return matches[0].userId || matches[0].id;
+  return getCanonicalDealerLookupId(matches[0]);
 };
 
 export const resolvePublicMachineListingId = async (rawParam: string): Promise<string | null> => {

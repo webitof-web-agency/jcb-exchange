@@ -55,7 +55,19 @@ export const MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE = 2 * 1024 * 1024;
 export const MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE = 512 * 1024;
 export const MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE = 1024 * 1024;
 
-export const uploadRootDir = path.join(process.cwd(), 'uploads');
+const resolveStorageBaseDir = () => {
+  const configuredDirectory = process.env.APP_STORAGE_DIR?.trim();
+  if (!configuredDirectory) {
+    return process.cwd();
+  }
+
+  return path.isAbsolute(configuredDirectory)
+    ? configuredDirectory
+    : path.resolve(process.cwd(), configuredDirectory);
+};
+
+export const storageBaseDir = resolveStorageBaseDir();
+export const uploadRootDir = path.join(storageBaseDir, 'uploads');
 export const publicUploadDir = path.join(uploadRootDir, 'public');
 export const secureUploadDir = path.join(uploadRootDir, 'secure');
 export const publicListingMediaUploadDir = path.join(publicUploadDir, 'listings');
