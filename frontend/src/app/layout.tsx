@@ -16,10 +16,13 @@ import {
   SITE_TWITTER_IMAGE,
   SITE_URL,
 } from "@/lib/site";
-import { getSiteBranding } from '@/lib/siteBranding';
+import {
+  DEFAULT_PWA_THEME_COLOR,
+  getSiteBranding,
+} from '@/lib/siteBranding';
 
 export const viewport: Viewport = {
-  themeColor: "#FFC107",
+  themeColor: DEFAULT_PWA_THEME_COLOR,
 };
 
 const getIconType = (url: string) => {

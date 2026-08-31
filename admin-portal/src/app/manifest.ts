@@ -1,5 +1,11 @@
 import type { MetadataRoute } from 'next';
-import { getPortalBranding } from '@/lib/siteBranding';
+import {
+  DEFAULT_PWA_BACKGROUND_COLOR,
+  DEFAULT_PWA_THEME_COLOR,
+  getPortalBranding,
+} from '@/lib/siteBranding';
+
+export const dynamic = 'force-dynamic';
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const branding = await getPortalBranding();
@@ -22,6 +28,12 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     : [
         {
           src: '/icon.png',
+          sizes: '192x192',
+          type: 'image/png',
+          purpose: 'any',
+        },
+        {
+          src: '/icon.png',
           sizes: '512x512',
           type: 'image/png',
           purpose: 'any',
@@ -37,8 +49,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: '/',
     display: 'standalone',
     prefer_related_applications: false,
-    background_color: branding.pwaBackgroundColor || '#121212',
-    theme_color: branding.pwaThemeColor || '#1e293b',
+    background_color: branding.pwaBackgroundColor || DEFAULT_PWA_BACKGROUND_COLOR,
+    theme_color: branding.pwaThemeColor || DEFAULT_PWA_THEME_COLOR,
     icons,
   };
 }

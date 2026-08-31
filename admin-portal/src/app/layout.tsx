@@ -5,7 +5,10 @@ import ToastProvider from "@/components/ToastProvider";
 import "react-toastify/dist/ReactToastify.css";
 import "./globals.css";
 import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n/config";
-import { getPortalBranding } from '@/lib/siteBranding';
+import {
+  DEFAULT_PWA_THEME_COLOR,
+  getPortalBranding,
+} from '@/lib/siteBranding';
 
 const getIconType = (url: string) => {
   const lowerUrl = url.toLowerCase();
@@ -45,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#1e293b",
+  themeColor: DEFAULT_PWA_THEME_COLOR,
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
