@@ -29,6 +29,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import api from '@/lib/api';
+import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import {
   getAbsoluteFileUrl,
   MAX_IMAGE_INPUT_SIZE,
@@ -413,6 +414,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [savingSection, setSavingSection] = useState<DetailSection | null>(null);
   const [categories, setCategories] = useState<Option[]>([]);
@@ -446,6 +448,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         const res = await api.get<{ listing: ListingDetail }>(`/listings/${resolvedListingId}`);
         setListing(res.data.listing);
         setForm(createEditForm(res.data.listing));
+        setUnavailableMediaIds([]);
+        setActiveMediaIndex(0);
       } catch (err: unknown) {
         console.error('Failed to load listing details:', err);
         setError(getErrorMessage(err, 'Failed to load listing details.'));
@@ -557,7 +561,13 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     });
   }, [listing]);
 
-  const activeMedia = sortedMedia[activeMediaIndex];
+  const availableMedia = useMemo(
+    () => sortedMedia.filter((mediaItem) => !unavailableMediaIds.includes(mediaItem.id)),
+    [sortedMedia, unavailableMediaIds]
+  );
+  const displayedActiveMediaIndex =
+    availableMedia.length === 0 ? 0 : Math.min(activeMediaIndex, availableMedia.length - 1);
+  const activeMedia = availableMedia[displayedActiveMediaIndex];
   const parsedDetails = useMemo(() => parseListingDescription(listing?.description), [listing?.description]);
   const baseForm = useMemo(() => (listing ? createEditForm(listing) : null), [listing]);
   const hasPendingMediaChanges = pendingMediaUploads.length > 0;
@@ -588,6 +598,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
   const updateForm = useCallback(<K extends keyof ListingEditForm>(field: K, value: ListingEditForm[K]) => {
     setForm((current) => (current ? { ...current, [field]: value } : current));
+  }, []);
+
+  const markMediaUnavailable = useCallback((mediaId: string) => {
+    setUnavailableMediaIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));
   }, []);
 
   const clearPendingMediaUploads = useCallback(() => {
@@ -1026,47 +1040,67 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
               </div>
             ) : null}
 
-            {sortedMedia.length > 0 ? (
+            {availableMedia.length > 0 ? (
               <div className="space-y-4">
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black">
                   {activeMedia?.type === 'VIDEO' ? (
-                    <video src={getAbsoluteFileUrl(activeMedia.url)} controls className="max-h-full max-w-full object-contain" />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={getAbsoluteFileUrl(activeMedia?.url)}
-                        alt={t('listingDetails.listingMediaAlt')}
-                        className="h-full w-full object-contain"
-                      />
-                    )}
+                    <video
+                      src={getAbsoluteFileUrl(activeMedia.url)}
+                      controls
+                      className="max-h-full max-w-full object-contain"
+                      onError={() => markMediaUnavailable(activeMedia.id)}
+                    />
+                  ) : (
+                    <SafeRemoteImage
+                      src={getAbsoluteFileUrl(activeMedia?.url)}
+                      alt={t('listingDetails.listingMediaAlt')}
+                      className="h-full w-full object-contain"
+                      onError={() => activeMedia && markMediaUnavailable(activeMedia.id)}
+                      fallback={
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-950 text-gray-300">
+                          <ImageIcon className="h-10 w-10" />
+                          <p className="text-sm font-medium">{t('listingDetails.noMedia')}</p>
+                        </div>
+                      }
+                    />
+                  )}
                   {activeMedia?.isFeatured ? (
                     <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow">{t('listingDetails.coverImage')}</div>
                   ) : null}
                 </div>
 
                 <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-2">
-                  {sortedMedia.map((mediaItem, index) => (
+                  {availableMedia.map((mediaItem, index) => (
                     <button
                       key={mediaItem.id}
                       type="button"
                       onClick={() => setActiveMediaIndex(index)}
                       className={`relative h-20 w-28 shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
-                        index === activeMediaIndex ? 'border-[#FFC107] ring-2 ring-[#FFC107]/20' : 'border-transparent hover:border-gray-300'
+                        index === displayedActiveMediaIndex ? 'border-[#FFC107] ring-2 ring-[#FFC107]/20' : 'border-transparent hover:border-gray-300'
                       }`}
                     >
                       {mediaItem.type === 'VIDEO' ? (
                         <div className="relative flex h-full w-full items-center justify-center bg-gray-900 text-white">
-                          <video src={getAbsoluteFileUrl(mediaItem.url)} className="absolute inset-0 h-full w-full object-cover opacity-50" />
+                          <video
+                            src={getAbsoluteFileUrl(mediaItem.url)}
+                            className="absolute inset-0 h-full w-full object-cover opacity-50"
+                            onError={() => markMediaUnavailable(mediaItem.id)}
+                          />
                           <AlertCircle className="relative z-10 h-6 w-6" />
                         </div>
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={getAbsoluteFileUrl(mediaItem.url)}
-                            alt={t('listingDetails.thumbnailAlt')}
-                            className="h-full w-full object-cover"
-                          />
-                        )}
+                      ) : (
+                        <SafeRemoteImage
+                          src={getAbsoluteFileUrl(mediaItem.url)}
+                          alt={t('listingDetails.thumbnailAlt')}
+                          className="h-full w-full object-cover"
+                          onError={() => markMediaUnavailable(mediaItem.id)}
+                          fallback={
+                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                              <ImageIcon className="h-5 w-5" />
+                            </div>
+                          }
+                        />
+                      )}
                     </button>
                   ))}
                 </div>

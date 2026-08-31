@@ -7,6 +7,7 @@ import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVe
 import axios from 'axios';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
+import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { hasPermission } from '@/lib/permissionUtils';
@@ -1262,14 +1263,18 @@ export default function PartnerListingsPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded bg-gray-100 border border-gray-200">
-                              {cover ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={getAbsoluteFileUrl(cover.url)}
-                                  alt={listing.title}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
+                            {cover ? (
+                              <SafeRemoteImage
+                                src={getAbsoluteFileUrl(cover.url)}
+                                alt={listing.title}
+                                className="h-full w-full object-cover"
+                                fallback={
+                                  <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                    <Truck className="h-5 w-5" />
+                                  </div>
+                                }
+                              />
+                            ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
                                 <Truck className="h-5 w-5" />
                               </div>
@@ -1914,12 +1919,15 @@ export default function PartnerListingsPage() {
                       <video src={getAbsoluteFileUrl(m.url)} controls className="h-full w-full object-contain" />
                     ) : (
                       <a href={getAbsoluteFileUrl(m.url)} target="_blank" rel="noreferrer" className="group relative block h-full w-full">
-                        <Image
+                        <SafeRemoteImage
                           src={getAbsoluteFileUrl(m.url)}
                           alt="Media"
-                          fill
-                          unoptimized
-                          className="object-contain transition-opacity group-hover:opacity-90"
+                          className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
+                          fallback={
+                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                              <Truck className="h-6 w-6" />
+                            </div>
+                          }
                         />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10">
                           <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-black opacity-0 shadow-sm transition-opacity group-hover:opacity-100">

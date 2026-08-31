@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Activity, CircleDollarSign, MessagesSquare, Truck } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
+import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { formatPortalCurrency, formatPortalDateTime } from '@/lib/partnerPortal';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
@@ -267,11 +268,15 @@ export default function PartnerDashboard() {
                    <div key={listing.id} className="flex items-center gap-4 rounded-xl p-2 transition-colors hover:bg-gray-50">
                      <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         {listing.featuredImage ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <SafeRemoteImage
                             src={getAbsoluteFileUrl(listing.featuredImage)}
                             alt={listing.title}
                             className="h-full w-full object-cover"
+                            fallback={
+                              <div className="flex h-full w-full items-center justify-center">
+                                <Truck className="h-5 w-5 text-gray-300" />
+                              </div>
+                            }
                           />
                         ) : (
                          <div className="flex h-full w-full items-center justify-center">
