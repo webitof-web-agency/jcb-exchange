@@ -13,6 +13,7 @@ import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { generateProfileListingDetailPath } from '@/lib/privateRoutePaths';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 
 type ListingItem = {
   id: string;
@@ -244,7 +245,7 @@ export default function MyListingsTab() {
                   <Link href={generateProfileListingDetailPath(listing)} className="relative block aspect-video w-full overflow-hidden bg-gray-100">
                     {imageUrl ? (
                       <Image
-                        src={imageUrl}
+                        src={getAbsoluteFileUrl(imageUrl)}
                         alt={title}
                         fill
                         unoptimized

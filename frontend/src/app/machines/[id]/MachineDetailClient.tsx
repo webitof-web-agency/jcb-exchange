@@ -234,7 +234,7 @@ const buildWhatsappMessage = (
 export default function MachineDetailClient({ listing }: MachineDetailClientProps) {
   const { t } = useTranslation();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [showAllThumbnails, setShowAllThumbnails] = useState(false);
+
   const [expandedSections, setExpandedSections] = useState<string[]>(['machine', 'seller']);
   const [views, setViews] = useState<number>(listing.views || 0);
   const [pendingFeature, setPendingFeature] = useState<CustomerPrimeFeature | null>(null);
@@ -277,8 +277,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const baseWhatsappUrl = getWhatsappUrl(whatsappNumber);
   const parsedDetails = parseListingDescription(listing.description);
   const descriptionParts = getDescriptionParts(listing);
-  const visibleThumbnails = showAllThumbnails ? images : images.slice(0, 4);
-  const extraImageCount = Math.max(0, images.length - 4);
+
   const listingUrl =
     typeof window !== 'undefined'
       ? window.location.href
@@ -423,22 +422,17 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
               </div>
 
               {images.length > 1 && (
-                <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:gap-3 border-t border-gray-100 p-3 sm:p-4">
-                  {visibleThumbnails.map((image, index) => {
-                    const isLastVisible = !showAllThumbnails && index === 3 && extraImageCount > 0;
-                    return (
+                <div 
+                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                  {images.map((image, index) => (
                       <button
                         key={image.id}
                         type="button"
-                        onClick={() => {
-                          if (isLastVisible) {
-                            setShowAllThumbnails(true);
-                          } else {
-                            setActiveImageIndex(index);
-                          }
-                        }}
-                        className={`relative aspect-[4/3] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
-                          activeImageIndex === index && !isLastVisible
+                        onClick={() => setActiveImageIndex(index)}
+                        className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-center ${
+                          activeImageIndex === index
                             ? 'border-jcb-yellow'
                             : 'border-transparent hover:border-gray-200'
                         }`}
@@ -450,14 +444,8 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           sizes="(max-width: 640px) 25vw, 128px"
                           className="object-cover"
                         />
-                        {isLastVisible && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm sm:text-base font-bold text-white backdrop-blur-[2px]">
-                            +{extraImageCount}
-                          </div>
-                        )}
                       </button>
-                    );
-                  })}
+                  ))}
                 </div>
               )}
             </div>
