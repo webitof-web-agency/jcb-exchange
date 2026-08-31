@@ -22,11 +22,21 @@ export const viewport: Viewport = {
   themeColor: "#FFC107",
 };
 
+const getIconType = (url: string) => {
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.endsWith('.ico')) return 'image/x-icon';
+  if (lowerUrl.endsWith('.svg')) return 'image/svg+xml';
+  if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerUrl.endsWith('.webp')) return 'image/webp';
+  return 'image/png'; // default fallback
+};
+
 export async function generateMetadata(): Promise<Metadata> {
   // Force dynamic evaluation at request time to fetch latest branding settings
   await cookies();
   const branding = await getSiteBranding();
   const faviconUrl = branding.faviconUrl || '/icon.png';
+  const iconType = getIconType(faviconUrl);
 
   return {
     metadataBase: new URL(SITE_URL),
@@ -41,9 +51,9 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     manifest: '/manifest.webmanifest',
     icons: {
-      icon: [{ url: faviconUrl, type: 'image/png', sizes: '512x512' }],
-      apple: [{ url: faviconUrl, type: 'image/png', sizes: '180x180' }],
-      shortcut: [faviconUrl],
+      icon: [{ url: faviconUrl, type: iconType }],
+      apple: [{ url: faviconUrl, type: iconType }],
+      shortcut: [{ url: faviconUrl, type: iconType }],
     },
     robots: {
       index: true,
