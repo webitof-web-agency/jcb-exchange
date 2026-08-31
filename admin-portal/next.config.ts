@@ -3,7 +3,9 @@ import withPWAInit from "@ducanh2912/next-pwa";
 
 const withPWA = withPWAInit({
   dest: "public",
-  // disable: process.env.NODE_ENV === "development",
+  // Admin portal should not keep a persistent service worker cache in production.
+  // It causes stale dashboard/media builds after Vercel deploys even when the latest code is live.
+  disable: true,
   register: true,
 });
 
