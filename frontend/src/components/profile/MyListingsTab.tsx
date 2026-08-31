@@ -5,7 +5,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Package, Calendar, MapPin, ExternalLink, Image as ImageIcon, Edit, Trash2 } from 'lucide-react';
 import axios from 'axios';
-import api from '@/lib/api';
+import api, { getAbsoluteMediaUrl } from '@/lib/api';
 import SellVehicleModal, { type EditableListing } from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import { useToastStore } from '@/store/toastStore';
@@ -13,7 +13,6 @@ import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { generateProfileListingDetailPath } from '@/lib/privateRoutePaths';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 
 type ListingItem = {
   id: string;
@@ -245,7 +244,7 @@ export default function MyListingsTab() {
                   <Link href={generateProfileListingDetailPath(listing)} className="relative block aspect-video w-full overflow-hidden bg-gray-100">
                     {imageUrl ? (
                       <Image
-                        src={getAbsoluteFileUrl(imageUrl)}
+                        src={getAbsoluteMediaUrl(imageUrl)}
                         alt={title}
                         fill
                         unoptimized

@@ -668,8 +668,11 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       <video
                         controls
                         className="w-full h-auto max-h-[70vh] object-contain bg-black"
-                        src={getAbsoluteMediaUrl(video.url)}
-                      />
+                        preload="metadata"
+                      >
+                        <source src={getAbsoluteMediaUrl(video.url)} type={video.url.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                        Your browser does not support the video tag.
+                      </video>
                     </div>
                   ))}
                 </div>
