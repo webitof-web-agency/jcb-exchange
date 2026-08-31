@@ -8,7 +8,10 @@ import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n/config";
 import { getPortalBranding } from '@/lib/siteBranding';
 
 export async function generateMetadata(): Promise<Metadata> {
+  // Force dynamic evaluation at request time to fetch latest branding settings
+  await cookies();
   const branding = await getPortalBranding();
+  const faviconUrl = branding.faviconUrl || '/icon.png';
 
   return {
     title: "JCB Exchange Portal",
@@ -23,11 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     },
     manifest: "/manifest.webmanifest",
-    icons: branding.faviconUrl ? {
-      icon: [{ url: branding.faviconUrl, type: 'image/png', sizes: '512x512' }],
-      apple: [{ url: branding.faviconUrl, type: 'image/png', sizes: '180x180' }],
-      shortcut: [branding.faviconUrl],
-    } : undefined,
+    icons: {
+      icon: [{ url: faviconUrl, type: 'image/png', sizes: '512x512' }],
+      apple: [{ url: faviconUrl, type: 'image/png', sizes: '180x180' }],
+      shortcut: [faviconUrl],
+    },
   };
 }
 

@@ -21,9 +21,10 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
       ]
     : [
         {
-          src: '/icon.svg',
-          sizes: 'any',
-          type: 'image/svg+xml',
+          src: '/icon.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any',
         },
       ];
 
@@ -36,8 +37,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: '/',
     display: 'standalone',
     prefer_related_applications: false,
-    background_color: '#ffffff',
-    theme_color: '#1e293b',
+    background_color: branding.pwaBackgroundColor || '#121212',
+    theme_color: branding.pwaThemeColor || '#1e293b',
     icons,
   };
 }

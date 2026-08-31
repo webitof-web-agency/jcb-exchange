@@ -50,8 +50,6 @@ export type SiteLogoSettings = {
   imageUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
-  pwaBackgroundColor: string | null;
-  pwaThemeColor: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
@@ -153,8 +151,6 @@ const defaultSettings: AppSettings = {
     imageUrl: null,
     faviconUrl: null,
     manifestIconUrl: null,
-    pwaBackgroundColor: '#121212',
-    pwaThemeColor: '#ffbf00',
     updatedAt: null,
     updatedByUserId: null,
   },
@@ -196,8 +192,6 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     imageUrl: parsed?.siteLogo?.imageUrl?.trim() || null,
     faviconUrl: parsed?.siteLogo?.faviconUrl?.trim() || null,
     manifestIconUrl: parsed?.siteLogo?.manifestIconUrl?.trim() || null,
-    pwaBackgroundColor: parsed?.siteLogo?.pwaBackgroundColor?.trim() || '#121212',
-    pwaThemeColor: parsed?.siteLogo?.pwaThemeColor?.trim() || '#ffbf00',
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
@@ -205,29 +199,29 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
 
 const isMeaningfulSettings = (settings: AppSettings) =>
   Boolean(
-      settings.googleAuth.enabled ||
-      settings.googleAuth.clientId ||
-      settings.mobileOtp.enabled ||
-      settings.mobileOtp.apiKey ||
-      settings.mobileOtp.senderId ||
-      settings.mobileOtp.templateId ||
-      settings.mobileOtp.templateMessage ||
-      settings.publicLeadRouting.useSellerContact ||
-      settings.publicLeadRouting.adminCallNumber ||
-      settings.publicLeadRouting.adminWhatsappNumber ||
-      settings.customerPrime.enabled ||
-      settings.customerPrime.upiId ||
-      settings.customerPrime.amount !== null ||
-      settings.customerPrime.validityValue !== null ||
-      settings.financeSupport.items.length > 0 ||
-      settings.heroImage.imageUrl ||
-      settings.heroImage.headline ||
-      settings.inspectionSection.title ||
-      settings.inspectionSection.description ||
-      settings.inspectionSection.imageUrl ||
-      settings.siteLogo.imageUrl ||
-      settings.siteLogo.faviconUrl ||
-      settings.siteLogo.manifestIconUrl,
+    settings.googleAuth.enabled ||
+    settings.googleAuth.clientId ||
+    settings.mobileOtp.enabled ||
+    settings.mobileOtp.apiKey ||
+    settings.mobileOtp.senderId ||
+    settings.mobileOtp.templateId ||
+    settings.mobileOtp.templateMessage ||
+    settings.publicLeadRouting.useSellerContact ||
+    settings.publicLeadRouting.adminCallNumber ||
+    settings.publicLeadRouting.adminWhatsappNumber ||
+    settings.customerPrime.enabled ||
+    settings.customerPrime.upiId ||
+    settings.customerPrime.amount !== null ||
+    settings.customerPrime.validityValue !== null ||
+    settings.financeSupport.items.length > 0 ||
+    settings.heroImage.imageUrl ||
+    settings.heroImage.headline ||
+    settings.inspectionSection.title ||
+    settings.inspectionSection.description ||
+    settings.inspectionSection.imageUrl ||
+    settings.siteLogo.imageUrl ||
+    settings.siteLogo.faviconUrl ||
+    settings.siteLogo.manifestIconUrl,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -514,46 +508,46 @@ export const updatePlatformRuntimeSettings = async ({
     ...currentSettings,
     googleAuth: hasGoogleAuthUpdate
       ? {
-          enabled:
-            googleAuthEnabled !== undefined
-              ? googleAuthEnabled === true
-              : currentSettings.googleAuth.enabled,
-          clientId:
-            googleClientId !== undefined
-              ? normalizeClientId(googleClientId) || null
-              : currentSettings.googleAuth.clientId,
-          updatedAt: nextTimestamp,
-          updatedByUserId: updatedByUserId || null,
-        }
+        enabled:
+          googleAuthEnabled !== undefined
+            ? googleAuthEnabled === true
+            : currentSettings.googleAuth.enabled,
+        clientId:
+          googleClientId !== undefined
+            ? normalizeClientId(googleClientId) || null
+            : currentSettings.googleAuth.clientId,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
       : currentSettings.googleAuth,
     mobileOtp: hasMobileOtpUpdate
       ? {
-          ...normalizeMobileOtpSettings({
-            ...currentSettings.mobileOtp,
-            ...mobileOtp,
-          }),
-          updatedAt: nextTimestamp,
-          updatedByUserId: updatedByUserId || null,
-        }
+        ...normalizeMobileOtpSettings({
+          ...currentSettings.mobileOtp,
+          ...mobileOtp,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
       : currentSettings.mobileOtp,
     publicLeadRouting: hasPublicLeadRoutingUpdate
       ? {
-          useSellerContact: publicLeadRouting?.useSellerContact === true,
-          adminCallNumber: normalizePhoneNumber(publicLeadRouting?.adminCallNumber) || null,
-          adminWhatsappNumber: normalizePhoneNumber(publicLeadRouting?.adminWhatsappNumber) || null,
-          updatedAt: nextTimestamp,
-          updatedByUserId: updatedByUserId || null,
-        }
+        useSellerContact: publicLeadRouting?.useSellerContact === true,
+        adminCallNumber: normalizePhoneNumber(publicLeadRouting?.adminCallNumber) || null,
+        adminWhatsappNumber: normalizePhoneNumber(publicLeadRouting?.adminWhatsappNumber) || null,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
       : currentSettings.publicLeadRouting,
     customerPrime: hasCustomerPrimeUpdate
       ? {
-          ...normalizeCustomerPrimeSettings({
-            ...currentSettings.customerPrime,
-            ...customerPrime,
-          }),
-          updatedAt: nextTimestamp,
-          updatedByUserId: updatedByUserId || null,
-        }
+        ...normalizeCustomerPrimeSettings({
+          ...currentSettings.customerPrime,
+          ...customerPrime,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
       : currentSettings.customerPrime,
   };
 
@@ -647,23 +641,17 @@ export const updateSiteLogoSettings = async ({
   imageUrl,
   faviconUrl,
   manifestIconUrl,
-  pwaBackgroundColor,
-  pwaThemeColor,
   updatedByUserId,
 }: {
   imageUrl?: string | null;
   faviconUrl?: string | null;
   manifestIconUrl?: string | null;
-  pwaBackgroundColor?: string | null;
-  pwaThemeColor?: string | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
   const normalizedImageUrl = imageUrl?.trim() || null;
   const normalizedFaviconUrl = faviconUrl?.trim() || null;
   const normalizedManifestIconUrl = manifestIconUrl?.trim() || null;
-  const normalizedPwaBackgroundColor = pwaBackgroundColor?.trim() || '#121212';
-  const normalizedPwaThemeColor = pwaThemeColor?.trim() || '#ffbf00';
 
   const previousImageUrl = currentSettings.siteLogo.imageUrl;
   const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
@@ -675,8 +663,6 @@ export const updateSiteLogoSettings = async ({
       imageUrl: normalizedImageUrl,
       faviconUrl: normalizedFaviconUrl,
       manifestIconUrl: normalizedManifestIconUrl,
-      pwaBackgroundColor: normalizedPwaBackgroundColor,
-      pwaThemeColor: normalizedPwaThemeColor,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },

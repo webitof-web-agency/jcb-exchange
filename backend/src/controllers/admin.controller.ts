@@ -224,41 +224,41 @@ const mapManagedUser = (user: any) => {
   });
 
   return {
-  id: user.id,
-  name:
-    user.partnerProfile?.businessName ||
-    user.name ||
-    user.email ||
-    'Unnamed user',
-  fullName: user.name,
-  email: user.email,
-  mobile: user.mobile,
-  role: user.role,
-  customRoleId: user.customRoleId || null,
-  customRoleName: user.customRole?.name || null,
-  status: user.status,
-  authProvider: user.authProvider || 'LOCAL',
-  city: user.city || null,
-  state: user.state || null,
-  isPrimeCustomer: primeAccessState.isPrimeCustomer,
-  customerCategory: primeAccessState.customerCategory,
-  primeSubscriptionExpiresAt: primeAccessState.hasActiveSubscription
-    ? (user.customerPrimeSubscriptions || []).find((subscription: any) => subscription.id === primeAccessState.activeSubscriptionId)?.expiresAt || null
-    : null,
-  primeSubscriptionStatus: (user.customerPrimeSubscriptions || [])[0]?.status || null,
-  adminTitle: user.adminProfile?.title || null,
-  isRootAdmin: user.adminProfile?.isRootAdmin || false,
-  permissions:
-    user.customRole?.permissions && Array.isArray(user.customRole.permissions)
-      ? user.customRole.permissions
-      : (user.adminPermissions || []).map((item: { permission: string }) => item.permission),
-  partnerType: user.partnerProfile?.partnerType || null,
-  kycStatus: user.partnerProfile?.kycStatus || null,
-  onboardingStatus: user.partnerProfile?.onboardingStatus || null,
-  accountStatus: user.partnerProfile?.accountStatus || null,
-  createdAt: user.createdAt,
-  createdBy: user.createdBy || null,
-  partnerProfile: user.partnerProfile || null,
+    id: user.id,
+    name:
+      user.partnerProfile?.businessName ||
+      user.name ||
+      user.email ||
+      'Unnamed user',
+    fullName: user.name,
+    email: user.email,
+    mobile: user.mobile,
+    role: user.role,
+    customRoleId: user.customRoleId || null,
+    customRoleName: user.customRole?.name || null,
+    status: user.status,
+    authProvider: user.authProvider || 'LOCAL',
+    city: user.city || null,
+    state: user.state || null,
+    isPrimeCustomer: primeAccessState.isPrimeCustomer,
+    customerCategory: primeAccessState.customerCategory,
+    primeSubscriptionExpiresAt: primeAccessState.hasActiveSubscription
+      ? (user.customerPrimeSubscriptions || []).find((subscription: any) => subscription.id === primeAccessState.activeSubscriptionId)?.expiresAt || null
+      : null,
+    primeSubscriptionStatus: (user.customerPrimeSubscriptions || [])[0]?.status || null,
+    adminTitle: user.adminProfile?.title || null,
+    isRootAdmin: user.adminProfile?.isRootAdmin || false,
+    permissions:
+      user.customRole?.permissions && Array.isArray(user.customRole.permissions)
+        ? user.customRole.permissions
+        : (user.adminPermissions || []).map((item: { permission: string }) => item.permission),
+    partnerType: user.partnerProfile?.partnerType || null,
+    kycStatus: user.partnerProfile?.kycStatus || null,
+    onboardingStatus: user.partnerProfile?.onboardingStatus || null,
+    accountStatus: user.partnerProfile?.accountStatus || null,
+    createdAt: user.createdAt,
+    createdBy: user.createdBy || null,
+    partnerProfile: user.partnerProfile || null,
   };
 };
 
@@ -352,12 +352,12 @@ export const getDashboardSummary = async (req: Request, res: Response, next: Nex
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
     const [
-      totalPartners, 
-      approvedPartners, 
-      pendingKyc, 
-      activeListings, 
-      recentPartners, 
-      recentUsersData, 
+      totalPartners,
+      approvedPartners,
+      pendingKyc,
+      activeListings,
+      recentPartners,
+      recentUsersData,
       recentListingsData,
       totalEnquiries,
       categoryStats,
@@ -428,7 +428,7 @@ export const getDashboardSummary = async (req: Request, res: Response, next: Nex
 
     const monthsMap: Record<string, { name: string; partners: number; listings: number }> = {};
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
+
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
@@ -708,14 +708,14 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
     const subscription =
       status === 'ACTIVE'
         ? await approveCustomerPrimeSubscription({
-            subscriptionId: id,
-            approverUserId: req.user?.id || '',
-          })
+          subscriptionId: id,
+          approverUserId: req.user?.id || '',
+        })
         : await rejectCustomerPrimeSubscription({
-            subscriptionId: id,
-            approverUserId: req.user?.id || '',
-            rejectionReason: rejectionReason || null,
-          });
+          subscriptionId: id,
+          approverUserId: req.user?.id || '',
+          rejectionReason: rejectionReason || null,
+        });
 
     await createPartnerNotification({
       userId: subscription.userId,
@@ -864,15 +864,11 @@ export const updateSiteLogoContent = async (req: Request, res: Response, next: N
     const imageUrl = req.body?.imageUrl;
     const faviconUrl = req.body?.faviconUrl;
     const manifestIconUrl = req.body?.manifestIconUrl;
-    const pwaBackgroundColor = req.body?.pwaBackgroundColor;
-    const pwaThemeColor = req.body?.pwaThemeColor;
 
     const settings = await updateSiteLogoSettings({
       imageUrl,
       faviconUrl,
       manifestIconUrl,
-      pwaBackgroundColor,
-      pwaThemeColor,
       updatedByUserId: req.user?.id || null,
     });
 
@@ -1301,8 +1297,8 @@ export const createManagedUser = async (req: Request, res: Response, next: NextF
         },
         adminPermissions: normalizedPermissions.length > 0
           ? {
-              create: normalizedPermissions.map((permission) => ({ permission })),
-            }
+            create: normalizedPermissions.map((permission) => ({ permission })),
+          }
           : undefined,
       } as any,
       include: managedUserInclude as any,

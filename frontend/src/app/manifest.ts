@@ -7,24 +7,25 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const manifestIconUrl = branding.manifestIconUrl || branding.faviconUrl;
   const icons: NonNullable<MetadataRoute.Manifest['icons']> = manifestIconUrl
     ? [
-        {
-          src: manifestIconUrl,
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'any',
-        },
-        {
-          src: manifestIconUrl,
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'maskable',
-        },
-      ]
+      {
+        src: manifestIconUrl,
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: manifestIconUrl,
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+    ]
     : [
         {
-          src: '/icon.svg',
-          sizes: 'any',
-          type: 'image/svg+xml',
+          src: '/icon.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any',
         },
       ];
 
@@ -37,8 +38,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: '/',
     display: 'standalone',
     prefer_related_applications: false,
-    background_color: branding.pwaBackgroundColor || '#121212',
-    theme_color: branding.pwaThemeColor || '#ffbf00',
+    background_color: '#121212',
+    theme_color: '#ffbf00',
     icons,
   };
 }
