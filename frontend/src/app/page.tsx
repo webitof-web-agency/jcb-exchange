@@ -160,7 +160,7 @@ export default function Home() {
           api.get<{ success: boolean; data: FinanceSupportItem[] }>('/master/finance-support').catch(() => null),
           api.get<{ success: boolean; data: { imageUrl: string | null; headline?: string | null } }>('/master/hero-image').catch(() => null),
           api.get<{ success: boolean; data: InspectionSectionContent }>('/master/inspection-section').catch(() => null),
-          api.get<{ success: boolean; data: PublicCategory[] }>('/master/public-categories?limit=4').catch(() => null),
+          api.get<{ success: boolean; data: PublicCategory[] }>('/master/public-categories').catch(() => null),
           api.get<{ success: boolean; data: PublicSearchFilters }>('/master/public-search-filters').catch(() => null),
         ]);
 
