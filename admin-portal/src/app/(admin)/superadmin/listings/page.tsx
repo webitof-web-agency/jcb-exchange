@@ -1375,13 +1375,13 @@ export default function PartnerListingsPage() {
                         <div className="flex items-center gap-3">
                           <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded bg-gray-100 border border-gray-200">
                             {cover ? (
-                              <Image
-                                src={getAbsoluteFileUrl(cover.url)}
-                                alt={listing.title}
-                                fill
-                                unoptimized
-                                className="object-cover"
-                              />
+                                <Image
+                                  src={getAbsoluteFileUrl(cover.url)}
+                                  alt={listing.title}
+                                  fill
+                                  sizes="56px"
+                                  className="object-cover"
+                                />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
                                 <Truck className="h-5 w-5" />

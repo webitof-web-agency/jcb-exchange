@@ -1031,14 +1031,13 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   {activeMedia?.type === 'VIDEO' ? (
                     <video src={getAbsoluteFileUrl(activeMedia.url)} controls className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <Image
-                      src={getAbsoluteFileUrl(activeMedia?.url)}
-                      alt={t('listingDetails.listingMediaAlt')}
-                      fill
-                      unoptimized
-                      sizes="100vw"
-                      className="object-contain"
-                    />
+                      <Image
+                        src={getAbsoluteFileUrl(activeMedia?.url)}
+                        alt={t('listingDetails.listingMediaAlt')}
+                        fill
+                        sizes="100vw"
+                        className="object-contain"
+                      />
                   )}
                   {activeMedia?.isFeatured ? (
                     <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow">{t('listingDetails.coverImage')}</div>
@@ -1061,14 +1060,13 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                           <AlertCircle className="relative z-10 h-6 w-6" />
                         </div>
                       ) : (
-                        <Image
-                          src={getAbsoluteFileUrl(mediaItem.url)}
-                          alt={t('listingDetails.thumbnailAlt')}
-                          fill
-                          unoptimized
-                          sizes="112px"
-                          className="object-cover"
-                        />
+                          <Image
+                            src={getAbsoluteFileUrl(mediaItem.url)}
+                            alt={t('listingDetails.thumbnailAlt')}
+                            fill
+                            sizes="112px"
+                            className="object-cover"
+                          />
                       )}
                     </button>
                   ))}

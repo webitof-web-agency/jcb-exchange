@@ -398,10 +398,12 @@ function SafeListingImage({
   sources,
   alt,
   className,
+  sizes = '(max-width: 768px) 100vw, 50vw',
 }: {
   sources: string[];
   alt: string;
   className?: string;
+  sizes?: string;
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const availableSources = sources.filter(Boolean);
@@ -420,7 +422,7 @@ function SafeListingImage({
       src={getAbsoluteMediaUrl(activeSource)}
       alt={alt}
       fill
-      unoptimized
+      sizes={sizes}
       onError={() => {
         setCurrentIndex((previousIndex) => previousIndex + 1);
       }}

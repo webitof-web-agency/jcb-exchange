@@ -427,7 +427,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                         src={getAbsoluteMediaUrl(image.url)}
                         alt={`${listing.title} ${index + 1}`}
                         fill
-                        unoptimized
+                        sizes="(max-width: 640px) 25vw, 128px"
                         className="object-cover"
                       />
                     </button>
@@ -725,11 +725,13 @@ function SafeListingImage({
   alt,
   className,
   iconClassName = 'h-10 w-10',
+  sizes = '(max-width: 1024px) 100vw, 66vw',
 }: {
   sources: string[];
   alt: string;
   className?: string;
   iconClassName?: string;
+  sizes?: string;
 }) {
   const availableSources = sources.filter(Boolean);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -748,7 +750,7 @@ function SafeListingImage({
       src={getAbsoluteMediaUrl(activeSource)}
       alt={alt}
       fill
-      unoptimized
+      sizes={sizes}
       onError={() => {
         setCurrentIndex((previousIndex) => previousIndex + 1);
       }}
