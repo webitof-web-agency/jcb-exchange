@@ -429,13 +429,6 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl sm:text-[28px] font-bold sm:font-extrabold text-gray-900">{t('home.selectProduct')}</h2>
-            <Link
-              href="/categories"
-              className="inline-flex items-center gap-2 text-sm font-bold text-jcb-yellow hover:text-yellow-600"
-            >
-              Browse all categories
-              <ArrowRight size={16} />
-            </Link>
           </div>
           
           <div className="flex flex-col border-t border-gray-200">
