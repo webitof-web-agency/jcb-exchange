@@ -1031,15 +1031,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black">
                   {activeMedia?.type === 'VIDEO' ? (
                     <video src={getAbsoluteFileUrl(activeMedia.url)} controls className="max-h-full max-w-full object-contain" />
-                  ) : (
-                      <Image
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
                         src={getAbsoluteFileUrl(activeMedia?.url)}
                         alt={t('listingDetails.listingMediaAlt')}
-                        fill
-                        sizes="100vw"
-                        className="object-contain"
+                        className="h-full w-full object-contain"
                       />
-                  )}
+                    )}
                   {activeMedia?.isFeatured ? (
                     <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow">{t('listingDetails.coverImage')}</div>
                   ) : null}
@@ -1060,15 +1059,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                           <video src={getAbsoluteFileUrl(mediaItem.url)} className="absolute inset-0 h-full w-full object-cover opacity-50" />
                           <AlertCircle className="relative z-10 h-6 w-6" />
                         </div>
-                      ) : (
-                          <Image
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
                             src={getAbsoluteFileUrl(mediaItem.url)}
                             alt={t('listingDetails.thumbnailAlt')}
-                            fill
-                            sizes="112px"
-                            className="object-cover"
+                            className="h-full w-full object-cover"
                           />
-                      )}
+                        )}
                     </button>
                   ))}
                 </div>

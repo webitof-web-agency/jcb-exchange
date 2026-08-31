@@ -1282,15 +1282,14 @@ export default function PartnerListingsPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded bg-gray-100 border border-gray-200">
-                            {cover ? (
-                                <Image
+                              {cover ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
                                   src={getAbsoluteFileUrl(cover.url)}
                                   alt={listing.title}
-                                  fill
-                                  sizes="56px"
-                                  className="object-cover"
+                                  className="h-full w-full object-cover"
                                 />
-                            ) : (
+                              ) : (
                               <div className="flex h-full w-full items-center justify-center text-gray-400">
                                 <Truck className="h-5 w-5" />
                               </div>

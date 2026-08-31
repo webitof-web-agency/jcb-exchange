@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Activity, CircleDollarSign, MessagesSquare, Truck } from 'lucide-react';
@@ -267,15 +266,14 @@ export default function PartnerDashboard() {
                  {data.topListings.map((listing) => (
                    <div key={listing.id} className="flex items-center gap-4 rounded-xl p-2 transition-colors hover:bg-gray-50">
                      <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                       {listing.featuredImage ? (
-                          <Image
+                        {listing.featuredImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
                             src={getAbsoluteFileUrl(listing.featuredImage)}
                             alt={listing.title}
-                            width={80}
-                            height={56}
                             className="h-full w-full object-cover"
                           />
-                       ) : (
+                        ) : (
                          <div className="flex h-full w-full items-center justify-center">
                            <Truck className="h-5 w-5 text-gray-300" />
                          </div>
