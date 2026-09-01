@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ACCOUNT_INACTIVE_CODE, ACCOUNT_REVOKED_CODE } from '@/lib/sessionAccess';
 import { getEmployeeLandingPath, resolveEmployeeRouteRedirect } from '@/lib/portalRoutes';
+import PortalBrand from '@/components/layout/PortalBrand';
 
 type AuthenticatedPortalUser = {
   id: string;
@@ -151,12 +152,10 @@ function LoginPageInner() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a] bg-opacity-60 bg-[url('/jcb-bg.jpg')] bg-cover bg-center bg-blend-overlay font-sans relative px-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden flex flex-col">
-        <div className="flex justify-between items-center px-6 py-4 bg-[#1A1A1A]">
-          <div className="flex items-center">
-            <h2 className="text-xl font-bold italic tracking-wider text-white">
-              JCB<span className="text-[#FFC107]">EXCHANGE</span>
-            </h2>
-            <span className={`ml-3 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-sm ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
+        <div className="flex justify-center items-center px-6 py-5 bg-[#1A1A1A] border-b border-white/10">
+          <div className="flex items-center justify-center gap-3">
+            <PortalBrand href="/login" showSubtitle={false} />
+            <span className={`px-2.5 py-1 text-[11px] uppercase tracking-wider font-extrabold rounded-md shadow-sm whitespace-nowrap ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
               {isFirstSetup ? t('authPortal.superAdminBadge') : t('authPortal.portalBadge')}
             </span>
           </div>
