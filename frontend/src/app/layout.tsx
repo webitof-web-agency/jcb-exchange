@@ -6,6 +6,7 @@ import Footer from "@/components/layout/Footer";
 import AuthModal from "@/components/shared/AuthModal";
 import ToastViewport from "@/components/shared/ToastViewport";
 import LocaleSync from "@/components/shared/LocaleSync";
+import PushNotificationManager from "@/components/shared/PushNotificationManager";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n/config";
@@ -147,6 +148,7 @@ export default async function RootLayout({
         <Footer />
         <AuthModal />
         <ToastViewport />
+        <PushNotificationManager />
         <ToastContainer position="bottom-right" />
       </body>
     </html>

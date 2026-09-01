@@ -8,8 +8,11 @@ if (!configuredApiUrl) {
   throw new Error('NEXT_PUBLIC_API_URL is not set');
 }
 
+export const API_BASE_URL = configuredApiUrl;
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+
 const api = axios.create({
-  baseURL: configuredApiUrl,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },

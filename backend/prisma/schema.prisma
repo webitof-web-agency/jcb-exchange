@@ -199,6 +199,7 @@ model User {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   customRoleId     String?
+  pushSubscription Json?
 
   createdBy          User?                @relation("UserCreation", fields: [createdById], references: [id])
   createdUsers       User[]               @relation("UserCreation")

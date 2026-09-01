@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { detachLeadsFromListing, getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
 import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibility';
+import { PushNotificationService } from '../services/pushNotification.service';
 
 const prismaAny = prisma as any;
 const REVIEW_PENDING_STATUSES = ['PENDING_APPROVAL', 'CHANGES_REQUESTED'] as const;
@@ -437,6 +438,17 @@ const createCustomerListingNotifications = async ({
       link: `/machines/${listingId}`,
     })),
   });
+
+  // Fire push notifications asynchronously
+  PushNotificationService.sendToUsers(
+    recipients.map(r => r.id),
+    {
+      title: notificationTitle,
+      body: notificationMessage,
+      icon: '/icon.png',
+      url: `/machines/${listingId}`
+    }
+  ).catch(e => console.error('Push bulk failed:', e));
 };
 
 export const createListing = async (req: Request, res: Response, next: NextFunction) => {
@@ -605,6 +617,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     await handleSaleRecordUpsert(listing.id, initialListingStatus, req.body);
     const responseListing = await getOwnedListingForUser(listing.id, req.user.id);
 
+    // The customer listing push notifications are fired inside createCustomerListingNotifications
     return res.status(201).json({
       message: 'Listing submitted successfully. It will go live after admin approval.',
       listing: responseListing || listing,

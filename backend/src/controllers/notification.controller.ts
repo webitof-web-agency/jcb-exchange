@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
+import { PushNotificationService } from '../services/pushNotification.service';
 import {
   buildNotificationWhereClause,
   getNotificationScope,
   getNotificationStatus,
 } from '../utils/notificationFilters';
+import { isPushSubscriptionPayload } from '../utils/pushSubscriptions';
 
 export const getNotifications = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -23,6 +25,17 @@ export const getNotifications = async (req: Request, res: Response, next: NextFu
     });
 
     res.status(200).json({ success: true, data: notifications });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPushConfig = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(200).json({
+      success: true,
+      data: PushNotificationService.getPublicConfig(),
+    });
   } catch (error) {
     next(error);
   }
@@ -68,6 +81,24 @@ export const markAllAsRead = async (req: Request, res: Response, next: NextFunct
     });
 
     res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const savePushSubscription = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const subscription = req.body;
+    if (!isPushSubscriptionPayload(subscription)) {
+      return res.status(400).json({ error: 'Invalid subscription object' });
+    }
+
+    await PushNotificationService.saveSubscription(userId, subscription);
+
+    res.status(200).json({ success: true, message: 'Subscription saved successfully' });
   } catch (error) {
     next(error);
   }

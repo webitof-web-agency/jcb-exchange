@@ -18,6 +18,7 @@ import {
   updateInspectionSectionSettings,
   updateSiteLogoSettings,
 } from '../utils/appSettings';
+import { PushNotificationService } from '../services/pushNotification.service';
 import { getCustomerPrimeAccessState, normalizePrimeValidityUnit } from '../utils/customerPrime';
 import {
   approveCustomerPrimeSubscription,
@@ -342,6 +343,14 @@ const createPartnerNotification = async ({
       type,
     },
   });
+  
+  // Fire push notification asynchronously
+  PushNotificationService.sendToUser(userId, {
+    title,
+    body: message,
+    icon: '/icon.png',
+    url: link
+  }).catch(e => console.error('Push notification failed:', e));
 };
 
 export const getDashboardSummary = async (req: Request, res: Response, next: NextFunction) => {
@@ -1717,6 +1726,14 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
           link: '/partner/listings',
         },
       });
+
+      // Fire push notification asynchronously
+      PushNotificationService.sendToUser(listing.partner.id, {
+        title: 'Listing Status Updated',
+        body: `Your listing "${listing.title}" status is now ${status}.`,
+        icon: '/icon.png',
+        url: '/partner/listings'
+      }).catch(e => console.error('Push notification failed:', e));
     }
 
     res.json({

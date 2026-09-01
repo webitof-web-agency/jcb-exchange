@@ -15,6 +15,7 @@ import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
+import PushNotificationManager from '@/components/shared/PushNotificationManager';
 
 interface PartnerNotification {
   id: string;
@@ -663,6 +664,7 @@ export default function PartnerLayout({
         </header>
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto">{children}</div>
       </main>
+      <PushNotificationManager />
     </div>
   );
 }
