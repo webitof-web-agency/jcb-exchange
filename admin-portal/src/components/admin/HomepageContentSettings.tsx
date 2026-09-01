@@ -556,56 +556,56 @@ export default function HomepageContentSettings() {
 
       <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-0 lg:flex-row">
-          <aside className="border-b border-gray-200 bg-[#FCFAF5] p-5 lg:w-72 lg:border-b-0 lg:border-r">
+          <aside className="border-b border-gray-200 bg-[#FCFAF5] p-5 lg:w-64 xl:w-72 shrink-0 lg:border-b-0 lg:border-r">
             <div className="space-y-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('finance-support')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'finance-support'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'finance-support'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
               >
-                <ImagePlus className="h-4 w-4" />
-                {t('homepageSettings.financeSupport')}
+                <ImagePlus className="h-4 w-4 shrink-0" />
+                <span>{t('homepageSettings.financeSupport')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('hero-image')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'hero-image'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'hero-image'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
               >
-                <ImagePlus className="h-4 w-4" />
-                {t('homepageSettings.heroImage')}
+                <ImagePlus className="h-4 w-4 shrink-0" />
+                <span>{t('homepageSettings.heroImage')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('inspection-section')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'inspection-section'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'inspection-section'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
               >
-                <ImagePlus className="h-4 w-4" />
-                {t('homepageSettings.certifiedSection')}
+                <ImagePlus className="h-4 w-4 shrink-0" />
+                <span>{t('homepageSettings.certifiedSection')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('site-logo')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${activeTab === 'site-logo'
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'site-logo'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
               >
-                <ImagePlus className="h-4 w-4" />
-                {t('homepageSettings.siteLogo')}
+                <ImagePlus className="h-4 w-4 shrink-0" />
+                <span>{t('homepageSettings.siteLogo')}</span>
               </button>
             </div>
           </aside>
 
-          <div className="flex-1 p-6">
+          <div className="flex-1 min-w-0 p-6">
             <div className="mb-6 flex justify-end">
               <div className="flex flex-wrap gap-3">
                 {activeTab === 'finance-support' ? (
