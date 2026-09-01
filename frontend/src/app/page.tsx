@@ -458,7 +458,7 @@ export default function Home() {
                             <div className="h-12 sm:h-16 flex items-center justify-center mb-2 sm:mb-4">
                               {category.icon?.svgData ? (
                                 <div 
-                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-transparent"
+                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none"
                                   dangerouslySetInnerHTML={{ __html: category.icon.svgData }}
                                   aria-hidden="true"
                                 />
@@ -491,7 +491,7 @@ export default function Home() {
                             <div className="h-12 sm:h-16 flex items-center justify-center mb-2 sm:mb-4">
                               {category.icon?.svgData ? (
                                 <div 
-                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-transparent"
+                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none"
                                   dangerouslySetInnerHTML={{ __html: category.icon.svgData }}
                                   aria-hidden="true"
                                 />
