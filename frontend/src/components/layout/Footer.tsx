@@ -16,7 +16,7 @@ export default function Footer() {
           
           {/* Brand Column */}
           <div className="col-span-1 flex flex-col items-center md:items-start">
-            <div className="-mb-6 md:-mb-8 relative z-10">
+            <div className="mb-4 md:mb-5 relative z-10">
               <SiteBrand variant="footer" />
             </div>
             <p className="text-sm md:text-[15px] text-[#B3B3B3] leading-relaxed mb-6 md:pr-4 max-w-sm md:max-w-md">
