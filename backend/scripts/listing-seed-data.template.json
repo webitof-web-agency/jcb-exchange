@@ -1,0 +1,325 @@
+{
+  "meta": {
+    "version": 1,
+    "createdAt": "2026-09-01",
+    "purpose": "Template for UI-compatible vehicle listing seeds",
+    "notes": [
+      "Use only form-backed fields from the sell vehicle flow.",
+      "Fields such as variant, registrationYear, registrationNo, chassisOrSerialNo, previousOwners, fuelType, transmission, district, pinCode, nearbyLandmark, and insuranceExpiry are packed into the listing description during seeding.",
+      "Media must be uploaded first; save returned public file URLs into the matching media slot entries.",
+      "Customer-created and partner-created listings are created as PENDING_APPROVAL by the backend route. Publish them separately if public marketplace visibility is needed."
+    ]
+  },
+  "defaults": {
+    "createLeadForPrimeCustomer": true,
+    "leadEnquiryType": "BUY_MACHINE",
+    "listingStatusAfterApproval": "PUBLISHED",
+    "currency": "INR"
+  },
+  "allowedMediaSlots": [
+    "front-view",
+    "rear-view",
+    "left-side",
+    "right-side",
+    "front-left-angle",
+    "front-right-angle",
+    "rear-left-angle",
+    "rear-right-angle",
+    "chassis-number",
+    "meter-reading",
+    "dashboard-front",
+    "dashboard-left",
+    "dashboard-right",
+    "walkaround-video"
+  ],
+  "listings": [
+    {
+      "seedKey": "partner-jcb-3dx-pune-001",
+      "seller": {
+        "role": "PARTNER",
+        "selectionMode": "existing-approved-random",
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "primeLeadCustomer": {
+        "selectionMode": "existing-active-prime-random",
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "formData": {
+        "categoryName": "Backhoe Loader",
+        "brandName": "JCB",
+        "modelName": "3DX",
+        "title": "JCB 3DX EcoXcellence 2021",
+        "variant": "EcoXcellence",
+        "manufacturingYear": 2021,
+        "registrationYear": "2021",
+        "registrationNo": "MH12JCB3201",
+        "chassisOrSerialNo": "JCB3DXMH12202101",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 2840,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2450000,
+        "isNegotiable": true,
+        "stateName": "Maharashtra",
+        "district": "Pune",
+        "cityName": "Pune",
+        "pinCode": "411014",
+        "nearbyLandmark": "Near Wagholi toll naka",
+        "description": "Single-owner machine with clean hydraulics, strong bucket response, and ready-to-work tyres.",
+        "additionalDescription": "Cabin is clean, boom pins recently serviced, and maintenance history available with the owner.",
+        "grossPower": "76 hp (56 kW)",
+        "insuranceExpiry": "2027-03-31"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "kind": "image",
+          "sourceProvider": "unsplash",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": true,
+          "caption": "Front exterior"
+        },
+        {
+          "slot": "rear-view",
+          "kind": "image",
+          "sourceProvider": "unsplash",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Rear exterior"
+        },
+        {
+          "slot": "left-side",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Left side profile"
+        },
+        {
+          "slot": "right-side",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Right side profile"
+        },
+        {
+          "slot": "front-left-angle",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Front left angle"
+        },
+        {
+          "slot": "front-right-angle",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Front right angle"
+        },
+        {
+          "slot": "rear-left-angle",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Rear left angle"
+        },
+        {
+          "slot": "rear-right-angle",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Rear right angle"
+        },
+        {
+          "slot": "chassis-number",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Chassis number plate"
+        },
+        {
+          "slot": "meter-reading",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Operating hours meter"
+        },
+        {
+          "slot": "dashboard-front",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Dashboard front view"
+        },
+        {
+          "slot": "dashboard-left",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Dashboard left controls"
+        },
+        {
+          "slot": "dashboard-right",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Dashboard right controls"
+        },
+        {
+          "slot": "walkaround-video",
+          "kind": "video",
+          "sourceProvider": "external",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      }
+    },
+    {
+      "seedKey": "prime-cat-excavator-ahmedabad-001",
+      "seller": {
+        "role": "CUSTOMER",
+        "selectionMode": "existing-active-prime-random",
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "primeLeadCustomer": {
+        "selectionMode": "skip",
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "formData": {
+        "categoryName": "Excavator",
+        "brandName": "Caterpillar",
+        "modelName": "320D",
+        "title": "Caterpillar 320D 2020 Ready for Site",
+        "variant": "Standard Boom",
+        "manufacturingYear": 2020,
+        "registrationYear": "2020",
+        "registrationNo": "GJ01CAT320D",
+        "chassisOrSerialNo": "CAT320DGJ01202009",
+        "previousOwners": "2",
+        "condition": "Good",
+        "operatingHours": 5120,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 3850000,
+        "isNegotiable": false,
+        "stateName": "Gujarat",
+        "district": "Ahmedabad",
+        "cityName": "Ahmedabad",
+        "pinCode": "382330",
+        "nearbyLandmark": "Naroda GIDC",
+        "description": "Well-maintained excavator with smooth swing motor response and no visible hydraulic leakage.",
+        "additionalDescription": "Undercarriage inspected recently, bucket teeth in usable condition, and cabin AC operational.",
+        "grossPower": "138 hp",
+        "insuranceExpiry": "2027-06-15"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "kind": "image",
+          "sourceProvider": "unsplash",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": true,
+          "caption": "Front exterior"
+        },
+        {
+          "slot": "rear-view",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Rear exterior"
+        },
+        {
+          "slot": "left-side",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Left side profile"
+        },
+        {
+          "slot": "right-side",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Right side profile"
+        },
+        {
+          "slot": "meter-reading",
+          "kind": "image",
+          "sourceProvider": "freepik",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Meter reading"
+        },
+        {
+          "slot": "walkaround-video",
+          "kind": "video",
+          "sourceProvider": "external",
+          "sourceUrl": "",
+          "uploadedFileUrl": "",
+          "isFeatured": false,
+          "caption": "Walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      }
+    }
+  ]
+}

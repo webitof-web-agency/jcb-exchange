@@ -93,10 +93,7 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   if (/^https?:\/\//i.test(fileUrl)) {
-    const normalizedPath = normalizeUploadPath(fileUrl);
-    if (/^https?:\/\//i.test(normalizedPath)) {
-      return normalizedPath;
-    }
+    return fileUrl;
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;

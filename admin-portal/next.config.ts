@@ -56,6 +56,56 @@ const nextConfig: NextConfig = {
         port: '5002',
         pathname: '/uploads/public/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.pexels.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'videos.pexels.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'samplelib.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'mirrorlessons.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'carmalan.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'tsmk.co.id',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.rawpixel.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'ohs.com.au',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'prezentokracja.pl',
+        pathname: '/**',
+      },
       ...(uploadsPattern ? [uploadsPattern] : []),
       ...(legacyApiUploadsPattern ? [legacyApiUploadsPattern] : []),
     ],

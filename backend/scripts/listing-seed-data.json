@@ -1,0 +1,2077 @@
+{
+  "meta": {
+    "version": 2,
+    "createdAt": "2026-09-01",
+    "purpose": "Complete live-ready vehicle listing seed data with real media URLs",
+    "environment": "live-db-target",
+    "notes": [
+      "This file is normalized for seeding: assetLibrary holds real media URLs, and listings reference those assets by key.",
+      "Seller refs must resolve to the existing verified partner or active prime customer records in resolvedUsers.",
+      "Only form-backed fields are included in each listing.",
+      "Fields such as variant, registrationYear, registrationNo, chassisOrSerialNo, previousOwners, fuelType, transmission, district, pinCode, nearbyLandmark, and insuranceExpiry are packed into the listing description during seed execution.",
+      "A single working walkaround video asset is reused across all listings.",
+      "Customer-created and partner-created listings will initially be created as PENDING_APPROVAL by the backend route, then optionally published after approval.",
+      "Resolved IDs are included so seed data mirrors the UI form flow and stores linked master-data references during execution."
+    ]
+  },
+  "defaults": {
+    "currency": "INR",
+    "leadEnquiryType": "BUY_MACHINE",
+    "createLeadForPrimeCustomer": true,
+    "approveAndPublishAfterCreate": true
+  },
+  "resolvedUsers": {
+    "verifiedPartners": [
+      {
+        "ref": "amar-partner",
+        "resolvedSellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "resolvedPartnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "name": "amar",
+        "businessName": "Amar",
+        "email": "amar@gmail.com",
+        "mobile": "8563289563"
+      },
+      {
+        "ref": "amarbb-partner",
+        "resolvedSellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "resolvedPartnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "name": "Amarbb",
+        "businessName": "Amarbb",
+        "email": "amarbb@gmail.com",
+        "mobile": "9865246523"
+      }
+    ],
+    "activePrimeCustomers": [
+      {
+        "ref": "megh-prime",
+        "resolvedSellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "resolvedPrimeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
+        "name": "megh",
+        "email": "megh@gmail.com",
+        "mobile": "6789438748",
+        "primeExpiresAt": "2026-09-23T12:31:37.581Z"
+      },
+      {
+        "ref": "yash-prime",
+        "resolvedSellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "resolvedPrimeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "name": "yash",
+        "email": "yash@gmail.com",
+        "mobile": "1234567890",
+        "primeExpiresAt": "2026-10-10T06:43:23.783Z"
+      }
+    ]
+  },
+  "assetLibrary": {
+    "backhoe-loader": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+      "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+      "caption": "Backhoe loader on a grassy hillside"
+    },
+    "loader-sunset": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "caption": "Loader at sunset"
+    },
+    "excavator-waterfront": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+      "caption": "Excavator near waterfront"
+    },
+    "excavator-orange": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "caption": "Orange excavator on site"
+    },
+    "crane-urban": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+      "caption": "Urban construction crane"
+    },
+    "tractor-site": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "caption": "Tractor at sunset"
+    },
+    "telehandler-construction": {
+      "kind": "image",
+      "sourceProvider": "freepik",
+      "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+      "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+      "caption": "Telehandler at construction site"
+    },
+    "forklift-sunset": {
+      "kind": "image",
+      "sourceProvider": "freepik",
+      "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+      "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+      "caption": "Forklift moving pallets"
+    },
+    "paver-phoenix": {
+      "kind": "image",
+      "sourceProvider": "freepik",
+      "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+      "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+      "caption": "Paver installation in progress"
+    },
+    "dump-truck-mine": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "caption": "Dump truck on site"
+    },
+    "road-roller-rural": {
+      "kind": "image",
+      "sourceProvider": "freepik",
+      "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+      "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+      "caption": "Road roller on rural road"
+    },
+    "tractor-field": {
+      "kind": "image",
+      "sourceProvider": "unsplash",
+      "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+      "caption": "Tractor in a field"
+    },
+    "road-roller-site": {
+      "kind": "image",
+      "sourceProvider": "freepik",
+      "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+      "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+      "caption": "Road roller ready for operation"
+    },
+    "video-walkaround-1": {
+      "kind": "video",
+      "sourceProvider": "samplelib",
+      "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+      "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+      "caption": "Short walkaround video"
+    }
+  },
+  "listings": [
+    {
+      "seedKey": "partner-amar-jcb-backhoe-pune-001",
+      "sellerRef": "amar-partner",
+      "primeLeadCustomerRef": "megh-prime",
+      "formData": {
+        "categoryName": "Backhoe Loader",
+        "brandName": "JCB",
+        "modelName": "3DX",
+        "title": "JCB 3DX EcoXcellence 2021",
+        "variant": "EcoXcellence",
+        "manufacturingYear": 2021,
+        "registrationYear": "2021",
+        "registrationNo": "MH12JCB3201",
+        "chassisOrSerialNo": "JCB3DXMH12202101",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 2840,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2450000,
+        "isNegotiable": true,
+        "stateName": "Maharashtra",
+        "district": "Pune",
+        "cityName": "Pune",
+        "pinCode": "411014",
+        "nearbyLandmark": "Near Wagholi toll naka",
+        "description": "Single-owner machine with clean hydraulics, strong bucket response, and ready-to-work tyres.",
+        "additionalDescription": "Cabin is clean, boom pins recently serviced, and maintenance history available with the owner.",
+        "grossPower": "76 hp (56 kW)",
+        "insuranceExpiry": "2027-03-31"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader on a grassy hillside"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
+        "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
+        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
+        "stateId": 4008,
+        "cityId": 133504,
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
+      }
+    },
+    {
+      "seedKey": "partner-amarbb-wheel-loader-ahmedabad-001",
+      "sellerRef": "amarbb-partner",
+      "primeLeadCustomerRef": "yash-prime",
+      "formData": {
+        "categoryName": "Wheel Loader",
+        "brandName": "BULL",
+        "modelName": "4DX",
+        "title": "BULL 4DX 2020 Maintained Loader",
+        "variant": "4DX Base",
+        "manufacturingYear": 2020,
+        "registrationYear": "2020",
+        "registrationNo": "GJ01BULL4DX",
+        "chassisOrSerialNo": "BULL4DXGJ01202044",
+        "previousOwners": "2",
+        "condition": "Good",
+        "operatingHours": 4315,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 1980000,
+        "isNegotiable": true,
+        "stateName": "Gujarat",
+        "district": "Ahmedabad",
+        "cityName": "Ahmedabad",
+        "pinCode": "382330",
+        "nearbyLandmark": "Near Naroda GIDC",
+        "description": "Hydraulics are responsive, tyres are usable, and bucket linkage has been recently serviced.",
+        "additionalDescription": "Suitable for yard and loading work, with regular preventive maintenance completed on schedule.",
+        "grossPower": "74 hp",
+        "insuranceExpiry": "2027-05-15"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "yash@gmail.com",
+          "mobile": "1234567890",
+          "name": "yash"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
+        "categoryId": "7c4032d8-7e58-40bb-bb1c-24e72779b74b",
+        "brandId": "9dceb6f7-30bc-4ee0-9c32-3b92387644d7",
+        "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
+        "stateId": 4030,
+        "cityId": 57606,
+        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+      }
+    },
+    {
+      "seedKey": "prime-megh-excavator-ahmedabad-001",
+      "sellerRef": "megh-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Excavator",
+        "brandName": "Caterpillar",
+        "modelName": "320D",
+        "title": "Caterpillar 320D 2020 Ready for Site",
+        "variant": "Standard Boom",
+        "manufacturingYear": 2020,
+        "registrationYear": "2020",
+        "registrationNo": "GJ01CAT320D",
+        "chassisOrSerialNo": "CAT320DGJ01202009",
+        "previousOwners": "2",
+        "condition": "Good",
+        "operatingHours": 5120,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 3850000,
+        "isNegotiable": false,
+        "stateName": "Gujarat",
+        "district": "Ahmedabad",
+        "cityName": "Ahmedabad",
+        "pinCode": "382330",
+        "nearbyLandmark": "Naroda GIDC",
+        "description": "Well-maintained excavator with smooth swing motor response and no visible hydraulic leakage.",
+        "additionalDescription": "Undercarriage inspected recently, bucket teeth in usable condition, and cabin AC operational.",
+        "grossPower": "138 hp",
+        "insuranceExpiry": "2027-06-15"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
+        "categoryId": "5f42d595-7cb5-42f9-bce0-4d9faa11f968",
+        "brandId": "1bb5ac04-9886-4c28-8bfd-b01943c40c16",
+        "modelId": "785ac954-18d6-4cb8-8c86-49707929f0b5",
+        "stateId": 4030,
+        "cityId": 57606,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
+      }
+    },
+    {
+      "seedKey": "prime-yash-motor-grader-lucknow-001",
+      "sellerRef": "yash-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Motor Grader",
+        "brandName": "BEML",
+        "modelName": "Not specified",
+        "title": "BEML Motor Grader 2018 Highway Unit",
+        "variant": "Road Finish Configuration",
+        "manufacturingYear": 2018,
+        "registrationYear": "2018",
+        "registrationNo": "UP32BEML1808",
+        "chassisOrSerialNo": "BEMLUP3218GR08",
+        "previousOwners": "2",
+        "condition": "Fair",
+        "operatingHours": 6890,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2750000,
+        "isNegotiable": true,
+        "stateName": "Uttar Pradesh",
+        "district": "Lucknow",
+        "cityName": "Lucknow",
+        "pinCode": "226008",
+        "nearbyLandmark": "Transport Nagar",
+        "description": "Blade movement is functional and engine starts cleanly, suitable for road maintenance and site leveling.",
+        "additionalDescription": "Cosmetic wear is visible, but key systems are in running condition and machine is available for inspection.",
+        "grossPower": "150 hp",
+        "insuranceExpiry": "2026-12-30"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "yash@gmail.com",
+          "mobile": "1234567890",
+          "name": "yash"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
+        "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
+        "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
+        "stateId": 4022,
+        "cityId": 132782,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
+      }
+    },
+    {
+      "seedKey": "partner-amar-ace-telehandler-indore-001",
+      "sellerRef": "amar-partner",
+      "primeLeadCustomerRef": "megh-prime",
+      "formData": {
+        "categoryName": "Telehandler",
+        "brandName": "ACE",
+        "modelName": "Not specified",
+        "title": "ACE Telehandler 2019 Material Yard Unit",
+        "variant": "Heavy Lift Setup",
+        "manufacturingYear": 2019,
+        "registrationYear": "2019",
+        "registrationNo": "MP09ACE1901",
+        "chassisOrSerialNo": "ACEIND2019TLH19",
+        "previousOwners": "1",
+        "condition": "Good",
+        "operatingHours": 3675,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2190000,
+        "isNegotiable": true,
+        "stateName": "Madhya Pradesh",
+        "district": "Indore",
+        "cityName": "Indore",
+        "pinCode": "452010",
+        "nearbyLandmark": "Dewas Naka industrial belt",
+        "description": "Machine is used in a private warehouse and remains in running condition with stable lift performance.",
+        "additionalDescription": "Boom inspection completed recently, tyres are serviceable, and operator visibility is clear.",
+        "grossPower": "85 hp",
+        "insuranceExpiry": "2027-01-20"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
+        "categoryId": "ba15835a-245b-4d2a-842a-ac2bfeec460f",
+        "brandId": "ae0838cd-774e-4df9-a6a1-f2c87377825e",
+        "modelId": "ab156baf-475a-4420-b9ae-e59bc58d3518",
+        "stateId": 4039,
+        "cityId": 132166,
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
+      }
+    },
+    {
+      "seedKey": "partner-amarbb-forklift-jaipur-001",
+      "sellerRef": "amarbb-partner",
+      "primeLeadCustomerRef": "yash-prime",
+      "formData": {
+        "categoryName": "Forklift",
+        "brandName": "Bobcat",
+        "modelName": "Not specified",
+        "title": "Bobcat Forklift 2019 Warehouse Unit",
+        "variant": "3 Ton Capacity",
+        "manufacturingYear": 2019,
+        "registrationYear": "2019",
+        "registrationNo": "RJ14BOBCAT19",
+        "chassisOrSerialNo": "BOBCATFORKRJ142019",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 2780,
+        "fuelType": "Diesel",
+        "transmission": "Automatic",
+        "currentAvailability": "AVAILABLE",
+        "price": 1750000,
+        "isNegotiable": true,
+        "stateName": "Rajasthan",
+        "district": "Jaipur",
+        "cityName": "Jaipur",
+        "pinCode": "302013",
+        "nearbyLandmark": "Sitapura Industrial Area",
+        "description": "Compact forklift with smooth mast action and good tire condition for warehouse handling.",
+        "additionalDescription": "Hydraulic lines are clean, and the machine is ready for inspection and immediate deployment.",
+        "grossPower": "62 hp",
+        "insuranceExpiry": "2027-08-01"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "yash@gmail.com",
+          "mobile": "1234567890",
+          "name": "yash"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
+        "categoryId": "46194f46-9412-4fe0-8c3d-c28ee0d34b32",
+        "brandId": "b0ed9c09-2b7a-49e2-b68f-c0e4afa1a06e",
+        "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
+        "stateId": 4014,
+        "cityId": 132201,
+        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+      }
+    },
+    {
+      "seedKey": "prime-megh-roller-nagpur-001",
+      "sellerRef": "megh-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Compactor / Road Roller",
+        "brandName": "Volvo",
+        "modelName": "SD110",
+        "title": "Volvo SD110 2017 Road Roller",
+        "variant": "Smooth Drum",
+        "manufacturingYear": 2017,
+        "registrationYear": "2017",
+        "registrationNo": "MH31VOLVO17",
+        "chassisOrSerialNo": "VOLVOSD110MH312017",
+        "previousOwners": "2",
+        "condition": "Good",
+        "operatingHours": 7420,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2250000,
+        "isNegotiable": true,
+        "stateName": "Maharashtra",
+        "district": "Nagpur",
+        "cityName": "Nagpur",
+        "pinCode": "440016",
+        "nearbyLandmark": "MIDC Hingna",
+        "description": "Road roller is in working condition with steady drum performance and reasonable compaction output.",
+        "additionalDescription": "Used for internal road work, basic maintenance completed, and machine is available for immediate viewing.",
+        "grossPower": "95 hp",
+        "insuranceExpiry": "2026-11-30"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
+        "categoryId": "1e1dfe2a-6f5a-4590-a76c-2e79dedb1bc7",
+        "brandId": "98df3dd5-4181-4f23-a5bb-daf6b08703d2",
+        "modelId": "fa06506a-a678-4902-92d4-e72caf1adc3a",
+        "stateId": 4008,
+        "cityId": 133116,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
+      }
+    },
+    {
+      "seedKey": "prime-yash-bulldozer-surat-001",
+      "sellerRef": "yash-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Bulldozer",
+        "brandName": "Komatsu",
+        "modelName": "D65",
+        "title": "Komatsu D65 2018 Earth Moving Dozer",
+        "variant": "Heavy Duty Blade",
+        "manufacturingYear": 2018,
+        "registrationYear": "2018",
+        "registrationNo": "GJ05KOMATSU18",
+        "chassisOrSerialNo": "KOMATSUD65GJ052018",
+        "previousOwners": "1",
+        "condition": "Good",
+        "operatingHours": 6585,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 3450000,
+        "isNegotiable": false,
+        "stateName": "Gujarat",
+        "district": "Surat",
+        "cityName": "Surat",
+        "pinCode": "395010",
+        "nearbyLandmark": "Sachin GIDC",
+        "description": "Bulldozer is in strong working condition, suitable for earth moving and site preparation projects.",
+        "additionalDescription": "Blade is straight, track assembly is serviceable, and engine response remains consistent under load.",
+        "grossPower": "160 hp",
+        "insuranceExpiry": "2027-02-28"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "yash@gmail.com",
+          "mobile": "1234567890",
+          "name": "yash"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
+        "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
+        "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
+        "stateId": 4030,
+        "cityId": 134096,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
+      }
+    },
+    {
+      "seedKey": "partner-amar-dump-truck-bhopal-001",
+      "sellerRef": "amar-partner",
+      "primeLeadCustomerRef": "megh-prime",
+      "formData": {
+        "categoryName": "Dump Truck / Tipper",
+        "brandName": "Tata",
+        "modelName": "1613",
+        "title": "Tata 1613 2018 Site Tipper",
+        "variant": "High Side Body",
+        "manufacturingYear": 2018,
+        "registrationYear": "2018",
+        "registrationNo": "MP04TATA1613",
+        "chassisOrSerialNo": "TATA1613MP042018",
+        "previousOwners": "2",
+        "condition": "Good",
+        "operatingHours": 8420,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2650000,
+        "isNegotiable": true,
+        "stateName": "Madhya Pradesh",
+        "district": "Bhopal",
+        "cityName": "Bhopal",
+        "pinCode": "462001",
+        "nearbyLandmark": "Piplani Industrial Area",
+        "description": "Reliable site tipper with strong load handling and regular maintenance for construction transport work.",
+        "additionalDescription": "Tyres are serviceable, body is clean, and vehicle is ready for project deployment.",
+        "grossPower": "140 hp",
+        "insuranceExpiry": "2027-04-10"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
+        "categoryId": "96fc3b2b-7be9-4e23-a38f-ad41bdf46af2",
+        "brandId": "05df3788-241d-431b-a34b-83dfe7f2d413",
+        "modelId": "e4645b29-13b1-4eb1-b17d-01fd04a8b352",
+        "stateId": 4039,
+        "cityId": 57995,
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
+      }
+    },
+    {
+      "seedKey": "partner-amarbb-paver-pune-001",
+      "sellerRef": "amarbb-partner",
+      "primeLeadCustomerRef": "yash-prime",
+      "formData": {
+        "categoryName": "Paver",
+        "brandName": "Case Construction",
+        "modelName": "AP 555F",
+        "title": "Case Construction AP 555F 2021 Paver",
+        "variant": "High Output Paving",
+        "manufacturingYear": 2021,
+        "registrationYear": "2021",
+        "registrationNo": "MH14CASE555F",
+        "chassisOrSerialNo": "CASEAP555FMH142021",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 1975,
+        "fuelType": "Diesel",
+        "transmission": "Automatic",
+        "currentAvailability": "AVAILABLE",
+        "price": 4250000,
+        "isNegotiable": false,
+        "stateName": "Maharashtra",
+        "district": "Pune",
+        "cityName": "Pune",
+        "pinCode": "411057",
+        "nearbyLandmark": "Chakan MIDC",
+        "description": "Paver is in excellent condition with clean auger assembly and stable screed performance.",
+        "additionalDescription": "Used on road projects with low operating hours and good service records available.",
+        "grossPower": "170 hp",
+        "insuranceExpiry": "2027-09-15"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "loader-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1538112692971-bd029a5bc822?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzQzNTU3ODk0fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Loader at sunset"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "excavator-waterfront",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1628645419184-26a1f2757340?fm=jpg&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZXhjYXZhdGlvbnxlbnwwfHwwfHx8MA%3D%3D&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Excavator near waterfront"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "excavator-orange",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1495036019936-220b29b930ea?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMTM4NjQzfA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Orange excavator on site"
+        },
+        {
+          "slot": "front-left-angle",
+          "assetKey": "crane-urban",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1580524764758-c74717732d57?fm=jpg&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE4fHx8ZW58MHx8fHx8&ixlib=rb-4.1.0&q=60&w=3000",
+          "caption": "Urban construction crane"
+        },
+        {
+          "slot": "front-right-angle",
+          "assetKey": "tractor-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1668303672808-6e8d7cae3fdc?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzAzNjUyNDU3fA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor at sunset"
+        },
+        {
+          "slot": "rear-left-angle",
+          "assetKey": "telehandler-construction",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "uploadedFileUrl": "https://carmalan.com/wp-content/uploads/2021/05/600x600-Equipment.jpg",
+          "caption": "Telehandler at construction site"
+        },
+        {
+          "slot": "rear-right-angle",
+          "assetKey": "forklift-sunset",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "uploadedFileUrl": "https://tsmk.co.id/wp-content/uploads/2021/04/021.-Mengapa-TSMK-Sebagai-Partner-scaled.jpg",
+          "caption": "Forklift moving pallets"
+        },
+        {
+          "slot": "chassis-number",
+          "assetKey": "paver-phoenix",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "uploadedFileUrl": "https://images.rawpixel.com/image_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIyLTExL2ZsNDk4NjM1MjIzOTMtaW1hZ2UuanBn.jpg",
+          "caption": "Paver installation in progress"
+        },
+        {
+          "slot": "meter-reading",
+          "assetKey": "dump-truck-mine",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1603816885578-beb3471b2feb?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&fit=crop&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzUwMzIzNzQ4fA&ixlib=rb-4.1.0&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Dump truck on site"
+        },
+        {
+          "slot": "dashboard-front",
+          "assetKey": "road-roller-rural",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "uploadedFileUrl": "https://ohs.com.au/cdn/shop/products/rolleroperations1.jpg?v=1665485743",
+          "caption": "Road roller on rural road"
+        },
+        {
+          "slot": "dashboard-left",
+          "assetKey": "tractor-field",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "uploadedFileUrl": "https://images.unsplash.com/photo-1634385361448-3166300edc36?auto=format&blend=000000&blend-alpha=10&blend-mode=normal&blend-w=1&crop=faces%2Cedges&cs=tinysrgb&fit=crop&fm=jpg&h=630&ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNjk2NzgzODMzfA&ixlib=rb-4.0.3&mark=https%3A%2F%2Fimages.unsplash.com%2Fopengraph%2Flogo.png&mark-align=top%2Cleft&mark-pad=50&mark-w=64&q=60&w=1200",
+          "caption": "Tractor in a field"
+        },
+        {
+          "slot": "dashboard-right",
+          "assetKey": "road-roller-site",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "uploadedFileUrl": "https://prezentokracja.pl/media/catalog/product/w/a/walec-jazda-w-prezencie-smieszne-2_1_.jpg",
+          "caption": "Road roller ready for operation"
+        },
+        {
+          "slot": "walkaround-video",
+          "assetKey": "video-walkaround-1",
+          "kind": "video",
+          "isFeatured": false,
+          "sourceUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "uploadedFileUrl": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          "caption": "Short walkaround video"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "yash@gmail.com",
+          "mobile": "1234567890",
+          "name": "yash"
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
+        "categoryId": "491b0732-c6a8-476e-98a5-62e70080eda4",
+        "brandId": "8bbd800f-de6b-4a90-8a96-8679ebb84e67",
+        "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
+        "stateId": 4008,
+        "cityId": 133504,
+        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+      }
+    }
+  ]
+}

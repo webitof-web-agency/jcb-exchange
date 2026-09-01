@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/src/server.js",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "seed:listings": "tsx scripts/seed-listings.ts"
   },
   "keywords": [],
   "author": "",
