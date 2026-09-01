@@ -556,12 +556,12 @@ export default function HomepageContentSettings() {
 
       <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-0 lg:flex-row">
-          <aside className="border-b border-gray-200 bg-[#FCFAF5] p-5 lg:w-64 xl:w-72 shrink-0 lg:border-b-0 lg:border-r">
-            <div className="space-y-2">
+          <aside className="border-b border-gray-200 bg-[#FCFAF5] p-3 sm:p-4 lg:w-48 xl:w-56 shrink-0 lg:border-b-0 lg:border-r">
+            <div className="flex gap-2 overflow-x-auto sm:grid sm:grid-cols-2 lg:flex lg:flex-col lg:space-y-2 lg:gap-0 pb-1 lg:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <button
                 type="button"
                 onClick={() => setActiveTab('finance-support')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'finance-support'
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-xs sm:text-sm font-semibold transition shrink-0 whitespace-nowrap ${activeTab === 'finance-support'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
@@ -572,7 +572,7 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('hero-image')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'hero-image'
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-xs sm:text-sm font-semibold transition shrink-0 whitespace-nowrap ${activeTab === 'hero-image'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
@@ -583,7 +583,7 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('inspection-section')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'inspection-section'
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-xs sm:text-sm font-semibold transition shrink-0 whitespace-nowrap ${activeTab === 'inspection-section'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
@@ -594,7 +594,7 @@ export default function HomepageContentSettings() {
               <button
                 type="button"
                 onClick={() => setActiveTab('site-logo')}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition whitespace-nowrap ${activeTab === 'site-logo'
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-xs sm:text-sm font-semibold transition shrink-0 whitespace-nowrap ${activeTab === 'site-logo'
                   ? 'border-[#FFC107] bg-white text-gray-900 shadow-sm'
                   : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white'
                   }`}
@@ -605,7 +605,7 @@ export default function HomepageContentSettings() {
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 p-6">
+          <div className="flex-1 min-w-0 p-4 sm:p-6">
             <div className="mb-6 flex justify-end">
               <div className="flex flex-wrap gap-3">
                 {activeTab === 'finance-support' ? (

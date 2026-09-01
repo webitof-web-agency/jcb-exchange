@@ -338,8 +338,8 @@ export default function SuperAdminSettingsPage() {
         <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
       </div>
 
-      <div className="flex flex-col items-start gap-8 md:flex-row">
-        <aside className="w-full flex-shrink-0 md:w-64">
+      <div className="flex flex-col items-start gap-6 lg:gap-8 md:flex-row min-w-0 w-full">
+        <aside className="w-full flex-shrink-0 md:w-52 lg:w-60">
           <nav className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
             <button
               type="button"
@@ -392,7 +392,7 @@ export default function SuperAdminSettingsPage() {
           </nav>
         </aside>
 
-        <div className="w-full flex-1 space-y-6">
+        <div className="w-full flex-1 min-w-0 space-y-6">
           {loadingError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {loadingError}
