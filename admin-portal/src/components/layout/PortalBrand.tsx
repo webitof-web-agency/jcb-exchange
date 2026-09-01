@@ -72,7 +72,7 @@ export default function PortalBrand({
         ) : null}
       </Link>
       {showSubtitle && subtitle ? (
-        <p className="mt-1.5 text-xs font-semibold uppercase tracking-widest text-gray-400 text-center">{subtitle}</p>
+        <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-gray-400 text-center">{subtitle}</p>
       ) : null}
     </div>
   );
