@@ -19,18 +19,16 @@ type PublicCategory = {
   } | null;
 };
 
+import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
+
 function CategoryIconBadge({ icon, name }: { icon?: PublicCategory['icon']; name: string }) {
   return (
     <div className="flex h-12 w-12 items-center justify-center rounded-full border border-yellow-100 bg-[#fff8db] text-gray-700 shadow-sm">
-      {icon?.svgData ? (
-        <div
-          className="flex h-6 w-6 items-center justify-center [&_svg]:block [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none"
-          dangerouslySetInnerHTML={{ __html: icon.svgData }}
-          aria-hidden="true"
-        />
-      ) : (
-        <Shapes className="h-5 w-5 text-jcb-yellow" aria-hidden="true" />
-      )}
+      <CategoryIconRenderer
+        svgData={icon?.svgData}
+        name={name}
+        className="flex h-6 w-6 items-center justify-center text-gray-700"
+      />
       <span className="sr-only">{name}</span>
     </div>
   );

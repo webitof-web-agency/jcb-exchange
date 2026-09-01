@@ -9,6 +9,7 @@ import { useNotificationStore } from '@/store/notificationStore';
 import api, { API_ORIGIN } from '@/lib/api';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
+import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
 
 type FinanceSupportItem = {
   id: string;
@@ -456,17 +457,10 @@ export default function Home() {
                             className="flex flex-col items-center justify-center cursor-pointer group hover:-translate-y-1 transition-transform duration-300"
                           >
                             <div className="h-12 sm:h-16 flex items-center justify-center mb-2 sm:mb-4">
-                              {category.icon?.svgData ? (
-                                <div 
-                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none"
-                                  dangerouslySetInnerHTML={{ __html: category.icon.svgData }}
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 font-bold group-hover:bg-[#fca311]/20 group-hover:text-[#fca311] transition-colors">
-                                  {category.name.substring(0, 2).toUpperCase()}
-                                </div>
-                              )}
+                              <CategoryIconRenderer
+                                svgData={category.icon?.svgData}
+                                name={category.name}
+                              />
                             </div>
                             <span className="text-xs sm:text-[13px] font-semibold sm:font-bold text-gray-900 text-center tracking-tight capitalize">{category.name}</span>
                           </Link>
@@ -489,17 +483,10 @@ export default function Home() {
                             className="flex flex-col items-center justify-center cursor-pointer group hover:-translate-y-1 transition-transform duration-300"
                           >
                             <div className="h-12 sm:h-16 flex items-center justify-center mb-2 sm:mb-4">
-                              {category.icon?.svgData ? (
-                                <div 
-                                  className="h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none"
-                                  dangerouslySetInnerHTML={{ __html: category.icon.svgData }}
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 font-bold group-hover:bg-[#fca311]/20 group-hover:text-[#fca311] transition-colors">
-                                  {category.name.substring(0, 2).toUpperCase()}
-                                </div>
-                              )}
+                              <CategoryIconRenderer
+                                svgData={category.icon?.svgData}
+                                name={category.name}
+                              />
                             </div>
                             <span className="text-xs sm:text-[13px] font-semibold sm:font-bold text-gray-900 text-center tracking-tight capitalize">{category.name}</span>
                           </Link>
