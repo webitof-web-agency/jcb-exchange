@@ -476,9 +476,14 @@ export default function SuperAdminCategoriesPage() {
               <AlertTriangle className="text-red-600" size={32} />
             </div>
             <h3 className="mb-2 text-xl font-bold text-gray-900">{t('categoryManagement.deleteCategoryConfirmTitle')}</h3>
-            <p className="mb-6 text-sm text-gray-500">
+            <p className="mb-4 text-sm text-gray-500">
               {t('categoryManagement.deleteCategoryConfirmDescription', { name: deletingCategory.name })}
             </p>
+            {error ? (
+              <div className="mb-4 rounded-md bg-red-50 p-2.5 text-xs text-red-700 font-medium">
+                {error}
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <button
                 onClick={closeDeleteModal}

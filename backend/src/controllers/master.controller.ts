@@ -532,17 +532,22 @@ export const deleteBrand = async (req: Request, res: Response, next: NextFunctio
       return res.status(404).json({ error: 'Brand not found.' });
     }
 
-    if (brand._count.listings > 0 || brand._count.models > 0) {
+    if (brand._count.listings > 0) {
       return res
         .status(400)
-        .json({ error: 'This brand is already used in listings or models and cannot be deleted.' });
+        .json({ error: `This brand is used in ${brand._count.listings} listing(s) and cannot be deleted.` });
     }
+
+    // Delete associated models first to avoid foreign key constraint violations
+    await prisma.model.deleteMany({
+      where: { brandId: id },
+    });
 
     await prisma.brand.delete({
       where: { id },
     });
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, message: 'Brand deleted successfully.' });
   } catch (error) {
     next(error);
   }

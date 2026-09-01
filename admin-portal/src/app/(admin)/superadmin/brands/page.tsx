@@ -121,6 +121,7 @@ export default function SuperAdminBrandsPage() {
       return;
     }
 
+    setError('');
     setDeletingBrand(brand);
     setIsDeleteModalOpen(true);
   };
@@ -128,6 +129,7 @@ export default function SuperAdminBrandsPage() {
   const closeDeleteModal = () => {
     setDeletingBrand(null);
     setIsDeleteModalOpen(false);
+    setError('');
   };
 
   const handleDelete = async () => {
@@ -142,6 +144,7 @@ export default function SuperAdminBrandsPage() {
 
     try {
       setIsDeleting(true);
+      setError('');
       await api.delete(`/master/brands/${deletingBrand.id}`);
       await fetchBrands();
       closeDeleteModal();
@@ -388,9 +391,14 @@ export default function SuperAdminBrandsPage() {
               <AlertTriangle className="text-red-600" size={32} />
             </div>
             <h3 className="mb-2 text-xl font-bold text-gray-900">{t('brandManagement.deleteBrandConfirmTitle')}</h3>
-            <p className="mb-6 text-sm text-gray-500">
+            <p className="mb-4 text-sm text-gray-500">
               {t('brandManagement.deleteBrandConfirmDescription', { name: deletingBrand.name })}
             </p>
+            {error ? (
+              <div className="mb-4 rounded-md bg-red-50 p-2.5 text-xs text-red-700 font-medium">
+                {error}
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <button
                 onClick={closeDeleteModal}
