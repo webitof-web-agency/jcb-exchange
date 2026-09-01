@@ -45,18 +45,15 @@ export default function PortalBrand({
   }, []);
 
   const wrapperClass = size === 'footer'
-    ? 'w-full max-w-[240px] sm:max-w-[360px]'
-    : 'w-full max-w-[200px] sm:max-w-[240px] md:max-w-[300px]';
+    ? 'w-full max-w-[240px] sm:max-w-[360px] mx-auto'
+    : 'w-full max-w-[180px] sm:max-w-[220px] mx-auto';
   const maxHeightClass = size === 'footer' ? 'max-h-[80px]' : 'max-h-[64px]';
-  const fallbackClass = size === 'footer'
-    ? 'text-xl font-bold italic tracking-wider text-[#FFC107]'
-    : 'text-xl font-bold italic tracking-wider text-[#FFC107]';
 
   return (
-    <div>
-      <Link href={href} className={`inline-flex items-center ${wrapperClass}`}>
+    <div className="flex flex-col items-center justify-center text-center w-full">
+      <Link href={href} className={`flex items-center justify-center ${wrapperClass}`}>
         {logoUrl ? (
-          <div className={`relative flex items-center ${wrapperClass}`}>
+          <div className={`relative flex items-center justify-center ${wrapperClass}`}>
             <Image
               src={logoUrl}
               alt="JCB Exchange"
@@ -65,13 +62,13 @@ export default function PortalBrand({
               unoptimized
               priority={size === 'header'}
               loading={size === 'header' ? 'eager' : 'lazy'}
-              className={`w-full h-auto object-contain object-left ${maxHeightClass}`}
+              className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
             />
           </div>
         ) : null}
       </Link>
       {subtitle ? (
-        <p className="mt-1 text-xs uppercase tracking-widest text-gray-400">{subtitle}</p>
+        <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-gray-400 text-center">{subtitle}</p>
       ) : null}
     </div>
   );
