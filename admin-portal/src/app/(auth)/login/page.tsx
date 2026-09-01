@@ -153,9 +153,9 @@ function LoginPageInner() {
     <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a] bg-opacity-60 bg-[url('/jcb-bg.jpg')] bg-cover bg-center bg-blend-overlay font-sans relative px-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden flex flex-col">
         <div className="flex justify-center items-center px-6 py-5 bg-[#1A1A1A] border-b border-white/10">
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-2">
             <PortalBrand href="/login" showSubtitle={false} />
-            <span className={`px-2.5 py-1 text-[11px] uppercase tracking-wider font-extrabold rounded-md shadow-sm whitespace-nowrap ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
+            <span className={`px-1.5 py-0.5 text-[8px] sm:text-[9px] leading-none uppercase tracking-widest font-bold rounded-sm shadow-sm whitespace-nowrap ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
               {isFirstSetup ? t('authPortal.superAdminBadge') : t('authPortal.portalBadge')}
             </span>
           </div>
