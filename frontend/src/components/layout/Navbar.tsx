@@ -2,7 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bell, ChevronDown, LogOut, Package, User, Menu, X } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight } from 'lucide-react';
 import SellVehicleModal from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
@@ -71,12 +72,24 @@ export default function Navbar() {
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isPrimePaymentOpen, setIsPrimePaymentOpen] = useState(false);
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
+  const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const lastScrollYRef = useRef(0);
   const tickingRef = useRef(false);
   const hasBlockingModalOpen = isSellModalOpen || isPrimePaymentOpen;
   const shouldShowNavbar = hasBlockingModalOpen || isNavbarVisible;
+
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
 
   useEffect(() => {
     if (hasBlockingModalOpen) {
@@ -236,7 +249,7 @@ export default function Navbar() {
       return;
     }
 
-    if (user?.role === 'CUSTOMER') {
+    if (user?.role === 'CUSTOMER' && !user?.isPrimeCustomer) {
       setIsPrimePaymentOpen(true);
       return;
     }
@@ -448,38 +461,163 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Mobile Menu */}
-          {isMobileMenuOpen && (
-            <div className="xl:hidden w-full bg-[#1A1A1A] border-b border-white/10 px-4 py-4 flex flex-col gap-4">
-              <div className="pb-1">
-                <LanguageSwitcher />
-              </div>
-              <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="text-sm font-semibold text-gray-300 hover:text-white transition-colors">
-                {t('navbar.home')}
-              </Link>
-              <Link href="/machines" onClick={() => setIsMobileMenuOpen(false)} className="text-sm font-semibold text-gray-300 hover:text-white transition-colors">
-                {t('navbar.machines')}
-              </Link>
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  handleOpenSellVehicle();
-                }}
-                className="text-left text-sm font-semibold text-gray-300 hover:text-white transition-colors"
-              >
-                {t('navbar.sellVehicle')}
-              </button>
-              <Link href="/sold-vehicles" onClick={() => setIsMobileMenuOpen(false)} className="text-sm font-semibold text-gray-300 hover:text-white transition-colors">
-                {t('navbar.soldVehicles')}
-              </Link>
-              <Link href="/dealers" onClick={() => setIsMobileMenuOpen(false)} className="text-sm font-semibold text-jcb-yellow hover:text-yellow-400 transition-colors">
-                {t('common.findDealer')}
-              </Link>
-            </div>
-          )}
-
         </div>
       </header>
+
+      {/* Mobile Menu Backdrop Overlay */}
+      {isMobileMenuOpen ? (
+        <div
+          className="fixed inset-0 z-[55] bg-black/70 backdrop-blur-xs transition-opacity duration-300 xl:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      ) : null}
+
+      {/* Mobile Slide-Over Navigation Drawer */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-[60] flex w-[290px] max-w-[85vw] flex-col bg-[#161616] text-white shadow-2xl transition-transform duration-300 ease-out xl:hidden ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+          <SiteBrand />
+          <button
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="rounded-full p-2 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* User Profile / Auth Card */}
+        {isAuthenticated ? (
+          <div className="mx-4 mt-4 flex items-center justify-between rounded-2xl bg-white/5 p-3.5 border border-white/10">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFC107] font-bold text-black text-sm shadow-xs">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-white">{displayName}</p>
+                <p className="truncate text-[10px] font-bold text-[#FFC107] uppercase tracking-wider">{roleLabel}</p>
+              </div>
+            </div>
+            {user?.role && PORTAL_ROLES.includes(user.role) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handlePortalNavigation();
+                }}
+                className="rounded-lg bg-white/10 p-2 text-gray-300 hover:bg-white/20 hover:text-white transition-colors"
+                title={portalMenuLabel}
+              >
+                <User size={16} />
+              </button>
+            ) : (
+              <Link
+                href={portalTarget}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="rounded-lg bg-white/10 p-2 text-gray-300 hover:bg-white/20 hover:text-white transition-colors"
+                title={portalMenuLabel}
+              >
+                <User size={16} />
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="mx-4 mt-4 p-3 rounded-2xl bg-white/5 border border-white/10">
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setAuthModalOpen(true);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFC107] px-4 py-2.5 text-xs font-bold text-black shadow-xs transition hover:bg-[#FFB300]"
+            >
+              <User size={16} />
+              {t('common.loginSignup')}
+            </button>
+          </div>
+        )}
+
+        {/* Navigation Links with Icons */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+          <Link
+            href="/"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${
+              pathname === '/' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Home size={18} className={pathname === '/' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('navbar.home')}</span>
+          </Link>
+
+          <Link
+            href="/machines"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${
+              pathname === '/machines' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Truck size={18} className={pathname === '/machines' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('navbar.machines')}</span>
+          </Link>
+
+          <button
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              handleOpenSellVehicle();
+            }}
+            className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white text-left"
+          >
+            <PlusCircle size={18} className="text-[#FFC107]" />
+            <span>{t('navbar.sellVehicle')}</span>
+          </button>
+
+          <Link
+            href="/sold-vehicles"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${
+              pathname === '/sold-vehicles' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <CheckCircle2 size={18} className={pathname === '/sold-vehicles' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('navbar.soldVehicles')}</span>
+          </Link>
+
+          <Link
+            href="/dealers"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${
+              pathname === '/dealers' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Store size={18} className={pathname === '/dealers' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('common.findDealer')}</span>
+          </Link>
+        </nav>
+
+        {/* Drawer Footer */}
+        <div className="border-t border-white/10 p-4 space-y-3 bg-[#111]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-400">{t('common.language')}</span>
+            <LanguageSwitcher direction="up" />
+          </div>
+          {isAuthenticated && (
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                logout();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-xs font-bold text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              <LogOut size={15} />
+              {t('common.logoutSecurely')}
+            </button>
+          )}
+        </div>
+      </aside>
       {isSellModalOpen ? <SellVehicleModal isOpen={isSellModalOpen} onClose={() => setIsSellModalOpen(false)} /> : null}
       {isPrimePaymentOpen ? (
         <CustomerPrimePaymentModal

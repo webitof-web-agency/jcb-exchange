@@ -9,11 +9,13 @@ import { useLanguageStore } from '@/store/languageStore';
 type LanguageSwitcherProps = {
   className?: string;
   tone?: 'dark' | 'light';
+  direction?: 'down' | 'up';
 };
 
 export default function LanguageSwitcher({
   className = '',
   tone = 'dark',
+  direction = 'down',
 }: LanguageSwitcherProps) {
   const { t } = useTranslation();
   const locale = useLanguageStore((state) => state.locale);
@@ -52,6 +54,7 @@ export default function LanguageSwitcher({
 
   const currentLabel = LOCALE_LABELS[locale]?.nativeName || 'English';
   const isDark = tone === 'dark';
+  const isUp = direction === 'up';
 
   return (
     <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>
@@ -70,14 +73,16 @@ export default function LanguageSwitcher({
         <span className="font-medium">{currentLabel}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform duration-200 ${
-            isOpen ? 'rotate-180' : ''
+            isOpen ? (isUp ? '' : 'rotate-180') : (isUp ? 'rotate-180' : '')
           } ${isDark ? 'text-gray-300' : 'text-gray-400'}`}
         />
       </button>
 
       {isOpen && (
         <div
-          className="absolute left-0 top-full z-50 mt-2 min-w-[150px] overflow-hidden rounded-2xl border border-gray-200 bg-white p-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)] transition-all transform origin-top-left sm:left-0"
+          className={`absolute right-0 z-[70] min-w-[160px] overflow-hidden rounded-2xl border border-gray-200 bg-white p-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)] transition-all ${
+            isUp ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-2 origin-top-right'
+          }`}
         >
           <div className="space-y-0.5">
             {SUPPORTED_LOCALES.map((supportedLocale) => {

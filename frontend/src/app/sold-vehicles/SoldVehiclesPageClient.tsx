@@ -393,9 +393,6 @@ export default function SoldVehiclesPageClient() {
               {t('soldVehicles.title')}
             </h1>
 
-            <p className="max-w-2xl text-xs sm:text-base text-slate-300 leading-relaxed">
-              {t('soldVehicles.subtitle')}
-            </p>
             <div className="mt-4 flex flex-row items-center gap-2 sm:gap-3.5 w-full sm:w-auto">
               <Link
                 href="/machines"

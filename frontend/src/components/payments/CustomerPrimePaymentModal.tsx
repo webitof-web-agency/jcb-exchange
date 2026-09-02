@@ -258,6 +258,17 @@ export default function CustomerPrimePaymentModal({
     return null;
   }
 
+  if (loading || !access) {
+    return (
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(8,10,15,0.72)] backdrop-blur-xs px-4 py-6">
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-[#141414] p-6 border border-white/10 text-white shadow-2xl">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-[#FFC107]"></div>
+          <p className="text-xs font-semibold text-gray-300">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-hidden bg-[rgba(8,10,15,0.72)] px-4 py-6">
       <div className="relative flex max-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.35)] [isolation:isolate]">
