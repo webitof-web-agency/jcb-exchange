@@ -1636,8 +1636,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 src={getAbsoluteFileUrl(activeMedia.url)}
                 alt={t('listingDetails.listingMediaAlt')}
                 className="h-full w-full object-contain"
-                quality={100}
-                priority
+                fallback={
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-950 text-gray-300">
+                    <ImageIcon className="h-10 w-10" />
+                  </div>
+                }
               />
             </div>
           </div>
