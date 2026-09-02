@@ -405,12 +405,9 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
           </Link>
           
           <div className="flex flex-wrap items-start sm:items-center justify-between gap-2.5 sm:gap-3">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 leading-snug break-words max-w-full">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 leading-snug break-words max-w-full">
               {listing.title}
             </h1>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider ${getStatusBadgeClassName(listing.status)}`}>
-              {listing.status}
-            </span>
           </div>
           
           <p className="mt-1.5 text-xs sm:text-sm text-gray-500 leading-relaxed max-w-2xl">
@@ -608,7 +605,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                   <p className="truncate text-[10px] sm:text-xs font-bold uppercase tracking-[0.22em] text-gray-500">
                     {t('profile.currentListingStatus')}
                   </p>
-                  <h2 className="mt-2 truncate text-2xl sm:text-3xl font-black text-gray-900">{formatCurrency(listing.price)}</h2>
+                  <h2 className="mt-1 truncate text-xl sm:text-2xl font-bold text-gray-900">{formatCurrency(listing.price)}</h2>
                 </div>
                 <div className={`shrink-0 rounded-full px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider ${getStatusBadgeClassName(listing.status)}`}>
                   {listing.status}
