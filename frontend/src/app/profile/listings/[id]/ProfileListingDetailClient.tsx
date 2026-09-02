@@ -538,7 +538,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                       <UserRound className="h-6 w-6" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-lg sm:text-xl font-black text-rose-950">Buyer & Sale Record (Confidential)</h2>
+                      <h2 className="truncate text-base sm:text-lg font-bold text-rose-950">Buyer & Sale Record (Confidential)</h2>
                       <p className="truncate text-[10px] sm:text-sm text-rose-700">Confidential details of the buyer and final sale record for this vehicle.</p>
                     </div>
                   </div>
@@ -571,7 +571,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                     <PlayCircle className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-lg sm:text-xl font-black text-gray-900">{t('machineDetails.videos')}</h2>
+                    <h2 className="truncate text-base sm:text-lg font-bold text-gray-900">{t('machineDetails.videos')}</h2>
                     <p className="truncate text-xs sm:text-sm text-gray-500">{t('profile.listingVideosSubtitle')}</p>
                   </div>
                 </div>
@@ -646,7 +646,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                   <Wrench className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base sm:text-lg font-black text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
+                  <h2 className="truncate text-base sm:text-lg font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
                   <p className="truncate text-[10px] sm:text-xs text-gray-500">{t('profile.listingDetailSpecsSubtitle')}</p>
                 </div>
               </div>
@@ -770,7 +770,7 @@ function DetailSection({
         className="flex w-full items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5 text-left"
       >
         <div className="min-w-0 flex-1">
-          <h2 className="text-base sm:text-xl font-black text-gray-900 break-words">{title}</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-900 break-words">{title}</h2>
           <p className="mt-0.5 text-xs sm:text-sm text-gray-500 leading-snug">{subtitle}</p>
         </div>
         <div className="shrink-0 rounded-xl sm:rounded-2xl bg-gray-100 p-1.5 sm:p-2 text-gray-500">
