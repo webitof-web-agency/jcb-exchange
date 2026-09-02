@@ -479,11 +479,13 @@ export default function Navbar() {
         }`}
       >
         {/* Drawer Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-          <SiteBrand />
+        <div className="relative flex items-center justify-center border-b border-white/10 px-4 py-4 min-h-[60px]">
+          <div className="flex items-center justify-center">
+            <SiteBrand />
+          </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="rounded-full p-2 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
             aria-label="Close menu"
           >
             <X size={20} />
