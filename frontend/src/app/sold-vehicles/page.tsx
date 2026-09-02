@@ -47,24 +47,6 @@ export default function SoldVehiclesPage() {
       <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC]" />}>
         <SoldVehiclesPageClient />
       </Suspense>
-      <section className="bg-[#F8FAFC] px-4 pb-12 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
-            <div className="max-w-4xl space-y-4 text-sm leading-7 text-slate-600">
-              <h2 className="text-2xl font-extrabold text-slate-900">Use sold listings to understand pricing and demand</h2>
-              <p>
-                Sold equipment history gives buyers and sellers useful context around market movement, machine popularity,
-                and realistic price expectations before they shortlist live inventory.
-              </p>
-              <p>
-                Return to the <Link href="/machines" className="font-bold text-[#c69200] hover:text-amber-600">live machines marketplace</Link>,
-                browse <Link href="/dealers" className="font-bold text-[#c69200] hover:text-amber-600">verified dealers</Link>, or
-                explore <Link href="/categories" className="font-bold text-[#c69200] hover:text-amber-600">equipment categories</Link> for a more focused search.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </>
-  );
+      </>
+    );
 }

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { MapPin, Clock, Building2, Phone, Award } from 'lucide-react';
+import { MapPin, Clock, Building2, Phone, Award, Truck, Layers } from 'lucide-react';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { createPublicContactEnquiry } from '@/lib/enquiries';
 import { useAuthStore } from '@/store/authStore';
@@ -104,18 +104,26 @@ export default function DealersPageClient() {
     <>
       <div className="min-h-screen bg-gray-50 py-12 px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-        <div className="mb-16 text-center">
-          <h1 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl">
+        <div className="mb-8 sm:mb-16 text-center">
+          <h1 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl md:text-5xl">
             {t('dealers.trustedPartners')}
           </h1>
-          <p className="mx-auto max-w-2xl text-sm text-gray-500 sm:text-base">
+          <p className="hidden sm:block mx-auto max-w-2xl text-sm text-gray-500 sm:text-base">
             Compare dealer profiles, then continue browsing live listings and equipment categories across the marketplace.
           </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
-            <Link href="/machines" className="text-sm font-bold text-jcb-yellow hover:text-yellow-600">
+          <div className="mt-6 flex flex-row items-center justify-center gap-2 sm:gap-3.5 w-full max-w-md mx-auto">
+            <Link
+              href="/machines"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl bg-[#FFC107] px-3 sm:px-5 py-2.5 text-[11px] sm:text-sm font-bold text-black shadow-xs transition-all hover:bg-[#FFB300] hover:shadow-md active:scale-95 text-center whitespace-nowrap"
+            >
+              <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
               Browse machines
             </Link>
-            <Link href="/categories" className="text-sm font-bold text-jcb-yellow hover:text-yellow-600">
+            <Link
+              href="/categories"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-gray-300 bg-white px-3 sm:px-5 py-2.5 text-[11px] sm:text-sm font-semibold text-gray-800 shadow-2xs transition-all hover:bg-gray-50 hover:border-gray-400 active:scale-95 text-center whitespace-nowrap"
+            >
+              <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-600 shrink-0" />
               Browse categories
             </Link>
           </div>

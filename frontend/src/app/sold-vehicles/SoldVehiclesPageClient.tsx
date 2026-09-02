@@ -17,6 +17,7 @@ import {
   Layers,
   Tag,
   CheckCircle2,
+  Store,
 } from 'lucide-react';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -395,11 +396,19 @@ export default function SoldVehiclesPageClient() {
             <p className="max-w-2xl text-xs sm:text-base text-slate-300 leading-relaxed">
               {t('soldVehicles.subtitle')}
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-4">
-              <Link href="/machines" className="text-sm font-bold text-[#FFC107] hover:text-yellow-300">
-                Browse available machines
+            <div className="mt-4 flex flex-row items-center gap-2 sm:gap-3.5 w-full sm:w-auto">
+              <Link
+                href="/machines"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl bg-[#FFC107] px-2.5 sm:px-4 py-2.5 text-[11px] sm:text-sm font-bold text-black shadow-xs transition-all hover:bg-[#FFB300] hover:shadow-md active:scale-95 text-center whitespace-nowrap"
+              >
+                <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                Browse machines
               </Link>
-              <Link href="/dealers" className="text-sm font-bold text-[#FFC107] hover:text-yellow-300">
+              <Link
+                href="/dealers"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 backdrop-blur-md px-2.5 sm:px-4 py-2.5 text-[11px] sm:text-sm font-semibold text-white transition-all hover:bg-white/20 hover:border-white/40 active:scale-95 text-center whitespace-nowrap"
+              >
+                <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400 shrink-0" />
                 Explore dealers
               </Link>
             </div>
@@ -697,20 +706,6 @@ export default function SoldVehiclesPageClient() {
               </div>
             )}
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
-              <div className="max-w-4xl space-y-4 text-sm leading-7 text-slate-600">
-                <h2 className="text-2xl font-extrabold text-slate-900">Use sold listings to understand pricing and demand</h2>
-                <p>
-                  Sold equipment data gives buyers and sellers useful context around market movement, machine popularity, and realistic
-                  price expectations. Reviewing completed transactions can help you benchmark similar equipment before you shortlist active inventory.
-                </p>
-                <p>
-                  When you are ready to compare available options, go back to the <Link href="/machines" className="font-bold text-[#c69200] hover:text-amber-600">live machines marketplace</Link>.
-                  You can also browse <Link href="/dealers" className="font-bold text-[#c69200] hover:text-amber-600">verified dealers</Link> or explore
-                  <Link href="/categories" className="ml-1 font-bold text-[#c69200] hover:text-amber-600">equipment categories</Link> for a more focused search.
-                </p>
-              </div>
-            </section>
           </>
         )}
       </main>

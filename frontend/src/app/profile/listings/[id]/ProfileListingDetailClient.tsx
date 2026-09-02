@@ -489,7 +489,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
 
             <DetailSection
               title={t('machineDetails.overview')}
-              subtitle={t('profile.listingDetailOverviewSubtitle')}
+              subtitle=""
               isOpen={openSections.includes('overview')}
               onToggle={() => toggleSection('overview')}
             >
@@ -572,7 +572,6 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                   </div>
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate text-base sm:text-lg font-bold text-gray-900">{t('machineDetails.videos')}</h2>
-                    <p className="truncate text-xs sm:text-sm text-gray-500">{t('profile.listingVideosSubtitle')}</p>
                   </div>
                 </div>
                 <div className={`grid gap-4 ${videos.length > 1 ? 'lg:grid-cols-2' : ''}`}>
@@ -647,7 +646,6 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-base sm:text-lg font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
-                  <p className="truncate text-[10px] sm:text-xs text-gray-500">{t('profile.listingDetailSpecsSubtitle')}</p>
                 </div>
               </div>
 
