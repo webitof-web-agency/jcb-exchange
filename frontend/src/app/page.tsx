@@ -292,9 +292,6 @@ export default function Home() {
               Find the Right Machine for Your Next Job
             </h1>
           )}
-          <p className="mx-auto max-w-3xl text-sm sm:text-base md:text-lg text-white/85">
-            Browse verified heavy machinery listings, trusted dealers, and sold equipment insights across India.
-          </p>
         </div>
 
         {/* Search Bar */}
