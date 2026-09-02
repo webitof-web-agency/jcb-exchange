@@ -204,7 +204,7 @@ export default function SuperAdminBrandsPage() {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-md">
             <input
@@ -257,82 +257,93 @@ export default function SuperAdminBrandsPage() {
             ) : null}
           </div>
         ) : (
-          <div className="overflow-x-auto min-h-[300px] pb-16">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="w-16 p-4 text-center font-semibold">{t('brandManagement.type')}</th>
-                  <th className="p-4 font-semibold">{t('brandManagement.brandName')}</th>
-                  <th className="p-4 text-right font-semibold">{t('brandManagement.actions')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredBrands.map((brand) => (
-                  <tr key={brand.id} className="transition-colors hover:bg-gray-50">
-                    <td className="p-4 text-center">
-                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-                        <Tag size={18} />
-                      </div>
-                    </td>
-                    <td className="p-4 font-medium text-gray-900">{brand.name}</td>
-                    <td className="p-4 text-right">
-                      <div className="relative inline-block text-left action-dropdown-container">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setOpenActionDropdownId(openActionDropdownId === brand.id ? null : brand.id);
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2 transition-colors"
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-4 sm:p-6 pb-32 min-h-[300px]">
+            {filteredBrands.map((brand, index) => {
+              const isNearBottom = index >= filteredBrands.length - 4;
+              const isOpen = openActionDropdownId === brand.id;
+
+              return (
+                <div
+                  key={brand.id}
+                  className={`group relative flex flex-col justify-between rounded-2xl border bg-white p-5 sm:p-6 min-h-[140px] sm:min-h-[155px] shadow-xs transition-all duration-200 ${
+                    isOpen
+                      ? 'z-40 border-amber-400 ring-2 ring-amber-400/20 shadow-md'
+                      : 'z-1 border-gray-100 hover:border-amber-200 hover:shadow-md hover:-translate-y-1'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 w-full">
+                    <div className="flex h-13 w-13 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-50 p-2.5 sm:p-3 text-amber-700 transition-colors group-hover:bg-amber-100/80 shadow-2xs">
+                      <Tag size={24} />
+                    </div>
+
+                    <div className="relative inline-block text-left action-dropdown-container shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setOpenActionDropdownId(isOpen ? null : brand.id);
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2 transition-colors"
+                      >
+                        <MoreVertical className="h-5 w-5" />
+                      </button>
+
+                      {isOpen && (
+                        <div
+                          className={`absolute right-0 z-50 w-48 rounded-xl border border-gray-100 bg-white p-1 shadow-xl ring-1 ring-black/5 focus:outline-none ${
+                            isNearBottom
+                              ? 'bottom-full mb-2 origin-bottom-right'
+                              : 'top-full mt-2 origin-top-right'
+                          }`}
                         >
-                          <MoreVertical className="h-5 w-5 text-gray-500" />
-                        </button>
-                        
-                        {openActionDropdownId === brand.id && (
-                          <div className="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl border border-gray-100 bg-white p-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                            {canUpdateBrands && (
+                          {canUpdateBrands && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOpenActionDropdownId(null);
+                                openEditModal(brand);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100"
+                            >
+                              <Pencil className="h-4 w-4" />
+                              {t('brandManagement.editBrand')}
+                            </button>
+                          )}
+
+                          {canDeleteBrands && (
+                            <>
+                              <div className="my-1 h-px bg-gray-100" />
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setOpenActionDropdownId(null);
-                                  openEditModal(brand);
+                                  openDeleteModal(brand);
                                 }}
-                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100"
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
                               >
-                                <Pencil className="h-4 w-4" />
-                                {t('brandManagement.editBrand')}
+                                <Trash2 className="h-4 w-4" />
+                                {t('brandManagement.deleteBrand')}
                               </button>
-                            )}
-                            
-                            {canDeleteBrands && (
-                              <>
-                                <div className="my-1 h-px bg-gray-100" />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    openDeleteModal(brand);
-                                  }}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                  {t('brandManagement.deleteBrand')}
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-1">
+                    <h4 className="text-xs sm:text-sm font-semibold tracking-wide text-gray-900 leading-snug break-words transition-colors group-hover:text-amber-800">
+                      {brand.name}
+                    </h4>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -27,6 +27,8 @@ import {
   Upload,
   X,
   UserCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
@@ -423,6 +425,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [cities, setCities] = useState<Option[]>([]);
   const [pendingMediaUploads, setPendingMediaUploads] = useState<PendingMediaUpload[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
 
   const isSuperAdmin = currentUserRole === 'SUPER_ADMIN';
@@ -568,6 +571,30 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const displayedActiveMediaIndex =
     availableMedia.length === 0 ? 0 : Math.min(activeMediaIndex, availableMedia.length - 1);
   const activeMedia = availableMedia[displayedActiveMediaIndex];
+
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsLightboxOpen(false);
+      if (e.key === 'ArrowLeft') {
+        setActiveMediaIndex((prev) => (prev > 0 ? prev - 1 : availableMedia.length - 1));
+      }
+      if (e.key === 'ArrowRight') {
+        setActiveMediaIndex((prev) => (prev < availableMedia.length - 1 ? prev + 1 : 0));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLightboxOpen, availableMedia.length]);
+
+  useEffect(() => {
+    if (isLightboxOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isLightboxOpen]);
   const parsedDetails = useMemo(() => parseListingDescription(listing?.description), [listing?.description]);
   const baseForm = useMemo(() => (listing ? createEditForm(listing) : null), [listing]);
   const hasPendingMediaChanges = pendingMediaUploads.length > 0;
@@ -1042,7 +1069,16 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
             {availableMedia.length > 0 ? (
               <div className="space-y-4">
-                <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black">
+                <div 
+                  className={`relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black ${
+                    activeMedia?.type !== 'VIDEO' ? 'cursor-pointer' : ''
+                  }`}
+                  onClick={() => {
+                    if (activeMedia?.type !== 'VIDEO') {
+                      setIsLightboxOpen(true);
+                    }
+                  }}
+                >
                   {activeMedia?.type === 'VIDEO' ? (
                     <video
                       src={getAbsoluteFileUrl(activeMedia.url)}
@@ -1069,7 +1105,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   ) : null}
                 </div>
 
-                <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-2">
+                <div 
+                  className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden w-full"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
                   {availableMedia.map((mediaItem, index) => (
                     <button
                       key={mediaItem.id}
@@ -1577,6 +1616,64 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
           </div>
         </div>
       </div>
+
+      {isLightboxOpen && activeMedia && activeMedia.type !== 'VIDEO' && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+          >
+            <X className="h-7 w-7" />
+          </button>
+          
+          <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
+            <div className="relative h-full w-full">
+              <SafeRemoteImage
+                src={getAbsoluteFileUrl(activeMedia.url)}
+                alt={t('listingDetails.listingMediaAlt')}
+                className="h-full w-full object-contain"
+                quality={100}
+                priority
+              />
+            </div>
+          </div>
+
+          {availableMedia.length > 1 && (
+            <>
+              <button 
+                type="button"
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveMediaIndex((prev) => (prev > 0 ? prev - 1 : availableMedia.length - 1));
+                }}
+                className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
+              </button>
+              <button 
+                type="button"
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveMediaIndex((prev) => (prev < availableMedia.length - 1 ? prev + 1 : 0));
+                }}
+                className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronRight className="h-6 w-6 sm:h-8 sm:w-8" />
+              </button>
+            </>
+          )}
+
+          {availableMedia.length > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md">
+              {displayedActiveMediaIndex + 1} / {availableMedia.length}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

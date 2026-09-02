@@ -28,6 +28,8 @@ import {
   Zap,
   Video,
   UserCircle,
+  X,
+  ChevronLeft,
 } from 'lucide-react';
 import type { MachineListingDetail } from './data';
 import { getAbsoluteMediaUrl } from './data';
@@ -234,6 +236,7 @@ const buildWhatsappMessage = (
 export default function MachineDetailClient({ listing }: MachineDetailClientProps) {
   const { t } = useTranslation();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState<string[]>(['machine', 'seller']);
   const [views, setViews] = useState<number>(listing.views || 0);
@@ -260,6 +263,27 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   }, [listing.id]);
 
   const images = listing.media.filter((media) => media.type === 'IMAGE');
+  
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsLightboxOpen(false);
+      if (e.key === 'ArrowLeft') setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+      if (e.key === 'ArrowRight') setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLightboxOpen, images.length]);
+
+  useEffect(() => {
+    if (isLightboxOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isLightboxOpen]);
+
   const videos = listing.media.filter((media) => media.type === 'VIDEO');
   const mainImage = images[activeImageIndex]?.url || listing.featuredImage;
   const partnerTypeLabel = !listing.partner?.partnerType
@@ -371,9 +395,9 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-20">
-      <div className="w-full border-b border-gray-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center overflow-x-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-500 no-scrollbar">
+    <div className="min-h-screen bg-[#F8F9FA] pb-20 overflow-x-hidden w-full max-w-[100vw] flex flex-col">
+      <div className="w-full border-b border-gray-200 bg-white">
+        <div className="mx-auto flex max-w-7xl py-3 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)] items-center overflow-x-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-500 no-scrollbar">
           <Link href="/" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('navbar.home')}</Link>
           <ChevronRight size={14} className="mx-2 flex-shrink-0" />
           <Link href="/machines" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('machineDetails.usedEquipment')}</Link>
@@ -386,11 +410,14 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 py-0 sm:py-8">
-        <div className="flex flex-col gap-2 sm:gap-8 lg:flex-row">
-          <div className="min-w-0 flex-1">
-            <div className="sm:mb-8 overflow-hidden sm:rounded-xl sm:border border-b border-gray-100 bg-white sm:shadow-sm">
-              <div className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10]">
+      <div className="mx-auto max-w-7xl py-4 sm:py-8 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)]">
+        <div className="flex flex-col gap-6 sm:gap-8 lg:flex-row max-w-full">
+          <div className="min-w-0 flex-1 max-w-full">
+            <div className="mb-6 sm:mb-8 overflow-hidden rounded-xl border border-gray-200 sm:border-gray-100 bg-white shadow-xs sm:shadow-sm max-w-full">
+              <div 
+                className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10] cursor-pointer group"
+                onClick={() => mainImage && setIsLightboxOpen(true)}
+              >
                 <div className="absolute top-4 left-4 z-10">
                   {getAvailabilityBadge(listing.status, {
                     sold: t('machines.sold'),
@@ -405,7 +432,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     fill
                     priority
                     sizes="(max-width: 1024px) 100vw, 66vw"
-                    className="object-cover"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.01]"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center">
@@ -423,7 +450,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
               {images.length > 1 && (
                 <div 
-                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden"
+                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden w-full"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
                   {images.map((image, index) => (
@@ -451,33 +478,44 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
             </div>
           </div>
 
-          <aside className="w-full flex-shrink-0 lg:w-[380px]">
-            <div className="sm:rounded-xl sm:border border-y border-gray-100 sm:border-y-0 bg-white px-5 py-6 sm:p-6 sm:shadow-sm">
+          <aside className="w-full flex-shrink-0 lg:w-[380px] min-w-0">
+            <div className="rounded-xl border border-gray-200 sm:border-gray-100 bg-white px-4 py-5 sm:p-6 shadow-xs sm:shadow-sm">
               <div className="mb-5">
-                <h1 className="mb-1 text-2xl sm:text-[22px] font-extrabold text-[#1a202c] leading-tight">
+                <h1 className="mb-2 text-lg sm:text-xl font-bold text-gray-900 leading-snug tracking-tight break-words max-w-full">
                   {listing.title}
                 </h1>
                 
-                <div className="mb-3 text-sm sm:text-[15px] font-medium text-gray-500">
-                  {listing.manufacturingYear ? t('machineDetails.modelYearValue', { year: listing.manufacturingYear }) : t('machineDetails.yearNa')}
-                </div>
-
-                <div className="mb-4 flex items-center gap-1.5 text-[15px] text-gray-600">
-                  <MapPin size={16} className="text-gray-500" />
-                  <span>{locationLabel}</span>
-                </div>
-
-                <div className="mb-6 inline-flex items-center gap-1.5 rounded-full bg-[#E6F4EA] px-3 py-1.5 text-sm font-semibold text-[#137333]">
-                  <CheckCircle2 size={16} />
-                  <span>{partnerTypeLabel}</span>
-                </div>
-
-                <div className="rounded-xl bg-gray-50 border border-gray-100 px-5 py-4 mb-6">
-                  <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    <span>{listing.status === 'SOLD' ? 'Final Sold Price' : 'Asking Price'}</span>
-                    {listing.status !== 'SOLD' && views > 0 && <span>{views} Views</span>}
+                <div className="mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-500 font-normal">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar size={13} className="text-gray-400 shrink-0" />
+                    <span>
+                      {listing.manufacturingYear ? t('machineDetails.modelYearValue', { year: listing.manufacturingYear }) : t('machineDetails.yearNa')}
+                    </span>
                   </div>
-                  <div className="text-3xl sm:text-[32px] font-extrabold tracking-tight text-[#1a202c] leading-none">
+                  <span className="text-gray-300">•</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <MapPin size={13} className="text-gray-400 shrink-0" />
+                    <span className="truncate" title={locationLabel}>{locationLabel}</span>
+                  </div>
+                </div>
+
+                <div className="mb-5">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/60 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium tracking-wide text-emerald-700">
+                    <CheckCircle2 size={12} className="shrink-0 text-emerald-600" />
+                    <span className="uppercase">{partnerTypeLabel}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-gradient-to-br from-gray-50/90 to-gray-100/50 border border-gray-200/70 p-4 sm:p-5 mb-6 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">{listing.status === 'SOLD' ? 'Final Sold Price' : 'Asking Price'}</span>
+                    {listing.status !== 'SOLD' && views > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500 shadow-xs border border-gray-100">
+                        {views} {views === 1 ? 'view' : 'views'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 leading-none">
                     {listing.status === 'SOLD' 
                       ? soldPriceLabel
                       : formatCurrency(listing.price || 0)}
@@ -624,10 +662,10 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
           </aside>
         </div>
 
-        <div className="w-full mt-4 sm:mt-8 px-4 sm:px-0">
-<section className="mb-10">
-              <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="w-full mt-4 sm:mt-8 min-w-0">
+            <section className="mb-10">
+              <h2 className="mb-4 sm:mb-5 text-xl sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                 <HighlightCard icon={<Settings className="text-jcb-yellow" size={20} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
                 <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
                 <HighlightCard icon={<Clock className="text-jcb-yellow" size={20} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
@@ -732,18 +770,75 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
           }}
         />
       ) : null}
+
+      {isLightboxOpen && mainImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+          >
+            <X size={28} />
+          </button>
+          
+          <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
+            <div className="relative h-full w-full">
+              <Image
+                src={getAbsoluteMediaUrl(mainImage)}
+                alt={listing.title}
+                fill
+                sizes="100vw"
+                className="object-contain"
+                quality={100}
+                priority
+              />
+            </div>
+          </div>
+
+          {images.length > 1 && (
+            <>
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+                }}
+                className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronLeft size={24} className="sm:w-8 sm:h-8" />
+              </button>
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+                }}
+                className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronRight size={24} className="sm:w-8 sm:h-8" />
+              </button>
+            </>
+          )}
+
+          {images.length > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md">
+              {activeImageIndex + 1} / {images.length}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function HighlightCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="group flex flex-col rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-yellow-50 transition-colors group-hover:bg-yellow-100">
+    <div className="group flex flex-col rounded-xl border border-gray-100 bg-white p-3 sm:p-4 shadow-sm transition-shadow hover:shadow-md min-w-0 h-full">
+      <div className="mb-2 sm:mb-3 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-yellow-50 transition-colors group-hover:bg-yellow-100 shrink-0">
         {icon}
       </div>
-      <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
-      <span className="text-sm font-semibold text-gray-900">{value}</span>
+      <span className="mb-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-500 truncate" title={label}>{label}</span>
+      <span className="text-xs sm:text-sm font-semibold text-gray-900 break-words line-clamp-2" title={value}>{value}</span>
     </div>
   );
 }
@@ -791,7 +886,7 @@ type SpecItem = {
 
 function SpecsGrid({ items }: { items: SpecItem[] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-1">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 sm:gap-x-8 lg:gap-x-12 gap-y-2 sm:gap-y-3">
       {items.map(({ icon, label, value }) => (
         <div 
           key={label} 

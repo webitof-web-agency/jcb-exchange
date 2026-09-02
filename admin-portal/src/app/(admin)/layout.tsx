@@ -685,7 +685,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

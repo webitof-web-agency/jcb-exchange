@@ -23,6 +23,9 @@ import {
   Truck,
   UserRound,
   Wrench,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import api, { getAbsoluteMediaUrl } from '@/lib/api';
 import { resolveOwnedListingId } from '@/lib/privateRouteResolvers';
@@ -249,6 +252,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
   const [error, setError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [openSections, setOpenSections] = useState<SectionKey[]>(['overview', 'specs']);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -325,6 +329,26 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
     );
   };
 
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsLightboxOpen(false);
+      if (e.key === 'ArrowLeft') setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+      if (e.key === 'ArrowRight') setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLightboxOpen, images.length]);
+
+  useEffect(() => {
+    if (isLightboxOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isLightboxOpen]);
+
   if (!hasHydrated || (loading && !listing)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-[#F8F9FA] px-4">
@@ -369,22 +393,22 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-16 overflow-x-hidden w-full">
-      <div className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
+    <div className="min-h-screen bg-[#F8F9FA] pb-16 overflow-x-hidden w-full max-w-[100vw]">
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-7xl py-4 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)]">
           <Link
             href="/profile"
-            className="mb-2.5 inline-flex items-center gap-2 text-[10px] sm:text-xs font-bold uppercase tracking-[0.24em] text-gray-500 transition hover:text-gray-900"
+            className="mb-2.5 inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 transition hover:text-gray-900"
           >
             <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             {t('profile.backToListings')}
           </Link>
           
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="truncate text-2xl font-black text-gray-900 sm:text-3xl max-w-full">
+          <div className="flex flex-wrap items-start sm:items-center justify-between gap-2.5 sm:gap-3">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 leading-snug break-words max-w-full">
               {listing.title}
             </h1>
-            <span className={`shrink-0 rounded-full px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider ${getStatusBadgeClassName(listing.status)}`}>
+            <span className={`shrink-0 rounded-full px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider ${getStatusBadgeClassName(listing.status)}`}>
               {listing.status}
             </span>
           </div>
@@ -395,23 +419,26 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-w-0 space-y-6">
-            <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-              <div className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10]">
+      <div className="mx-auto max-w-7xl py-6 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] max-w-full">
+          <div className="min-w-0 space-y-6 max-w-full">
+            <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm max-w-full">
+              <div 
+                className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10] cursor-pointer group"
+                onClick={() => mainImage && setIsLightboxOpen(true)}
+              >
                     <SafeListingImage
                       key={[mainImage, ...imageSources].join('|') || listing.id}
                       sources={mainImage ? [mainImage, ...imageSources.filter((source) => source !== mainImage)] : imageSources}
                       alt={listing.title}
-                      className="object-cover"
+                      className="object-cover transition-transform duration-300 group-hover:scale-[1.01]"
                       iconClassName="h-16 w-16"
                     />
               </div>
 
               {images.length > 1 ? (
                 <div 
-                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden"
+                  className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-2.5 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden w-full"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
                   {images.map((image, index) => (
@@ -419,7 +446,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                       key={image.id}
                       type="button"
                       onClick={() => setActiveImageIndex(index)}
-                      className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-2xl border-2 transition snap-center ${
+                      className={`relative aspect-[4/3] h-16 w-20 sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-xl sm:rounded-2xl border-2 transition snap-center ${
                         activeImageIndex === index ? 'border-[#FFC107]' : 'border-transparent hover:border-gray-200'
                       }`}
                     >
@@ -436,7 +463,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
               ) : null}
             </section>
 
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
               <HighlightCard
                 icon={<BadgeIndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-[#C28A00]" />}
                 label={t('machineDetails.priceLabel')}
@@ -652,16 +679,75 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
           </aside>
         </div>
       </div>
+      
+      {isLightboxOpen && mainImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+          >
+            <X size={28} />
+          </button>
+          
+          <div className="relative h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-8" onClick={(e) => e.stopPropagation()}>
+            <Image
+              src={getAbsoluteMediaUrl(mainImage)}
+              alt={listing.title}
+              fill
+              sizes="100vw"
+              className="object-contain"
+              quality={100}
+              priority
+            />
+          </div>
+
+          {images.length > 1 && (
+            <>
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+                }}
+                className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronLeft size={24} className="sm:w-8 sm:h-8" />
+              </button>
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+                }}
+                className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+              >
+                <ChevronRight size={24} className="sm:w-8 sm:h-8" />
+              </button>
+            </>
+          )}
+
+          {images.length > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md">
+              {activeImageIndex + 1} / {images.length}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function HighlightCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-2xl sm:rounded-3xl border border-gray-200 bg-white p-3.5 sm:p-5 shadow-sm min-w-0">
-      <div className="mb-2 sm:mb-4 inline-flex rounded-xl sm:rounded-2xl bg-[#FFF4CC] p-2 sm:p-3">{icon}</div>
-      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.18em] sm:tracking-[0.22em] text-gray-500 truncate">{label}</p>
-      <p className="mt-1 sm:mt-2 text-sm sm:text-base font-bold text-gray-900 truncate">{value}</p>
+    <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm min-w-0 flex flex-col justify-between">
+      <div>
+        <div className="mb-1.5 sm:mb-3 inline-flex rounded-lg sm:rounded-xl bg-[#FFF4CC] p-1.5 sm:p-2.5">{icon}</div>
+        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">{label}</p>
+      </div>
+      <p className="mt-1 sm:mt-2 text-xs sm:text-base font-bold text-gray-900 break-words leading-tight" title={value}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -680,32 +766,32 @@ function DetailSection({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl sm:rounded-3xl border border-gray-200 bg-white shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left sm:px-6"
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5 text-left"
       >
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg sm:text-xl font-black text-gray-900">{title}</h2>
-          <p className="mt-1 truncate text-xs sm:text-sm text-gray-500">{subtitle}</p>
+          <h2 className="text-base sm:text-xl font-black text-gray-900 break-words">{title}</h2>
+          <p className="mt-0.5 text-xs sm:text-sm text-gray-500 leading-snug">{subtitle}</p>
         </div>
-        <div className="shrink-0 rounded-2xl bg-gray-100 p-2 text-gray-500">
-          {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        <div className="shrink-0 rounded-xl sm:rounded-2xl bg-gray-100 p-1.5 sm:p-2 text-gray-500">
+          {isOpen ? <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5" /> : <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5" />}
         </div>
       </button>
-      {isOpen ? <div className="border-t border-gray-100 px-5 py-5 sm:px-6 sm:py-6">{children}</div> : null}
+      {isOpen ? <div className="border-t border-gray-100 px-4 py-4 sm:px-6 sm:py-6">{children}</div> : null}
     </section>
   );
 }
 
 function SpecCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="flex min-h-[84px] items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
-      <div className="shrink-0 rounded-xl bg-white p-2 text-[#C28A00] shadow-sm">{icon}</div>
+    <div className="flex items-start gap-2.5 sm:gap-3 rounded-xl sm:rounded-2xl border border-gray-100 bg-gray-50 p-3 sm:p-4 min-h-0 h-full">
+      <div className="shrink-0 rounded-lg sm:rounded-xl bg-white p-1.5 sm:p-2 text-[#C28A00] shadow-xs">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-bold uppercase tracking-[0.18em] text-gray-500">{label}</p>
-        <p className="mt-2 break-words text-sm font-semibold leading-6 text-gray-900">{value}</p>
+        <p className="truncate text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
+        <p className="mt-1 break-words text-xs sm:text-sm font-semibold leading-tight sm:leading-6 text-gray-900">{value}</p>
       </div>
     </div>
   );
@@ -713,9 +799,9 @@ function SpecCard({ icon, label, value }: { icon: ReactNode; label: string; valu
 
 function InlineInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-gray-200/70 pb-3 last:border-b-0 last:pb-0">
-      <span className="shrink-0 text-[11px] sm:text-xs font-bold uppercase tracking-[0.16em] text-gray-500">{label}</span>
-      <span className="min-w-0 break-words text-right text-sm font-semibold text-gray-900">{value}</span>
+    <div className="flex items-start justify-between gap-3 border-b border-gray-200/70 pb-2.5 last:border-b-0 last:pb-0">
+      <span className="shrink-0 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
+      <span className="min-w-0 break-words text-right text-xs sm:text-sm font-semibold text-gray-900">{value}</span>
     </div>
   );
 }

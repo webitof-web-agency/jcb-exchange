@@ -81,6 +81,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'www.mirrorlessons.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'carmalan.com',
         pathname: '/**',
       },
