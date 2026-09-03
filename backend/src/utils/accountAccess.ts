@@ -29,6 +29,24 @@ export const authenticatedUserSelect = {
   city: true,
   state: true,
   customRoleId: true,
+  adminProfile: {
+    select: {
+      title: true,
+      isRootAdmin: true,
+    },
+  },
+  adminPermissions: {
+    select: {
+      permission: true,
+    },
+  },
+  customRole: {
+    select: {
+      id: true,
+      name: true,
+      permissions: true,
+    },
+  },
   partnerProfile: {
     select: {
       onboardingStatus: true,

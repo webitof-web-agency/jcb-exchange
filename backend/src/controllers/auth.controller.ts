@@ -281,7 +281,7 @@ export const buildAuthUserPayload = async (user: any) => {
   };
 
   if (user.role === 'SUPER_ADMIN') {
-    const adminProfile = await prismaAny.adminProfile.findUnique({
+    const adminProfile = user.adminProfile || await prismaAny.adminProfile.findUnique({
       where: { userId: user.id },
       select: {
         title: true,
@@ -298,18 +298,16 @@ export const buildAuthUserPayload = async (user: any) => {
   }
 
   if (user.role === 'ADMIN' || user.role === 'EMPLOYEE') {
-    const [permissions, customRole] = await Promise.all([
-      prismaAny.adminPermission.findMany({
-        where: { adminUserId: user.id },
-        select: { permission: true },
-      }),
-      user.customRoleId
-        ? prismaAny.customRole.findUnique({
-            where: { id: user.customRoleId },
-            select: { id: true, name: true, permissions: true },
-          })
-        : Promise.resolve(null),
-    ]);
+    const permissions = user.adminPermissions || await prismaAny.adminPermission.findMany({
+      where: { adminUserId: user.id },
+      select: { permission: true },
+    });
+    const customRole = user.customRoleId
+      ? (user.customRole || await prismaAny.customRole.findUnique({
+          where: { id: user.customRoleId },
+          select: { id: true, name: true, permissions: true },
+        }))
+      : null;
     const resolvedPermissions =
       customRole?.permissions && Array.isArray(customRole.permissions)
         ? customRole.permissions
@@ -326,8 +324,9 @@ export const buildAuthUserPayload = async (user: any) => {
   }
 
   if (canHoldPartnerProfile(user.role)) {
-    const partnerProfile =
-      await prismaAny.partnerProfile.findUnique({
+    const partnerProfile = user.partnerProfile !== undefined
+      ? user.partnerProfile
+      : await prismaAny.partnerProfile.findUnique({
         where: { userId: user.id },
         select: {
           ownerName: true,
