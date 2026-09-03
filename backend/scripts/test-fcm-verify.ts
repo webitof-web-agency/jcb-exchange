@@ -2,53 +2,51 @@ import 'dotenv/config';
 import admin, { isFirebaseAdminInitialized } from '../src/config/firebaseAdmin';
 
 async function verifyFcmSetup() {
-  console.log('=== 🔍 TESTING FIREBASE FCM SETUP ===');
-  console.log('1. Firebase Admin SDK Initialized:', isFirebaseAdminInitialized ? '✅ YES' : '❌ NO');
+  console.log('=== TESTING FIREBASE FCM SETUP ===');
+  console.log('1. Firebase Admin SDK Initialized:', isFirebaseAdminInitialized ? 'YES' : 'NO');
 
-  if (!isFirebaseAdminInitialized) {
-    console.error('❌ Firebase Admin SDK failed to initialize.');
+  if (!isFirebaseAdminInitialized || !admin) {
+    console.error('Firebase Admin SDK failed to initialize.');
     process.exit(1);
   }
 
-  console.log('2. Firebase Project ID:', admin.app().options.credential ? (admin.app().options as any).credential.projectId || 'jcb-exchange' : 'Unknown');
+  console.log('2. Firebase App Count:', admin.apps.length);
 
-  // Test dry-run sending of a sample FCM message structure to verify credentials
   try {
     const dummyToken = 'eXampleDummyFcmToken1234567890abcdefghijklmnopqrstuvwxyz';
-    console.log('3. Validating Firebase Admin Messaging credentials (dry-run)...');
+    console.log('3. Validating Firebase Admin Messaging credentials...');
 
-    await admin.messaging().send(
-      {
-        token: dummyToken,
-        notification: {
-          title: 'Test Notification',
-          body: 'Testing Firebase credentials',
-        },
-        data: {
-          path: '/notifications',
-        },
+    await admin.messaging().send({
+      token: dummyToken,
+      notification: {
+        title: 'Test Notification',
+        body: 'Testing Firebase credentials',
       },
-      true // dryRun mode
-    );
-    console.log('✅ Firebase Admin Messaging credentials validated successfully!');
-  } catch (error: any) {
+      data: {
+        path: '/notifications',
+      },
+    });
+
+    console.log('Firebase Admin Messaging credentials validated successfully.');
+  } catch (error: unknown) {
+    const firebaseError = error as { code?: string };
+
     if (
-      error?.code === 'messaging/invalid-argument' ||
-      error?.code === 'messaging/invalid-registration-token' ||
-      error?.code === 'messaging/registration-token-not-registered'
+      firebaseError?.code === 'messaging/invalid-argument' ||
+      firebaseError?.code === 'messaging/invalid-registration-token' ||
+      firebaseError?.code === 'messaging/registration-token-not-registered'
     ) {
-      console.log('🎉 SUCCESS! Firebase Admin SDK Credentials & OAuth2 Connection are 100% VALID!');
-      console.log('   (Google OAuth2 Access Token fetched successfully and Firebase Messaging API authenticated!)');
+      console.log('Firebase Admin SDK credentials and Firebase Messaging connection are valid.');
     } else {
-      console.error('❌ Firebase Messaging test failed:', error);
+      console.error('Firebase Messaging test failed:', error);
     }
   }
 
-  console.log('\n=== ✅ FIREBASE SETUP VERIFICATION COMPLETE ===');
+  console.log('\n=== FIREBASE SETUP VERIFICATION COMPLETE ===');
   process.exit(0);
 }
 
-verifyFcmSetup().catch((err) => {
-  console.error('Fatal error verifying FCM setup:', err);
+verifyFcmSetup().catch((error) => {
+  console.error('Fatal error verifying FCM setup:', error);
   process.exit(1);
 });

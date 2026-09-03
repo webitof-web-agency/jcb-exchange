@@ -1,6 +1,7 @@
 export const employeeUsersPermissions = ['users.read', 'users.create', 'users.update', 'users.delete'];
 export const employeeRolesPermissions = ['roles.read', 'roles.create', 'roles.update', 'roles.delete'];
 export const employeeBrandsPermissions = ['brands.read', 'brands.create', 'brands.update', 'brands.delete'];
+export const employeeFooterPermissions = ['footer.manage'];
 
 export type EmployeeRoutePermission = {
   superadminPath: string;
@@ -68,6 +69,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/translations',
     employeePath: '/employee/translations',
     permissions: ['translations.manage'],
+  },
+  {
+    superadminPath: '/superadmin/footer',
+    employeePath: '/employee/footer',
+    permissions: employeeFooterPermissions,
   },
   {
     superadminPath: '/superadmin/dashboard',

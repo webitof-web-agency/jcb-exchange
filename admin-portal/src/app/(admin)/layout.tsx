@@ -12,9 +12,10 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, Phone, PanelsTopLeft } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft } from 'lucide-react';
 import {
   employeeBrandsPermissions,
+  employeeFooterPermissions,
   employeeRolesPermissions,
   employeeUsersPermissions,
   getEmployeeLandingPath,
@@ -52,6 +53,7 @@ const employeeModuleNavItems = [
   { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
+  { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
   { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage'] },
 ];
 
@@ -450,6 +452,7 @@ export default function AdminLayout({
     '/employee/profile': t('admin.myProfilePage'),
     '/employee/settings': t('admin.platformSettings'),
     '/employee/translations': t('admin.translationManager'),
+    '/employee/footer': t('admin.footerContent'),
   };
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];

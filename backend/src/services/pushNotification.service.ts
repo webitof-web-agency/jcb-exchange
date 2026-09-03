@@ -80,7 +80,7 @@ export class PushNotificationService {
    * Send Firebase FCM Push Notification to a specific token
    */
   static async sendFcmNotification(fcmToken: string, payload: { title: string; body: string; data?: Record<string, string> }) {
-    if (!isFirebaseAdminInitialized || !fcmToken) {
+    if (!isFirebaseAdminInitialized || !admin || !fcmToken) {
       return;
     }
 

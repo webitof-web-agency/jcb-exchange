@@ -134,6 +134,14 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'Footer': [
+    {
+      groupName: 'Footer',
+      permissions: [
+        { id: 'footer.manage', label: 'Manage Footer' },
+      ],
+    },
+  ],
   'Dashboard': [
     {
       groupName: 'Dashboard',
@@ -375,7 +383,7 @@ export default function RolesPage() {
                   placeholder={t('roleManagement.searchFeatures')}
                   value={permissionSearch}
                   onChange={(e) => setPermissionSearch(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-[#FFC107]"
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 placeholder:text-gray-500 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
               </div>
             </div>

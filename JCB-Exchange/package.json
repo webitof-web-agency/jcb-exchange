@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "android": "react-native run-android",
+    "android": "npx react-native run-android",
     "android:release": "cd android && gradlew.bat assembleRelease",
     "android:clean": "cd android && gradlew.bat clean",
-    "ios": "react-native run-ios",
+    "ios": "npx react-native run-ios",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "npx react-native start",
     "test": "jest"
   },
   "dependencies": {
