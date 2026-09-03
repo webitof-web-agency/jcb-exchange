@@ -68,6 +68,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setAuth: (token, user) => {
     localStorage.setItem('frontend_portal_token', token);
     localStorage.setItem('frontend_portal_user', JSON.stringify(user));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jcbexchange-auth-change'));
+    }
     set({
       token,
       user,
@@ -80,6 +83,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     localStorage.removeItem('frontend_portal_token');
     localStorage.removeItem('frontend_portal_user');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jcbexchange-auth-change'));
+    }
     set({
       token: null,
       user: null,
