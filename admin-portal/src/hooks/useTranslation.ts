@@ -83,11 +83,11 @@ export const useTranslation = () => {
       const localizedValue = getNestedValue(dictionaries[locale], key);
       const fallbackValue = getNestedValue(dictionaries[DEFAULT_LOCALE], key);
 
-      if (!overrideValue && !localizedValue && !fallbackValue) {
+      if (!overrideValue && !localizedValue) {
         queueMissingTranslationRegistration(
           'admin-portal',
           key,
-          buildRegistryFallbackText(key, defaultText),
+          buildRegistryFallbackText(key, defaultText ?? fallbackValue ?? undefined),
         );
       }
 

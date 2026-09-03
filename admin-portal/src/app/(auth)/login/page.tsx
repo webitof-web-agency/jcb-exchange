@@ -32,7 +32,6 @@ function LoginPageInner() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
   const redirectAfterLogin = useCallback((token: string, user: AuthenticatedPortalUser, nextRoute?: string | null) => {
@@ -111,8 +110,6 @@ function LoginPageInner() {
         setIsFirstSetup(!setupResponse.data.hasSuperAdmin);
       } catch (err) {
         console.error('Failed to check setup status', err);
-      } finally {
-        setStatusLoading(false);
       }
     };
 

@@ -112,7 +112,6 @@ export default function Footer() {
   const [isPrimePaymentOpen, setIsPrimePaymentOpen] = useState(false);
   const [socialLinks, setSocialLinks] = useState<FooterSocialLink[]>([]);
   const [contact, setContact] = useState<ResolvedFooterContact>(emptyContact);
-  const addressLines = contact.address.split('\n').filter(Boolean);
   const visibleSocialLinks = [...socialLinks]
     .filter((item) => ['FACEBOOK', 'INSTAGRAM', 'TWITTER'].includes(String(item.platform || '').toUpperCase()))
     .sort((left, right) => left.displayOrder - right.displayOrder);
@@ -185,7 +184,7 @@ export default function Footer() {
                 <SiteBrand variant="footer" align="left" />
               </div>
               <p className="text-sm md:text-[13px] text-[#B3B3B3] leading-relaxed mb-8 max-w-[280px]">
-                India&apos;s trusted marketplace for buying and selling JCB and heavy construction machines. Verified dealers. Fair prices. Reliable deals.
+                {t('footer.description', "India's trusted marketplace for buying and selling JCB and heavy construction machines. Verified dealers. Fair prices. Reliable deals.")}
               </p>
               
               {/* Social Icons */}
@@ -208,7 +207,7 @@ export default function Footer() {
             {/* Column 2: Quick Links */}
             <div className="flex flex-col items-start lg:px-10 lg:border-r border-[#333333]">
               <h4 className="text-white text-[12px] font-bold tracking-[0.05em] uppercase mb-6 flex flex-col">
-                QUICK LINKS
+                {t('footer.quickLinks', 'Quick Links')}
                 <span className="w-6 h-[2px] bg-[#F0C85C] mt-3"></span>
               </h4>
               <ul className="space-y-4">
@@ -245,26 +244,26 @@ export default function Footer() {
             {/* Column 3: Useful Links */}
             <div className="flex flex-col items-start lg:px-10 lg:border-r border-[#333333]">
               <h4 className="text-white text-[12px] font-bold tracking-[0.05em] uppercase mb-6 flex flex-col">
-                USEFUL LINKS
+                {t('footer.usefulLinks', 'Useful Links')}
                 <span className="w-6 h-[2px] bg-[#F0C85C] mt-3"></span>
               </h4>
               <ul className="space-y-4">
                 <li>
                   <Link href="/privacy-policy" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
                     <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                    Privacy Policy
+                    {t('legalPages.privacyPolicy', 'Privacy Policy')}
                   </Link>
                 </li>
                 <li>
                   <Link href="/terms-and-conditions" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
                     <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                    Terms &amp; Conditions
+                    {t('legalPages.termsAndConditions', 'Terms & Conditions')}
                   </Link>
                 </li>
                 <li>
                   <Link href="/disclaimer" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
                     <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                    Disclaimer
+                    {t('legalPages.disclaimer', 'Disclaimer')}
                   </Link>
                 </li>
               </ul>
@@ -273,7 +272,7 @@ export default function Footer() {
             {/* Column 4: Contact */}
             <div className="flex flex-col items-start lg:pl-10">
               <h4 className="text-white text-[12px] font-bold tracking-[0.05em] uppercase mb-6 flex flex-col">
-                CONTACT
+                {t('footer.contact', 'Contact')}
                 <span className="w-6 h-[2px] bg-[#F0C85C] mt-3"></span>
               </h4>
               
@@ -341,12 +340,12 @@ export default function Footer() {
           <div className="pt-6 border-t border-[#333333] flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 text-[12px] text-[#8C8C8C]">
             
             <div className="flex items-center text-center sm:text-left">
-              <span>&copy; 2025–2026 JCB Exchange. All rights reserved.</span>
+              <span>{t('footer.copyright', '? 2025-2026 JCB Exchange. All rights reserved.')}</span>
             </div>
 
             <div className="flex items-center">
               <span className="flex items-center justify-center">
-                Crafted with <span className="text-red-500 mx-1 text-[16px] leading-none">❤️</span> by <a href="https://webitof.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-white transition-colors ml-1">Webitof</a>
+                {t('footer.craftedWith', 'Crafted with')} <span className="mx-1 text-[16px] leading-none text-red-500">?</span> {t('footer.by', 'by')} <a href="https://webitof.com/" target="_blank" rel="noopener noreferrer" className="ml-1 underline transition-colors hover:text-white">Webitof</a>
               </span>
             </div>
 

@@ -50,7 +50,19 @@
     "marketplace": "Marketplace",
     "browseInventory": "Browse All Inventory",
     "sellMachine": "Sell My Machine",
-    "description": "Your trusted platform to effortlessly buy, sell, and exchange JCBs, excavators, and heavy construction machinery."
+    "description": "India's trusted marketplace for buying and selling JCB and heavy construction machines. Verified dealers. Fair prices. Reliable deals.",
+    "quickLinks": "Quick Links",
+    "usefulLinks": "Useful Links",
+    "contact": "Contact",
+    "copyright": "© 2025-2026 JCB Exchange. All rights reserved.",
+    "craftedWith": "Crafted with",
+    "by": "by"
+  },
+  "legalPages": {
+    "breadcrumbAria": "Breadcrumb",
+    "privacyPolicy": "Privacy Policy",
+    "termsAndConditions": "Terms & Conditions",
+    "disclaimer": "Disclaimer"
   },
   "home": {
     "searchPlaceholder": "Search",

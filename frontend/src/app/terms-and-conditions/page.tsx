@@ -1,7 +1,7 @@
 import React from 'react';
 import { Metadata } from 'next';
-import Link from 'next/link';
-import { ChevronRight, Mail, MapPin } from 'lucide-react';
+import { Mail, MapPin } from 'lucide-react';
+import LegalDocumentShell from '@/components/legal/LegalDocumentShell';
 import LegalPageContent from '@/components/legal/LegalPageContent';
 
 export const metadata: Metadata = {
@@ -21,25 +21,7 @@ export const metadata: Metadata = {
 
 export default function TermsAndConditionsPage() {
   return (
-    <main className="min-h-screen bg-[#F8FAFC] text-gray-900 py-10 sm:py-14 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Breadcrumb Navigation */}
-        <nav aria-label="Breadcrumb" className="flex items-center space-x-2 text-xs text-gray-500">
-          <Link href="/" className="hover:text-amber-600 transition-colors font-medium">Home</Link>
-          <ChevronRight size={12} className="text-gray-400" />
-          <span className="text-gray-900 font-semibold">Terms &amp; Conditions</span>
-        </nav>
-
-        {/* Clean Unified Document Container */}
-        <div className="bg-white border border-gray-200/80 rounded-2xl p-6 sm:p-10 lg:p-12 shadow-sm space-y-8">
-          <header className="border-b border-gray-100 pb-6 sm:pb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">
-              Terms &amp; Conditions
-            </h1>
-          </header>
-
-          {/* Document Content */}
+    <LegalDocumentShell titleKey="legalPages.termsAndConditions">
           <LegalPageContent 
             pageKey="termsConditions" 
             fallbackHtml={
@@ -119,8 +101,6 @@ export default function TermsAndConditionsPage() {
               </div>
             } 
           />
-        </div>
-      </div>
-    </main>
+    </LegalDocumentShell>
   );
 }

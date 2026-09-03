@@ -6,6 +6,7 @@ import { Link as LinkIcon, Mail, MapPin, Phone, Plus, Save, ShieldCheck, Trash2 
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
+import { useTranslation } from '@/hooks/useTranslation';
 
 type FooterSocialLink = {
   id: string;
@@ -254,6 +255,7 @@ const sanitizeLegalHtml = (html: string) => {
 };
 
 export default function FooterContentSettings() {
+  const { t } = useTranslation();
   const [socialLinks, setSocialLinks] = useState<FooterSocialLink[]>([]);
   const [contact, setContact] = useState<FooterContact>({
     phoneNumber: '',
@@ -313,7 +315,7 @@ export default function FooterContentSettings() {
         });
       } catch (error) {
         if (!cancelled) {
-          toast.error(getApiErrorMessage(error, 'Unable to load footer settings.'));
+          toast.error(getApiErrorMessage(error, t('footerSettings.loadFailed', 'Unable to load footer settings.')));
         }
       } finally {
         if (!cancelled) {
@@ -327,7 +329,7 @@ export default function FooterContentSettings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const updateSocialLink = (id: string, nextState: Partial<FooterSocialLink>) => {
     setSocialLinks((current) =>
@@ -474,7 +476,7 @@ export default function FooterContentSettings() {
 
   const handleResetToDefault = () => {
     updateLegalPageContent(activeLegalField, getDefaultLegalPageContent(activeUsefulSubTab));
-    toast.info('Reset to default template.');
+    toast.info(t('footerSettings.resetSuccess', 'Reset to default template.'));
   };
 
   const handleSave = async () => {
@@ -487,14 +489,14 @@ export default function FooterContentSettings() {
 
     const hasInvalidUrl = normalizedSocialLinks.some((item) => !item.url);
     if (hasInvalidUrl) {
-      toast.error('Each social media item needs a valid URL.');
+      toast.error(t('footerSettings.invalidSocialUrl', 'Each social media item needs a valid URL.'));
       return;
     }
 
     if (contact.phoneNumber && contact.phoneNumber.trim().length > 0) {
       const digitsOnly = contact.phoneNumber.trim().replace(/\D/g, '');
       if (digitsOnly.length !== 10) {
-        toast.error('Phone number must be exactly 10 digits.');
+        toast.error(t('footerSettings.invalidPhone', 'Phone number must be exactly 10 digits.'));
         return;
       }
     }
@@ -502,7 +504,7 @@ export default function FooterContentSettings() {
     if (contact.emailAddress && contact.emailAddress.trim().length > 0) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(contact.emailAddress.trim())) {
-        toast.error('Please enter a valid email address.');
+        toast.error(t('footerSettings.invalidEmail', 'Please enter a valid email address.'));
         return;
       }
     }
@@ -540,7 +542,7 @@ export default function FooterContentSettings() {
       });
       toast.success(response.data.message);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Unable to save footer settings.'));
+      toast.error(getApiErrorMessage(error, t('footerSettings.saveFailed', 'Unable to save footer settings.')));
     } finally {
       setSaving(false);
     }
@@ -552,12 +554,12 @@ export default function FooterContentSettings() {
         <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">Footer Module</p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Footer Content Settings</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">{t('footerSettings.moduleLabel', 'Footer Module')}</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">{t('footerSettings.pageTitle', 'Footer Content Settings')}</h2>
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
             <ShieldCheck className="h-4 w-4" />
-            Dynamic footer enabled
+            {t('footerSettings.dynamicEnabled', 'Dynamic footer enabled')}
           </span>
         </div>
       </div>
@@ -575,7 +577,7 @@ export default function FooterContentSettings() {
             }`}
           >
             <LinkIcon className="h-4 w-4 text-[#D97706]" />
-            Social Media Links
+            {t('footerSettings.socialMediaLinks', 'Social Media Links')}
             <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
               {socialLinks.length}
             </span>
@@ -591,7 +593,7 @@ export default function FooterContentSettings() {
             }`}
           >
             <Phone className="h-4 w-4 text-[#D97706]" />
-            Contact Details
+            {t('footerSettings.contactDetails', 'Contact Details')}
           </button>
 
           <button
@@ -604,7 +606,7 @@ export default function FooterContentSettings() {
             }`}
           >
             <ShieldCheck className="h-4 w-4 text-[#D97706]" />
-            Useful Links
+            {t('footerSettings.usefulLinks', 'Useful Links')}
           </button>
         </div>
       </div>
@@ -614,7 +616,7 @@ export default function FooterContentSettings() {
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Social Media Links</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{t('footerSettings.socialMediaLinks', 'Social Media Links')}</h3>
               </div>
               <button
                 type="button"
@@ -622,44 +624,44 @@ export default function FooterContentSettings() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:border-[#FFC107] hover:bg-[#FFF9E6] w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4" />
-                Add Social Link
+                {t('footerSettings.addSocialLink', 'Add Social Link')}
               </button>
             </div>
 
             {loading ? (
               <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-8 text-sm text-gray-500">
-                Loading footer settings...
+                {t('footerSettings.loading', 'Loading footer settings...')}
               </div>
             ) : socialLinks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-8 text-sm text-gray-500">
-                No social links added yet. Click &quot;Add Social Link&quot; above.
+                {t('footerSettings.noSocialLinks', 'No social links added yet. Click "Add Social Link" above.')}
               </div>
             ) : (
               <div className="space-y-4">
                 {socialLinks.map((item) => (
                   <div key={item.id} className="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Platform</span>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.platform', 'Platform')}</span>
                       <SearchableSelect
                         options={SOCIAL_PLATFORM_OPTIONS}
                         value={item.platform}
                         displayValue={SOCIAL_PLATFORM_OPTIONS.find((option) => option.id === item.platform)?.name || 'Facebook'}
                         onChange={(option) => updateSocialLink(item.id, { platform: String(option.id) })}
-                        placeholder="Select platform"
+                        placeholder={t('footerSettings.selectPlatform', 'Select platform')}
                         searchable={false}
                         className="w-full"
                       />
                     </label>
 
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Redirect URL</span>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.redirectUrl', 'Redirect URL')}</span>
                       <div className="relative">
                         <LinkIcon className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
                         <input
                           type="text"
                           value={item.url}
                           onChange={(event) => updateSocialLink(item.id, { url: event.target.value })}
-                          placeholder="https://example.com/profile"
+                          placeholder={t('footerSettings.redirectPlaceholder', 'https://example.com/profile')}
                           className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                       </div>
@@ -672,7 +674,7 @@ export default function FooterContentSettings() {
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 w-full lg:w-auto"
                       >
                         <Trash2 className="h-4 w-4" />
-                        Remove
+                        {t('footerSettings.remove', 'Remove')}
                       </button>
                     </div>
                   </div>
@@ -685,12 +687,12 @@ export default function FooterContentSettings() {
         {activeTab === 'contact' && (
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
             <div className="mb-5">
-              <h3 className="text-lg font-semibold text-gray-900">Contact Details</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('footerSettings.contactDetails', 'Contact Details')}</h3>
             </div>
 
             <div className="grid gap-5 grid-cols-1 md:grid-cols-2">
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700">Phone Number</span>
+                <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.phoneNumber', 'Phone Number')}</span>
                 <div className="relative">
                   <Phone className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
                   <input
@@ -702,57 +704,57 @@ export default function FooterContentSettings() {
                       const onlyDigits = event.target.value.replace(/\D/g, '').slice(0, 10);
                       setContact((current) => ({ ...current, phoneNumber: onlyDigits }));
                     }}
-                    placeholder="e.g. 9876543210"
+                    placeholder={t('footerSettings.phonePlaceholder', 'e.g. 9876543210')}
                     className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                   />
                 </div>
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700">Phone Helper Text</span>
+                <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.phoneHelperText', 'Phone Helper Text')}</span>
                 <input
                   type="text"
                   value={contact.phoneLabel || ''}
                   onChange={(event) => setContact((current) => ({ ...current, phoneLabel: event.target.value }))}
-                  placeholder="e.g. Mon - Sat: 9:00 AM - 6:00 PM"
+                  placeholder={t('footerSettings.phoneHelperPlaceholder', 'e.g. Mon - Sat: 9:00 AM - 6:00 PM')}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700">Email Address</span>
+                <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.emailAddress', 'Email Address')}</span>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
                   <input
                     type="email"
                     value={contact.emailAddress || ''}
                     onChange={(event) => setContact((current) => ({ ...current, emailAddress: event.target.value }))}
-                    placeholder="e.g. hello@jcbexchange.com"
+                    placeholder={t('footerSettings.emailPlaceholder', 'e.g. hello@jcbexchange.com')}
                     className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                   />
                 </div>
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700">Email Helper Text</span>
+                <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.emailHelperText', 'Email Helper Text')}</span>
                 <input
                   type="text"
                   value={contact.emailLabel || ''}
                   onChange={(event) => setContact((current) => ({ ...current, emailLabel: event.target.value }))}
-                  placeholder="e.g. We'll get back to you"
+                  placeholder={t('footerSettings.emailHelperPlaceholder', "e.g. We'll get back to you")}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
               </label>
             </div>
 
             <label className="mt-5 block">
-              <span className="mb-1.5 block text-sm font-semibold text-gray-700">Address</span>
+              <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('footerSettings.address', 'Address')}</span>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
                 <textarea
                   value={contact.address || ''}
                   onChange={(event) => setContact((current) => ({ ...current, address: event.target.value }))}
-                  placeholder={'JCB Exchange, Plot No. 23\nSector 18, Gurugram\nHaryana 122015, India'}
+                  placeholder={t('footerSettings.addressPlaceholder', 'JCB Exchange, Plot No. 23\nSector 18, Gurugram\nHaryana 122015, India')}
                   rows={4}
                   className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
@@ -764,7 +766,7 @@ export default function FooterContentSettings() {
         {activeTab === 'useful' && (
           <div className="space-y-5 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Useful Links Content Manager</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('footerSettings.usefulLinksManager', 'Useful Links Content Manager')}</h3>
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-2">
@@ -778,7 +780,7 @@ export default function FooterContentSettings() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  Privacy Policy
+                  {t('legalPages.privacyPolicy', 'Privacy Policy')}
                 </button>
 
                 <button
@@ -790,7 +792,7 @@ export default function FooterContentSettings() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  Terms &amp; Conditions
+                  {t('legalPages.termsAndConditions', 'Terms & Conditions')}
                 </button>
 
                 <button
@@ -802,7 +804,7 @@ export default function FooterContentSettings() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  Disclaimer
+                  {t('legalPages.disclaimer', 'Disclaimer')}
                 </button>
               </div>
 
@@ -814,7 +816,7 @@ export default function FooterContentSettings() {
                     editorViewMode === 'editor' ? 'bg-white font-semibold text-gray-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Editor Mode
+                  {t('footerSettings.editorMode', 'Editor Mode')}
                 </button>
                 <button
                   type="button"
@@ -823,7 +825,7 @@ export default function FooterContentSettings() {
                     editorViewMode === 'preview' ? 'bg-white font-semibold text-gray-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Live Document Preview
+                  {t('footerSettings.livePreview', 'Live Document Preview')}
                 </button>
               </div>
             </div>
@@ -832,17 +834,17 @@ export default function FooterContentSettings() {
               <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-xs">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-gray-200 pb-3 text-xs">
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Toolbar:</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{t('footerSettings.toolbar', 'Toolbar:')}</span>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <span className="font-medium text-gray-700 shrink-0">Text Style:</span>
+                      <span className="font-medium text-gray-700 shrink-0">{t('footerSettings.textStyle', 'Text Style:')}</span>
                       <div className="w-full sm:w-[190px]">
                         <SearchableSelect
                           options={TEXT_BLOCK_OPTIONS}
                           value={selectedTextBlock}
                           displayValue={TEXT_BLOCK_OPTIONS.find((opt) => opt.id === selectedTextBlock)?.name || 'Paragraph (Normal Text)'}
                           onChange={(option) => applyTextBlock(String(option.id))}
-                          placeholder="Text style"
+                          placeholder={t('footerSettings.textStylePlaceholder', 'Text style')}
                           searchable={false}
                           className="w-full text-xs"
                         />
@@ -850,14 +852,14 @@ export default function FooterContentSettings() {
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <span className="font-medium text-gray-700 shrink-0">Font Size:</span>
+                      <span className="font-medium text-gray-700 shrink-0">{t('footerSettings.fontSize', 'Font Size:')}</span>
                       <div className="w-full sm:w-[150px]">
                         <SearchableSelect
                           options={FONT_SIZE_OPTIONS}
                           value={selectedFontSize}
                           displayValue={FONT_SIZE_OPTIONS.find((opt) => opt.id === selectedFontSize)?.name || '16 px (Normal)'}
                           onChange={(option) => applyFontSize(String(option.id))}
-                          placeholder="Font size"
+                          placeholder={t('footerSettings.fontSizePlaceholder', 'Font size')}
                           searchable={false}
                           className="w-full text-xs"
                         />
@@ -870,7 +872,7 @@ export default function FooterContentSettings() {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => runEditorCommand('bold')}
                         className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-bold text-gray-800 hover:border-amber-300 hover:bg-amber-100"
-                        title="Bold text"
+                        title={t('footerSettings.boldText', 'Bold text')}
                       >
                         B
                       </button>
@@ -880,7 +882,7 @@ export default function FooterContentSettings() {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => runEditorCommand('italic')}
                         className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold italic text-gray-800 hover:border-amber-300 hover:bg-amber-100"
-                        title="Italic text"
+                        title={t('footerSettings.italicText', 'Italic text')}
                       >
                         I
                       </button>
@@ -890,7 +892,7 @@ export default function FooterContentSettings() {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => runEditorCommand('underline')}
                         className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold underline text-gray-800 hover:border-amber-300 hover:bg-amber-100"
-                        title="Underline text"
+                        title={t('footerSettings.underlineText', 'Underline text')}
                       >
                         U
                       </button>
@@ -900,10 +902,7 @@ export default function FooterContentSettings() {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => runEditorCommand('insertUnorderedList')}
                         className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 hover:border-amber-300 hover:bg-amber-100"
-                        title="Bullet list"
-                      >
-                        • Bullet List
-                      </button>
+                        title={t('footerSettings.bulletList', 'Bullet list')}>`r`n                        {`? ${t('footerSettings.bulletListLabel', 'Bullet List')}`}`r`n                      </button>
                     </div>
                   </div>
 
@@ -913,28 +912,28 @@ export default function FooterContentSettings() {
                       onClick={handleResetToDefault}
                       className="rounded border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-200"
                     >
-                      Reset Template
+                      {t('footerSettings.resetTemplate', 'Reset Template')}
                     </button>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
-                  <span className="font-semibold text-amber-700">💡 Tip:</span>
-                  <span>Select any text below and use <strong>Text Style</strong> for section titles (Heading 2) or paragraphs, and <strong>B / I / U / Bullet List</strong> to format.</span>
+                  <span className="font-semibold text-amber-700">{t('footerSettings.tipLabel', 'Tip:')}</span>
+                  <span>{t('footerSettings.tipText', 'Select any text below and use Text Style for section titles, paragraphs, and B / I / U / Bullet List to format.')}</span>
                 </div>
 
                 <div>
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
                     {activeUsefulSubTab === 'privacy'
-                      ? 'Privacy Policy Page Content'
+                      ? t('footerSettings.privacyPageContent', 'Privacy Policy Page Content')
                       : activeUsefulSubTab === 'terms'
-                        ? 'Terms & Conditions Page Content'
-                        : 'Disclaimer Page Content'}
+                        ? t('footerSettings.termsPageContent', 'Terms & Conditions Page Content')
+                        : t('footerSettings.disclaimerPageContent', 'Disclaimer Page Content')}
                   </span>
 
                   <div className="rounded-2xl border border-gray-300 bg-white">
                     <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500">
-                      Select text and apply font size, bold, headings, lists, or highlight formatting directly.
+                      {t('footerSettings.editorHelp', 'Select text and apply font size, bold, headings, lists, or highlight formatting directly.')}
                     </div>
                     <div
                       ref={editorRef}
@@ -953,10 +952,10 @@ export default function FooterContentSettings() {
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-xs">
                 <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
-                    Live Document Preview ({activeUsefulSubTab === 'privacy' ? 'Privacy Policy' : activeUsefulSubTab === 'terms' ? 'Terms & Conditions' : 'Disclaimer'})
+                    {t('footerSettings.livePreviewLabel', 'Live Document Preview')} ({activeUsefulSubTab === 'privacy' ? t('legalPages.privacyPolicy', 'Privacy Policy') : activeUsefulSubTab === 'terms' ? t('legalPages.termsAndConditions', 'Terms & Conditions') : t('legalPages.disclaimer', 'Disclaimer')})
                   </span>
                   <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                    Exact Frontend Style
+                    {t('footerSettings.exactFrontendStyle', 'Exact Frontend Style')}
                   </span>
                 </div>
 
@@ -984,7 +983,7 @@ export default function FooterContentSettings() {
             className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Save className="h-4 w-4" />
-            {saving ? 'Saving...' : 'Save Footer Settings'}
+            {saving ? t('footerSettings.saving', 'Saving...') : t('footerSettings.saveButton', 'Save Footer Settings')}
           </button>
         </div>
       </div>
