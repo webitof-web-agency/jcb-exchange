@@ -351,7 +351,12 @@ const createPartnerNotification = async ({
     title,
     body: message,
     icon: '/icon.png',
-    url: link
+    url: link,
+    path: link,
+    data: {
+      path: link,
+      url: link,
+    },
   }).catch(e => console.error('Push notification failed:', e));
 };
 
@@ -1777,7 +1782,12 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
         title: 'Listing Status Updated',
         body: `Your listing "${listing.title}" status is now ${status}.`,
         icon: '/icon.png',
-        url: '/partner/listings'
+        url: '/partner/listings',
+        path: '/partner/listings',
+        data: {
+          path: '/partner/listings',
+          url: '/partner/listings',
+        },
       }).catch(e => console.error('Push notification failed:', e));
     }
 

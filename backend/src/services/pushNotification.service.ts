@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import admin, { isFirebaseAdminInitialized } from '../config/firebaseAdmin';
 import {
   isExpiredPushSubscriptionError,
   normalizePushSubscription,
@@ -15,7 +16,7 @@ const subject = process.env.VAPID_SUBJECT || 'mailto:admin@jcbexchange.com';
 if (publicVapidKey && privateVapidKey) {
   webpush.setVapidDetails(subject, publicVapidKey, privateVapidKey);
 } else {
-  console.warn('VAPID keys are not set. Push notifications will not work.');
+  console.warn('VAPID keys are not set. Web Push notifications will not work.');
 }
 
 export class PushNotificationService {
@@ -27,7 +28,24 @@ export class PushNotificationService {
   }
 
   /**
-   * Save a push subscription for a user
+   * Save or clear an FCM token for a mobile device user
+   */
+  static async saveFcmToken(userId: string, fcmToken: string | null) {
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { fcmToken: fcmToken || null },
+      });
+      console.log(`✅ FCM token ${fcmToken ? 'saved' : 'cleared'} for user ${userId}`);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving FCM token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save a web push subscription for a browser user
    */
   static async saveSubscription(userId: string, subscription: PushSubscriptionPayload) {
     try {
@@ -46,15 +64,56 @@ export class PushNotificationService {
   }
 
   /**
-   * Send a push notification to a specific subscription object
+   * Send a Web Push notification to a specific subscription object
    */
   static async sendNotification(subscription: webpush.PushSubscription, payload: unknown) {
     try {
       await webpush.sendNotification(subscription, JSON.stringify(payload));
       return { success: true };
     } catch (error) {
-      console.error('Error sending push notification:', error);
+      console.error('Error sending web push notification:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Send Firebase FCM Push Notification to a specific token
+   */
+  static async sendFcmNotification(fcmToken: string, payload: { title: string; body: string; data?: Record<string, string> }) {
+    if (!isFirebaseAdminInitialized || !fcmToken) {
+      return;
+    }
+
+    const targetPath = payload.data?.path || payload.data?.url || payload.data?.link || '/notifications';
+
+    try {
+      await admin.messaging().send({
+        token: fcmToken,
+        notification: {
+          title: payload.title,
+          body: payload.body,
+        },
+        data: {
+          path: targetPath,
+          url: targetPath,
+          link: targetPath,
+          title: payload.title,
+          body: payload.body,
+          ...payload.data,
+        },
+        android: {
+          priority: 'high',
+          collapseKey: 'jcb_notification_group',
+          notification: {
+            sound: 'default',
+            tag: 'jcb_notification',
+            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          },
+        },
+      });
+      console.log(`📱 Real-time FCM push notification sent to token: ${fcmToken.substring(0, 15)}... (Path: ${targetPath})`);
+    } catch (error) {
+      console.error('Error sending FCM push notification:', error);
     }
   }
 
@@ -83,17 +142,34 @@ export class PushNotificationService {
   }
 
   /**
-   * Send a notification to a user by fetching their subscription from the DB
+   * Send a notification to a user (both Web Push and Mobile FCM)
    */
-  static async sendToUser(userId: string, payload: unknown) {
+  static async sendToUser(userId: string, payload: any) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { pushSubscription: true }
+        select: { pushSubscription: true, fcmToken: true }
       });
-      const subscription = user?.pushSubscription as unknown as webpush.PushSubscription | null;
+
+      if (!user) return;
+
+      // 1. Web Push
+      const subscription = user.pushSubscription as unknown as webpush.PushSubscription | null;
       if (subscription) {
-        await this.sendToStoredSubscription(userId, subscription, payload);
+        await this.sendToStoredSubscription(userId, subscription, payload).catch(e => console.error(e));
+      }
+
+      // 2. Mobile FCM Push Notification
+      if (user.fcmToken) {
+        const title = payload.title || 'JCB Exchange Notification';
+        const body = payload.body || payload.message || '';
+        const dataPath = payload.url || payload.path || payload.link || '/notifications';
+
+        await this.sendFcmNotification(user.fcmToken, {
+          title,
+          body,
+          data: { path: String(dataPath) },
+        });
       }
     } catch (error) {
       console.error('Error sending push to user:', error);
@@ -103,24 +179,14 @@ export class PushNotificationService {
   /**
    * Send a notification to multiple users efficiently
    */
-  static async sendToUsers(userIds: string[], payload: unknown) {
+  static async sendToUsers(userIds: string[], payload: any) {
     try {
       const users = await prisma.user.findMany({
-        where: { 
-          id: { in: userIds },
-          pushSubscription: { not: Prisma.AnyNull } 
-        },
-        select: { id: true, pushSubscription: true }
+        where: { id: { in: userIds } },
+        select: { id: true, pushSubscription: true, fcmToken: true }
       });
       
-      const promises = users.map(user => {
-        const sub = user.pushSubscription as unknown as webpush.PushSubscription;
-        if (sub) {
-          return this.sendToStoredSubscription(user.id, sub, payload).catch(e => console.error(e));
-        }
-        return Promise.resolve();
-      });
-      
+      const promises = users.map((user: { id: string }) => this.sendToUser(user.id, payload));
       await Promise.allSettled(promises);
     } catch (error) {
       console.error('Error sending push to users:', error);
@@ -128,7 +194,7 @@ export class PushNotificationService {
   }
 
   /**
-   * Broadcast a notification (e.g., to all admins or subscribers for a new listing)
+   * Broadcast a notification (e.g., to all users for a new listing)
    */
   static async broadcastNewListing(listingTitle: string, listingId: string) {
     const payload = {
@@ -140,20 +206,10 @@ export class PushNotificationService {
 
     try {
       const users = await prisma.user.findMany({
-        where: {
-          pushSubscription: { not: Prisma.AnyNull },
-        },
-        select: { id: true, pushSubscription: true }
+        select: { id: true }
       });
       
-      const promises = users.map(user => {
-        const sub = user.pushSubscription as unknown as webpush.PushSubscription;
-        if (sub) {
-          return this.sendToStoredSubscription(user.id, sub, payload).catch(e => console.error(e));
-        }
-        return Promise.resolve();
-      });
-      
+      const promises = users.map((user: { id: string }) => this.sendToUser(user.id, payload));
       await Promise.allSettled(promises);
       console.log(`Broadcasted new listing push notification to ${users.length} users`);
     } catch (error) {

@@ -68,3 +68,24 @@ next-env.d.ts
 /*.txt
 /*.csv
 !README.md
+
+# Mobile / React Native Build Outputs
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+*.jsbundle
+*.hprof
+*.iml
+.gradle/
+*/.gradle/
+.idea/
+*/.idea/
+local.properties
+*/local.properties
+.cxx/
+*/.cxx/
+**/Pods/
+**/DerivedData/
+**/build/
+

@@ -103,3 +103,22 @@ export const savePushSubscription = async (req: Request, res: Response, next: Ne
     next(error);
   }
 };
+
+export const saveFcmToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { token } = req.body;
+    const fcmTokenToSave = typeof token === 'string' && token.trim().length > 0 ? token.trim() : null;
+
+    await PushNotificationService.saveFcmToken(userId, fcmTokenToSave);
+
+    res.status(200).json({
+      success: true,
+      message: fcmTokenToSave ? 'FCM token saved successfully' : 'FCM token cleared successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
