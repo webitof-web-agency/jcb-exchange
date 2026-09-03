@@ -13,6 +13,7 @@ import {
   createIcon,
   getApprovedDealers,
   getFinanceSupportItems,
+  getFooterSettings,
   getHeroImage,
   getInspectionSection,
   getSiteLogo,
@@ -82,6 +83,7 @@ router.get('/dealers', getApprovedDealers);
 router.get('/dealers/:id', getDealerById);
 router.get('/dealers/:id/listings', getDealerListings);
 router.get('/finance-support', getFinanceSupportItems);
+router.get('/footer', getFooterSettings);
 router.get('/hero-image', getHeroImage);
 router.get('/inspection-section', getInspectionSection);
 router.get('/site-logo', getSiteLogo);

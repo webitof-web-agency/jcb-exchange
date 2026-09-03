@@ -12,7 +12,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, Phone, PanelsTopLeft } from 'lucide-react';
 import {
   employeeBrandsPermissions,
   employeeRolesPermissions,
@@ -34,6 +34,7 @@ const navItems = [
   { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
   { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
+  { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
 ];
 
 const adminNavItems = [
@@ -432,6 +433,7 @@ export default function AdminLayout({
     '/superadmin/profile': t('admin.myProfilePage'),
     '/superadmin/settings': t('admin.platformSettings'),
     '/superadmin/translations': t('admin.translationManager'),
+    '/superadmin/footer': t('admin.footerContent'),
     '/admin/dashboard': isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard'),
     '/admin/profile': t('admin.myProfilePage'),
     '/employee/dashboard': t('admin.employeeDashboard'),

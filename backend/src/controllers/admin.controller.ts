@@ -11,9 +11,11 @@ import {
 } from './auth.controller';
 import {
   FinanceSupportItem,
+  FooterSocialLink,
   getAppSettings,
   updatePlatformRuntimeSettings,
   updateFinanceSupportSettings,
+  updateFooterSettings,
   updateHeroImageSettings,
   updateInspectionSectionSettings,
   updateSiteLogoSettings,
@@ -826,6 +828,20 @@ export const getSiteLogoContent = async (req: Request, res: Response, next: Next
   }
 };
 
+export const getFooterContent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.json({
+      socialLinks: settings.footer.socialLinks,
+      contact: settings.footer.contact,
+      legalPages: settings.footer.legalPages,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateHeroImageContent = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const imageUrl = req.body?.imageUrl;
@@ -885,6 +901,35 @@ export const updateSiteLogoContent = async (req: Request, res: Response, next: N
     res.json({
       message: 'Site logo updated successfully.',
       ...settings.siteLogo,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateFooterContent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const socialLinks = Array.isArray(req.body?.socialLinks) ? req.body.socialLinks : [];
+    const contact = req.body?.contact && typeof req.body.contact === 'object' ? req.body.contact : {};
+    const legalPages = req.body?.legalPages && typeof req.body.legalPages === 'object' ? req.body.legalPages : undefined;
+
+    const invalidSocialLink = socialLinks.some((item: any) => !item || typeof item !== 'object' || !item.url || typeof item.url !== 'string' || !item.url.trim());
+    if (invalidSocialLink) {
+      return res.status(400).json({ error: 'Each social media item must include a valid link.' });
+    }
+
+    const settings = await updateFooterSettings({
+      socialLinks,
+      contact,
+      legalPages,
+      updatedByUserId: req.user?.id || null,
+    });
+
+    res.json({
+      message: 'Footer settings updated successfully.',
+      socialLinks: settings.footer.socialLinks,
+      contact: settings.footer.contact,
+      legalPages: settings.footer.legalPages,
     });
   } catch (error) {
     next(error);

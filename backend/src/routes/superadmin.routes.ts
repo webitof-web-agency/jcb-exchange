@@ -8,6 +8,7 @@ import {
   deletePartnerUser,
   getAdminListings,
   getFinanceSupportContent,
+  getFooterContent,
   getHeroImageContent,
   getInspectionSectionContent,
   getSiteLogoContent,
@@ -28,6 +29,7 @@ import {
   updateAdminListingStatus,
   updateAdminUserStatus,
   updateFinanceSupportContent,
+  updateFooterContent,
   updateHeroImageContent,
   updateInspectionSectionContent,
   updateSiteLogoContent,
@@ -73,6 +75,8 @@ router.get('/dashboard', canViewDashboard, getDashboardSummary);
 router.get('/badges', canViewDashboard, getModuleBadges);
 router.get('/finance-support', canManageSettings, getFinanceSupportContent);
 router.put('/finance-support', canManageSettings, updateFinanceSupportContent);
+router.get('/footer', canManageSettings, getFooterContent);
+router.put('/footer', canManageSettings, updateFooterContent);
 router.get('/hero-image', canManageSettings, getHeroImageContent);
 router.put('/hero-image', canManageSettings, updateHeroImageContent);
 router.get('/inspection-section', canManageSettings, getInspectionSectionContent);

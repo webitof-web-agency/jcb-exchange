@@ -54,6 +54,35 @@ export type SiteLogoSettings = {
   updatedByUserId: string | null;
 };
 
+export type FooterSocialLink = {
+  id: string;
+  platform: string;
+  url: string;
+  displayOrder: number;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export type FooterSettings = {
+  socialLinks: FooterSocialLink[];
+  contact: {
+    phoneNumber: string | null;
+    phoneLabel: string | null;
+    emailAddress: string | null;
+    emailLabel: string | null;
+    address: string | null;
+    updatedAt: string | null;
+    updatedByUserId: string | null;
+  };
+  legalPages: {
+    privacyPolicy: string | null;
+    termsConditions: string | null;
+    disclaimer: string | null;
+    updatedAt: string | null;
+    updatedByUserId: string | null;
+  };
+};
+
 type AppSettings = {
   googleAuth: GoogleAuthSettings;
   mobileOtp: MobileOtpSettings;
@@ -70,6 +99,7 @@ type AppSettings = {
   };
   inspectionSection: InspectionSectionSettings;
   siteLogo: SiteLogoSettings;
+  footer: FooterSettings;
 };
 
 const platformRuntimeSettingsKey = 'platform';
@@ -102,6 +132,7 @@ const settingsFileCandidates = Array.from(
 const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
 const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
 const siteManifestIconPublicUrlPrefix = '/uploads/public/site-manifest-icon/';
+const supportedFooterSocialPlatforms = new Set(['FACEBOOK', 'INSTAGRAM', 'TWITTER']);
 
 const defaultSettings: AppSettings = {
   googleAuth: {
@@ -154,6 +185,54 @@ const defaultSettings: AppSettings = {
     updatedAt: null,
     updatedByUserId: null,
   },
+  footer: {
+    socialLinks: [],
+    contact: {
+      phoneNumber: null,
+      phoneLabel: null,
+      emailAddress: null,
+      emailLabel: null,
+      address: null,
+      updatedAt: null,
+      updatedByUserId: null,
+    },
+    legalPages: {
+      privacyPolicy: null,
+      termsConditions: null,
+      disclaimer: null,
+      updatedAt: null,
+      updatedByUserId: null,
+    },
+  },
+};
+
+const parseTimestamp = (value?: string | null) => {
+  if (!value) {
+    return 0;
+  }
+
+  const parsedValue = Date.parse(value);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
+
+const getSettingsFreshnessScore = (settings?: AppSettings | null) => {
+  if (!settings) {
+    return 0;
+  }
+
+  return Math.max(
+    parseTimestamp(settings.googleAuth.updatedAt),
+    parseTimestamp(settings.mobileOtp.updatedAt),
+    parseTimestamp(settings.publicLeadRouting.updatedAt),
+    parseTimestamp(settings.customerPrime.updatedAt),
+    parseTimestamp(settings.heroImage.updatedAt),
+    parseTimestamp(settings.inspectionSection.updatedAt),
+    parseTimestamp(settings.siteLogo.updatedAt),
+    parseTimestamp(settings.footer.contact.updatedAt),
+    parseTimestamp(settings.footer.legalPages.updatedAt),
+    ...settings.financeSupport.items.map((item) => parseTimestamp(item.updatedAt)),
+    ...settings.footer.socialLinks.map((item) => parseTimestamp(item.updatedAt)),
+  );
 };
 
 const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): AppSettings => ({
@@ -195,6 +274,25 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
+  footer: {
+    socialLinks: normalizeFooterSocialLinks(parsed?.footer?.socialLinks),
+    contact: {
+      phoneNumber: normalizePhoneDisplayNumber(parsed?.footer?.contact?.phoneNumber) || null,
+      phoneLabel: parsed?.footer?.contact?.phoneLabel?.trim() || null,
+      emailAddress: normalizeEmailAddress(parsed?.footer?.contact?.emailAddress) || null,
+      emailLabel: parsed?.footer?.contact?.emailLabel?.trim() || null,
+      address: normalizeMultilineText(parsed?.footer?.contact?.address) || null,
+      updatedAt: parsed?.footer?.contact?.updatedAt || null,
+      updatedByUserId: parsed?.footer?.contact?.updatedByUserId || null,
+    },
+    legalPages: {
+      privacyPolicy: parsed?.footer?.legalPages?.privacyPolicy?.trim() || null,
+      termsConditions: parsed?.footer?.legalPages?.termsConditions?.trim() || null,
+      disclaimer: parsed?.footer?.legalPages?.disclaimer?.trim() || null,
+      updatedAt: parsed?.footer?.legalPages?.updatedAt || null,
+      updatedByUserId: parsed?.footer?.legalPages?.updatedByUserId || null,
+    },
+  },
 });
 
 const isMeaningfulSettings = (settings: AppSettings) =>
@@ -221,7 +319,13 @@ const isMeaningfulSettings = (settings: AppSettings) =>
     settings.inspectionSection.imageUrl ||
     settings.siteLogo.imageUrl ||
     settings.siteLogo.faviconUrl ||
-    settings.siteLogo.manifestIconUrl,
+    settings.siteLogo.manifestIconUrl ||
+    settings.footer.socialLinks.length > 0 ||
+    settings.footer.contact.phoneNumber ||
+    settings.footer.contact.phoneLabel ||
+    settings.footer.contact.emailAddress ||
+    settings.footer.contact.emailLabel ||
+    settings.footer.contact.address,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -247,6 +351,54 @@ const normalizePhoneNumber = (value?: string | null) => {
   return normalizedDigits;
 };
 
+const normalizePhoneDisplayNumber = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return normalizePhoneNumber(trimmedValue) ? trimmedValue : null;
+};
+
+const normalizeEmailAddress = (value?: string | null) => {
+  const trimmedValue = value?.trim().toLowerCase();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedValue) ? trimmedValue : null;
+};
+
+const normalizeMultilineText = (value?: string | null) => {
+  const normalizedValue = value
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return normalizedValue?.trim() || null;
+};
+
+const normalizeExternalUrl = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const candidateValue = /^https?:\/\//i.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`;
+
+  try {
+    const parsedUrl = new URL(candidateValue);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return null;
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return null;
+  }
+};
+
 const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): FinanceSupportItem[] => {
   const normalizedItems: FinanceSupportItem[] = [];
 
@@ -264,6 +416,39 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
       imageUrl,
       displayOrder: typeof item.displayOrder === 'number' ? item.displayOrder : index,
       row: item.row === 2 ? 2 : 1,
+      updatedAt: item.updatedAt || null,
+      updatedByUserId: item.updatedByUserId || null,
+    });
+  }
+
+  return normalizedItems
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+    .map((item, index) => ({
+      ...item,
+      displayOrder: index,
+    }));
+};
+
+const normalizeFooterSocialLinks = (items?: Partial<FooterSocialLink>[]): FooterSocialLink[] => {
+  const normalizedItems: FooterSocialLink[] = [];
+
+  for (const [index, item] of (items || []).entries()) {
+    const platform = item.platform?.trim().toUpperCase();
+    if (!platform || !supportedFooterSocialPlatforms.has(platform)) {
+      continue;
+    }
+
+    const url = normalizeExternalUrl(item.url);
+
+    if (!url) {
+      continue;
+    }
+
+    normalizedItems.push({
+      id: item.id?.trim() || randomUUID(),
+      platform,
+      url,
+      displayOrder: typeof item.displayOrder === 'number' ? item.displayOrder : index,
       updatedAt: item.updatedAt || null,
       updatedByUserId: item.updatedByUserId || null,
     });
@@ -421,15 +606,32 @@ export const getAppSettings = async (): Promise<AppSettings> => {
 
   try {
     const databaseSettings = await readDatabaseSettings();
-    if (databaseSettings && isMeaningfulSettings(databaseSettings)) {
-      await writeSettingsFileSnapshot(databaseSettings);
-      return databaseSettings;
+    const fileSettings = await readFileSettings();
+    const databaseIsMeaningful = Boolean(databaseSettings && isMeaningfulSettings(databaseSettings));
+    const fileIsMeaningful = isMeaningfulSettings(fileSettings);
+
+    if (databaseIsMeaningful && fileIsMeaningful) {
+      const databaseFreshness = getSettingsFreshnessScore(databaseSettings);
+      const fileFreshness = getSettingsFreshnessScore(fileSettings);
+      const preferredSettings = fileFreshness > databaseFreshness ? fileSettings : (databaseSettings as AppSettings);
+
+      if (preferredSettings === fileSettings) {
+        await persistDatabaseSettings(fileSettings);
+      } else {
+        await writeSettingsFileSnapshot(databaseSettings as AppSettings);
+      }
+
+      return preferredSettings;
     }
 
-    const fileSettings = await readFileSettings();
+    if (databaseIsMeaningful) {
+      await writeSettingsFileSnapshot(databaseSettings as AppSettings);
+      return databaseSettings as AppSettings;
+    }
 
-    if (isMeaningfulSettings(fileSettings)) {
+    if (fileIsMeaningful) {
       await persistDatabaseSettings(fileSettings);
+      return fileSettings;
     }
 
     return databaseSettings || fileSettings;
@@ -682,6 +884,53 @@ export const updateSiteLogoSettings = async ({
   }
 
   await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));
+
+  return nextSettings;
+};
+
+export const updateFooterSettings = async ({
+  socialLinks,
+  contact,
+  legalPages,
+  updatedByUserId,
+}: {
+  socialLinks?: Array<Partial<FooterSocialLink>>;
+  contact?: Partial<FooterSettings['contact']>;
+  legalPages?: Partial<FooterSettings['legalPages']>;
+  updatedByUserId?: string | null;
+}) => {
+  const currentSettings = await getAppSettings();
+  const nextTimestamp = new Date().toISOString();
+  const normalizedSocialLinks = normalizeFooterSocialLinks(socialLinks).map((item) => ({
+    ...item,
+    updatedAt: nextTimestamp,
+    updatedByUserId: updatedByUserId || null,
+  }));
+
+  const nextSettings: AppSettings = {
+    ...currentSettings,
+    footer: {
+      socialLinks: normalizedSocialLinks,
+      contact: {
+        phoneNumber: normalizePhoneDisplayNumber(contact?.phoneNumber) || null,
+        phoneLabel: contact?.phoneLabel?.trim() || null,
+        emailAddress: normalizeEmailAddress(contact?.emailAddress) || null,
+        emailLabel: contact?.emailLabel?.trim() || null,
+        address: normalizeMultilineText(contact?.address) || null,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      },
+      legalPages: {
+        privacyPolicy: legalPages?.privacyPolicy !== undefined ? (legalPages.privacyPolicy?.trim() || null) : currentSettings.footer.legalPages.privacyPolicy,
+        termsConditions: legalPages?.termsConditions !== undefined ? (legalPages.termsConditions?.trim() || null) : currentSettings.footer.legalPages.termsConditions,
+        disclaimer: legalPages?.disclaimer !== undefined ? (legalPages.disclaimer?.trim() || null) : currentSettings.footer.legalPages.disclaimer,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      },
+    },
+  };
+
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };

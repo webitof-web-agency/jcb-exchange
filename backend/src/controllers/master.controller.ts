@@ -863,6 +863,23 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const getFooterSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        socialLinks: settings.footer.socialLinks,
+        contact: settings.footer.contact,
+        legalPages: settings.footer.legalPages,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.query;

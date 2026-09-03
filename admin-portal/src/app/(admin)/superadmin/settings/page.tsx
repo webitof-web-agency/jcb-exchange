@@ -716,7 +716,6 @@ export default function SuperAdminSettingsPage() {
           ) : null}
 
           {activeTab === 'homepage' ? <HomepageContentSettings /> : null}
-
           {activeTab === 'payments' ? (
             <>
               <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
