@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { X, Mail, Lock, User, Eye, EyeOff, Smartphone } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
+import SiteBrand from '@/components/layout/SiteBrand';
 
 declare global {
   interface Window {
@@ -275,13 +276,11 @@ export default function AuthModal() {
       />
       <div className="flex min-h-full items-center justify-center">
         <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
-          <div className="flex items-center justify-between bg-[#1A1A1A] px-6 py-4">
-            <h3 className="text-xl font-bold text-white">
-              <span className="text-jcb-yellow italic">JCB</span>EXCHANGE
-            </h3>
+          <div className="relative flex items-center justify-center bg-[#1A1A1A] px-6 py-4 min-h-[64px]">
+            <SiteBrand variant="navbar" align="center" />
             <button
               onClick={() => setAuthModalOpen(false)}
-              className="text-gray-400 transition-colors hover:text-white"
+              className="absolute right-6 text-gray-400 transition-colors hover:text-white"
             >
               <X size={24} />
             </button>

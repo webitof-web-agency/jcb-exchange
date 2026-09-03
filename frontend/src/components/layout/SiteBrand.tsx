@@ -9,11 +9,13 @@ import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 type SiteBrandProps = {
   href?: string;
   variant?: 'navbar' | 'footer';
+  align?: 'left' | 'center';
 };
 
 export default function SiteBrand({
   href = '/',
   variant = 'navbar',
+  align = 'left',
 }: SiteBrandProps) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export default function SiteBrand({
             priority={variant === 'navbar'}
             loading={variant === 'navbar' ? 'eager' : 'lazy'}
             style={{ width: '100%', height: 'auto' }}
-            className={`object-contain object-left ${variant === 'footer' ? 'max-h-[80px]' : 'max-h-[64px]'}`}
+            className={`object-contain ${align === 'center' ? 'object-center mx-auto' : 'object-left'} ${variant === 'footer' ? 'max-h-[80px]' : 'max-h-[64px]'}`}
           />
         </div>
       ) : null}
