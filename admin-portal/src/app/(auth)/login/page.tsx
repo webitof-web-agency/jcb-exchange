@@ -145,10 +145,6 @@ function LoginPageInner() {
     }
   };
 
-  if (statusLoading) {
-    return <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center text-white">{t('common.loading')}</div>;
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a] bg-opacity-60 bg-[url('/jcb-bg.jpg')] bg-cover bg-center bg-blend-overlay font-sans relative px-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden flex flex-col">
