@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
 import { getAppSettings } from '../utils/appSettings';
+import { PushNotificationService } from '../services/pushNotification.service';
 
 const prismaAny = prisma as any;
 
@@ -577,6 +578,16 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
       });
     }
 
+    if (leadRecipient?.recipientUserId) {
+      PushNotificationService.sendToUser(leadRecipient.recipientUserId, {
+        title: 'New Machine Lead Received!',
+        body: `${fullName || 'A customer'} requested a callback for ${listing.title || 'your listing'}.`,
+        data: {
+          path: '/leads',
+        },
+      }).catch((err) => console.error('Lead FCM push error:', err));
+    }
+
     return res.status(201).json({
       message: 'Callback request submitted successfully.',
       lead: formatLead(lead),
@@ -819,6 +830,16 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       });
     }
 
+    if (leadRecipient?.recipientUserId) {
+      PushNotificationService.sendToUser(leadRecipient.recipientUserId, {
+        title: 'New Machine Enquiry!',
+        body: `${customer.name || 'A customer'} initiated a ${enquiryType} enquiry for ${listing.title || 'your listing'}.`,
+        data: {
+          path: '/leads',
+        },
+      }).catch((err) => console.error('Enquiry FCM push error:', err));
+    }
+
     return res.status(201).json({
       message: 'Enquiry created successfully.',
       lead: formatLead(lead),
@@ -1025,6 +1046,16 @@ export const updateLeadStatus = async (req: Request, res: Response, next: NextFu
           },
         },
       }).catch((err: any) => console.error('Failed to record status change activity:', err));
+
+      if (existingLead.customerId) {
+        PushNotificationService.sendToUser(existingLead.customerId, {
+          title: 'Enquiry Status Updated',
+          body: `Your machine enquiry status is now ${status.replace(/_/g, ' ')}.`,
+          data: {
+            path: '/leads',
+          },
+        }).catch((err) => console.error('Lead status FCM push error:', err));
+      }
     }
 
     return res.json({

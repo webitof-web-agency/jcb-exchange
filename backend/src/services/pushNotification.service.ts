@@ -28,15 +28,15 @@ export class PushNotificationService {
   }
 
   /**
-   * Save an FCM token for a mobile device user
+   * Save or clear an FCM token for a mobile device user
    */
-  static async saveFcmToken(userId: string, fcmToken: string) {
+  static async saveFcmToken(userId: string, fcmToken: string | null) {
     try {
       await prisma.user.update({
         where: { id: userId },
-        data: { fcmToken },
+        data: { fcmToken: fcmToken || null },
       });
-      console.log(`✅ Saved FCM token for user ${userId}`);
+      console.log(`✅ FCM token ${fcmToken ? 'saved' : 'cleared'} for user ${userId}`);
       return { success: true };
     } catch (error) {
       console.error('Error saving FCM token:', error);
@@ -84,6 +84,8 @@ export class PushNotificationService {
       return;
     }
 
+    const targetPath = payload.data?.path || payload.data?.url || payload.data?.link || '/notifications';
+
     try {
       await admin.messaging().send({
         token: fcmToken,
@@ -91,16 +93,25 @@ export class PushNotificationService {
           title: payload.title,
           body: payload.body,
         },
-        data: payload.data || {},
+        data: {
+          path: targetPath,
+          url: targetPath,
+          link: targetPath,
+          title: payload.title,
+          body: payload.body,
+          ...payload.data,
+        },
         android: {
           priority: 'high',
+          collapseKey: 'jcb_notification_group',
           notification: {
             sound: 'default',
+            tag: 'jcb_notification',
             clickAction: 'FLUTTER_NOTIFICATION_CLICK',
           },
         },
       });
-      console.log(`📱 Real-time FCM push notification sent to token: ${fcmToken.substring(0, 15)}...`);
+      console.log(`📱 Real-time FCM push notification sent to token: ${fcmToken.substring(0, 15)}... (Path: ${targetPath})`);
     } catch (error) {
       console.error('Error sending FCM push notification:', error);
     }

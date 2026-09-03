@@ -80,6 +80,9 @@ function HybridWebView({ onWebLoaded }: Props) {
         await messaging().registerDeviceForRemoteMessages();
         const token = await messaging().getToken();
         if (token) {
+          console.log('====================================');
+          console.log('📱 FCM TOKEN GENERATED FOR THIS DEVICE:', token);
+          console.log('====================================');
           setFcmToken(token);
         }
       } catch (error) {
@@ -108,43 +111,68 @@ function HybridWebView({ onWebLoaded }: Props) {
     }
   }, [webReady, fcmToken, syncFcmToken]);
 
+  const handleNotificationNavigation = useCallback((data?: Record<string, string>) => {
+    const rawPath = data?.path || data?.url || data?.link;
+    if (!rawPath) return;
+
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+      setCurrentUrl(rawPath);
+    } else {
+      const cleanPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+      const cleanWebUrl = webAppUrl.replace(/\/$/, '');
+      setCurrentUrl(`${cleanWebUrl}${cleanPath}`);
+    }
+  }, [webAppUrl]);
+
   useEffect(() => {
     // 1. App in Background: User taps notification
     const unsubscribeOnNotificationOpenedApp = messaging().onNotificationOpenedApp(
       (remoteMessage) => {
-        if (remoteMessage?.data?.path) {
-          const targetUrl = webAppUrl + remoteMessage.data.path;
-          setCurrentUrl(targetUrl);
+        if (remoteMessage?.data) {
+          handleNotificationNavigation(remoteMessage.data as Record<string, string>);
         }
       }
     );
 
-    // Foreground notification handler
+    // 2. Foreground notification handler with View action
     const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
-      console.log('====================================');
       console.log('🔔 FIREBASE NOTIFICATION RECEIVED IN FOREGROUND:', JSON.stringify(remoteMessage, null, 2));
-      console.log('====================================');
-      Alert.alert(
-        remoteMessage.notification?.title || 'Notification',
-        remoteMessage.notification?.body || '',
-      );
+      
+      const title = remoteMessage.notification?.title || remoteMessage.data?.title || 'Notification';
+      const body = remoteMessage.notification?.body || remoteMessage.data?.body || '';
+      const hasAction = Boolean(remoteMessage.data?.path || remoteMessage.data?.url || remoteMessage.data?.link);
+
+      if (hasAction) {
+        Alert.alert(
+          title,
+          body,
+          [
+            { text: 'Dismiss', style: 'cancel' },
+            {
+              text: 'View Details',
+              onPress: () => handleNotificationNavigation(remoteMessage.data as Record<string, string>),
+            },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        Alert.alert(title, body);
+      }
     });
 
-    // 2. App completely Closed (Quit State): User taps notification
+    // 3. App completely Closed (Quit State): User taps notification
     messaging()
       .getInitialNotification()
       .then((remoteMessage) => {
-        if (remoteMessage?.data?.path) {
-          const targetUrl = webAppUrl + remoteMessage.data.path;
-          setCurrentUrl(targetUrl);
+        if (remoteMessage?.data) {
+          handleNotificationNavigation(remoteMessage.data as Record<string, string>);
         }
       });
 
-    // 3. Clear all push notifications when app comes to foreground
+    // 4. Clear all push notifications when app comes to foreground
     const clearAllNotifications = () => {
       try {
         if (Platform.OS === 'android') {
-          // Use our registered native module to cancel all system tray notifications
           const NotificationClearer = NativeModules.NotificationClearer;
           if (NotificationClearer?.clearAll) {
             NotificationClearer.clearAll();
@@ -167,7 +195,7 @@ function HybridWebView({ onWebLoaded }: Props) {
       unsubscribeOnMessage();
       appStateSubscription.remove();
     };
-  }, [webAppUrl]);
+  }, [webAppUrl, handleNotificationNavigation]);
 
   // Removed initialPath injection effect since we now use currentUrl state
 

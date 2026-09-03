@@ -110,13 +110,14 @@ export const saveFcmToken = async (req: Request, res: Response, next: NextFuncti
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { token } = req.body;
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ error: 'Valid FCM token is required' });
-    }
+    const fcmTokenToSave = typeof token === 'string' && token.trim().length > 0 ? token.trim() : null;
 
-    await PushNotificationService.saveFcmToken(userId, token);
+    await PushNotificationService.saveFcmToken(userId, fcmTokenToSave);
 
-    res.status(200).json({ success: true, message: 'FCM token saved successfully' });
+    res.status(200).json({
+      success: true,
+      message: fcmTokenToSave ? 'FCM token saved successfully' : 'FCM token cleared successfully',
+    });
   } catch (error) {
     next(error);
   }

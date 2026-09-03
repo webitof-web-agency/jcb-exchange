@@ -96,7 +96,6 @@ function App() {
               resizeMode="contain"
             />
             <ActivityIndicator size="large" color="#FFB800" style={styles.loader} />
-            <Text style={styles.welcomeText}>Welcome To JCB Exchange</Text>
           </Animated.View>
         )}
       </SafeAreaView>

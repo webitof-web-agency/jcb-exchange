@@ -26,10 +26,12 @@ export function buildFcmSyncScript({ apiBaseUrl, fcmToken }) {
 
               var authToken = window.localStorage ? (window.localStorage.getItem("frontend_portal_token") || "") : "";
               if (!authToken) {
+                window.__jcbExchangeFcmLastSynced = null;
+                window.__jcbExchangeFcmLastSyncedUserToken = null;
                 return;
               }
 
-              if (window.__jcbExchangeFcmLastSynced === fcmToken) {
+              if (window.__jcbExchangeFcmLastSynced === fcmToken && window.__jcbExchangeFcmLastSyncedUserToken === authToken) {
                 return;
               }
 
@@ -43,6 +45,7 @@ export function buildFcmSyncScript({ apiBaseUrl, fcmToken }) {
               });
 
               window.__jcbExchangeFcmLastSynced = fcmToken;
+              window.__jcbExchangeFcmLastSyncedUserToken = authToken;
             } catch (error) {
               console.warn("FCM token sync failed", error);
             }
