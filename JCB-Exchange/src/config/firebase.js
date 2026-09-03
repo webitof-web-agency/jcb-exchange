@@ -1,16 +1,19 @@
-import { Platform } from "react-native";
+import { WEB_APP_URL, API_BASE_URL } from "@env";
 
-const RELEASE_WEB_URL = "https://jcb-exchange-frontend.vercel.app";
-const RELEASE_API_URL = "https://jcb-exchange-frontend.vercel.app";
+const DEFAULT_URL = "https://jcb-exchange-frontend.vercel.app";
 
 export function getWebAppUrl() {
-  return RELEASE_WEB_URL;
+  return (typeof WEB_APP_URL === "string" && WEB_APP_URL.trim() !== "")
+    ? WEB_APP_URL.trim()
+    : DEFAULT_URL;
 }
 
 export function getApiBaseUrl() {
-  return RELEASE_API_URL;
+  return (typeof API_BASE_URL === "string" && API_BASE_URL.trim() !== "")
+    ? API_BASE_URL.trim()
+    : DEFAULT_URL;
 }
 
 export function getReleaseWebUrl() {
-  return RELEASE_WEB_URL;
+  return getWebAppUrl();
 }

@@ -1,13 +1,16 @@
-import { Platform } from 'react-native';
+// @ts-ignore
+import { WEB_APP_URL } from '@env';
 
-const RELEASE_WEB_URL = 'https://jcb-exchange-frontend.vercel.app';
+const DEFAULT_WEB_URL = 'https://jcb-exchange-frontend.vercel.app';
 
 export function getWebAppUrl() {
-  return RELEASE_WEB_URL;
+  return (typeof WEB_APP_URL === 'string' && WEB_APP_URL.trim() !== '') 
+    ? WEB_APP_URL.trim() 
+    : DEFAULT_WEB_URL;
 }
 
 export function getWebAppUrlHint() {
-  return 'Using live domain: ' + RELEASE_WEB_URL;
+  return 'Using domain: ' + getWebAppUrl();
 }
 
 export const APP_TITLE = 'JCB Exchange';
