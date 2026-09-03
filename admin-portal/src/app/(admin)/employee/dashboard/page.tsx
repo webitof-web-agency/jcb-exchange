@@ -226,9 +226,9 @@ export default function EmployeeDashboardPage() {
                   <Pie
                     data={data.categoryBreakdown}
                     cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={110}
+                    cy="45%"
+                    innerRadius={65}
+                    outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
                     nameKey="name"
@@ -241,7 +241,19 @@ export default function EmployeeDashboardPage() {
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   />
-                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    iconType="circle"
+                    wrapperStyle={{
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      paddingTop: '20px',
+                      lineHeight: '1.5',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      justifyContent: 'center'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
