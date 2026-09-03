@@ -1,4 +1,4 @@
-package com.serviceportalmobile
+package com.webitof.jcbexchangeye
 
 import android.view.View
 import com.facebook.react.ReactPackage

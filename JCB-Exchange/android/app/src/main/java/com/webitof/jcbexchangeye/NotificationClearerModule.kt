@@ -1,4 +1,4 @@
-package com.serviceportalmobile
+package com.webitof.jcbexchangeye
 
 import android.app.NotificationManager
 import android.content.Context
