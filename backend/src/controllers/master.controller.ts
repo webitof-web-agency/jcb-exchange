@@ -863,6 +863,23 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const getMobileAppSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        playStoreLink: settings.mobileApp.playStoreLink,
+        appStoreLink: settings.mobileApp.appStoreLink,
+        updatedAt: settings.mobileApp.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.query;

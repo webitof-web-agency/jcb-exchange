@@ -559,6 +559,10 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
         ...settings.customerPrime,
         recentPayments: recentPrimePayments,
       },
+      mobileApp: {
+        playStoreLink: settings.mobileApp.playStoreLink || '',
+        appStoreLink: settings.mobileApp.appStoreLink || '',
+      },
       financeSupport: {
         items: settings.financeSupport.items,
       },
@@ -570,7 +574,7 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime, mobileApp } = req.body as {
       googleClientId?: string;
       googleAuthEnabled?: boolean;
       mobileOtp?: {
@@ -590,9 +594,13 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         validityValue?: number;
         validityUnit?: 'DAYS' | 'MONTHS' | 'days' | 'months';
       };
+      mobileApp?: {
+        playStoreLink?: string;
+        appStoreLink?: string;
+      };
     };
 
-    if (googleClientId === undefined && googleAuthEnabled === undefined && !mobileOtp && !publicLeadRouting && !customerPrime) {
+    if (googleClientId === undefined && googleAuthEnabled === undefined && !mobileOtp && !publicLeadRouting && !customerPrime && !mobileApp) {
       return res.status(400).json({
         error: 'No platform setting changes were provided.',
       });
@@ -643,6 +651,13 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       };
     }
 
+    if (mobileApp) {
+      settingsPayload.mobileApp = {
+        ...(mobileApp.playStoreLink !== undefined ? { playStoreLink: mobileApp.playStoreLink } : {}),
+        ...(mobileApp.appStoreLink !== undefined ? { appStoreLink: mobileApp.appStoreLink } : {}),
+      };
+    }
+
     const [settings, defaultSuperAdminContact, recentPrimePayments] = await Promise.all([
       updatePlatformRuntimeSettings(settingsPayload),
       getDefaultSuperAdminContact(),
@@ -676,6 +691,10 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       customerPrime: {
         ...settings.customerPrime,
         recentPayments: recentPrimePayments,
+      },
+      mobileApp: {
+        playStoreLink: settings.mobileApp.playStoreLink || '',
+        appStoreLink: settings.mobileApp.appStoreLink || '',
       },
     });
   } catch (error) {

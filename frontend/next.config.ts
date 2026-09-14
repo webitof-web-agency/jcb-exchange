@@ -109,6 +109,11 @@ const nextConfig: NextConfig = {
         hostname: 'prezentokracja.pl',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'jcb-exchange.onrender.com',
+        pathname: '/**',
+      },
       ...(dynamicPattern ? [dynamicPattern] : []),
     ],
   },

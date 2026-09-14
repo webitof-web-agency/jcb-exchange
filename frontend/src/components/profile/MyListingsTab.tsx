@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Package, Calendar, MapPin, ExternalLink, Image as ImageIcon, Edit, Trash2 } from 'lucide-react';
+import { Package, Calendar, MapPin, ExternalLink, Image as ImageIcon, Edit, Trash2, Eye, MoreVertical } from 'lucide-react';
 import axios from 'axios';
 import api, { getAbsoluteMediaUrl } from '@/lib/api';
 import SellVehicleModal, { type EditableListing } from '@/components/sell/SellVehicleModal';
@@ -101,6 +101,7 @@ export default function MyListingsTab() {
   const showToast = useToastStore((state) => state.showToast);
   const { user } = useAuthStore();
   const [isPrimePaymentOpen, setIsPrimePaymentOpen] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const isCustomerUser = user?.role === 'CUSTOMER';
 
   const fetchListings = useCallback(async () => {
@@ -119,6 +120,8 @@ export default function MyListingsTab() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchListings();
   }, [fetchListings]);
+
+
 
   const handleOpenNewListing = () => {
     setListingToEdit(null);
@@ -211,6 +214,9 @@ export default function MyListingsTab() {
 
   return (
     <>
+      {openDropdownId && (
+        <div className="fixed inset-0 z-10" onClick={() => setOpenDropdownId(null)} />
+      )}
       <div className="rounded-xl sm:rounded-2xl bg-white p-5 sm:p-8 shadow-sm sm:shadow-xl sm:shadow-gray-200/50 border border-gray-100 sm:border-0">
         <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-5 sm:pb-6 gap-4">
           <div>
@@ -237,7 +243,7 @@ export default function MyListingsTab() {
           </div>
         ) : (
           <div className="max-h-[65vh] overflow-y-auto pr-2">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-6">
             {listings.map((listing) => {
               const title = getListingTitle(listing);
               const imageCandidates = getListingImageCandidates(listing);
@@ -245,8 +251,8 @@ export default function MyListingsTab() {
               const isReadOnlySoldListing = isCustomerUser && isSoldListing(listing.status);
 
               return (
-                <div key={listing.id} className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition-all hover:border-gray-200 hover:shadow-lg">
-                  <Link href={generateProfileListingDetailPath(listing)} className="relative block aspect-video w-full overflow-hidden bg-gray-100">
+                <div key={listing.id} className="group rounded-xl border border-gray-100 bg-white transition-all hover:border-gray-200 hover:shadow-lg relative flex flex-row sm:flex-col p-2 sm:p-0">
+                  <Link href={generateProfileListingDetailPath(listing)} className="relative block shrink-0 w-[120px] sm:w-full aspect-[4/3] sm:aspect-video overflow-hidden rounded-lg sm:rounded-none sm:rounded-t-xl bg-gray-100">
                     <SafeListingImage
                       key={imageCandidates.join('|') || `listing-${listing.id}`}
                       sources={imageCandidates}
@@ -254,80 +260,109 @@ export default function MyListingsTab() {
                       className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
 
-                    <div className="absolute right-3 top-3 rounded-md bg-white/90 px-2.5 py-1 text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm">
+                    <div className="hidden sm:block absolute right-3 top-3 rounded-md bg-white/90 px-2.5 py-1 text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm">
                       <span className={getStatusClassName(listing.status)}>{String(listing.status || 'UNKNOWN')}</span>
                     </div>
                   </Link>
 
-                  <div className="p-5">
-                    <h3 className="truncate text-lg font-bold text-gray-900">{title}</h3>
-
-                    <div className="mt-3 flex flex-col gap-2 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
-                        <span>
-                          {t('profile.manufacturingYear', {
-                            value: listing.manufacturingYear || t('profile.notSpecified'),
-                          })}
+                  <div className="flex flex-col flex-1 min-w-0 pl-3 py-0.5 sm:p-5 justify-between sm:justify-start">
+                    <div>
+                      <div className="sm:hidden mb-1">
+                        <span className={`inline-block rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${getStatusClassName(listing.status)}`}>
+                          {String(listing.status || 'UNKNOWN')}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-gray-400" />
-                        <span className="truncate">{locationLabel || t('machines.locationNotSpecified')}</span>
+                      <h3 className="truncate text-[14px] sm:text-lg font-bold text-gray-900 leading-tight">{title}</h3>
+
+                      <div className="mt-1 sm:mt-3 flex flex-col gap-0.5 sm:gap-2 text-[10px] sm:text-sm text-gray-600">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 shrink-0" />
+                          <span className="truncate">
+                            {t('profile.manufacturingYear', {
+                              value: listing.manufacturingYear || t('profile.notSpecified'),
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 shrink-0" />
+                          <span className="truncate">{locationLabel || t('machines.locationNotSpecified')}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mt-5 flex items-center justify-between border-t border-gray-50 pt-4">
-                      <span className="text-lg font-bold text-[#FFC107]">{formatPrice(listing.price)}</span>
+                    <div className="mt-1.5 sm:mt-5 flex items-center justify-between">
+                      <span className="text-[13px] sm:text-lg font-bold text-[#FFC107] leading-none">{formatPrice(listing.price)}</span>
 
-                      <div className="flex items-center gap-3">
-                        {!isReadOnlySoldListing ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handleEditListing(listing.id)}
-                              disabled={loadingEditId === listing.id}
-                              className="flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Edit className="h-4 w-4" />
-                              {loadingEditId === listing.id ? t('profile.loading') : null}
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setListingToDelete(listing.id);
-                                setIsDeleteModalOpen(true);
-                              }}
-                              className="flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
-                            {t('profile.soldListingViewOnly')}
-                          </span>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOpenDropdownId(openDropdownId === listing.id ? null : listing.id);
+                          }}
+                          className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                        >
+                          <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </button>
+                        
+                        {openDropdownId === listing.id && (
+                          <div className="absolute bottom-full right-0 mb-1 w-32 sm:w-40 overflow-hidden rounded-xl bg-white shadow-xl border border-gray-100 z-20">
+                            <div className="py-1">
+                              <Link
+                                href={generateProfileListingDetailPath(listing)}
+                                className="flex w-full items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                {t('profile.viewDetails', 'View Details')}
+                              </Link>
+                              
+                              {!isReadOnlySoldListing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenDropdownId(null);
+                                      void handleEditListing(listing.id);
+                                    }}
+                                    disabled={loadingEditId === listing.id}
+                                    className="flex w-full items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                    {t('profile.edit', 'Edit')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenDropdownId(null);
+                                      setListingToDelete(listing.id);
+                                      setIsDeleteModalOpen(true);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                    {t('profile.delete', 'Delete')}
+                                  </button>
+                                </>
+                              ) : (
+                                <div className="px-3 py-2 sm:px-4 sm:py-2.5 text-[10px] sm:text-xs font-bold text-amber-700">
+                                  {t('profile.soldListingViewOnly')}
+                                </div>
+                              )}
+                              
+                              {listing.isPubliclyVisible !== false && (
+                                <Link
+                                  href={generateMachineSlugPath(listing)}
+                                  target="_blank"
+                                  className="flex w-full items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                  {t('profile.openPublicPage', 'Public Page')}
+                                </Link>
+                              )}
+                            </div>
+                          </div>
                         )}
-
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={generateProfileListingDetailPath(listing)}
-                            className="text-sm font-semibold text-gray-500 transition-colors hover:text-gray-900"
-                          >
-                            {t('profile.viewDetails')}
-                          </Link>
-                          
-                          {listing.isPubliclyVisible !== false ? (
-                            <Link
-                              href={generateMachineSlugPath(listing)}
-                              target="_blank"
-                              title={t('profile.openPublicPage')}
-                              className="flex items-center justify-center rounded-md p-1.5 text-[#FFC107] transition-colors hover:bg-yellow-50 hover:text-yellow-600"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          ) : null}
-                        </div>
                       </div>
                     </div>
                   </div>

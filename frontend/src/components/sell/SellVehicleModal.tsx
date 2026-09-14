@@ -997,7 +997,7 @@ export default function SellVehicleModal({
   return (
     <>
       {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-6 backdrop-blur-sm">
           <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>

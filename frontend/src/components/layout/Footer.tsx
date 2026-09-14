@@ -9,7 +9,7 @@ export default function Footer() {
   const { t } = useTranslation();
 
   return (
-    <footer className="bg-[#1A1A1A] text-gray-300 pt-16 pb-8 px-6 md:px-12 w-full mt-auto">
+    <footer className="hidden md:block bg-[#1A1A1A] text-gray-300 pt-16 pb-8 px-6 md:px-12 w-full mt-auto">
       <div className="max-w-[1200px] mx-auto">
         {/* Top Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12 mb-12 md:mb-16 text-center md:text-left">

@@ -60,6 +60,10 @@ type SettingsResponse = {
     validityUnit: 'DAYS' | 'MONTHS';
     recentPayments: PrimePaymentRecord[];
   };
+  mobileApp: {
+    playStoreLink: string | null;
+    appStoreLink: string | null;
+  };
 };
 
 type LeadRoutingFormState = {
@@ -84,13 +88,18 @@ type MobileOtpFormState = {
   templateMessage: string;
 };
 
+type MobileAppFormState = {
+  playStoreLink: string;
+  appStoreLink: string;
+};
+
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;
   return axiosError.response?.data?.error || fallbackMessage;
 };
 
 export default function SuperAdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<'security' | 'leadRouting' | 'homepage' | 'payments'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'leadRouting' | 'homepage' | 'payments' | 'mobileApp'>('security');
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false);
   const [leadRoutingForm, setLeadRoutingForm] = useState<LeadRoutingFormState>({
@@ -119,6 +128,11 @@ export default function SuperAdminSettingsPage() {
     templateMessage: 'Your OTP for JCB Exchange is {#var#}. Validity 5 mins.',
   });
   const [otpSaving, setOtpSaving] = useState(false);
+  const [mobileAppForm, setMobileAppForm] = useState<MobileAppFormState>({
+    playStoreLink: '',
+    appStoreLink: '',
+  });
+  const [mobileAppSaving, setMobileAppSaving] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoadingError(null);
@@ -148,6 +162,10 @@ export default function SuperAdminSettingsPage() {
         amount: response.data.customerPrime.amount ? String(response.data.customerPrime.amount) : '',
         validityValue: response.data.customerPrime.validityValue ? String(response.data.customerPrime.validityValue) : '',
         validityUnit: response.data.customerPrime.validityUnit || 'DAYS',
+      });
+      setMobileAppForm({
+        playStoreLink: response.data.mobileApp?.playStoreLink || '',
+        appStoreLink: response.data.mobileApp?.appStoreLink || '',
       });
     } catch (error: unknown) {
       setLoadingError(getApiErrorMessage(error, 'Unable to load platform settings.'));
@@ -332,6 +350,40 @@ export default function SuperAdminSettingsPage() {
     }));
   };
 
+  const handleMobileAppSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMobileAppSaving(true);
+
+    try {
+      const response = await api.patch<{
+        message: string;
+        mobileApp: SettingsResponse['mobileApp'];
+      }>('/superadmin/settings', {
+        mobileApp: {
+          playStoreLink: mobileAppForm.playStoreLink,
+          appStoreLink: mobileAppForm.appStoreLink,
+        },
+      });
+
+      setMobileAppForm({
+        playStoreLink: response.data.mobileApp?.playStoreLink || '',
+        appStoreLink: response.data.mobileApp?.appStoreLink || '',
+      });
+      toast.success(response.data.message);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save mobile app settings.'));
+    } finally {
+      setMobileAppSaving(false);
+    }
+  };
+
+  const updateMobileAppForm = (nextState: Partial<MobileAppFormState>) => {
+    setMobileAppForm((currentState) => ({
+      ...currentState,
+      ...nextState,
+    }));
+  };
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <div>
@@ -388,6 +440,18 @@ export default function SuperAdminSettingsPage() {
             >
               <CreditCard className="h-4 w-4" />
               Payments
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('mobileApp')}
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                activeTab === 'mobileApp'
+                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                  : 'border-transparent text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Phone className="h-4 w-4" />
+              Mobile App
             </button>
           </nav>
         </aside>
@@ -858,6 +922,64 @@ export default function SuperAdminSettingsPage() {
               </section>
 
 
+            </>
+          ) : null}
+
+          {activeTab === 'mobileApp' ? (
+            <>
+              <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="relative overflow-hidden bg-gray-900 px-6 py-8 sm:px-8">
+                  <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
+                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold tracking-tight text-white">Mobile App Links</h2>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-gray-900">App Download Settings</h3>
+                </div>
+
+                <form onSubmit={handleMobileAppSubmit} className="space-y-6">
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Play Store Link</span>
+                      <input
+                        type="url"
+                        value={mobileAppForm.playStoreLink}
+                        onChange={(event) => updateMobileAppForm({ playStoreLink: event.target.value })}
+                        placeholder="https://play.google.com/store/apps/details?id=..."
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Apple App Store Link</span>
+                      <input
+                        type="url"
+                        value={mobileAppForm.appStoreLink}
+                        onChange={(event) => updateMobileAppForm({ appStoreLink: event.target.value })}
+                        placeholder="https://apps.apple.com/app/..."
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={mobileAppSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {mobileAppSaving ? 'Saving...' : 'Save Settings'}
+                    </button>
+                  </div>
+                </form>
+              </section>
             </>
           ) : null}
         </div>

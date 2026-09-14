@@ -44,7 +44,7 @@ export default function CategoriesPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
       />
       <CategoriesPageClient />
-      <section className="bg-[#f6f4ef] pb-16">
+      <section className="hidden md:block bg-[#f6f4ef] pb-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="max-w-4xl space-y-4 text-sm leading-7 text-gray-600">

@@ -263,7 +263,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   }, [listing.id]);
 
   const images = listing.media.filter((media) => media.type === 'IMAGE');
-  
+
   useEffect(() => {
     if (!isLightboxOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -395,8 +395,8 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-20 overflow-x-hidden w-full max-w-[100vw] flex flex-col">
-      <div className="w-full border-b border-gray-200 bg-white">
+    <div className="min-h-screen bg-[#F8F9FA] pb-20 flex flex-col w-full">
+      <div className="w-full border-b border-gray-200 bg-white sticky top-[45px] z-30 md:static md:top-auto md:z-auto">
         <div className="mx-auto flex max-w-7xl py-3 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)] items-center overflow-x-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-500 no-scrollbar">
           <Link href="/" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('navbar.home')}</Link>
           <ChevronRight size={14} className="mx-2 flex-shrink-0" />
@@ -414,7 +414,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         <div className="flex flex-col gap-6 sm:gap-8 lg:flex-row max-w-full">
           <div className="min-w-0 flex-1 max-w-full">
             <div className="mb-6 sm:mb-8 overflow-hidden rounded-xl border border-gray-200 sm:border-gray-100 bg-white shadow-xs sm:shadow-sm max-w-full">
-              <div 
+              <div
                 className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10] cursor-pointer group"
                 onClick={() => mainImage && setIsLightboxOpen(true)}
               >
@@ -449,29 +449,28 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
               </div>
 
               {images.length > 1 && (
-                <div 
+                <div
                   className="flex overflow-x-auto gap-2 sm:gap-3 border-t border-gray-100 p-3 sm:p-4 snap-x [&::-webkit-scrollbar]:hidden w-full"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
                   {images.map((image, index) => (
-                      <button
-                        key={image.id}
-                        type="button"
-                        onClick={() => setActiveImageIndex(index)}
-                        className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-center ${
-                          activeImageIndex === index
-                            ? 'border-jcb-yellow'
-                            : 'border-transparent hover:border-gray-200'
+                    <button
+                      key={image.id}
+                      type="button"
+                      onClick={() => setActiveImageIndex(index)}
+                      className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-center ${activeImageIndex === index
+                          ? 'border-jcb-yellow'
+                          : 'border-transparent hover:border-gray-200'
                         }`}
-                      >
-                        <Image
-                          src={getAbsoluteMediaUrl(image.url)}
-                          alt={`${listing.title} ${index + 1}`}
-                          fill
-                          sizes="(max-width: 640px) 25vw, 128px"
-                          className="object-cover"
-                        />
-                      </button>
+                    >
+                      <Image
+                        src={getAbsoluteMediaUrl(image.url)}
+                        alt={`${listing.title} ${index + 1}`}
+                        fill
+                        sizes="(max-width: 640px) 25vw, 128px"
+                        className="object-cover"
+                      />
+                    </button>
                   ))}
                 </div>
               )}
@@ -484,7 +483,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 <h1 className="mb-2 text-lg sm:text-xl font-bold text-gray-900 leading-snug tracking-tight break-words max-w-full">
                   {listing.title}
                 </h1>
-                
+
                 <div className="mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-500 font-normal">
                   <div className="flex items-center gap-1.5">
                     <Calendar size={13} className="text-gray-400 shrink-0" />
@@ -516,7 +515,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     )}
                   </div>
                   <div className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 leading-none">
-                    {listing.status === 'SOLD' 
+                    {listing.status === 'SOLD'
                       ? soldPriceLabel
                       : formatCurrency(listing.price || 0)}
                   </div>
@@ -560,9 +559,9 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   </div>
                 )}
 
-                {listing.partner?.id && 
-                 listing.partner?.partnerType !== 'PRIME_CUSTOMER' && 
-                 listing.partner?.partnerType !== 'STANDARD_CUSTOMER' ? (
+                {listing.partner?.id &&
+                  listing.partner?.partnerType !== 'PRIME_CUSTOMER' &&
+                  listing.partner?.partnerType !== 'STANDARD_CUSTOMER' ? (
                   <Link
                     href={dealerProfileHref || '#'}
                     className="group block rounded-xl border border-gray-200 p-4 transition-all duration-200 hover:border-amber-400 hover:shadow-md hover:bg-amber-50/20"
@@ -663,101 +662,101 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         </div>
 
         <div className="w-full mt-4 sm:mt-8 min-w-0">
-            <section className="mb-10">
-              <h2 className="mb-4 sm:mb-5 text-xl sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <HighlightCard icon={<Settings className="text-jcb-yellow" size={20} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
-                <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
-                <HighlightCard icon={<Clock className="text-jcb-yellow" size={20} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
-                <HighlightCard icon={<MapPin className="text-jcb-yellow" size={20} />} label={t('machineDetails.locationLabel')} value={locationLabel} />
-              </div>
-            </section>
+          <section className="mb-10">
+            <h2 className="mb-4 sm:mb-5 text-xl sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              <HighlightCard icon={<Settings className="text-jcb-yellow" size={20} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
+              <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
+              <HighlightCard icon={<Clock className="text-jcb-yellow" size={20} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
+              <HighlightCard icon={<MapPin className="text-jcb-yellow" size={20} />} label={t('machineDetails.locationLabel')} value={locationLabel} />
+            </div>
+          </section>
 
-            {(descriptionParts.overview || descriptionParts.additional) && (
-              <section className="mb-10">
-                <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.overview')}</h2>
-                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md sm:p-8">
-                  {descriptionParts.overview && (
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700 sm:text-base">
-                      {descriptionParts.overview}
+          {(descriptionParts.overview || descriptionParts.additional) && (
+            <section className="mb-10">
+              <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.overview')}</h2>
+              <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md sm:p-8">
+                {descriptionParts.overview && (
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700 sm:text-base">
+                    {descriptionParts.overview}
+                  </p>
+                )}
+                {descriptionParts.additional && (
+                  <div className={descriptionParts.overview ? 'mt-8' : ''}>
+                    <h3 className="mb-3 text-sm font-bold text-gray-900">{t('machineDetails.additionalDescription')}</h3>
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">
+                      {descriptionParts.additional}
                     </p>
-                  )}
-                  {descriptionParts.additional && (
-                    <div className={descriptionParts.overview ? 'mt-8' : ''}>
-                      <h3 className="mb-3 text-sm font-bold text-gray-900">{t('machineDetails.additionalDescription')}</h3>
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">
-                        {descriptionParts.additional}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {videos.length > 0 && (
-              <section className="mb-10">
-                <h2 className="mb-5 text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <Video className="text-jcb-yellow" size={24} />
-                  {t('machineDetails.videos')}
-                </h2>
-                <div className={`grid grid-cols-1 gap-4 ${videos.length === 1 ? '' : 'sm:grid-cols-2'}`}>
-                  {videos.map((video) => (
-                    <div key={video.id} className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-                      <video
-                        controls
-                        className="w-full h-auto max-h-[70vh] object-contain bg-black"
-                        preload="metadata"
-                      >
-                        <source src={getAbsoluteMediaUrl(video.url)} type={video.url.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
-                        Your browser does not support the video tag.
-                      </video>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <section className="mb-10">
-              <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <SpecAccordion
-                  icon={<Truck className="h-5 w-5 text-amber-600" />}
-                  title={t('machineDetails.vehicleDetails')}
-                  isOpen={expandedSections.includes('machine')}
-                  onToggle={() => toggleSection('machine')}
-                >
-                  <SpecsGrid
-                    items={[
-                      { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
-                      { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
-                      { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: parsedDetails.variant || t('machineDetails.na') },
-                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
-                      { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
-                      { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
-                      { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
-                      { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
-                    ]}
-                  />
-                </SpecAccordion>
-
-                <SpecAccordion
-                  icon={<MapPin className="h-5 w-5 text-amber-600" />}
-                  title={t('machineDetails.registrationLocation')}
-                  isOpen={expandedSections.includes('seller')}
-                  onToggle={() => toggleSection('seller')}
-                >
-                  <SpecsGrid
-                    items={[
-                      { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: parsedDetails.fuelType || t('machineDetails.na') },
-                      { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: parsedDetails.transmission || t('machineDetails.na') },
-                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.districtLabel'), value: parsedDetails.district || listing.partner?.district || t('machineDetails.na') },
-                      { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: parsedDetails.nearbyLandmark || t('machineDetails.na') },
-                      { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
-                    ]}
-                  />
-                </SpecAccordion>
+                  </div>
+                )}
               </div>
             </section>
+          )}
+
+          {videos.length > 0 && (
+            <section className="mb-10">
+              <h2 className="mb-5 text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Video className="text-jcb-yellow" size={24} />
+                {t('machineDetails.videos')}
+              </h2>
+              <div className={`grid grid-cols-1 gap-4 ${videos.length === 1 ? '' : 'sm:grid-cols-2'}`}>
+                {videos.map((video) => (
+                  <div key={video.id} className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                    <video
+                      controls
+                      className="w-full h-auto max-h-[70vh] object-contain bg-black"
+                      preload="metadata"
+                    >
+                      <source src={getAbsoluteMediaUrl(video.url)} type={video.url.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="mb-10">
+            <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <SpecAccordion
+                icon={<Truck className="h-5 w-5 text-amber-600" />}
+                title={t('machineDetails.vehicleDetails')}
+                isOpen={expandedSections.includes('machine')}
+                onToggle={() => toggleSection('machine')}
+              >
+                <SpecsGrid
+                  items={[
+                    { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
+                    { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
+                    { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: parsedDetails.variant || t('machineDetails.na') },
+                    { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
+                    { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
+                    { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
+                    { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
+                    { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
+                  ]}
+                />
+              </SpecAccordion>
+
+              <SpecAccordion
+                icon={<MapPin className="h-5 w-5 text-amber-600" />}
+                title={t('machineDetails.registrationLocation')}
+                isOpen={expandedSections.includes('seller')}
+                onToggle={() => toggleSection('seller')}
+              >
+                <SpecsGrid
+                  items={[
+                    { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: parsedDetails.fuelType || t('machineDetails.na') },
+                    { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: parsedDetails.transmission || t('machineDetails.na') },
+                    { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.districtLabel'), value: parsedDetails.district || listing.partner?.district || t('machineDetails.na') },
+                    { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: parsedDetails.nearbyLandmark || t('machineDetails.na') },
+                    { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
+                  ]}
+                />
+              </SpecAccordion>
+            </div>
+          </section>
         </div>
       </div>
       {pendingFeature ? (
@@ -772,17 +771,17 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
       ) : null}
 
       {isLightboxOpen && mainImage && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
           onClick={() => setIsLightboxOpen(false)}
         >
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
             className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
           >
             <X size={28} />
           </button>
-          
+
           <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
             <div className="relative h-full w-full">
               <Image
@@ -799,18 +798,18 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
           {images.length > 1 && (
             <>
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
                 }}
                 className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
               >
                 <ChevronLeft size={24} className="sm:w-8 sm:h-8" />
               </button>
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
                 }}
                 className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
@@ -888,8 +887,8 @@ function SpecsGrid({ items }: { items: SpecItem[] }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 sm:gap-x-8 lg:gap-x-12 gap-y-2 sm:gap-y-3">
       {items.map(({ icon, label, value }) => (
-        <div 
-          key={label} 
+        <div
+          key={label}
           className="group flex items-center justify-between py-3 px-3 rounded-xl transition-all duration-200 hover:bg-slate-50 border-b border-gray-100/70 sm:border-b-0"
         >
           <div className="flex items-center gap-3 min-w-0 pr-3">

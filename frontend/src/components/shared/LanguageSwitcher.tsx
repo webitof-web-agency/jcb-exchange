@@ -10,12 +10,14 @@ type LanguageSwitcherProps = {
   className?: string;
   tone?: 'dark' | 'light';
   direction?: 'down' | 'up';
+  size?: 'sm' | 'default';
 };
 
 export default function LanguageSwitcher({
   className = '',
   tone = 'dark',
   direction = 'down',
+  size = 'default',
 }: LanguageSwitcherProps) {
   const { t } = useTranslation();
   const locale = useLanguageStore((state) => state.locale);
@@ -63,7 +65,9 @@ export default function LanguageSwitcher({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-label={t('common.language')}
-        className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all duration-150 focus:outline-none ${
+        className={`inline-flex items-center font-semibold transition-all duration-150 focus:outline-none ${
+          size === 'sm' ? 'gap-1.5 rounded-lg px-2.5 py-1 text-[11px]' : 'gap-2 rounded-xl px-3 py-1.5 sm:py-2 text-xs'
+        } ${
           isDark
             ? 'border border-white/20 bg-neutral-900/90 text-white hover:bg-neutral-800 hover:border-white/30 active:bg-neutral-800'
             : 'border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100'

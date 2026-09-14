@@ -87,9 +87,10 @@ interface CustomSelectProps {
   options: CustomSelectOption[];
   icon?: React.ReactNode;
   className?: string;
+  dropdownClassName?: string;
 }
 
-function CustomSelect({ value, onChange, options, icon, className = '' }: CustomSelectProps) {
+function CustomSelect({ value, onChange, options, icon, className = '', dropdownClassName = 'left-0' }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -120,7 +121,7 @@ function CustomSelect({ value, onChange, options, icon, className = '' }: Custom
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 w-full min-w-[200px] max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+        <div className={`absolute ${dropdownClassName} z-50 mt-1.5 w-max min-w-[100%] max-w-[85vw] max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl`}>
           {options.map((opt) => {
             const isSelected = opt.value === value;
             return (
@@ -384,7 +385,7 @@ export default function SoldVehiclesPageClient() {
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       {/* Hero Header */}
-      <section className="relative overflow-hidden bg-slate-900 px-4 py-10 sm:px-6 sm:py-14 lg:px-8 text-white">
+      <section className="relative overflow-hidden bg-slate-900 px-4 py-6 sm:px-6 sm:py-14 lg:px-8 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,193,7,0.18),transparent_60%),linear-gradient(135deg,#0f172a_0%,#1e293b_100%)]" />
 
         <div className="relative mx-auto max-w-7xl">
@@ -398,15 +399,21 @@ export default function SoldVehiclesPageClient() {
                 href="/machines"
                 className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl bg-[#FFC107] px-2.5 sm:px-4 py-2.5 text-[11px] sm:text-sm font-bold text-black shadow-xs transition-all hover:bg-[#FFB300] hover:shadow-md active:scale-95 text-center whitespace-nowrap"
               >
-                <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                Browse machines
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                  <span>Browse machines</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 opacity-70" />
               </Link>
               <Link
                 href="/dealers"
                 className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 backdrop-blur-md px-2.5 sm:px-4 py-2.5 text-[11px] sm:text-sm font-semibold text-white transition-all hover:bg-white/20 hover:border-white/40 active:scale-95 text-center whitespace-nowrap"
               >
-                <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400 shrink-0" />
-                Explore dealers
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-400 shrink-0" />
+                  <span>Explore dealers</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 opacity-70" />
               </Link>
             </div>
           </div>
@@ -414,7 +421,7 @@ export default function SoldVehiclesPageClient() {
       </section>
 
       {/* Main Content Area */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 space-y-4 sm:space-y-6">
         {/* Controls Bar with Relatable Filter Icons */}
         <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-xs space-y-3.5">
           {/* Desktop Filter Bar (md:grid 4-columns) */}
@@ -517,6 +524,7 @@ export default function SoldVehiclesPageClient() {
                 }}
                 options={brandOptions}
                 icon={<Tag size={14} className="text-amber-500" />}
+                dropdownClassName="right-0 sm:left-0"
               />
             </div>
           </div>
@@ -594,10 +602,10 @@ export default function SoldVehiclesPageClient() {
                   <Link
                     key={item.id}
                     href={generateMachineSlugPath(item)}
-                    className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-slate-300"
+                    className="group flex flex-row sm:flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-slate-300"
                   >
                     {/* Featured Image */}
-                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
+                    <div className="relative aspect-[4/3] sm:aspect-[16/10] w-[120px] sm:w-full shrink-0 overflow-hidden bg-slate-100">
                       {imageUrl ? (
                         <Image
                           src={imageUrl}
@@ -620,14 +628,14 @@ export default function SoldVehiclesPageClient() {
 
                       {/* Pill */}
                       {item.manufacturingYear ? (
-                        <div className="absolute bottom-3 right-3 z-10 bg-slate-900/80 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/20 rounded-[4px]">
+                        <div className="absolute bottom-1 right-1 sm:bottom-3 sm:right-3 z-10 bg-slate-900/80 px-1.5 py-0.5 sm:px-2.5 sm:py-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/20 rounded-[4px]">
                           {item.manufacturingYear} Model
                         </div>
                       ) : null}
                     </div>
 
                     {/* Details Container */}
-                    <div className="flex flex-1 flex-col p-4 sm:p-5">
+                    <div className="flex flex-1 flex-col p-2.5 sm:p-5 min-w-0">
                       {/* Title */}
                       <h3 className="line-clamp-2 text-[17px] font-bold text-slate-900 leading-tight">
                         {finalTitle}
@@ -640,34 +648,34 @@ export default function SoldVehiclesPageClient() {
                       </div>
 
                       {/* Specs Box */}
-                      <div className="mb-5 grid grid-cols-2 bg-slate-50 border border-slate-200 rounded-[6px]">
-                        <div className="py-2.5 px-3 border-r border-slate-200 flex flex-col justify-center">
-                          <div className="mb-0.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                      <div className="mb-3 sm:mb-5 grid grid-cols-2 bg-slate-50 border border-slate-200 rounded-[6px]">
+                        <div className="py-1.5 sm:py-2.5 px-2 sm:px-3 border-r border-slate-200 flex flex-col justify-center">
+                          <div className="mb-0.5 flex items-center gap-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400">
                             <CalendarRange size={11} className="text-amber-500" />
                             <span>Year</span>
                           </div>
-                          <div className="text-[15px] font-extrabold text-slate-900">{item.manufacturingYear || 'N/A'}</div>
+                          <div className="text-[12px] sm:text-[15px] font-extrabold text-slate-900">{item.manufacturingYear || 'N/A'}</div>
                         </div>
-                        <div className="py-2.5 px-3 flex flex-col justify-center">
-                          <div className="mb-0.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        <div className="py-1.5 sm:py-2.5 px-2 sm:px-3 flex flex-col justify-center">
+                          <div className="mb-0.5 flex items-center gap-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400">
                             <Gauge size={11} className="text-amber-500" />
                             <span>Hours</span>
                           </div>
-                          <div className="text-[15px] font-extrabold text-slate-900">{item.operatingHours ? `${item.operatingHours.toLocaleString('en-US')} hrs` : 'N/A'}</div>
+                          <div className="text-[12px] sm:text-[15px] font-extrabold text-slate-900">{item.operatingHours ? `${item.operatingHours.toLocaleString('en-US')} hrs` : 'N/A'}</div>
                         </div>
                       </div>
 
                       {/* Footer Details */}
-                      <div className="mt-auto flex items-end justify-between">
-                        <div>
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Sold Price</div>
-                          <div className="text-sm font-bold text-slate-800">{formatPrice(item.price)}</div>
+                      <div className="mt-auto flex items-end justify-between gap-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">Sold Price</div>
+                          <div className="text-[13px] sm:text-sm font-bold text-slate-800 truncate">{formatPrice(item.price)}</div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        <div className="text-right shrink-0">
+                          <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">
                             {item.partner?.type ? `${item.partner.type.toLowerCase()}` : 'Sold By'}
                           </div>
-                          <div className="text-sm font-bold text-slate-800 truncate max-w-[130px]">
+                          <div className="text-[11px] sm:text-sm font-bold text-slate-800 truncate max-w-[80px] sm:max-w-[130px]">
                             {item.partner?.name || formattedDate}
                           </div>
                         </div>

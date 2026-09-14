@@ -54,6 +54,13 @@ export type SiteLogoSettings = {
   updatedByUserId: string | null;
 };
 
+export type MobileAppSettings = {
+  playStoreLink: string | null;
+  appStoreLink: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
 type AppSettings = {
   googleAuth: GoogleAuthSettings;
   mobileOtp: MobileOtpSettings;
@@ -70,6 +77,7 @@ type AppSettings = {
   };
   inspectionSection: InspectionSectionSettings;
   siteLogo: SiteLogoSettings;
+  mobileApp: MobileAppSettings;
 };
 
 const platformRuntimeSettingsKey = 'platform';
@@ -154,6 +162,12 @@ const defaultSettings: AppSettings = {
     updatedAt: null,
     updatedByUserId: null,
   },
+  mobileApp: {
+    playStoreLink: null,
+    appStoreLink: null,
+    updatedAt: null,
+    updatedByUserId: null,
+  },
 };
 
 const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): AppSettings => ({
@@ -195,6 +209,12 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
+  mobileApp: {
+    playStoreLink: parsed?.mobileApp?.playStoreLink?.trim() || null,
+    appStoreLink: parsed?.mobileApp?.appStoreLink?.trim() || null,
+    updatedAt: parsed?.mobileApp?.updatedAt || null,
+    updatedByUserId: parsed?.mobileApp?.updatedByUserId || null,
+  },
 });
 
 const isMeaningfulSettings = (settings: AppSettings) =>
@@ -221,7 +241,9 @@ const isMeaningfulSettings = (settings: AppSettings) =>
     settings.inspectionSection.imageUrl ||
     settings.siteLogo.imageUrl ||
     settings.siteLogo.faviconUrl ||
-    settings.siteLogo.manifestIconUrl,
+    settings.siteLogo.manifestIconUrl ||
+    settings.mobileApp.playStoreLink ||
+    settings.mobileApp.appStoreLink,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -470,6 +492,7 @@ export const updatePlatformRuntimeSettings = async ({
   mobileOtp,
   publicLeadRouting,
   customerPrime,
+  mobileApp,
   updatedByUserId,
 }: {
   googleClientId?: string | null;
@@ -495,6 +518,7 @@ export const updatePlatformRuntimeSettings = async ({
       | 'requireForSellListing'
     >
   > | null;
+  mobileApp?: Partial<Pick<MobileAppSettings, 'playStoreLink' | 'appStoreLink'>> | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
@@ -503,6 +527,7 @@ export const updatePlatformRuntimeSettings = async ({
   const hasMobileOtpUpdate = mobileOtp !== undefined;
   const hasPublicLeadRoutingUpdate = publicLeadRouting !== undefined;
   const hasCustomerPrimeUpdate = customerPrime !== undefined;
+  const hasMobileAppUpdate = mobileApp !== undefined;
 
   const nextSettings: AppSettings = {
     ...currentSettings,
@@ -549,6 +574,14 @@ export const updatePlatformRuntimeSettings = async ({
         updatedByUserId: updatedByUserId || null,
       }
       : currentSettings.customerPrime,
+    mobileApp: hasMobileAppUpdate
+      ? {
+        playStoreLink: mobileApp?.playStoreLink !== undefined ? (mobileApp.playStoreLink?.trim() || null) : currentSettings.mobileApp.playStoreLink,
+        appStoreLink: mobileApp?.appStoreLink !== undefined ? (mobileApp.appStoreLink?.trim() || null) : currentSettings.mobileApp.appStoreLink,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.mobileApp,
   };
 
   await persistSettings(nextSettings);

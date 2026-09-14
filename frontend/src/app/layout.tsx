@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import AuthModal from "@/components/shared/AuthModal";
 import ToastViewport from "@/components/shared/ToastViewport";
 import LocaleSync from "@/components/shared/LocaleSync";
@@ -135,17 +136,19 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased">
+      <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased pb-16 lg:pb-0">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
         />
         <LocaleSync />
         <Navbar />
+        <div className="h-[53px] shrink-0 lg:hidden" aria-hidden="true" />
         <main className="flex-grow flex flex-col">
           {children}
         </main>
         <Footer />
+        <MobileBottomNav />
         <AuthModal />
         <ToastViewport />
         <PushNotificationManager />
