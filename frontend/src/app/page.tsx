@@ -518,6 +518,53 @@ export default function Home() {
         </div>
       </section>
 
+      {/* 2.75 SEARCH-FRIENDLY SERVICE SUMMARY */}
+      <section className="w-full border-y border-gray-200 bg-white px-4 py-10 sm:px-6 sm:py-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <h2 className="text-2xl font-bold leading-tight text-gray-900 sm:text-3xl">
+              Construction Machinery Buy &amp; Sell
+            </h2>
+            <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-gray-600 sm:text-base">
+              Find verified used construction equipment and pre-owned construction machines across India. Compare second hand JCB listings on JCB Exchange, explore commercial vehicle buy sell opportunities, and get help with used machine RTO services.
+            </p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Used Construction Equipment
+            </Link>
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Second Hand JCB
+            </Link>
+            <Link
+              href="/dealers"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Commercial Vehicle Buy Sell
+            </Link>
+            <Link
+              href="/dealers"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED] sm:col-span-2 lg:col-span-1"
+            >
+              Used Machine RTO Services
+            </Link>
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Pre-Owned Construction Machines
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* 3. LATEST VEHICLES */}
       <section className="py-16 px-6 bg-[#2d2d2d] w-full">
         <div className="max-w-7xl mx-auto">

@@ -18,7 +18,8 @@
     "navbar":  {
                    "home":  "होम",
                    "machines":  "मशिन्स",
-                   "sellVehicle":  "मशीन विक्री करा"
+                   "sellVehicle":  "मशीन विक्री करा",
+                   "careers":  "करिअर"
                },
     "footer":  {
                    "marketplace":  "मार्केटप्लेस",

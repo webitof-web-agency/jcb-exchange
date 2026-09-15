@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { SITE_KEYWORDS } from '@/lib/site';
 import MachinesPageClient from './MachinesPageClient';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
@@ -62,13 +63,14 @@ export async function generateMetadata({
 
   const description = matchedCategory && !hasSearchIntent
     ? `Browse verified ${matchedCategory.name.toLowerCase()} listings, prices, and machine details across India on JCB Exchange.`
-    : 'Explore verified used JCBs, excavators, loaders, and heavy machinery for sale across India on JCB Exchange.';
+    : 'Explore verified used JCBs, pre-owned construction machines, loaders, and heavy machinery for sale across India on JCB Exchange.';
 
   const shouldIndex = !hasSearchIntent;
 
   return {
     title,
     description,
+    keywords: [...SITE_KEYWORDS, title],
     alternates: {
       canonical,
     },
@@ -102,7 +104,7 @@ export default function MachinesPage() {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
     name: 'Used Machines for Sale | JCB Exchange',
-    description: 'Explore verified used JCBs, excavators, loaders, and heavy machinery for sale across India on JCB Exchange.',
+    description: 'Explore verified used JCBs, pre-owned construction machines, loaders, and heavy machinery for sale across India on JCB Exchange.',
     url: 'https://jcbexchange.com/machines',
     isPartOf: {
       '@id': 'https://jcbexchange.com/#website',

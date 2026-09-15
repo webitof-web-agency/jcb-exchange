@@ -1,4 +1,4 @@
-import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/site';
+import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME } from '@/lib/site';
 
 export type SiteBranding = {
   logoUrl: string | null;
@@ -87,6 +87,7 @@ export const getDefaultSiteMetadata = () => ({
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
+  keywords: SITE_KEYWORDS,
   applicationName: SITE_NAME,
   alternates: {
     canonical: '/',

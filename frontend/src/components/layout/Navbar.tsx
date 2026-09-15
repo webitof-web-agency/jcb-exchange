@@ -268,7 +268,7 @@ export default function Navbar() {
       >
         <div className="flex flex-col">
           <div className="flex w-full items-center justify-between border-b border-white/10 px-3 sm:px-4 md:px-6 py-2 md:py-2.5 relative">
-            <div className="flex items-center">
+            <div className="flex items-center shrink-0">
               <button
                 className="mr-2 sm:mr-3 xl:hidden text-gray-300 hover:text-white transition-colors"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -279,31 +279,40 @@ export default function Navbar() {
               <SiteBrand />
             </div>
 
-            <nav className="hidden xl:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center gap-7 text-[13px] font-semibold text-gray-300">
-              <Link href="/" className="transition-colors hover:text-white">
-                {t('navbar.home')}
+            <nav className="hidden xl:flex items-center justify-center gap-5 xl:gap-6 2xl:gap-8 mx-auto px-4 lg:px-8 text-[13px] font-semibold text-gray-300 whitespace-nowrap">
+              <Link
+                href="/"
+                className={`transition-colors hover:text-white ${pathname === '/' ? 'text-[#FFC107] font-bold' : ''}`}
+              >
+                {t('navbar.home', 'Home')}
               </Link>
-              <Link href="/machines" className="transition-colors hover:text-white">
-                {t('navbar.machines')}
+              <Link
+                href="/machines"
+                className={`transition-colors hover:text-white ${pathname === '/machines' || pathname.startsWith('/machines/') ? 'text-[#FFC107] font-bold' : ''}`}
+              >
+                {t('navbar.machines', 'Machines')}
               </Link>
               <button
                 onClick={handleOpenSellVehicle}
                 className="cursor-pointer outline-none transition-colors hover:text-white"
               >
-                {t('navbar.sellVehicle')}
+                {t('navbar.sellVehicle', 'Sell Vehicle')}
               </button>
-              <Link href="/sold-vehicles" className="transition-colors hover:text-white">
-                {t('navbar.soldVehicles')}
+              <Link
+                href="/sold-vehicles"
+                className={`transition-colors hover:text-white ${pathname === '/sold-vehicles' || pathname.startsWith('/sold-vehicles/') ? 'text-[#FFC107] font-bold' : ''}`}
+              >
+                {t('navbar.soldVehicles', 'Sold Vehicles')}
               </Link>
               <Link
                 href="/jobs"
                 className={`transition-colors hover:text-white ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'text-[#FFC107] font-bold' : ''}`}
               >
-                Careers
+                {t('navbar.careers', 'Careers')}
               </Link>
             </nav>
 
-            <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-6 shrink-0">
               <div className="hidden md:block">
                 <LanguageSwitcher />
               </div>
@@ -626,7 +635,7 @@ export default function Navbar() {
             }`}
           >
             <Briefcase size={18} className={pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'text-[#FFC107]' : 'text-gray-400'} />
-            <span>Careers</span>
+            <span>{t('navbar.careers', 'Careers')}</span>
           </Link>
 
           <Link
