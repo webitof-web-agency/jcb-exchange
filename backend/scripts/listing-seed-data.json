@@ -16830,6 +16830,111 @@
         "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
         "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
+    },
+    {
+      "seedKey": "prime-megh-jcb-3dx-raipur-001",
+      "sellerRef": "megh-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Backhoe Loader",
+        "brandName": "JCB",
+        "modelName": "3DX",
+        "title": "JCB 3DX Megh Prime 2023 Field Ready",
+        "variant": "EcoXcellence",
+        "manufacturingYear": 2023,
+        "registrationYear": "2023",
+        "registrationNo": "CG04JCB2023",
+        "chassisOrSerialNo": "JCB3DXCG04202301",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 1980,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2780000,
+        "isNegotiable": true,
+        "stateName": "Chhattisgarh",
+        "address": "Tatibandh industrial area, Raipur, Chhattisgarh - 492099",
+        "cityName": "Raipur",
+        "pinCode": "492099",
+        "nearbyLandmark": "Tatibandh industrial area",
+        "description": "Prime customer listed JCB 3DX with low operating hours, clean hydraulics, and strong digging performance.",
+        "additionalDescription": "Single-owner machine with a well-maintained cabin, recently serviced boom pins, and ready-to-work tyres.",
+        "grossPower": "76 hp (56 kW)",
+        "insuranceExpiry": "2027-12-31"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader on a grassy hillside",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader rear view",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader left side",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader right side",
+          "sourceProvider": "unsplash"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
+        "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
+        "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
+        "stateId": 4007,
+        "cityId": 133225,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
+      }
     }
   ]
 }
