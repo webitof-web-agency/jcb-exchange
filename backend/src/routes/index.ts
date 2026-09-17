@@ -9,6 +9,7 @@ import superAdminRoutes from './superadmin.routes';
 import notificationRoutes from './notification.routes';
 import locationRoutes from './location.routes';
 import recruitmentRoutes from './recruitment.routes';
+import whatsappRoutes from './whatsapp.routes';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -24,6 +25,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/locations', locationRoutes);
 router.use('/recruitment', recruitmentRoutes);
+router.use('/whatsapp', whatsappRoutes);
 
 router.post('/users/fcm-token', requireAuth, saveFcmToken);
 

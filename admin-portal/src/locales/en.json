@@ -861,5 +861,185 @@
     "insertMergeTagHelp": "Click to insert dynamic merge tag into email body:",
     "subjectLine": "Subject Line",
     "emailBodyContent": "Email Body Content"
+  },
+  "whatsappModule": {
+    "pageTitle": "WhatsApp Cloud API",
+    "common": {
+      "loading": "Loading...",
+      "saving": "Saving...",
+      "sending": "Sending...",
+      "preview": "Preview",
+      "viewing": "Viewing",
+      "on": "On",
+      "off": "Off",
+      "show": "Show",
+      "hide": "Hide",
+      "noOptionsAvailable": "No options available"
+    },
+    "tabs": {
+      "settings": "Setup & Credentials",
+      "marketplace": "Marketplace Rules",
+      "recruitment": "Recruitment Rules",
+      "campaign": "Opt-in Campaigns",
+      "logs": "Logs & Delivery"
+    },
+    "stats": {
+      "allMessageLogs": "All message logs",
+      "allMessageLogsHelp": "Recorded safely in the admin audit trail",
+      "sentLast7Days": "Sent - last 7 days",
+      "sentLast7DaysHelp": "Meta accepted messages",
+      "deliveredLast7Days": "Delivered - last 7 days",
+      "deliveredLast7DaysHelp": "Delivery webhook confirmations",
+      "failedLast7Days": "Failed - last 7 days",
+      "failedLast7DaysHelp": "Retry details appear in logs"
+    },
+    "settings": {
+      "secureConnectionSettings": "Secure connection settings",
+      "secretsEncrypted": "Secrets are encrypted on the server.",
+      "enabled": "ENABLED",
+      "disabled": "DISABLED",
+      "graphApiVersion": "Graph API version",
+      "phoneNumberId": "Phone Number ID",
+      "phoneNumberIdPlaceholder": "Meta Phone Number ID",
+      "businessAccountId": "Business Account ID",
+      "optionalRecommended": "Optional but recommended",
+      "testRecipientNumber": "Test recipient number",
+      "currentMasked": "Current: {value}",
+      "permanentAccessToken": "Permanent access token",
+      "webhookVerifyToken": "Webhook verify token",
+      "metaAppSecret": "Meta app secret",
+      "enableAllowedAfterCredentials": "Enable is allowed only after all required credentials are saved.",
+      "saveSettings": "Save settings",
+      "webhookUrl": "Webhook URL",
+      "liveApiDomainEndpoint": "Live API domain endpoint.",
+      "loadingWebhookUrl": "Loading webhook URL...",
+      "safeTestMessage": "Safe test message",
+      "previewUpdatesLive": "Preview updates live on side phone screen.",
+      "typeTestMessage": "Type test message text here...",
+      "sendTestMessage": "Send test message",
+      "testMessageTitle": "Test Message",
+      "configuredReplaceOnly": "Configured - add only to replace",
+      "permanentAccessTokenPlaceholder": "Meta permanent access token",
+      "webhookVerifyTokenPlaceholder": "Create a secure verification token",
+      "metaAppSecretPlaceholder": "Meta App Secret"
+    },
+    "templates": {
+      "registerMetaTemplate": "Register Meta Template",
+      "detailsRenderLive": "Details typed here render in real-time on the side phone display.",
+      "templateName": "Template Name",
+      "metaTemplateId": "Meta Template ID",
+      "category": "Category",
+      "language": "Language",
+      "status": "Status",
+      "sampleMessageBody": "Sample Message Body (Live Preview Text)",
+      "typeSampleMessage": "Type sample message text here...",
+      "savingTemplate": "Saving Template...",
+      "saveTemplate": "Save Template",
+      "allRegisteredTemplates": "All Registered Templates ({count})",
+      "clickPreviewHelp": "Click Preview to view on side phone.",
+      "noTemplates": "No templates registered yet.",
+      "previewSelectedTemplate": "Preview selected template",
+      "previewSelectedTemplateOnPhone": "Preview selected template on phone screen"
+    },
+    "rules": {
+      "eventRulesTriggers": "Event Rules & Triggers",
+      "selectTemplateTurnOn": "Select template and turn ON to automate.",
+      "to": "To",
+      "configuredRecipient": "Configured recipient",
+      "marketplaceEventUpdate": "Marketplace event update.",
+      "recruitmentUpdate": "Recruitment update.",
+      "loadingAutomationControls": "Loading automation controls..."
+    },
+    "recruitment": {
+      "recruitmentAutomations": "Recruitment Automations",
+      "workflowControls": "Candidate and hiring workflow controls",
+      "loadingAutomationControls": "Loading recruitment automation controls..."
+    },
+    "campaign": {
+      "optInCampaigns": "Opt-in Campaigns",
+      "consentDraftConfirmation": "Consent, draft and explicit confirmation",
+      "recordRevokeConsent": "Record or revoke consent",
+      "saveOptIn": "Save opt-in",
+      "createCampaignDraft": "Create campaign draft",
+      "campaignName": "Campaign name",
+      "createSafeDraft": "Create safe draft",
+      "prepareReminderDraft": "Prepare reminder draft",
+      "onlyDueOptInsIncluded": "Only opt-in candidates/customers whose reminder is due are included.",
+      "interviewWindow": "Interview window",
+      "primeExpiryWindow": "Prime expiry window",
+      "hoursAhead": "hours ahead",
+      "daysAhead": "days ahead",
+      "customWindowHelp": "Choose either reminder type above, then enter a custom whole-number window.",
+      "createReminderDraft": "Create reminder draft",
+      "optedInCount": "{count} opted-in",
+      "confirmSend": "Confirm & send",
+      "noDrafts": "No campaign drafts yet."
+    },
+    "filters": {
+      "allEventCodes": "All Event Codes",
+      "allStatuses": "All statuses"
+    },
+    "table": {
+      "campaign": "Campaign",
+      "audience": "Audience",
+      "status": "Status",
+      "action": "Action",
+      "event": "Event",
+      "recipient": "Recipient",
+      "delivery": "Delivery",
+      "attempts": "Attempts",
+      "time": "Time"
+    },
+    "logs": {
+      "deliveryOperations": "Delivery Operations",
+      "searchableMessageLogs": "Searchable message logs",
+      "searchPlaceholder": "Search phone number / event...",
+      "apply": "Apply",
+      "retrying": "Retrying...",
+      "retry": "Retry",
+      "loadingLogs": "Loading logs...",
+      "noMatchingLogs": "No matching WhatsApp logs.",
+      "recentMessageActivity": "Recent message activity",
+      "refresh": "Refresh",
+      "noActivity": "No WhatsApp message activity yet."
+    },
+    "preview": {
+      "logoAlt": "JCB Logo",
+      "officialBusinessAccount": "Official Business Account",
+      "today": "Today",
+      "metaId": "ID: {id}",
+      "metaApproved": "Meta Approved",
+      "viewDetails": "View Details",
+      "liveWhatsAppDisplay": "Live WhatsApp Display",
+      "resetLivePreview": "Reset Live Preview"
+    },
+    "placeholders": {
+      "selectMarketplaceTemplate": "Select marketplace template",
+      "selectRecruitmentTemplate": "Select recruitment template",
+      "approvedJobAlertTemplate": "Approved job alert template",
+      "approvedMarketingTemplate": "Approved marketing template"
+    },
+    "options": {
+      "templatePurpose": {
+        "MARKETPLACE": "Marketplace automation",
+        "RECRUITMENT": "Recruitment automation",
+        "MARKETING": "Marketing campaigns",
+        "JOB_ALERTS": "Job alert campaigns"
+      },
+      "templateStatus": {
+        "DRAFT": "Draft",
+        "PENDING": "Pending",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected"
+      },
+      "campaignCategory": {
+        "MARKETING": "Marketing",
+        "JOB_ALERTS": "Job alerts"
+      },
+      "reminderKind": {
+        "INTERVIEW_48_HOURS": "Interview reminder",
+        "PRIME_EXPIRY_7_DAYS": "Prime expiry reminder"
+      }
+    }
   }
 }

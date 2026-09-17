@@ -836,5 +836,185 @@
     "invalidPhone": "फोन नंबर नक्की 10 अंकांचा असावा.",
     "invalidEmail": "कृपया वैध ईमेल पत्ता प्रविष्ट करा.",
     "resetSuccess": "मूलभूत टेंपलेटवर रीसेट केले."
+  },
+  "whatsappModule": {
+    "pageTitle": "WhatsApp Cloud API",
+    "common": {
+      "loading": "लोड होत आहे...",
+      "saving": "जतन होत आहे...",
+      "sending": "Sending...",
+      "preview": "Preview",
+      "viewing": "Viewing",
+      "on": "On",
+      "off": "Off",
+      "show": "Show",
+      "hide": "Hide",
+      "noOptionsAvailable": "No options available"
+    },
+    "tabs": {
+      "settings": "सेटअप आणि क्रेडेन्शियल्स",
+      "marketplace": "मार्केटप्लेस नियम",
+      "recruitment": "भरती नियम",
+      "campaign": "ऑप्ट-इन मोहिमा",
+      "logs": "लॉग्स आणि डिलिव्हरी"
+    },
+    "stats": {
+      "allMessageLogs": "All message logs",
+      "allMessageLogsHelp": "Recorded safely in the admin audit trail",
+      "sentLast7Days": "Sent - last 7 days",
+      "sentLast7DaysHelp": "Meta accepted messages",
+      "deliveredLast7Days": "Delivered - last 7 days",
+      "deliveredLast7DaysHelp": "Delivery webhook confirmations",
+      "failedLast7Days": "Failed - last 7 days",
+      "failedLast7DaysHelp": "Retry details appear in logs"
+    },
+    "settings": {
+      "secureConnectionSettings": "सुरक्षित कनेक्शन सेटिंग्ज",
+      "secretsEncrypted": "गुपिते सर्व्हरवर एन्क्रिप्ट केलेली आहेत.",
+      "enabled": "ENABLED",
+      "disabled": "DISABLED",
+      "graphApiVersion": "Graph API version",
+      "phoneNumberId": "Phone Number ID",
+      "phoneNumberIdPlaceholder": "Meta Phone Number ID",
+      "businessAccountId": "Business Account ID",
+      "optionalRecommended": "Optional but recommended",
+      "testRecipientNumber": "Test recipient number",
+      "currentMasked": "Current: {value}",
+      "permanentAccessToken": "Permanent access token",
+      "webhookVerifyToken": "Webhook verify token",
+      "metaAppSecret": "Meta app secret",
+      "enableAllowedAfterCredentials": "Enable is allowed only after all required credentials are saved.",
+      "saveSettings": "सेटिंग्ज जतन करा",
+      "webhookUrl": "Webhook URL",
+      "liveApiDomainEndpoint": "Live API domain endpoint.",
+      "loadingWebhookUrl": "Loading webhook URL...",
+      "safeTestMessage": "सुरक्षित चाचणी संदेश",
+      "previewUpdatesLive": "Preview updates live on side phone screen.",
+      "typeTestMessage": "Type test message text here...",
+      "sendTestMessage": "चाचणी संदेश पाठवा",
+      "testMessageTitle": "चाचणी संदेश",
+      "configuredReplaceOnly": "Configured - add only to replace",
+      "permanentAccessTokenPlaceholder": "Meta permanent access token",
+      "webhookVerifyTokenPlaceholder": "Create a secure verification token",
+      "metaAppSecretPlaceholder": "Meta App Secret"
+    },
+    "templates": {
+      "registerMetaTemplate": "Meta टेम्पलेट नोंदवा",
+      "detailsRenderLive": "Details typed here render in real-time on the side phone display.",
+      "templateName": "टेम्पलेट नाव",
+      "metaTemplateId": "Meta Template ID",
+      "category": "श्रेणी",
+      "language": "भाषा",
+      "status": "स्थिती",
+      "sampleMessageBody": "Sample Message Body (Live Preview Text)",
+      "typeSampleMessage": "Type sample message text here...",
+      "savingTemplate": "Saving Template...",
+      "saveTemplate": "टेम्पलेट जतन करा",
+      "allRegisteredTemplates": "All Registered Templates ({count})",
+      "clickPreviewHelp": "Click Preview to view on side phone.",
+      "noTemplates": "अद्याप कोणतेही टेम्पलेट नोंदलेले नाही.",
+      "previewSelectedTemplate": "Preview selected template",
+      "previewSelectedTemplateOnPhone": "Preview selected template on phone screen"
+    },
+    "rules": {
+      "eventRulesTriggers": "इव्हेंट नियम आणि ट्रिगर्स",
+      "selectTemplateTurnOn": "टेम्पलेट निवडा आणि ऑटोमेशन सुरू करा.",
+      "to": "To",
+      "configuredRecipient": "Configured recipient",
+      "marketplaceEventUpdate": "Marketplace event update.",
+      "recruitmentUpdate": "Recruitment update.",
+      "loadingAutomationControls": "Loading automation controls..."
+    },
+    "recruitment": {
+      "recruitmentAutomations": "Recruitment Automations",
+      "workflowControls": "Candidate and hiring workflow controls",
+      "loadingAutomationControls": "Loading recruitment automation controls..."
+    },
+    "campaign": {
+      "optInCampaigns": "ऑप्ट-इन मोहिमा",
+      "consentDraftConfirmation": "Consent, draft and explicit confirmation",
+      "recordRevokeConsent": "संमती नोंदवा किंवा रद्द करा",
+      "saveOptIn": "ऑप्ट-इन जतन करा",
+      "createCampaignDraft": "मोहिमेचा मसुदा तयार करा",
+      "campaignName": "मोहिमेचे नाव",
+      "createSafeDraft": "सुरक्षित मसुदा तयार करा",
+      "prepareReminderDraft": "स्मरणपत्राचा मसुदा तयार करा",
+      "onlyDueOptInsIncluded": "Only opt-in candidates/customers whose reminder is due are included.",
+      "interviewWindow": "मुलाखत कालावधी",
+      "primeExpiryWindow": "प्राइम समाप्ती कालावधी",
+      "hoursAhead": "तास आधी",
+      "daysAhead": "दिवस आधी",
+      "customWindowHelp": "Choose either reminder type above, then enter a custom whole-number window.",
+      "createReminderDraft": "स्मरणपत्राचा मसुदा तयार करा",
+      "optedInCount": "{count} opted-in",
+      "confirmSend": "पुष्टी करा आणि पाठवा",
+      "noDrafts": "अद्याप कोणतेही मोहिमेचे मसुदे नाहीत."
+    },
+    "filters": {
+      "allEventCodes": "All Event Codes",
+      "allStatuses": "All statuses"
+    },
+    "table": {
+      "campaign": "Campaign",
+      "audience": "Audience",
+      "status": "स्थिती",
+      "action": "Action",
+      "event": "Event",
+      "recipient": "Recipient",
+      "delivery": "Delivery",
+      "attempts": "Attempts",
+      "time": "Time"
+    },
+    "logs": {
+      "deliveryOperations": "डिलिव्हरी ऑपरेशन्स",
+      "searchableMessageLogs": "शोधता येणारे संदेश लॉग्स",
+      "searchPlaceholder": "Search phone number / event...",
+      "apply": "लागू करा",
+      "retrying": "Retrying...",
+      "retry": "पुन्हा प्रयत्न करा",
+      "loadingLogs": "Loading logs...",
+      "noMatchingLogs": "No matching WhatsApp logs.",
+      "recentMessageActivity": "Recent message activity",
+      "refresh": "रिफ्रेश",
+      "noActivity": "No WhatsApp message activity yet."
+    },
+    "preview": {
+      "logoAlt": "JCB Logo",
+      "officialBusinessAccount": "अधिकृत व्यवसाय खाते",
+      "today": "आज",
+      "metaId": "ID: {id}",
+      "metaApproved": "Meta Approved",
+      "viewDetails": "तपशील पहा",
+      "liveWhatsAppDisplay": "थेट WhatsApp डिस्प्ले",
+      "resetLivePreview": "Reset Live Preview"
+    },
+    "placeholders": {
+      "selectMarketplaceTemplate": "Select marketplace template",
+      "selectRecruitmentTemplate": "Select recruitment template",
+      "approvedJobAlertTemplate": "Approved job alert template",
+      "approvedMarketingTemplate": "Approved marketing template"
+    },
+    "options": {
+      "templatePurpose": {
+        "MARKETPLACE": "मार्केटप्लेस ऑटोमेशन",
+        "RECRUITMENT": "भरती ऑटोमेशन",
+        "MARKETING": "मार्केटिंग मोहिमा",
+        "JOB_ALERTS": "जॉब अलर्ट मोहिमा"
+      },
+      "templateStatus": {
+        "DRAFT": "मसुदा",
+        "PENDING": "प्रलंबित",
+        "APPROVED": "मंजूर",
+        "REJECTED": "नाकारलेले"
+      },
+      "campaignCategory": {
+        "MARKETING": "Marketing",
+        "JOB_ALERTS": "Job alerts"
+      },
+      "reminderKind": {
+        "INTERVIEW_48_HOURS": "मुलाखत स्मरणपत्र",
+        "PRIME_EXPIRY_7_DAYS": "प्राइम समाप्ती स्मरणपत्र"
+      }
+    }
   }
 }

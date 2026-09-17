@@ -49,6 +49,8 @@ export const allowedAdminPermissions = new Set([
   'kyc.manage',
   'recurrence.manage',
   'settings.manage',
+  'whatsapp.read',
+  'whatsapp.manage',
   'translations.manage',
   'footer.manage',
   'dashboard.view',

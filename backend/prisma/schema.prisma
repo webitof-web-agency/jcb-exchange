@@ -183,6 +183,44 @@ enum ListingPaymentStatus {
   PAID
 }
 
+enum WhatsAppMessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+enum WhatsAppRecipientType {
+  CUSTOMER
+  PARTNER
+  SUPER_ADMIN
+  RECRUITER
+  CANDIDATE
+  TEST
+}
+
+enum WhatsAppOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum WhatsAppConsentCategory {
+  MARKETING
+  JOB_ALERTS
+}
+
+enum WhatsAppCampaignStatus {
+  DRAFT
+  SENDING
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id               String     @id @default(uuid())
   mobile           String?    @unique
@@ -734,6 +772,162 @@ model PlatformRuntimeSettings {
   updatedAt DateTime @updatedAt
 
   @@map("platform_runtime_settings")
+}
+
+model WhatsAppIntegrationSettings {
+  id                           String   @id @default("default")
+  enabled                      Boolean  @default(false)
+  graphApiVersion              String   @default("v23.0")
+  phoneNumberId                String?
+  businessAccountId            String?
+  testRecipientPhone           String?
+  encryptedAccessToken         String?  @db.Text
+  encryptedWebhookVerifyToken  String?  @db.Text
+  encryptedAppSecret           String?  @db.Text
+  updatedByUserId              String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@map("whatsapp_integration_settings")
+}
+
+model WhatsAppMetaTemplate {
+  id              String   @id @default(uuid())
+  metaTemplateId  String?  @unique
+  name            String
+  language        String   @default("en_US")
+  category        String?
+  status          String   @default("DRAFT")
+  components      Json?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  automationRules WhatsAppAutomationRule[]
+  campaigns       WhatsAppCampaign[]
+
+  @@unique([name, language])
+  @@index([status])
+  @@map("whatsapp_meta_templates")
+}
+
+model WhatsAppAutomationRule {
+  id              String   @id @default(uuid())
+  eventCode       String   @unique
+  enabled         Boolean  @default(false)
+  templateId      String?
+  recipientPolicy String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  template WhatsAppMetaTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([enabled])
+  @@map("whatsapp_automation_rules")
+}
+
+model WhatsAppMessageLog {
+  id                String                 @id @default(uuid())
+  eventCode         String
+  relatedEntityType String?
+  relatedEntityId   String?
+  recipientType     WhatsAppRecipientType
+  recipientPhone    String
+  status            WhatsAppMessageStatus  @default(QUEUED)
+  metaMessageId     String?                @unique
+  errorCode         String?
+  errorMessage      String?                @db.Text
+  payloadSnapshot   Json?
+  dedupeKey         String?                @unique
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  outbox WhatsAppOutbox?
+
+  @@index([eventCode, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([recipientType, status, createdAt])
+  @@map("whatsapp_message_logs")
+}
+
+model WhatsAppOutbox {
+  id            String               @id @default(uuid())
+  messageLogId  String               @unique
+  payload       Json
+  status        WhatsAppOutboxStatus @default(PENDING)
+  attempts      Int                  @default(0)
+  nextAttemptAt DateTime?            @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?              @db.Text
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  messageLog WhatsAppMessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("whatsapp_outbox")
+}
+
+model WhatsAppConsent {
+  id        String                   @id @default(uuid())
+  phone     String
+  category  WhatsAppConsentCategory
+  optedIn   Boolean                  @default(false)
+  source    String?
+  updatedByUserId String?
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+
+  @@unique([phone, category])
+  @@index([category, optedIn])
+  @@map("whatsapp_consents")
+}
+
+model WhatsAppCampaign {
+  id              String                 @id @default(uuid())
+  name            String
+  category        WhatsAppConsentCategory
+  templateId      String
+  status          WhatsAppCampaignStatus @default(DRAFT)
+  audienceFilters Json?
+  createdByUserId String
+  confirmedByUserId String?
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  template   WhatsAppMetaTemplate       @relation(fields: [templateId], references: [id])
+  recipients WhatsAppCampaignRecipient[]
+
+  @@index([status, createdAt])
+  @@map("whatsapp_campaigns")
+}
+
+model WhatsAppCampaignRecipient {
+  id              String                 @id @default(uuid())
+  campaignId      String
+  recipientType   WhatsAppRecipientType
+  recipientPhone  String
+  sourceEntityType String?
+  sourceEntityId  String?
+  messageLogId    String?
+  status          WhatsAppMessageStatus  @default(QUEUED)
+  errorMessage    String?                @db.Text
+  sentAt          DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  campaign WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, recipientPhone])
+  @@index([campaignId, status])
+  @@map("whatsapp_campaign_recipients")
 }
 
 model Country {

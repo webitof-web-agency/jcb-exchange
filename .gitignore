@@ -132,3 +132,31 @@ local.properties
 **/build/
 *.dump
 temp_check.txt
+
+# WhatsApp temporary folders
+whatsapp-moduleback/
+whatsappfront/
+*whatsapp*
+
+# Keep the JCB Exchange production WhatsApp Cloud API implementation under version control.
+!backend/src/services/whatsappCredentialCrypto.ts
+!backend/src/services/whatsappCredentialCrypto.test.ts
+!backend/src/services/whatsappIntegration.service.ts
+!backend/src/controllers/whatsapp.controller.ts
+!backend/src/controllers/whatsappWebhook.controller.ts
+!backend/src/routes/whatsapp.routes.ts
+!backend/src/routes/whatsappWebhook.routes.ts
+!backend/src/modules/whatsapp-core/
+!backend/src/modules/whatsapp-core/**
+!backend/prisma/migrations/20260915_0001_whatsapp_foundation/
+!backend/prisma/migrations/20260915_0001_whatsapp_foundation/**
+!backend/prisma/migrations/20260915_0002_whatsapp_marketplace_automation/
+!backend/prisma/migrations/20260915_0002_whatsapp_marketplace_automation/**
+!backend/prisma/migrations/20260915_0003_whatsapp_recruitment_automation/
+!backend/prisma/migrations/20260915_0003_whatsapp_recruitment_automation/**
+!backend/prisma/migrations/20260915_0004_whatsapp_campaigns/
+!backend/prisma/migrations/20260915_0004_whatsapp_campaigns/**
+!backend/prisma/migrations/20260915_whatsapp_foundation/
+!backend/prisma/migrations/20260915_whatsapp_foundation/**
+!admin-portal/src/app/(admin)/superadmin/whatsapp/
+!admin-portal/src/app/(admin)/superadmin/whatsapp/**

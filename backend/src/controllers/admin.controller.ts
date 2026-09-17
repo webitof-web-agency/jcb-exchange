@@ -22,6 +22,7 @@ import {
   updateSiteLogoSettings,
 } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
 import { getCustomerPrimeAccessState, normalizePrimeValidityUnit } from '../utils/customerPrime';
 import {
   approveCustomerPrimeSubscription,
@@ -890,6 +891,15 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
       link: '/profile',
     });
 
+    void dispatchMarketplaceWhatsApp({
+      eventCode: status === 'ACTIVE' ? 'CUSTOMER_PRIME_APPROVED' : 'CUSTOMER_PRIME_REJECTED',
+      relatedEntityType: 'CUSTOMER_PRIME_SUBSCRIPTION',
+      relatedEntityId: subscription.id,
+      recipientType: 'CUSTOMER',
+      recipientPhone: subscription.user?.mobile,
+      payloadSnapshot: { subscriptionId: subscription.id, status, customerName: subscription.user?.name || null },
+    });
+
     res.json({
       message:
         status === 'ACTIVE'
@@ -1059,6 +1069,14 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           link: '/profile',
           type: status === 'APPROVED' ? 'PAYMENT_VERIFIED' : 'PAYMENT_REJECTED',
         });
+        void dispatchMarketplaceWhatsApp({
+          eventCode: status === 'APPROVED' ? 'LISTING_PAYMENT_APPROVED' : 'LISTING_PAYMENT_REJECTED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'CUSTOMER',
+          recipientPhone: payment.buyer?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: payment.listingId, listingTitle, status },
+        });
       }
 
       if (payment.partnerId && payment.partnerId !== payment.buyerId) {
@@ -1073,6 +1091,14 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           message,
           link: '/profile',
           type: status === 'APPROVED' ? 'PAYMENT_VERIFIED' : 'PAYMENT_REJECTED',
+        });
+        void dispatchMarketplaceWhatsApp({
+          eventCode: status === 'APPROVED' ? 'LISTING_PAYMENT_APPROVED' : 'LISTING_PAYMENT_REJECTED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'PARTNER',
+          recipientPhone: payment.partner?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: payment.listingId, listingTitle, status, recipientRole: 'PARTNER' },
         });
       }
     } catch (notifErr) {
@@ -2107,6 +2133,15 @@ export const updateVerificationStatus = async (req: Request, res: Response, next
       link: '/partner/kyc',
     });
 
+    void dispatchMarketplaceWhatsApp({
+      eventCode: 'PARTNER_KYC_STATUS_UPDATED',
+      relatedEntityType: 'PARTNER_PROFILE',
+      relatedEntityId: profile.id,
+      recipientType: 'PARTNER',
+      recipientPhone: existingPartner.whatsappNumber || existingPartner.mobile,
+      payloadSnapshot: { partnerId: id, kycStatus: status },
+    });
+
     res.json({
       message: 'Verification status updated successfully.',
       profile,
@@ -2130,7 +2165,7 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
       data: { status },
       include: {
         partner: {
-          select: { id: true }
+          select: { id: true, mobile: true, whatsappNumber: true }
         }
       }
     });
@@ -2158,6 +2193,14 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
           url: '/partner/listings',
         },
       }).catch(e => console.error('Push notification failed:', e));
+      void dispatchMarketplaceWhatsApp({
+        eventCode: 'PARTNER_LISTING_STATUS_UPDATED',
+        relatedEntityType: 'LISTING',
+        relatedEntityId: listing.id,
+        recipientType: 'PARTNER',
+        recipientPhone: listing.partner.whatsappNumber || listing.partner.mobile,
+        payloadSnapshot: { listingId: listing.id, listingTitle: listing.title, listingStatus: status },
+      });
     }
 
     res.json({

@@ -14,11 +14,13 @@ import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3 } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import {
   employeeBrandsPermissions,
   employeeFooterPermissions,
   employeeRolesPermissions,
   employeeUsersPermissions,
+  employeeWhatsAppPermissions,
   getEmployeeLandingPath,
   resolveEmployeeRouteRedirect,
 } from '@/lib/portalRoutes';
@@ -32,6 +34,7 @@ const navItems = [
   { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
   { href: '/superadmin/partners', labelKey: 'admin.partners', icon: List },
   { href: '/superadmin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
+  { href: '/superadmin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
   { href: '/superadmin/categories', labelKey: 'admin.categories', icon: Tags },
   { href: '/superadmin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
@@ -52,6 +55,7 @@ const employeeModuleNavItems = [
   { href: '/employee/listings', labelKey: 'admin.listings', icon: Truck, permissions: ['listings.read'] },
   { href: '/employee/partners', labelKey: 'admin.partners', icon: List, permissions: ['partners.read'] },
   { href: '/employee/visitors', labelKey: 'admin.visitors', icon: UsersRound, permissions: ['visitors.read'] },
+  { href: '/employee/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle, permissions: employeeWhatsAppPermissions },
   { href: '/employee/categories', labelKey: 'admin.categories', icon: Tags, permissions: ['categories.read'] },
   { href: '/employee/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee, permissions: ['brands.read'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
@@ -431,6 +435,7 @@ export default function AdminLayout({
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
     '/superadmin/enquiries': t('admin.enquiryManagement'),
+    '/superadmin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/superadmin/visitors': t('admin.visitors'),
     '/superadmin/recurrence': t('admin.recurrence'),
     '/superadmin/categories': t('admin.categoryManagement'),
@@ -457,6 +462,7 @@ export default function AdminLayout({
     '/employee/dashboard': t('admin.employeeDashboard'),
     '/employee/analytics': t('admin.analytics'),
     '/employee/enquiries': t('admin.enquiryManagement'),
+    '/employee/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/employee/verifications': t('admin.partnerVerifications'),
     '/employee/partners': t('admin.partnerDirectory'),
     '/employee/visitors': t('admin.visitors'),

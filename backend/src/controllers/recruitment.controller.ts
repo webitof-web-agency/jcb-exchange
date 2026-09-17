@@ -22,6 +22,7 @@ import {
   TalentPoolCategory,
   Prisma,
 } from '@prisma/client';
+import { dispatchRecruitmentWhatsApp } from '../services/whatsappIntegration.service';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
@@ -87,6 +88,83 @@ const parseStageColor = (value: unknown, fallback = 'blue') => {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim().toLowerCase();
   return trimmed || fallback;
+};
+
+const dispatchRecruitmentCandidateWhatsApp = ({
+  eventCode,
+  relatedEntityType,
+  relatedEntityId,
+  candidate,
+  payloadSnapshot,
+}: {
+  eventCode:
+    | 'RECRUITMENT_APPLICATION_RECEIVED'
+    | 'RECRUITMENT_APPLICATION_STAGE_UPDATED'
+    | 'RECRUITMENT_INTERVIEW_SCHEDULED'
+    | 'RECRUITMENT_INTERVIEW_RESCHEDULED'
+    | 'RECRUITMENT_INTERVIEW_CANCELLED'
+    | 'RECRUITMENT_OFFER_SENT'
+    | 'RECRUITMENT_OFFER_STATUS_UPDATED';
+  relatedEntityType: string;
+  relatedEntityId: string;
+  candidate: { mobile?: string | null; fullName?: string | null };
+  payloadSnapshot: Record<string, unknown>;
+}) => {
+  void dispatchRecruitmentWhatsApp({
+    eventCode,
+    relatedEntityType,
+    relatedEntityId,
+    recipientType: 'CANDIDATE',
+    recipientPhone: candidate.mobile,
+    payloadSnapshot: { candidateName: candidate.fullName || null, ...payloadSnapshot },
+  });
+};
+
+const dispatchNewApplicationInternalAlerts = async ({
+  applicationId,
+  applicationRef,
+  candidate,
+  job,
+}: {
+  applicationId: string;
+  applicationRef: string;
+  candidate: { fullName: string; mobile: string };
+  job: { id: string; title: string; createdById?: string | null };
+}) => {
+  try {
+    const superAdmins = await prisma.user.findMany({
+      where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      select: { id: true, mobile: true, whatsappNumber: true },
+    });
+    const superAdminIds = new Set(superAdmins.map((user) => user.id));
+    superAdmins.forEach((superAdmin) => {
+      void dispatchRecruitmentWhatsApp({
+        eventCode: 'RECRUITMENT_NEW_APPLICATION_SUPERADMIN',
+        relatedEntityType: 'JOB_APPLICATION',
+        relatedEntityId: applicationId,
+        recipientType: 'SUPER_ADMIN',
+        recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+        payloadSnapshot: { applicationRef, candidateName: candidate.fullName, jobId: job.id, jobTitle: job.title },
+      });
+    });
+
+    if (!job.createdById || superAdminIds.has(job.createdById)) return;
+    const recruiter = await prisma.user.findFirst({
+      where: { id: job.createdById, status: 'ACTIVE' },
+      select: { mobile: true, whatsappNumber: true },
+    });
+    if (!recruiter) return;
+    void dispatchRecruitmentWhatsApp({
+      eventCode: 'RECRUITMENT_NEW_APPLICATION_RECRUITER',
+      relatedEntityType: 'JOB_APPLICATION',
+      relatedEntityId: applicationId,
+      recipientType: 'RECRUITER',
+      recipientPhone: recruiter.whatsappNumber || recruiter.mobile,
+      payloadSnapshot: { applicationRef, candidateName: candidate.fullName, jobId: job.id, jobTitle: job.title },
+    });
+  } catch (error) {
+    console.error('WhatsApp recruitment internal alert failed:', error);
+  }
 };
 
 const getStageUsageCounts = async () => {
@@ -499,6 +577,20 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       action: 'APPLICATION_SUBMITTED',
       title: 'Job Application Submitted',
       details: `Candidate applied for position "${job.title}" with reference ${applicationRef}`,
+    });
+
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_APPLICATION_RECEIVED',
+      relatedEntityType: 'JOB_APPLICATION',
+      relatedEntityId: application.id,
+      candidate,
+      payloadSnapshot: { applicationRef, jobId: job.id, jobTitle: job.title },
+    });
+    void dispatchNewApplicationInternalAlerts({
+      applicationId: application.id,
+      applicationRef,
+      candidate,
+      job: { id: job.id, title: job.title, createdById: job.createdById },
     });
 
     res.status(201).json({
@@ -1567,6 +1659,14 @@ export const updateApplicationStage = async (req: Request, res: Response, next: 
       });
     }
 
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_APPLICATION_STAGE_UPDATED',
+      relatedEntityType: 'JOB_APPLICATION_STAGE',
+      relatedEntityId: `${id}:${targetStage || terminalStatus || previousStage}`,
+      candidate: application.candidate,
+      payloadSnapshot: { applicationId: id, applicationRef: application.applicationRef, jobTitle: application.job.title, stage: targetStage || terminalStatus || previousStage },
+    });
+
     res.status(200).json({
       success: true,
       application: updatedApp,
@@ -2296,6 +2396,14 @@ export const scheduleInterview = async (req: Request, res: Response, next: NextF
       });
     }
 
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_INTERVIEW_SCHEDULED',
+      relatedEntityType: 'INTERVIEW',
+      relatedEntityId: interview.id,
+      candidate: application.candidate,
+      payloadSnapshot: { applicationId, applicationRef: application.applicationRef, jobTitle: application.job.title, scheduledAt: interview.scheduledAt.toISOString(), interviewType: interview.type },
+    });
+
     res.status(201).json({
       success: true,
       interview,
@@ -2316,7 +2424,7 @@ export const updateInterview = async (req: Request, res: Response, next: NextFun
 
     const interview = await prisma.interview.findUnique({
       where: { id },
-      include: { application: true },
+      include: { application: true, candidate: true, job: true },
     });
 
     if (!interview) {
@@ -2382,6 +2490,16 @@ export const updateInterview = async (req: Request, res: Response, next: NextFun
       details: `Interview updated for candidate with status ${nextStatus}.`,
     });
 
+    if (nextStatus === 'RESCHEDULED' || nextStatus === 'CANCELLED') {
+      dispatchRecruitmentCandidateWhatsApp({
+        eventCode: nextStatus === 'RESCHEDULED' ? 'RECRUITMENT_INTERVIEW_RESCHEDULED' : 'RECRUITMENT_INTERVIEW_CANCELLED',
+        relatedEntityType: 'INTERVIEW',
+        relatedEntityId: `${id}:${nextStatus}:${updatedInterview.scheduledAt.toISOString()}`,
+        candidate: interview.candidate,
+        payloadSnapshot: { applicationId: interview.applicationId, applicationRef: interview.application.applicationRef, jobTitle: interview.job.title, scheduledAt: updatedInterview.scheduledAt.toISOString(), interviewType: updatedInterview.type, status: nextStatus },
+      });
+    }
+
     res.status(200).json({
       success: true,
       interview: updatedInterview,
@@ -2394,7 +2512,7 @@ export const updateInterview = async (req: Request, res: Response, next: NextFun
 export const deleteInterview = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = getParamString(req.params.id);
-    const interview = await prisma.interview.findUnique({ where: { id } });
+    const interview = await prisma.interview.findUnique({ where: { id }, include: { application: true, candidate: true, job: true } });
     if (!interview) return res.status(404).json({ success: false, error: 'Interview not found.' });
 
     await prisma.interview.delete({ where: { id } });
@@ -2405,6 +2523,13 @@ export const deleteInterview = async (req: Request, res: Response, next: NextFun
       action: 'INTERVIEW_DELETED',
       title: 'Interview Deleted',
       details: 'Scheduled interview was deleted.',
+    });
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_INTERVIEW_CANCELLED',
+      relatedEntityType: 'INTERVIEW',
+      relatedEntityId: `${id}:DELETED`,
+      candidate: interview.candidate,
+      payloadSnapshot: { applicationId: interview.applicationId, applicationRef: interview.application.applicationRef, jobTitle: interview.job.title, status: 'CANCELLED' },
     });
     res.status(200).json({ success: true, message: 'Interview deleted successfully.' });
   } catch (error) {
@@ -2617,6 +2742,14 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_OFFER_SENT',
+      relatedEntityType: 'OFFER',
+      relatedEntityId: offer.id,
+      candidate: application.candidate,
+      payloadSnapshot: { applicationId, applicationRef: application.applicationRef, jobTitle: application.job.title, designation: offer.designation },
+    });
+
     res.status(201).json({
       success: true,
       offer,
@@ -2640,7 +2773,7 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
 
     const offer = await prisma.offer.findUnique({
       where: { id },
-      include: { application: true },
+      include: { application: true, candidate: true, job: true },
     });
 
     if (!offer) {
@@ -2675,6 +2808,14 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
       action: 'OFFER_STATUS_UPDATED',
       title: `Offer Status: ${status}`,
       details: `Offer state changed to ${status}`,
+    });
+
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_OFFER_STATUS_UPDATED',
+      relatedEntityType: 'OFFER_STATUS',
+      relatedEntityId: `${offer.id}:${status}`,
+      candidate: offer.candidate,
+      payloadSnapshot: { applicationId: offer.applicationId, applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, offerStatus: status },
     });
 
     res.status(200).json({
