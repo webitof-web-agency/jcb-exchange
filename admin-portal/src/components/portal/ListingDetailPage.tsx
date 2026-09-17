@@ -42,7 +42,7 @@ import {
   uploadListingMediaToServer,
   type UploadedFileResult,
 } from '@/lib/fileUpload';
-import { formatPortalCurrency, formatPortalDateTime, formatPortalLabel } from '@/lib/partnerPortal';
+import { formatPortalCurrency, formatPortalDate, formatPortalDateTime, formatPortalLabel } from '@/lib/partnerPortal';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
@@ -1883,10 +1883,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       </div>
                       {([
                         ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
-                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.taxValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
-                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.fitnessValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
-                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.insuranceValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
-                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.pucValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
+                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
+                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
+                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],
+                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],
                         ['HSRP', statusBadge(rto.hsrpStatus, 'hsrp')],
                         rto.rtoOffice ? ['RTO Office', <span key="ro" className="text-sm font-semibold text-gray-900">{rto.rtoOffice}</span>] : null,
                         rto.rtoExpenses ? ['RTO Expenses', <span key="re" className="text-sm font-semibold text-gray-900">₹{Number(rto.rtoExpenses).toLocaleString('en-IN')}</span>] : null,
