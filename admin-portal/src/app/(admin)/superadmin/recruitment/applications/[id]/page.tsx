@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { formatDate as formatDisplayDate, formatDateTime as formatDisplayDateTime } from '@/lib/i18n/formatters';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { downloadSecureDocument } from '@/lib/secureDownload';
 import { useAuthStore } from '@/store/authStore';
@@ -351,22 +352,12 @@ type WorkspaceTab = 'overview' | 'notes' | 'ratings' | 'interviews' | 'offer' | 
 
 const formatDate = (value?: string | null) => {
   if (!value) return 'N/A';
-  return new Date(value).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatDisplayDate(value);
 };
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'N/A';
-  return new Date(value).toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDisplayDateTime(value);
 };
 
 const formatLpa = (value?: number | string | null) => (value ? `Rs. ${value} LPA` : 'N/A');

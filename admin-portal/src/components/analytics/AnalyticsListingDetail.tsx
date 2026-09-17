@@ -127,12 +127,12 @@ const fmtCurrency = (value: number | null | undefined) => `₹${fmt(value)}`;
 const fmtDate = (value?: string | null) => {
   if (!value) return 'Not recorded';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 const fmtDateTime = (value?: string | null) => {
   if (!value) return 'Not recorded';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 const labelify = (value?: string | null) => value ? value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Not recorded';
 const displayValue = (value?: string | number | null) => value === null || value === undefined || value === '' ? 'Not recorded' : String(value);

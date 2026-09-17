@@ -4,6 +4,7 @@
 
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
+import { formatDate } from '@/lib/i18n/formatters';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
@@ -552,12 +553,7 @@ export default function AdminInterviewsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {paginatedInterviews.map((item) => {
                   const dateObj = new Date(item.scheduledAt);
-                  const formattedDate = dateObj.toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  });
+                  const formattedDate = formatDate(item.scheduledAt);
                   const formattedTime = dateObj.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',

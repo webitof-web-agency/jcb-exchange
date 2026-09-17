@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { formatDate } from '@/lib/i18n/formatters';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useTranslation } from '@/hooks/useTranslation';
 import { isUuid } from '@/lib/routeSlug';
@@ -472,14 +473,14 @@ export default function SuperadminJobDetailPage() {
                 <div className="flex justify-between items-center py-1 border-t border-gray-100">
                   <span className="text-gray-500 font-medium">Posting Date:</span>
                   <span className="font-bold text-gray-800">
-                    {job.postedAt ? new Date(job.postedAt).toLocaleDateString() : new Date(job.createdAt).toLocaleDateString()}
+                    {formatDate(job.postedAt || job.createdAt)}
                   </span>
                 </div>
                 {job.deadline && (
                   <div className="flex justify-between items-center py-1 border-t border-gray-100">
                     <span className="text-gray-500 font-medium">Deadline:</span>
                     <span className="font-bold text-amber-700">
-                      {new Date(job.deadline).toLocaleDateString()}
+                      {formatDate(job.deadline)}
                     </span>
                   </div>
                 )}

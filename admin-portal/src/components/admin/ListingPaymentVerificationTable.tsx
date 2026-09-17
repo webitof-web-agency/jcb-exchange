@@ -535,7 +535,7 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
                       <p className="mt-1 text-[11px] font-medium text-gray-400">
                         {payment.submittedAt ? new Date(payment.submittedAt).toLocaleString('en-IN', {
                           day: '2-digit',
-                          month: 'short',
+                          month: '2-digit',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit',

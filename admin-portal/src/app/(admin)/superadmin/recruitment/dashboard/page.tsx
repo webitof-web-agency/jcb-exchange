@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import api from '@/lib/api';
+import { formatDate } from '@/lib/i18n/formatters';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
@@ -332,7 +333,7 @@ export default function RecruitmentDashboardPage() {
                             </span>
                           </td>
                           <td className="py-3 text-right text-gray-400 text-[11px]">
-                            {new Date(app.appliedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                            {formatDate(app.appliedAt)}
                           </td>
                         </tr>
                       ))}
@@ -371,7 +372,7 @@ export default function RecruitmentDashboardPage() {
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-bold text-amber-600 block">
-                          {new Date(iv.scheduledAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                          {formatDate(iv.scheduledAt)}
                         </span>
                         <span className="text-[10px] text-gray-400">
                           {new Date(iv.scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}

@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { formatDate } from '@/lib/i18n/formatters';
 import { useAuthStore } from '@/store/authStore';
 import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recruitmentPermissions';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -827,7 +828,7 @@ export default function AdminApplicationsPage() {
                           {app.candidate.totalExperience ? `${app.candidate.totalExperience} Yrs` : 'N/A'}
                         </td>
                         <td className="py-3.5 px-4 text-gray-500 text-[11px]">
-                          {new Date(app.appliedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {formatDate(app.appliedAt)}
                         </td>
                         <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                           {canUpdateStage ? <StageSelectDropdown
@@ -1134,7 +1135,7 @@ export default function AdminApplicationsPage() {
                               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 text-[10px] text-gray-500">
                                 <span className="inline-flex items-center gap-1">
                                   <Calendar size={11} />
-                                  {new Date(app.appliedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                  {formatDate(app.appliedAt)}
                                 </span>
                                 <span className="truncate text-right">{app.candidate.totalExperience ? `${app.candidate.totalExperience} Yrs` : 'N/A'}</span>
                               </div>

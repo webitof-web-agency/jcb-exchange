@@ -620,7 +620,7 @@ export default function ListingPaymentManagement() {
                     <tr key={payment.id} className="align-top">
                       <td className="px-4 py-4">
                         <p className="font-bold text-gray-900">{payment.listing?.title || 'Listing'}</p>
-                        <p className="mt-1 text-xs text-gray-500">{payment.submittedAt ? new Date(payment.submittedAt).toLocaleString() : '-'}</p>
+                        <p className="mt-1 text-xs text-gray-500">{payment.submittedAt ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(payment.submittedAt)) : '-'}</p>
                       </td>
                       <td className="px-4 py-4">
                         <p className="font-semibold text-gray-900">{payment.buyer?.name || 'Customer'}</p>

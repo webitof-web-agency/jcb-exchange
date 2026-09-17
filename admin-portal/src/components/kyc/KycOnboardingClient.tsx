@@ -1277,7 +1277,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                     <p className="text-sm font-semibold text-gray-900">
                       {getReviewActionLabel(item.action, profile.partnerType, profile.businessName || profile.ownerName)}
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">{new Date(item.createdAt).toLocaleString('en-IN')}</p>
+                    <p className="mt-1 text-xs text-gray-500">{new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</p>
                     {getReviewComment(item.action, item.comment) ? (
                       <p className="mt-2 text-sm text-gray-600 leading-relaxed">{getReviewComment(item.action, item.comment)}</p>
                     ) : null}
