@@ -65,6 +65,7 @@ const recruitmentNavItems = [
   { key: 'dashboard', labelKey: 'admin.recruitmentDashboard', defaultLabel: 'Dashboard', permissions: ['recruitment.dashboard.read'] },
   { key: 'jobs', labelKey: 'admin.recruitmentJobs', defaultLabel: 'Jobs', permissions: ['recruitment.jobs.read'] },
   { key: 'applications', labelKey: 'admin.recruitmentApplications', defaultLabel: 'Applications', permissions: ['recruitment.applications.read'] },
+  { key: 'departments', labelKey: 'admin.recruitmentDepartments', defaultLabel: 'Departments', permissions: ['recruitment.departments.read'] },
   { key: 'interviews', labelKey: 'admin.recruitmentInterviews', defaultLabel: 'Interviews', permissions: ['recruitment.interviews.read'] },
   { key: 'offers', labelKey: 'admin.recruitmentOffers', defaultLabel: 'Offers', permissions: ['recruitment.offers.read'] },
   { key: 'pipeline', labelKey: 'admin.recruitmentPipeline', defaultLabel: 'Pipeline Stages', permissions: ['recruitment.pipeline.read'] },

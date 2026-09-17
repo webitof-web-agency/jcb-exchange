@@ -323,14 +323,21 @@ export default function AdminJobsPage() {
 
   const [customQuestions, setCustomQuestions] = useState<CustomQuestionInput[]>([]);
 
-  const fetchDepartments = async () => {
-    if (departments.length > 0) return departments;
+  const fetchDepartments = async (forceRefresh = false) => {
+    if (!forceRefresh && departments.length > 0) return departments;
 
     try {
       const res = await api.get('/recruitment/admin/departments');
       if (res.data?.success && Array.isArray(res.data.departments)) {
-        setDepartments(res.data.departments);
-        return res.data.departments;
+        const latestDepartments = res.data.departments as JobDepartment[];
+        setDepartments(latestDepartments);
+        setFormDepartmentId((current) => {
+          if (!latestDepartments.length) return '';
+          return current && latestDepartments.some((department) => department.id === current)
+            ? current
+            : latestDepartments[0].id;
+        });
+        return latestDepartments;
       }
     } catch (err) {
       console.error('Failed to load departments:', err);
@@ -446,6 +453,7 @@ export default function AdminJobsPage() {
     setDbCities([]);
 
     setIsModalOpen(true);
+    void fetchDepartments(true);
   };
 
   const handleOpenEditModal = async (jobId: string) => {
@@ -1012,7 +1020,7 @@ export default function AdminJobsPage() {
                       value={formDepartmentId}
                       onChange={(val) => setFormDepartmentId(val)}
                       onOpen={() => {
-                        void fetchDepartments().then((latestDepts) => {
+                        void fetchDepartments(true).then((latestDepts) => {
                           if (latestDepts[0]?.id) {
                             setFormDepartmentId((current) => current || latestDepts[0].id);
                           }
