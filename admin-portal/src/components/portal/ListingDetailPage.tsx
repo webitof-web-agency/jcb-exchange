@@ -59,6 +59,8 @@ import {
   sanitizeListingFieldValue,
   sanitizeListingFormData,
 } from '@/lib/listingFormSanitizers';
+import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 
 type ListingDetail = {
   id: string;
@@ -110,6 +112,13 @@ type ListingDetail = {
     soldPrice?: number | string;
     soldAt?: string;
   } | null;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: string; taxValidUntil?: string | null;
+    fitnessStatus: string; fitnessValidUntil?: string | null; insuranceStatus: string; insuranceValidUntil?: string | null;
+    pucStatus: string; pucValidUntil?: string | null; hsrpStatus: string; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+  }>;
   media: Array<{
     id: string;
     url: string;
@@ -172,6 +181,7 @@ type ListingEditForm = {
   registrationYear: string;
   insuranceExpiry: string;
   previousOwners: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
@@ -381,6 +391,7 @@ const availabilityToListingStatus = (availability: string, currentStatus: string
 
 const createEditForm = (listing: ListingDetail): ListingEditForm => {
   const parsed = parseListingDescription(listing.description);
+  const linkedRto = listing.rtoRecords?.[0];
 
   return sanitizeListingFormData({
     title: listing.title || '',
@@ -409,10 +420,25 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     transmission: parsed.transmission || '',
     grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
     chassisOrSerialNo: parsed.chassisOrSerialNo || '',
-    registrationNo: parsed.registrationNo || '',
+    registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
     registrationYear: parsed.registrationYear || '',
-    insuranceExpiry: parsed.insuranceExpiry || '',
+    insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsed.insuranceExpiry || '',
     previousOwners: parsed.previousOwners || '',
+    rtoDetails: {
+      hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+      taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+      fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+      insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+      hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+      rtoOffice: linkedRto?.rtoOffice || '',
+      rtoAgentName: linkedRto?.rtoAgentName || '',
+      rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+      vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+    },
   });
 };
 
@@ -438,7 +464,8 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
     ],
   };
 
-  return fieldsBySection[section].some((field) => toComparableValue(current[field]) !== toComparableValue(base[field]));
+  return fieldsBySection[section].some((field) => toComparableValue(current[field]) !== toComparableValue(base[field]))
+    || (section === 'technical' && JSON.stringify(current.rtoDetails) !== JSON.stringify(base.rtoDetails));
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -776,15 +803,31 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     }
 
     const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const shouldSyncRto = Boolean(listing.rtoRecords?.length) || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = section === 'technical' && shouldSyncRto
+      ? validateListingRtoForm(sanitizedRto, {
+          registrationNo: sanitizedForm.registrationNo,
+          vehicleType: sanitizedForm.categoryName,
+          vehicleModel: sanitizedForm.modelName,
+          operatingHours: sanitizedForm.operatingHours,
+          insuranceExpiry: sanitizedForm.insuranceExpiry,
+        })
+      : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
     const validationError = getListingSectionValidationError(section, sanitizedForm);
 
     if (validationError) {
       setError(validationError);
-      setForm(sanitizedForm);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
       return;
     }
 
-    setForm(sanitizedForm);
+    setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
 
     const payload: Record<string, unknown> = {};
 
@@ -818,6 +861,15 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     if (section === 'technical') {
       payload.operatingHours = sanitizedForm.operatingHours.trim();
       payload.grossPower = sanitizedForm.grossPower.trim();
+      if (shouldSyncRto) {
+        payload.rtoDetails = buildListingRtoDetails(sanitizedRto, {
+          registrationNo: sanitizedForm.registrationNo,
+          vehicleType: sanitizedForm.categoryName,
+          vehicleModel: sanitizedForm.modelName,
+          operatingHours: sanitizedForm.operatingHours,
+          insuranceExpiry: sanitizedForm.insuranceExpiry,
+        });
+      }
       payload.description = buildListingDescription(sanitizedForm);
     }
 
@@ -1209,6 +1261,28 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   {activeMedia?.isFeatured ? (
                     <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow z-10">{t('listingDetails.coverImage')}</div>
                   ) : null}
+
+                  {availableMedia.some((m) => m.type === 'VIDEO') && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const firstVideoIndex = availableMedia.findIndex((m) => m.type === 'VIDEO');
+                        if (firstVideoIndex !== -1) {
+                          setActiveMediaIndex(firstVideoIndex);
+                        }
+                      }}
+                      className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/85 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-md shadow-lg transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
+                      title={t('listingDetails.watchVideo', 'Watch Video')}
+                    >
+                      <div className="relative flex h-5 w-5 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs">
+                        <Play className="h-3 w-3 fill-white text-white ml-0.5" />
+                      </div>
+                      <span className="font-semibold text-white tracking-wide">
+                        {t('listingDetails.watchVideo', 'Watch Video')}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="relative border-t border-gray-100 p-2 sm:p-3">
@@ -1384,7 +1458,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   <div className="rounded-xl border border-rose-200/70 bg-white p-3.5 space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sale Date</p>
                     <p className="text-sm font-bold text-gray-900">
-                      {listing.saleRecord.soldAt ? new Date(listing.saleRecord.soldAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                      {listing.saleRecord.soldAt ? new Date(listing.saleRecord.soldAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}
                     </p>
                   </div>
 
@@ -1710,7 +1784,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <Field label={t('listingDetails.chassisSerialNo')}>
                   <input value={form.chassisOrSerialNo} onChange={(event) => updateForm('chassisOrSerialNo', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationNo')}>
+                <Field label={t('listingDetails.vehicleNumber', 'Vehicle Number')}>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
                 <Field label={t('listingDetails.registrationYear')}>
@@ -1729,6 +1803,13 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <Field label={t('listingDetails.numberOfOwners')}>
                   <input value={form.previousOwners} onChange={(event) => updateForm('previousOwners', event.target.value)} className={inputClassName} />
                 </Field>
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={(key, value) => updateForm('rtoDetails', { ...form.rtoDetails, [key]: value })}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateForm('insuranceExpiry', value)}
+                  required={Boolean(listing.rtoRecords?.length) || hasListingRtoInput(form.rtoDetails)}
+                />
               </div>
             ) : (
               <div className="space-y-3 h-[320px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -1757,8 +1838,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.chassisOrSerialNo || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationNo')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.registrationNo || t('listingDetails.na')}</span>
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.vehicleNumber', 'Vehicle Number')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{listing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationYear')}</span>
@@ -1772,6 +1853,53 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Info className="h-4 w-4 text-gray-400" /> {t('listingDetails.numberOfOwners')}</span>
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.previousOwners || '1'}</span>
                 </div>
+                {listing.rtoRecords?.[0] && (() => {
+                  const rto = listing.rtoRecords![0];
+                  const statusBadge = (val: string | null | undefined, type: 'validity' | 'hp' | 'hsrp') => {
+                    const v = (val || '').toUpperCase();
+                    let cls = 'bg-gray-100 text-gray-500';
+                    let label = val || '—';
+                    if (type === 'validity') {
+                      if (v === 'VALID') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Valid'; }
+                      else if (v === 'EXPIRED') { cls = 'bg-red-100 text-red-700'; label = 'Expired'; }
+                      else if (v === 'NOT_AVAILABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                    } else if (type === 'hp') {
+                      if (v === 'TERMINATED') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Terminated'; }
+                      else if (v === 'ACTIVE') { cls = 'bg-red-100 text-red-700'; label = 'Active'; }
+                      else if (v === 'NOT_APPLICABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                      else { cls = 'bg-yellow-100 text-yellow-700'; label = 'Pending'; }
+                    } else if (type === 'hsrp') {
+                      if (v === 'YES') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Yes'; }
+                      else if (v === 'NO') { cls = 'bg-red-100 text-red-700'; label = 'No'; }
+                      else if (v === 'NOT_APPLICABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                      else { cls = 'bg-yellow-100 text-yellow-700'; label = 'Pending'; }
+                    }
+                    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${cls}`}>{label}</span>;
+                  };
+                  return (
+                    <>
+                      <div className="mt-2 border-t border-amber-100 pt-3">
+                        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-600">RTO &amp; Compliance</p>
+                      </div>
+                      {([
+                        ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
+                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.taxValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
+                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.fitnessValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
+                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.insuranceValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
+                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{new Date(String(rto.pucValidUntil)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}</span>],
+                        ['HSRP', statusBadge(rto.hsrpStatus, 'hsrp')],
+                        rto.rtoOffice ? ['RTO Office', <span key="ro" className="text-sm font-semibold text-gray-900">{rto.rtoOffice}</span>] : null,
+                        rto.rtoExpenses ? ['RTO Expenses', <span key="re" className="text-sm font-semibold text-gray-900">₹{Number(rto.rtoExpenses).toLocaleString('en-IN')}</span>] : null,
+                        rto.vehicleMaintenanceCost ? ['Maintenance Cost', <span key="mc" className="text-sm font-semibold text-gray-900">₹{Number(rto.vehicleMaintenanceCost).toLocaleString('en-IN')}</span>] : null,
+                      ] as ([string, React.ReactNode] | null)[]).filter((item): item is [string, React.ReactNode] => item !== null).map((item) => (
+                        <div key={String(item[0])} className="flex items-center justify-between border-b border-gray-50 py-2">
+                          <span className="text-sm text-gray-500">{item[0]}</span>
+                          {item[1]}
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

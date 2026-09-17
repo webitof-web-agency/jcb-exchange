@@ -9,6 +9,9 @@ import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect'
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
+import ListingRtoFields from '@/components/sell/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { sanitizeListingFieldValue, sanitizeListingFormData } from '@/lib/listingFormSanitizers';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -55,6 +58,7 @@ type ListingFormState = {
   soldAt: string;
   selectedBuyerStateId: string;
   selectedBuyerCityId: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 type CategoryOption = {
@@ -87,6 +91,13 @@ type ListingRecord = {
     type: string;
     slot?: string | null;
     isFeatured: boolean;
+  }>;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null; insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null; hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
 };
 
@@ -167,6 +178,7 @@ export type EditableListing = {
     slot?: string | null;
     isFeatured: boolean;
   }>;
+  rtoRecords?: ListingRecord['rtoRecords'];
 };
 
 const initialForm: ListingFormState = {
@@ -206,6 +218,7 @@ const initialForm: ListingFormState = {
   soldAt: new Date().toISOString().split('T')[0],
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
+  rtoDetails: emptyListingRtoForm,
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -733,6 +746,7 @@ export default function SellVehicleModal({
     setError('');
 
     const parsedDetails = parseListingDescription(listing.description);
+    const linkedRto = listing.rtoRecords?.[0];
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const initialBuyerStateId =
       states.find((option) => option.name.toLowerCase() === buyerStateName.toLowerCase())?.id
@@ -745,7 +759,7 @@ export default function SellVehicleModal({
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationYear: parsedDetails.registrationYear,
-      registrationNo: parsedDetails.registrationNo,
+      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -764,7 +778,7 @@ export default function SellVehicleModal({
       additionalDescription: listing.additionalDescription || '',
       grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
       selectedStateId: '', // To be handled optimally if we only have names
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -775,6 +789,21 @@ export default function SellVehicleModal({
       soldAt: listing.saleRecord?.soldAt ? new Date(listing.saleRecord.soldAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       selectedBuyerStateId: initialBuyerStateId,
       selectedBuyerCityId: '',
+      rtoDetails: {
+        hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        rtoOffice: linkedRto?.rtoOffice || '',
+        rtoAgentName: linkedRto?.rtoAgentName || '',
+        rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+        vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+      },
     });
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -831,7 +860,14 @@ export default function SellVehicleModal({
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({
+      ...current,
+      [key]: typeof value === 'string' ? sanitizeListingFieldValue(String(key), value) : value,
+    }));
+  };
+
+  const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
+    setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -864,6 +900,23 @@ export default function SellVehicleModal({
       return;
     }
 
+    const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const rtoBase = {
+      registrationNo: sanitizedForm.registrationNo,
+      vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+      vehicleModel: sanitizedForm.model,
+      operatingHours: sanitizedForm.operatingHours,
+      insuranceExpiry: sanitizedForm.insuranceExpiry,
+    };
+    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -883,36 +936,37 @@ export default function SellVehicleModal({
         .filter(Boolean);
 
       const payload: Record<string, unknown> = {
-        categoryId: form.category,
-        brandName: form.brand,
-        modelName: form.model,
-        title: form.title || `${form.brand} ${form.model}`.trim(),
-        price: form.price,
-        manufacturingYear: form.manufacturingYear,
-        operatingHours: form.operatingHours,
-        locationState: form.state,
-        locationCity: form.city,
-        address: form.address.trim() || undefined,
-        condition: form.condition,
-        description: buildListingDescription(form),
-        additionalDescription: form.additionalDescription,
-        grossPower: form.grossPower,
-        isNegotiable: form.isNegotiable,
+        categoryId: sanitizedForm.category,
+        brandName: sanitizedForm.brand,
+        modelName: sanitizedForm.model,
+        title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
+        price: sanitizedForm.price,
+        manufacturingYear: sanitizedForm.manufacturingYear,
+        operatingHours: sanitizedForm.operatingHours,
+        locationState: sanitizedForm.state,
+        locationCity: sanitizedForm.city,
+        address: sanitizedForm.address.trim() || undefined,
+        condition: sanitizedForm.condition,
+        description: buildListingDescription(sanitizedForm),
+        additionalDescription: sanitizedForm.additionalDescription,
+        grossPower: sanitizedForm.grossPower,
+        isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (form.currentAvailability !== 'PENDING') {
-        payload.status = availabilityToListingStatus(form.currentAvailability);
+      if (sanitizedForm.currentAvailability !== 'PENDING') {
+        payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
-      if (form.currentAvailability === 'SOLD') {
-        if (!form.buyerName.trim()) {
+      if (sanitizedForm.currentAvailability === 'SOLD') {
+        if (!sanitizedForm.buyerName.trim()) {
           throw new Error(t('sellModal.buyerNameRequired'));
         }
-        if (!form.buyerPhone.trim()) {
+        if (!sanitizedForm.buyerPhone.trim()) {
           throw new Error(t('sellModal.buyerPhoneRequired'));
         }
-        if (!form.soldPrice || Number(form.soldPrice) <= 0) {
+        if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
           throw new Error(t('sellModal.soldPriceRequired'));
         }
 
@@ -1097,7 +1151,7 @@ export default function SellVehicleModal({
                     <Field label={t('sellModal.registrationYear')}>
                       <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label={t('sellModal.registrationNumber')}>
+                    <Field label={t('sellModal.vehicleNumber', 'Vehicle Number')}>
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label={t('sellModal.insuranceExpiryDate')}>
@@ -1160,15 +1214,18 @@ export default function SellVehicleModal({
                         searchable={false}
                         className="bg-[#F8FAFC]"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        {form.currentAvailability === 'PENDING'
-                          ? t('sellModal.pendingAvailabilityHelp')
-                          : t('sellModal.availabilityHelp')}
-                      </p>
                     </Field>
                   </div>
 
-                  {form.currentAvailability === 'SOLD' && (
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={updateRtoField}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                />
+
+                {form.currentAvailability === 'SOLD' && (
                     <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />
@@ -1475,7 +1532,7 @@ export default function SellVehicleModal({
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <DetailItem label={t('sellModal.variant')} value={parsedDetails.variant || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.registrationYear')} value={parsedDetails.registrationYear || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationNumber')} value={parsedDetails.registrationNo || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.vehicleNumber', 'Vehicle Number')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.insuranceExpiry')} value={parsedDetails.insuranceExpiry || t('sellModal.na')} />
@@ -1738,5 +1795,3 @@ function ListingMediaUploadBox({
     </div>
   );
 }
-
-

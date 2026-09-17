@@ -448,8 +448,88 @@ model Listing {
   leads      Lead[]
   saleRecord SaleRecord?
   paymentSubmissions ListingPaymentSubmission[]
+  rtoRecords        VehicleRtoRecord[]
 
   @@index([status, soldAt])
+}
+
+enum RtoHirePurchaseStatus {
+  PENDING
+  ACTIVE
+  TERMINATED
+  NOT_APPLICABLE
+}
+
+enum RtoValidityStatus {
+  VALID
+  EXPIRED
+  NOT_AVAILABLE
+  LIFETIME
+  NOT_APPLICABLE
+  PENDING
+}
+
+enum RtoHsrpStatus {
+  YES
+  NO
+  PENDING
+  NOT_APPLICABLE
+}
+
+enum RtoWorkStatus {
+  PENDING
+  IN_PROGRESS
+  DOCUMENT_REQUIRED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+model VehicleRtoRecord {
+  id                    String                 @id @default(uuid())
+  listingId             String?
+  customerName          String
+  customerNumber        String
+  vehicleNumber         String
+  vehicleType           String
+  vehicleModel          String
+  hirePurchaseStatus    RtoHirePurchaseStatus @default(PENDING)
+  taxStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
+  taxValidUntil         DateTime?
+  fitnessStatus         RtoValidityStatus     @default(NOT_AVAILABLE)
+  fitnessValidUntil     DateTime?
+  insuranceStatus       RtoValidityStatus     @default(NOT_AVAILABLE)
+  insuranceValidUntil   DateTime?
+  pucStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
+  pucValidUntil         DateTime?
+  hsrpStatus            RtoHsrpStatus        @default(PENDING)
+  sellerName            String
+  sellerNumber          String
+  purchaserName         String
+  purchaserNumber       String
+  rtoOffice             String
+  rtoAgentName          String
+  rtoAgentState         String
+  rtoAgentCity          String
+  rtoAgentNumber        String
+  rtoExpenses           Decimal              @default(0) @db.Decimal(12, 2)
+  rtoExpensesAdvance    Decimal              @default(0) @db.Decimal(12, 2)
+  documentSendDate      DateTime?
+  rtoStatus             RtoWorkStatus        @default(PENDING)
+  noteSheet             String?              @db.Text
+  vehicleMaintenanceCost Decimal             @default(0) @db.Decimal(12, 2)
+  hourRunning          Int?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  listing               Listing?              @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleNumber])
+  @@index([rtoStatus])
+  @@index([documentSendDate])
+  @@index([rtoAgentState, rtoAgentCity])
 }
 
 model AnalyticsEvent {

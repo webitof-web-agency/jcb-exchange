@@ -12,6 +12,76 @@ import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.servi
 
 const prismaAny = prisma as any;
 
+type PublicListingFormDetails = {
+  variant: string | null;
+  registrationYear: string | null;
+  registrationNo: string | null;
+  chassisOrSerialNo: string | null;
+  previousOwners: string | null;
+  fuelType: string | null;
+  transmission: string | null;
+  pinCode: string | null;
+  nearbyLandmark: string | null;
+  insuranceExpiry: string | null;
+};
+
+const parsePublicListingFormDetails = (description?: string | null): PublicListingFormDetails => {
+  const details: PublicListingFormDetails = {
+    variant: null,
+    registrationYear: null,
+    registrationNo: null,
+    chassisOrSerialNo: null,
+    previousOwners: null,
+    fuelType: null,
+    transmission: null,
+    pinCode: null,
+    nearbyLandmark: null,
+    insuranceExpiry: null,
+  };
+
+  for (const line of String(description || '').split(/\r?\n/)) {
+    const match = line.trim().match(/^([^:]+):\s*(.+)$/);
+    if (!match) continue;
+
+    const keyPart = match[1];
+    const valuePart = match[2];
+    if (!keyPart || !valuePart) continue;
+
+    const key = keyPart.trim().toLowerCase();
+    const value = valuePart.trim();
+    if (!value) continue;
+
+    switch (key) {
+      case 'variant': details.variant = value; break;
+      case 'registration year': details.registrationYear = value; break;
+      case 'registration no': details.registrationNo = value; break;
+      case 'chassis/serial':
+      case 'chassis / serial':
+      case 'chassis or serial': details.chassisOrSerialNo = value; break;
+      case 'owners': details.previousOwners = value; break;
+      case 'fuel': details.fuelType = value; break;
+      case 'transmission': details.transmission = value; break;
+      case 'pin':
+      case 'pin code': details.pinCode = value; break;
+      case 'landmark': details.nearbyLandmark = value; break;
+      case 'insurance expiry': details.insuranceExpiry = value; break;
+      default: break;
+    }
+  }
+
+  return details;
+};
+
+const getPublicListingAvailability = (status?: string | null) => {
+  switch (String(status || '').toUpperCase()) {
+    case 'SOLD': return 'SOLD';
+    case 'RESERVED': return 'RESERVED';
+    case 'PENDING_APPROVAL':
+    case 'CHANGES_REQUESTED': return 'PENDING';
+    default: return 'AVAILABLE';
+  }
+};
+
 const buildVisibleSoldListingWhere = (now = new Date()) => {
   const cutoff = getSoldListingCutoff(now);
 
@@ -1338,6 +1408,27 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
           },
         },
         saleRecord: true,
+        rtoRecords: {
+          orderBy: { createdAt: 'desc' as const },
+          take: 1,
+          select: {
+            vehicleNumber: true,
+            hirePurchaseStatus: true,
+            taxStatus: true,
+            taxValidUntil: true,
+            fitnessStatus: true,
+            fitnessValidUntil: true,
+            insuranceStatus: true,
+            insuranceValidUntil: true,
+            pucStatus: true,
+            pucValidUntil: true,
+            hsrpStatus: true,
+            rtoOffice: true,
+            rtoAgentName: true,
+            vehicleMaintenanceCost: true,
+            rtoExpenses: true,
+          },
+        },
       },
     });
 
@@ -1378,6 +1469,9 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       customerPrimeSubscriptions: listing.partner?.customerPrimeSubscriptions,
     });
 
+    const latestRto = (listing.rtoRecords as any)?.[0] || null;
+    const formDetails = parsePublicListingFormDetails(listing.description);
+
     const responseData = {
       id: listing.id,
       title: listing.title,
@@ -1387,10 +1481,22 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       operatingHours: listing.operatingHours,
       locationCity: listing.locationCity,
       locationState: listing.locationState,
+      address: listing.address,
       condition: listing.condition,
       description: listing.description,
       additionalDescription: listing.additionalDescription,
       grossPower: listing.grossPower,
+      variant: formDetails.variant,
+      registrationYear: formDetails.registrationYear,
+      registrationNo: formDetails.registrationNo,
+      chassisOrSerialNo: formDetails.chassisOrSerialNo,
+      previousOwners: formDetails.previousOwners,
+      fuelType: formDetails.fuelType,
+      transmission: formDetails.transmission,
+      currentAvailability: getPublicListingAvailability(listing.status),
+      pinCode: formDetails.pinCode,
+      nearbyLandmark: formDetails.nearbyLandmark,
+      insuranceExpiry: formDetails.insuranceExpiry,
       status: listing.status,
       views: listing.views,
       category: listing.category,
@@ -1425,7 +1531,24 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         buyerCity: listing.saleRecord.buyerCity,
         buyerState: listing.saleRecord.buyerState,
         soldAt: listing.saleRecord.soldAt,
-        soldPrice: Number(listing.saleRecord.soldPrice || 0)
+        soldPrice: Number(listing.saleRecord.soldPrice || 0),
+      } : null,
+      vehicleCompliance: latestRto ? {
+        vehicleNumber: latestRto.vehicleNumber || null,
+        hirePurchaseStatus: latestRto.hirePurchaseStatus || null,
+        taxStatus: latestRto.taxStatus || null,
+        taxValidUntil: latestRto.taxValidUntil ? new Date(latestRto.taxValidUntil).toISOString() : null,
+        fitnessStatus: latestRto.fitnessStatus || null,
+        fitnessValidUntil: latestRto.fitnessValidUntil ? new Date(latestRto.fitnessValidUntil).toISOString() : null,
+        insuranceStatus: latestRto.insuranceStatus || null,
+        insuranceValidUntil: latestRto.insuranceValidUntil ? new Date(latestRto.insuranceValidUntil).toISOString() : null,
+        pucStatus: latestRto.pucStatus || null,
+        pucValidUntil: latestRto.pucValidUntil ? new Date(latestRto.pucValidUntil).toISOString() : null,
+        hsrpStatus: latestRto.hsrpStatus || null,
+        rtoOffice: latestRto.rtoOffice || null,
+        rtoAgentName: latestRto.rtoAgentName || null,
+        vehicleMaintenanceCost: latestRto.vehicleMaintenanceCost != null ? Number(latestRto.vehicleMaintenanceCost) : null,
+        rtoExpenses: latestRto.rtoExpenses != null ? Number(latestRto.rtoExpenses) : null,
       } : null,
     };
 

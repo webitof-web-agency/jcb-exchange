@@ -45,6 +45,17 @@ export type MachineListingDetail = {
   description: string | null;
   additionalDescription: string | null;
   grossPower: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  currentAvailability?: string | null;
+  variant?: string | null;
+  registrationYear?: string | null;
+  registrationNo?: string | null;
+  chassisOrSerialNo?: string | null;
+  previousOwners?: string | null;
+  pinCode?: string | null;
+  nearbyLandmark?: string | null;
+  insuranceExpiry?: string | null;
   status: string;
   views?: number;
   category: {
@@ -78,6 +89,23 @@ export type MachineListingDetail = {
     buyerState: string | null;
     soldAt: string;
     soldPrice: number;
+  } | null;
+  vehicleCompliance?: {
+    vehicleNumber: string | null;
+    hirePurchaseStatus: string | null;
+    taxStatus: string | null;
+    taxValidUntil: string | null;
+    fitnessStatus: string | null;
+    fitnessValidUntil: string | null;
+    insuranceStatus: string | null;
+    insuranceValidUntil: string | null;
+    pucStatus: string | null;
+    pucValidUntil: string | null;
+    hsrpStatus: string | null;
+    rtoOffice: string | null;
+    rtoAgentName: string | null;
+    vehicleMaintenanceCost: number | null;
+    rtoExpenses: number | null;
   } | null;
 };
 

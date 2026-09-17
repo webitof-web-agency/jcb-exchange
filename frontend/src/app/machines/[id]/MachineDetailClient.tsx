@@ -15,6 +15,7 @@ import {
   Cog,
   CreditCard,
   Cpu,
+  FileText,
   Fuel,
   GitBranch,
   Globe,
@@ -32,6 +33,9 @@ import {
   UserCircle,
   X,
   ChevronLeft,
+  Car,
+  Hash,
+  UserCheck,
 } from 'lucide-react';
 import type { MachineListingDetail } from './data';
 import { getAbsoluteMediaUrl } from './data';
@@ -57,8 +61,28 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-const getLocationLabel = (listing: MachineListingDetail, fallback: string) =>
-  [listing.locationCity, listing.locationState].filter(Boolean).join(', ') || fallback;
+const getLocationLabel = (listing: MachineListingDetail, fallback: string) => {
+  const invalidValues = new Set(['n/a', 'na', 'nan', 'null', 'undefined']);
+  const parts = [listing.locationCity, listing.locationState]
+    .map((value) => value?.trim())
+    .filter((value): value is string => typeof value === 'string' && Boolean(value) && !invalidValues.has(value.toLowerCase()));
+
+  return parts.join(', ') || fallback;
+};
+
+const formatDateOnly = (value?: string | null) => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[3]}/${dateOnlyMatch[2]}/${dateOnlyMatch[1]}`;
+  }
+
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
 
 const getWhatsappUrl = (phoneNumber?: string | null) => {
   const normalizedDigits = phoneNumber?.replace(/\D/g, '') || '';
@@ -251,8 +275,10 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const { t } = useTranslation();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0);
 
-  const [expandedSections, setExpandedSections] = useState<string[]>(['machine', 'seller']);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['machine', 'seller', 'rto']);
   const [views, setViews] = useState<number>(listing.views || 0);
   const [pendingFeature, setPendingFeature] = useState<CustomerPrimeFeature | null>(null);
   const [isBuyNowOpen, setIsBuyNowOpen] = useState(false);
@@ -302,13 +328,22 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   }, [isLightboxOpen, images.length]);
 
   useEffect(() => {
-    if (isLightboxOpen) {
+    if (isLightboxOpen || isVideoModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
     return () => { document.body.style.overflow = 'unset'; };
-  }, [isLightboxOpen]);
+  }, [isLightboxOpen, isVideoModalOpen]);
+
+  useEffect(() => {
+    if (!isVideoModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsVideoModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isVideoModalOpen]);
 
   const videos = listing.media.filter((media) => media.type === 'VIDEO');
   const mainImage = images[activeImageIndex]?.url || listing.featuredImage;
@@ -327,6 +362,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const baseWhatsappUrl = getWhatsappUrl(whatsappNumber);
   const parsedDetails = parseListingDescription(listing.description);
   const descriptionParts = getDescriptionParts(listing);
+  const detailVariant = listing.variant || parsedDetails.variant;
+  const detailRegistrationYear = listing.registrationYear || parsedDetails.registrationYear;
+  const detailRegistrationNo = listing.registrationNo || parsedDetails.registrationNo;
+  const detailChassisNo = listing.chassisOrSerialNo || parsedDetails.chassisOrSerialNo;
+  const detailPreviousOwners = listing.previousOwners || parsedDetails.previousOwners;
+  const detailFuelType = listing.fuelType || parsedDetails.fuelType;
+  const detailTransmission = listing.transmission || parsedDetails.transmission;
+  const detailPinCode = listing.pinCode || parsedDetails.pinCode;
+  const detailLandmark = listing.nearbyLandmark || parsedDetails.nearbyLandmark;
+  const detailInsuranceExpiry = listing.insuranceExpiry || parsedDetails.insuranceExpiry;
 
   const listingUrl =
     typeof window !== 'undefined'
@@ -490,6 +535,31 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     available: t('machines.available'),
                   })}
                 </div>
+
+                {videos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsVideoModalOpen(true);
+                    }}
+                    className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/85 px-3.5 py-1.5 text-xs font-bold text-white backdrop-blur-md shadow-xl transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
+                    title={t('machineDetails.watchVideo', 'Watch Machine Video')}
+                  >
+                    <div className="relative flex h-6 w-6 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs">
+                      <Play size={12} className="fill-white text-white ml-0.5" />
+                      <span className="absolute -inset-0.5 rounded-full bg-red-500/40 animate-ping opacity-75 group-hover:opacity-100" />
+                    </div>
+                    <span className="font-bold text-white tracking-wide">
+                      {t('machineDetails.watchVideo', 'Watch Video')}
+                    </span>
+                    {videos.length > 1 && (
+                      <span className="rounded-full bg-red-500/30 px-1.5 py-0.5 text-[10px] font-extrabold text-red-200">
+                        {videos.length}
+                      </span>
+                    )}
+                  </button>
+                )}
                 {mainImage ? (
                   <Image
                     src={getAbsoluteMediaUrl(mainImage)}
@@ -813,10 +883,12 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         <div className="w-full mt-4 sm:mt-8 min-w-0">
             <section className="mb-10">
               <h2 className="mb-4 sm:mb-5 text-xl sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 <HighlightCard icon={<Settings className="text-jcb-yellow" size={20} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
-                <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
+                <HighlightCard icon={<Calendar className="text-jcb-yellow" size={20} />} label={t('machineDetails.manufacturingYearLabel')} value={listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na')} />
                 <HighlightCard icon={<Clock className="text-jcb-yellow" size={20} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
+                <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
+                <HighlightCard icon={<UserCheck className="text-jcb-yellow" size={20} />} label={t('machineDetails.previousOwnersLabel', 'Owners')} value={detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na')} />
                 <HighlightCard icon={<MapPin className="text-jcb-yellow" size={20} />} label={t('machineDetails.locationLabel')} value={locationLabel} />
               </div>
             </section>
@@ -878,12 +950,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     items={[
                       { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
                       { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
-                      { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: parsedDetails.variant || t('machineDetails.na') },
-                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
-                      { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
+                      { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
                       { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
-                      { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
+                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
                       { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
+                      { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
+                      { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
+                      { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
+                      { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
+                      { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
+                      { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
                     ]}
                   />
                 </SpecAccordion>
@@ -896,16 +972,117 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 >
                   <SpecsGrid
                     items={[
-                      { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: parsedDetails.fuelType || t('machineDetails.na') },
-                      { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: parsedDetails.transmission || t('machineDetails.na') },
-                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: listing.address || parsedDetails.address || parsedDetails.district || t('machineDetails.na') },
-                      { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: parsedDetails.nearbyLandmark || t('machineDetails.na') },
+                      { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: listing.vehicleCompliance?.vehicleNumber || detailRegistrationNo || t('machineDetails.na') },
+                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
+                      { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
+                      { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
+                      { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
                       { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
+                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: listing.address || parsedDetails.address || parsedDetails.district || t('machineDetails.na') },
+                      { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
+                      { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
                     ]}
                   />
                 </SpecAccordion>
               </div>
             </section>
+
+            {listing.vehicleCompliance && (
+              <section className="mb-10">
+                <h2 className="mb-5 text-2xl font-bold text-gray-900">RTO &amp; Vehicle Compliance</h2>
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <SpecAccordion
+                    icon={<Car className="h-5 w-5 text-amber-600" />}
+                    title="Vehicle Registration &amp; Compliance"
+                    isOpen={expandedSections.includes('rto')}
+                    onToggle={() => toggleSection('rto')}
+                  >
+                    <div className="mb-4">
+                      {listing.vehicleCompliance.vehicleNumber && (
+                        <div className="mb-5 flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                            <Car className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">Vehicle Number</p>
+                            <p className="text-lg font-extrabold tracking-widest text-gray-900">{listing.vehicleCompliance.vehicleNumber}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {([
+                          { label: 'Hire Purchase', value: listing.vehicleCompliance.hirePurchaseStatus, type: 'hp' },
+                          { label: 'Tax Validity', value: listing.vehicleCompliance.taxStatus, date: listing.vehicleCompliance.taxValidUntil, type: 'validity' },
+                          { label: 'Fitness Validity', value: listing.vehicleCompliance.fitnessStatus, date: listing.vehicleCompliance.fitnessValidUntil, type: 'validity' },
+                          { label: 'Insurance Validity', value: listing.vehicleCompliance.insuranceStatus, date: listing.vehicleCompliance.insuranceValidUntil, type: 'validity' },
+                          { label: 'PUC Validity', value: listing.vehicleCompliance.pucStatus, date: listing.vehicleCompliance.pucValidUntil, type: 'validity' },
+                          { label: 'HSRP', value: listing.vehicleCompliance.hsrpStatus, type: 'hsrp' },
+                        ] as { label: string; value: string | null; date?: string | null; type: string }[]).map(({ label, value, date, type }) => {
+                          const normalizedValue = (value || '').toUpperCase();
+                          let badgeClass = 'bg-gray-100 text-gray-500';
+                          let dotClass = 'bg-gray-400';
+                          let displayLabel = value || 'N/A';
+
+                          if (type === 'hp') {
+                            if (normalizedValue === 'TERMINATED') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Terminated (Clear)'; }
+                            else if (normalizedValue === 'ACTIVE') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Active (Pending)'; }
+                            else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
+                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
+                          } else if (type === 'validity') {
+                            if (normalizedValue === 'VALID') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Valid'; }
+                            else if (normalizedValue === 'EXPIRED') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Expired'; }
+                            else if (normalizedValue === 'NOT_AVAILABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Available'; }
+                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
+                          } else if (type === 'hsrp') {
+                            if (normalizedValue === 'YES') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Yes'; }
+                            else if (normalizedValue === 'NO') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'No'; }
+                            else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
+                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; displayLabel = 'Pending'; }
+                          }
+
+                          return (
+                            <div key={label} className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</span>
+                              <span className={`mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeClass}`}>
+                                <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                                {displayLabel}
+                              </span>
+                              {date && (
+                                <span className="text-[11px] text-gray-400 mt-0.5">
+                                  Until: {formatDateOnly(date) || t('machineDetails.na')}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {(listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {[
+                            ['RTO Office', listing.vehicleCompliance.rtoOffice],
+                            ['RTO Agent Name', listing.vehicleCompliance.rtoAgentName],
+                            ['RTO Expenses', listing.vehicleCompliance.rtoExpenses != null ? formatCurrency(listing.vehicleCompliance.rtoExpenses) : null],
+                            ['Vehicle Maintenance Cost', listing.vehicleCompliance.vehicleMaintenanceCost != null ? formatCurrency(listing.vehicleCompliance.vehicleMaintenanceCost) : null],
+                          ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
+                            <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
+                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                                <FileText className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                                <p className="text-sm font-bold text-gray-900">{value}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </SpecAccordion>
+                </div>
+              </section>
+            )}
         </div>
       </div>
       {pendingFeature ? (
@@ -929,7 +1106,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
       />
 
       {isLightboxOpen && mainImage && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
           onClick={() => setIsLightboxOpen(false)}
         >
@@ -982,6 +1159,106 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
               {activeImageIndex + 1} / {images.length}
             </div>
           )}
+        </div>
+      )}
+
+      {isVideoModalOpen && videos.length > 0 && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsVideoModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-gray-950 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900/80 px-5 py-4 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-500">
+                  <Video size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    {listing.title}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    {t('machineDetails.videoPreview', 'Machine Walkaround & Inspection Video')}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white"
+                aria-label="Close video player"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Video Player */}
+            <div className="relative aspect-video w-full bg-black flex items-center justify-center">
+              <video
+                key={videos[activeVideoIndex]?.id || 'video-modal'}
+                src={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')}
+                controls
+                autoPlay
+                playsInline
+                className="h-full w-full object-contain"
+              >
+                <source src={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')} type={videos[activeVideoIndex]?.url?.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                Your browser does not support the video tag.
+              </video>
+            </div>
+
+            {/* Modal Footer / Playlist Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-800 bg-gray-900/60 px-5 py-3.5">
+              {videos.length > 1 ? (
+                <div className="flex items-center gap-2 overflow-x-auto">
+                  <span className="text-xs font-medium text-gray-400">{t('machineDetails.selectVideo', 'Select Video:')}</span>
+                  {videos.map((vid, idx) => (
+                    <button
+                      key={vid.id}
+                      type="button"
+                      onClick={() => setActiveVideoIndex(idx)}
+                      className={`rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                        activeVideoIndex === idx
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
+                      }`}
+                    >
+                      Video {idx + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <CheckCircle2 size={14} className="text-green-500" />
+                  <span>{t('machineDetails.verifiedInspectionVideo', 'Verified Machine Video')}</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVideoModalOpen(false);
+                  const section = document.getElementById('videos-section');
+                  if (section) {
+                    section.scrollIntoView({ behavior: 'smooth' });
+                    const videoEl = section.querySelector('video');
+                    if (videoEl) {
+                      videoEl.play().catch(() => {});
+                    }
+                  }
+                }}
+                className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 ml-auto"
+              >
+                <span>{t('machineDetails.scrollToVideosSection', 'Scroll to Video Section')}</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

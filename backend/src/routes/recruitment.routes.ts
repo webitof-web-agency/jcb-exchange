@@ -51,6 +51,7 @@ import {
 } from '../controllers/recruitment.controller';
 import { requireAuth, requireAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
+import { createRtoRecord, deleteRtoRecord, listRtoRecords, updateRtoRecord } from '../controllers/rto.controller';
 
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
@@ -66,6 +67,10 @@ const canUpdateJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.
 const canDeleteJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.delete']);
 const canDuplicateJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.duplicate']);
 const canChangeJobStatus = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.change_status']);
+const canViewRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.read', 'accounts.rto.crud']);
+const canCreateRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.create']);
+const canUpdateRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.update']);
+const canDeleteRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.delete']);
 const canViewApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.read']);
 const canUpdateApplicationStage = requireSuperAdminOrEmployeePermissions(['recruitment.applications.update_stage']);
 const canAssignApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.assign']);
@@ -134,6 +139,12 @@ router.put('/admin/jobs/:id', canUpdateJobs, updateJob);
 router.post('/admin/jobs/:id/duplicate', canDuplicateJobs, duplicateJob);
 router.patch('/admin/jobs/:id/status', canChangeJobStatus, updateJobStatus);
 router.delete('/admin/jobs/:id', canDeleteJobs, deleteJob);
+
+// RTO work records
+router.get('/admin/rto-records', canViewRto, listRtoRecords);
+router.post('/admin/rto-records', canCreateRto, createRtoRecord);
+router.put('/admin/rto-records/:id', canUpdateRto, updateRtoRecord);
+router.delete('/admin/rto-records/:id', canDeleteRto, deleteRtoRecord);
 
 // Applications
 router.get('/admin/applications', canViewApplications, getAdminApplications);

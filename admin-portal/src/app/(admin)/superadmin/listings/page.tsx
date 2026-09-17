@@ -32,6 +32,8 @@ import {
   sanitizeListingFieldValue,
   sanitizeListingFormData,
 } from '@/lib/listingFormSanitizers';
+import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 
 type ListingFormState = {
   category: string;
@@ -71,6 +73,7 @@ type ListingFormState = {
   soldAt: string;
   selectedBuyerStateId: string;
   selectedBuyerCityId: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 type CategoryOption = {
@@ -144,6 +147,16 @@ type ListingRecord = {
     invoiceNo?: string | null;
     notes?: string | null;
   } | null;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus'];
+    taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null;
+    insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null;
+    hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+  }>;
   media: Array<{
     id: string;
     url: string;
@@ -236,6 +249,7 @@ const initialForm: ListingFormState = {
   soldAt: new Date().toISOString().split('T')[0],
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
+  rtoDetails: emptyListingRtoForm,
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -1460,6 +1474,7 @@ export default function PartnerListingsPage() {
     setError('');
     setEditingListingId(listing.id);
     const parsedDetails = parseListingDescription(listing.description);
+    const linkedRto = listing.rtoRecords?.[0];
     const initialBuyerStateId =
       availableStates.find((option) => option.name.toLowerCase() === (listing.saleRecord?.buyerState || '').toLowerCase())?.id
         ? String(availableStates.find((option) => option.name.toLowerCase() === (listing.saleRecord?.buyerState || '').toLowerCase())?.id)
@@ -1471,7 +1486,7 @@ export default function PartnerListingsPage() {
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationYear: parsedDetails.registrationYear,
-      registrationNo: parsedDetails.registrationNo,
+      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -1491,7 +1506,7 @@ export default function PartnerListingsPage() {
       additionalDescription: listing.additionalDescription || '',
       grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
       selectedStateId: '',
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -1502,6 +1517,21 @@ export default function PartnerListingsPage() {
       soldAt: listing.saleRecord?.soldAt ? String(listing.saleRecord.soldAt).split('T')[0] : new Date().toISOString().split('T')[0],
       selectedBuyerStateId: initialBuyerStateId,
       selectedBuyerCityId: '',
+      rtoDetails: {
+        hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        taxStatus: (linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
+        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: (linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
+        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: (linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
+        pucStatus: (linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
+        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        rtoOffice: linkedRto?.rtoOffice || '',
+        rtoAgentName: linkedRto?.rtoAgentName || '',
+        rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+        vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+      },
     });
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -1546,12 +1576,30 @@ export default function PartnerListingsPage() {
     }));
   };
 
+  const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
+    setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
 
     const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, {
+      registrationNo: sanitizedForm.registrationNo,
+      vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+      vehicleModel: sanitizedForm.model,
+      operatingHours: sanitizedForm.operatingHours,
+      insuranceExpiry: sanitizedForm.insuranceExpiry,
+    }) : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
 
     if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
       setError('Price must contain digits only.');
@@ -1609,7 +1657,7 @@ export default function PartnerListingsPage() {
       }
     }
 
-    setForm(sanitizedForm);
+    setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
 
     setSaving(true);
 
@@ -1647,6 +1695,15 @@ export default function PartnerListingsPage() {
         grossPower: sanitizedForm.grossPower,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(shouldSyncRto ? {
+          rtoDetails: buildListingRtoDetails(sanitizedRto, {
+            registrationNo: sanitizedForm.registrationNo,
+            vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+            vehicleModel: sanitizedForm.model,
+            operatingHours: sanitizedForm.operatingHours,
+            insuranceExpiry: sanitizedForm.insuranceExpiry,
+          }),
+        } : {}),
       };
 
       if (sanitizedForm.currentAvailability === 'SOLD') {
@@ -2161,6 +2218,8 @@ export default function PartnerListingsPage() {
                   {paginatedListings.map((listing, index) => {
                     const cover = getCoverMedia(listing);
                     const parsedDetails = parseListingDescription(listing.description);
+                    const linkedRto = listing.rtoRecords?.[0];
+                    const vehicleNumber = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
                     const availability = listingStatusToAvailability(listing.status);
                     const isUpdatingAvailability = updatingAvailabilityIds.includes(listing.id);
                     const isModeratingListing = moderatingListingIds.includes(listing.id);
@@ -2543,7 +2602,7 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="Registration No.">
+                    <Field label="Vehicle Number">
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Insurance Expiry Date">
@@ -2608,6 +2667,14 @@ export default function PartnerListingsPage() {
                     </Field>
                   </div>
                 </section>
+
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={updateRtoField}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                />
 
                 {form.currentAvailability === 'SOLD' && (
                   <section ref={soldSectionRef} className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5">

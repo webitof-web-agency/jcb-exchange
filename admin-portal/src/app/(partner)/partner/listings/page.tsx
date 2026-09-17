@@ -27,6 +27,8 @@ import {
   sanitizeListingFieldValue,
   sanitizeListingFormData,
 } from '@/lib/listingFormSanitizers';
+import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 
 type ListingFormState = {
   category: string;
@@ -66,6 +68,7 @@ type ListingFormState = {
   soldAt: string;
   selectedBuyerStateId: string;
   selectedBuyerCityId: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 type CategoryOption = {
@@ -115,6 +118,16 @@ type ListingRecord = {
     invoiceNo?: string | null;
     notes?: string | null;
   } | null;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus'];
+    taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null;
+    insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null;
+    hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+  }>;
   media: Array<{
     id: string;
     url: string;
@@ -207,6 +220,7 @@ const initialForm: ListingFormState = {
   soldAt: new Date().toISOString().split('T')[0],
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
+  rtoDetails: emptyListingRtoForm,
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -972,6 +986,7 @@ export default function PartnerListingsPage() {
     setError('');
     setEditingListingId(listing.id);
     const parsedDetails = parseListingDescription(listing.description);
+    const linkedRto = listing.rtoRecords?.[0];
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const matchedBuyerState = availableStates.find((s) => s.name.toLowerCase() === buyerStateName.toLowerCase());
     const initialBuyerStateId = matchedBuyerState ? String(matchedBuyerState.id) : '';
@@ -983,7 +998,7 @@ export default function PartnerListingsPage() {
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationYear: parsedDetails.registrationYear,
-      registrationNo: parsedDetails.registrationNo,
+      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -1003,7 +1018,7 @@ export default function PartnerListingsPage() {
       additionalDescription: listing.additionalDescription || '',
       grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
       selectedStateId: '',
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -1014,6 +1029,21 @@ export default function PartnerListingsPage() {
       soldAt: listing.saleRecord?.soldAt ? new Date(listing.saleRecord.soldAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       selectedBuyerStateId: initialBuyerStateId,
       selectedBuyerCityId: '',
+      rtoDetails: {
+        hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        rtoOffice: linkedRto?.rtoOffice || '',
+        rtoAgentName: linkedRto?.rtoAgentName || '',
+        rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+        vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+      },
     });
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -1059,12 +1089,31 @@ export default function PartnerListingsPage() {
     }));
   };
 
+  const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
+    setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
 
     const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const rtoBase = {
+      registrationNo: sanitizedForm.registrationNo,
+      vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+      vehicleModel: sanitizedForm.model,
+      operatingHours: sanitizedForm.operatingHours,
+      insuranceExpiry: sanitizedForm.insuranceExpiry,
+    };
+    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
 
     if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
       setError('Price must contain digits only.');
@@ -1122,7 +1171,7 @@ export default function PartnerListingsPage() {
       }
     }
 
-    setForm(sanitizedForm);
+    setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
 
     setSaving(true);
 
@@ -1159,6 +1208,7 @@ export default function PartnerListingsPage() {
         grossPower: sanitizedForm.grossPower,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
       if (sanitizedForm.currentAvailability !== 'PENDING') {
@@ -1367,6 +1417,8 @@ export default function PartnerListingsPage() {
                 {filteredListings.map((listing) => {
                   const cover = getCoverMedia(listing);
                   const parsedDetails = parseListingDescription(listing.description);
+                  const linkedRto = listing.rtoRecords?.[0];
+                  const vehicleNumber = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
                   const availability = listingStatusToAvailability(listing.status);
                   const isUpdatingAvailability = updatingAvailabilityIds.includes(listing.id);
                   const isApprovalPending = isApprovalPendingStatus(listing.status);
@@ -1614,7 +1666,7 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="Registration No.">
+                    <Field label="Vehicle Number">
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Insurance Expiry Date">
@@ -1677,15 +1729,18 @@ export default function PartnerListingsPage() {
                         searchable={false}
                         className="bg-[#F8FAFC]"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        {form.currentAvailability === 'PENDING'
-                          ? 'This listing is waiting for approval. Super admin or an authorized employee will publish it after review.'
-                          : 'Availability changes apply to already approved listings only.'}
-                      </p>
                     </Field>
                   </div>
 
-                  {form.currentAvailability === 'SOLD' && (
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={updateRtoField}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                />
+
+                {form.currentAvailability === 'SOLD' && (
                     <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />

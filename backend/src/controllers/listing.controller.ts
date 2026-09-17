@@ -8,8 +8,14 @@ import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibil
 import { PushNotificationService } from '../services/pushNotification.service';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
+import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
+import { syncListingRtoForListing } from '../services/listingRto.service';
 
 const prismaAny = prisma as any;
+const latestListingRtoRecords = {
+  orderBy: { updatedAt: 'desc' },
+  take: 1,
+};
 const REVIEW_PENDING_STATUSES = ['PENDING_APPROVAL', 'CHANGES_REQUESTED'] as const;
 const PUBLIC_LISTING_STATUSES = ['PUBLISHED', 'PAUSED', 'RESERVED', 'SOLD'] as const;
 
@@ -122,6 +128,8 @@ const getPaymentReadyListing = async (listingId: string) =>
       partnerId: true,
       partner: {
         select: {
+          mobile: true,
+          whatsappNumber: true,
           role: true,
           status: true,
           partnerProfile: {
@@ -522,6 +530,7 @@ const getOwnedListingForUser = async (listingId: string, userId: string) => {
         select: { id: true, name: true },
       },
       saleRecord: true,
+      rtoRecords: latestListingRtoRecords,
     },
   });
 
@@ -613,6 +622,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Authentication required.' });
     }
+    const authenticatedUserId = req.user.id;
 
     const isCustomer = req.user.role === 'CUSTOMER';
     if (!isCustomer && req.user.role !== 'PARTNER') {
@@ -667,6 +677,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       grossPower,
       media,
     } = req.body || {};
+    const rtoDetails = req.body?.rtoDetails;
 
     const normalizedCategoryId = normalizeText(categoryId);
     const normalizedBrandName = normalizeText(brandName) || 'Not specified';
@@ -734,43 +745,45 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    const listing = await prismaAny.listing.create({
-      data: {
-        partnerId: req.user.id,
-        categoryId: category.id,
-        brandId: brand.id,
-        modelId: model.id,
-        title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
-        price: parsedPrice,
-        isNegotiable: Boolean(isNegotiable),
-        manufacturingYear: parsedYear,
-        operatingHours: parsedOperatingHours,
-        locationState: normalizedState,
-        locationCity: normalizedCity,
-        address: normalizedAddress || null,
-        condition: normalizedCondition || null,
-        description: normalizedDescription || null,
-        additionalDescription: normalizedAdditionalDescription || null,
-        grossPower: normalizedGrossPower || null,
-        status: initialListingStatus,
-        media: normalizedMedia.length
-          ? {
-              create: normalizedMedia,
-            }
-          : undefined,
-      },
-      include: {
-        media: true,
-        category: {
-          select: { id: true, name: true },
+    const listing = await prismaAny.$transaction(async (tx: any) => {
+      const createdListing = await tx.listing.create({
+        data: {
+          partnerId: authenticatedUserId,
+          categoryId: category.id,
+          brandId: brand.id,
+          modelId: model.id,
+          title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
+          price: parsedPrice,
+          isNegotiable: Boolean(isNegotiable),
+          manufacturingYear: parsedYear,
+          operatingHours: parsedOperatingHours,
+          locationState: normalizedState,
+          locationCity: normalizedCity,
+          address: normalizedAddress || null,
+          condition: normalizedCondition || null,
+          description: normalizedDescription || null,
+          additionalDescription: normalizedAdditionalDescription || null,
+          grossPower: normalizedGrossPower || null,
+          status: initialListingStatus,
+          media: normalizedMedia.length
+            ? {
+                create: normalizedMedia,
+              }
+            : undefined,
         },
-        brand: {
-          select: { id: true, name: true },
+        include: {
+          media: true,
+          category: { select: { id: true, name: true } },
+          brand: { select: { id: true, name: true } },
+          model: { select: { id: true, name: true } },
         },
-        model: {
-          select: { id: true, name: true },
-        },
-      },
+      });
+
+      if (rtoDetails && typeof rtoDetails === 'object') {
+        await syncListingRtoForListing(tx, createdListing.id, rtoDetails);
+      }
+
+      return createdListing;
     });
 
     await setListingSoldAt(listing.id, soldAt);
@@ -872,6 +885,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
           select: { id: true, name: true },
         },
         saleRecord: true,
+        rtoRecords: latestListingRtoRecords,
       },
     });
 
@@ -932,6 +946,7 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
           select: { id: true, name: true },
         },
         saleRecord: true,
+        rtoRecords: latestListingRtoRecords,
       },
     });
 
@@ -1032,6 +1047,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
     const requestBody = req.body || {};
     const hasOwnField = (field: string) => Object.prototype.hasOwnProperty.call(requestBody, field);
+    const rtoDetails = requestBody.rtoDetails;
 
     const {
       categoryId,
@@ -1148,13 +1164,12 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    if (hasMediaField) {
-      await prismaAny.media.deleteMany({
-        where: { listingId },
-      });
-    }
+    const updatedListing = await prismaAny.$transaction(async (tx: any) => {
+      if (hasMediaField) {
+        await tx.media.deleteMany({ where: { listingId } });
+      }
 
-    const updatedListing = await prismaAny.listing.update({
+      const nextListing = await tx.listing.update({
       where: { id: listingId },
       data: {
         categoryId: category.id,
@@ -1191,6 +1206,13 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           select: { id: true, name: true },
         },
       },
+      });
+
+      if (rtoDetails && typeof rtoDetails === 'object') {
+        await syncListingRtoForListing(tx, nextListing.id, rtoDetails);
+      }
+
+      return nextListing;
     });
 
     await setListingSoldAt(updatedListing.id, soldAt);
@@ -2106,6 +2128,37 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         path: '/profile',
         data: { path: '/profile', url: '/profile' },
       }).catch((e) => console.error('Push notification failed:', e));
+
+      const buyer = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { mobile: true, whatsappNumber: true },
+      });
+      void dispatchMarketplaceWhatsApp({
+        eventCode: 'LISTING_PAYMENT_SUBMITTED',
+        relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+        relatedEntityId: payment.id,
+        recipientType: 'CUSTOMER',
+        recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+        payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+      });
+      if (method === 'RAZORPAY') {
+        void dispatchMarketplaceWhatsApp({
+          eventCode: 'LISTING_PAYMENT_APPROVED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'CUSTOMER',
+          recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID' },
+        });
+        void dispatchMarketplaceWhatsApp({
+          eventCode: 'LISTING_PAYMENT_APPROVED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'PARTNER',
+          recipientPhone: listing!.partner?.whatsappNumber || listing!.partner?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID', recipientRole: 'PARTNER' },
+        });
+      }
     } catch (notifErr) {
       console.error('Failed to create payment submission notification:', notifErr);
     }
