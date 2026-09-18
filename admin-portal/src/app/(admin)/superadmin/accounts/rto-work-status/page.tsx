@@ -2,13 +2,14 @@
 
 'use client';
 
-import { ComponentType, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { ComponentType, FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Car, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, FileText, Filter, MoreVertical, Phone, Plus, RefreshCw, Search, Trash2, X, Pencil } from 'lucide-react';
 import api from '@/lib/api';
 import { getAccountCreatePermissions, getAccountDeletePermissions, getAccountExportPermission, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { downloadTableFile } from '@/lib/tabularExport';
+import { isAuthReady } from '@/lib/authHydration';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
@@ -122,6 +123,8 @@ export default function RTOWorkStatusPage() {
   const router = useRouter();
   const pathname = usePathname();
   const currentUser = useAuthStore((state) => state.user);
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const userPermissions = currentUser?.permissions || [];
   const canManageAccounts = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
   const canCreateRto = canManageAccounts || hasAnyPermission(userPermissions, getAccountCreatePermissions('rto-work-status'));
@@ -142,16 +145,20 @@ export default function RTOWorkStatusPage() {
     }
   }, [records]);
 
-  const loadRecords = async () => {
+  const loadRecords = useCallback(async () => {
+    if (!isAuthReady(hasHydrated, isAuthenticated)) return;
+
     try {
       setLoading(true);
       const response = await api.get('/recruitment/admin/rto-records');
       setRecords(response.data?.records || []);
     } catch { setError('Unable to load RTO records.'); } finally { setLoading(false); }
-  };
+  }, [hasHydrated, isAuthenticated]);
 
-  useEffect(() => { void loadRecords(); }, []);
+  useEffect(() => { void loadRecords(); }, [loadRecords]);
   useEffect(() => {
+    if (!isAuthReady(hasHydrated, isAuthenticated)) return;
+
     const loadCategories = async () => {
       try {
         const response = await api.get('/master/categories');
@@ -159,9 +166,11 @@ export default function RTOWorkStatusPage() {
       } catch { setError('Unable to load vehicle categories.'); }
     };
     void loadCategories();
-  }, []);
+  }, [hasHydrated, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthReady(hasHydrated, isAuthenticated)) return;
+
     const loadStates = async () => {
       try {
         const countriesResponse = await api.get('/locations/countries');
@@ -173,7 +182,7 @@ export default function RTOWorkStatusPage() {
       } catch { setError('Unable to load states.'); }
     };
     void loadStates();
-  }, []);
+  }, [hasHydrated, isAuthenticated]);
 
   const statusFilterOptions = useMemo(() => {
     const counts = statuses.reduce((accumulator, status) => ({ ...accumulator, [status]: 0 }), {} as Record<Status, number>);
