@@ -137,6 +137,8 @@ temp_check.txt
 whatsapp-moduleback/
 whatsappfront/
 *whatsapp*
+!backend/src/services/whatsappCampaign.service.ts
+!backend/src/services/whatsappCampaign.service.test.ts
 
 # Keep the JCB Exchange production WhatsApp Cloud API implementation under version control.
 !backend/src/services/whatsappCredentialCrypto.ts
@@ -160,3 +162,7 @@ whatsappfront/
 !backend/prisma/migrations/20260915_whatsapp_foundation/**
 !admin-portal/src/app/(admin)/superadmin/whatsapp/
 !admin-portal/src/app/(admin)/superadmin/whatsapp/**
+
+# This service is required by whatsapp.controller.ts and must ship in clean deployments.
+!backend/src/services/whatsappCampaign.service.ts
+!backend/src/services/whatsappCampaign.service.test.ts

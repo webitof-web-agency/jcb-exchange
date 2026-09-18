@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
+import { normalizeApiBaseUrl } from './apiBaseUrl.mjs';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -8,7 +9,7 @@ if (!configuredApiUrl) {
   throw new Error('NEXT_PUBLIC_API_URL is not set');
 }
 
-export const API_BASE_URL = configuredApiUrl;
+export const API_BASE_URL = normalizeApiBaseUrl(configuredApiUrl);
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
 const api = axios.create({
