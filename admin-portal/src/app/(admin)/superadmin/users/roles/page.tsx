@@ -46,6 +46,15 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'WhatsApp': [
+    {
+      groupName: 'WhatsApp Cloud API',
+      permissions: [
+        { id: 'whatsapp.read', label: 'View WhatsApp' },
+        { id: 'whatsapp.manage', label: 'Manage WhatsApp Settings & Automations' },
+      ],
+    },
+  ],
   'Listings': [
     {
       groupName: 'Listings',
@@ -55,6 +64,28 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
         { id: 'listings.approve', label: 'Approve Listing' },
         { id: 'listings.verify_payment', label: 'Payment Verification' },
         { id: 'listings.delete', label: 'Delete Listing' },
+      ],
+    },
+  ],
+  'Accounts': [
+    {
+      groupName: 'RTO Work Status',
+      permissions: [
+        { id: 'accounts.rto.read', label: 'View RTO Work Status' },
+        { id: 'accounts.rto.create', label: 'Add RTO Work Status' },
+        { id: 'accounts.rto.update', label: 'Edit RTO Work Status' },
+        { id: 'accounts.rto.delete', label: 'Delete RTO Work Status' },
+        { id: 'accounts.rto.export', label: 'Export RTO Work Status' },
+      ],
+    },
+    {
+      groupName: 'Sell Accounts',
+      permissions: [
+        { id: 'accounts.sell.read', label: 'View Sell Accounts' },
+        { id: 'accounts.sell.create', label: 'Add Sell Accounts' },
+        { id: 'accounts.sell.update', label: 'Edit Sell Accounts' },
+        { id: 'accounts.sell.delete', label: 'Delete Sell Accounts' },
+        { id: 'accounts.sell.export', label: 'Export Sell Accounts' },
       ],
     },
   ],

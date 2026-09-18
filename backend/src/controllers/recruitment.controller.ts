@@ -317,14 +317,49 @@ export const getPublicJobs = async (req: Request, res: Response, next: NextFunct
       prisma.job.count({ where }),
     ]);
 
-    const departments = await prisma.jobDepartment.findMany({
-      orderBy: { name: 'asc' },
-    });
+    const publishedJobsWhere: Prisma.JobWhereInput = { status: 'PUBLISHED' };
+    const [departments, employmentTypes, workModes, experienceJobs] = await Promise.all([
+      prisma.jobDepartment.findMany({
+        where: { jobs: { some: publishedJobsWhere } },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, code: true },
+      }),
+      prisma.job.findMany({
+        where: publishedJobsWhere,
+        distinct: ['employmentType'],
+        select: { employmentType: true },
+        orderBy: { employmentType: 'asc' },
+      }),
+      prisma.job.findMany({
+        where: publishedJobsWhere,
+        distinct: ['workMode'],
+        select: { workMode: true },
+        orderBy: { workMode: 'asc' },
+      }),
+      prisma.job.findMany({
+        where: publishedJobsWhere,
+        select: { minExperience: true },
+      }),
+    ]);
+
+    const experienceLevels = new Set<string>();
+    for (const job of experienceJobs) {
+      if (job.minExperience <= 1) experienceLevels.add('FRESHER');
+      if (job.minExperience >= 1 && job.minExperience <= 3) experienceLevels.add('JUNIOR');
+      if (job.minExperience >= 3 && job.minExperience <= 6) experienceLevels.add('MID_LEVEL');
+      if (job.minExperience >= 5) experienceLevels.add('SENIOR');
+    }
 
     res.status(200).json({
       success: true,
       jobs,
       departments,
+      filterOptions: {
+        departments,
+        employmentTypes: employmentTypes.map((item) => item.employmentType),
+        workModes: workModes.map((item) => item.workMode),
+        experienceLevels: ['FRESHER', 'JUNIOR', 'MID_LEVEL', 'SENIOR'].filter((level) => experienceLevels.has(level)),
+      },
       pagination: {
         total,
         page: pageNum,

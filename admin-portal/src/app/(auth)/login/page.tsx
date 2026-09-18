@@ -7,8 +7,9 @@ import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { resolveLoginRedirect } from '@/lib/loginRedirect';
 import { ACCOUNT_INACTIVE_CODE, ACCOUNT_REVOKED_CODE } from '@/lib/sessionAccess';
 import { getEmployeeLandingPath, resolveEmployeeRouteRedirect } from '@/lib/portalRoutes';
 import PortalBrand from '@/components/layout/PortalBrand';
@@ -27,9 +28,9 @@ type AuthenticatedPortalUser = {
 };
 
 function LoginPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const logout = useAuthStore((state) => state.logout);
   const { t } = useTranslation();
 
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -65,45 +66,27 @@ function LoginPageInner() {
   const redirectAfterLogin = useCallback((token: string, user: AuthenticatedPortalUser, nextRoute?: string | null) => {
     setAuth(token, user);
 
-    if (user.role === 'SUPER_ADMIN') {
+    const destination = resolveLoginRedirect(user, nextRoute);
+    if (destination) {
       showLoginSuccessToast(user);
-      router.push(nextRoute || '/superadmin/dashboard');
-      return;
-    }
-
-    if (user.role === 'ADMIN') {
-      showLoginSuccessToast(user);
-      router.push(nextRoute || '/admin/dashboard');
+      window.location.assign(destination);
       return;
     }
 
     if (user.role === 'EMPLOYEE') {
       showLoginSuccessToast(user);
-      router.push(resolveEmployeeRouteRedirect(nextRoute || '', user.permissions) || getEmployeeLandingPath(user.permissions));
-      return;
-    }
-
-    if (user.role === 'PARTNER') {
-      showLoginSuccessToast(user);
-      if (
-        user.accountStatus === 'ACTIVE' &&
-        user.onboardingStatus === 'APPROVED' &&
-        user.kycStatus === 'APPROVED'
-      ) {
-        router.push(nextRoute || '/partner/dashboard');
-      } else {
-        router.push('/partner/kyc');
-      }
+      window.location.assign(resolveEmployeeRouteRedirect(nextRoute || '', user.permissions) || getEmployeeLandingPath(user.permissions));
       return;
     }
 
     if (user.role === 'CUSTOMER') {
-      router.push('/partner/kyc');
+      logout();
+      setError('Customer accounts use the main JCB Exchange website, not the admin portal.');
       return;
     }
 
     setError(t('authPortal.portalAccessOnly'));
-  }, [router, setAuth, showLoginSuccessToast, t]);
+  }, [logout, setAuth, showLoginSuccessToast, t]);
   useEffect(() => {
     const handoffToken = searchParams.get('token');
     const nextRoute = searchParams.get('next');

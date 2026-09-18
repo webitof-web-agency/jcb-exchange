@@ -84,6 +84,37 @@ const formatDateOnly = (value?: string | null) => {
   return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+const formatRegistrationNumber = (value?: string | null) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+
+  const compact = normalized.replace(/[\s-]+/g, '');
+  const standardMatch = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+  if (standardMatch) {
+    return [standardMatch[1], standardMatch[2], standardMatch[3], standardMatch[4]].join('-');
+  }
+
+  const stateAndNumberMatch = compact.match(/^([A-Z]{2})(\d{1,2})(\d{1,4})$/);
+  if (stateAndNumberMatch) {
+    return [stateAndNumberMatch[1], stateAndNumberMatch[2], stateAndNumberMatch[3]].join('-');
+  }
+
+  return normalized.replace(/[\s-]+/g, '-');
+};
+
+const formatAddressWithoutPinCode = (address?: string | null, pinCode?: string | null) => {
+  const normalizedAddress = String(address || '').trim();
+  const normalizedPinCode = String(pinCode || '').trim();
+  if (!normalizedAddress || !normalizedPinCode) return normalizedAddress;
+
+  const escapedPinCode = normalizedPinCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return normalizedAddress
+    .replace(new RegExp(`\\s*(?:,|-)\\s*${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(new RegExp(`\\s+${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(/[\s,-]+$/, '')
+    .trim();
+};
+
 const getWhatsappUrl = (phoneNumber?: string | null) => {
   const normalizedDigits = phoneNumber?.replace(/\D/g, '') || '';
   if (!normalizedDigits) {
@@ -372,6 +403,13 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const detailPinCode = listing.pinCode || parsedDetails.pinCode;
   const detailLandmark = listing.nearbyLandmark || parsedDetails.nearbyLandmark;
   const detailInsuranceExpiry = listing.insuranceExpiry || parsedDetails.insuranceExpiry;
+  const detailAddress = formatAddressWithoutPinCode(
+    listing.address || parsedDetails.address || parsedDetails.district,
+    detailPinCode,
+  );
+  const detailRegistrationNumber = formatRegistrationNumber(
+    listing.vehicleCompliance?.vehicleNumber || detailRegistrationNo,
+  );
 
   const listingUrl =
     typeof window !== 'undefined'
@@ -972,13 +1010,13 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 >
                   <SpecsGrid
                     items={[
-                      { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: listing.vehicleCompliance?.vehicleNumber || detailRegistrationNo || t('machineDetails.na') },
+                      { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
                       { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
                       { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
                       { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
                       { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
                       { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
-                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: listing.address || parsedDetails.address || parsedDetails.district || t('machineDetails.na') },
+                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: detailAddress || t('machineDetails.na') },
                       { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
                       { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
                     ]}
@@ -1005,7 +1043,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           </div>
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">Vehicle Number</p>
-                            <p className="text-lg font-extrabold tracking-widest text-gray-900">{listing.vehicleCompliance.vehicleNumber}</p>
+                            <p className="text-lg font-extrabold tracking-widest text-gray-900">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
                           </div>
                         </div>
                       )}

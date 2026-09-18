@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
 import { getAppSettings } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
 
 const prismaAny = prisma as any;
 
@@ -729,6 +730,18 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       return res.status(403).json({ error: 'Only customer accounts can create enquiries.' });
     }
 
+    const primeEligibility = await assertCustomerPrimeEligibility({
+      userId: customer.id,
+      role: customer.role,
+      feature: enquiryType as 'CALL' | 'WHATSAPP',
+    });
+    if (!primeEligibility.isAllowed) {
+      return res.status(403).json({
+        error: `An active Prime subscription is required for ${enquiryType === 'CALL' ? 'Call' : 'WhatsApp'} access.`,
+        code: 'PRIME_SUBSCRIPTION_REQUIRED',
+      });
+    }
+
     let listing: any = null;
 
     if (listingId) {
@@ -936,6 +949,38 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           path: '/leads',
         },
       }).catch((err) => console.error('Enquiry FCM push error:', err));
+    }
+
+    // Keep the Superadmin informed even when the public lead was routed to a partner.
+    // This is internal audit data; it never blocks the customer's enquiry.
+    try {
+      const superAdmin = await prismaAny.user.findFirst({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
+      const route = leadRecipient.routingMode === 'SELLER'
+        ? 'PARTNER'
+        : leadRecipient.fallbackApplied
+          ? 'FALLBACK_SUPER_ADMIN'
+          : 'SUPER_ADMIN';
+      await prismaAny.leadActivity.create({
+        data: {
+          leadId: lead.id,
+          type: 'ROUTING_UPDATE',
+          actorId: superAdmin?.id || null,
+          title: 'Lead routing recorded',
+          content: route === 'PARTNER'
+            ? 'Lead was routed to the partner; Superadmin copy recorded.'
+            : `Lead was routed to Superadmin${route === 'FALLBACK_SUPER_ADMIN' ? ' because partner contact was unavailable.' : '.'}`,
+          metadata: { route, primaryRecipientUserId: leadRecipient.recipientUserId, superadminCopied: Boolean(superAdmin?.id) },
+        },
+      });
+      if (superAdmin?.id && superAdmin.id !== leadRecipient.recipientUserId) {
+        PushNotificationService.sendToUser(superAdmin.id, {
+          title: 'Lead routed to partner',
+          body: `${customer.name || 'A customer'} initiated a ${enquiryType} enquiry for ${listing.title || 'a listing'}.`,
+          data: { path: '/superadmin/enquiries' },
+        }).catch((err) => console.error('Superadmin lead copy FCM error:', err));
+      }
+    } catch (err) {
+      console.error('Lead routing audit error:', err);
     }
 
     return res.status(201).json({

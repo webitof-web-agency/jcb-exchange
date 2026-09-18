@@ -4,6 +4,7 @@ export const employeeBrandsPermissions = ['brands.read', 'brands.create', 'brand
 export const employeeFooterPermissions = ['footer.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
 
+import { accountAnyPermissions } from '@/lib/accountsPermissions';
 import {
   recruitmentAnyPermissions,
 } from '@/lib/recruitmentPermissions';
@@ -64,6 +65,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/recurrence',
     employeePath: '/employee/recurrence',
     permissions: ['recurrence.manage'],
+  },
+  {
+    superadminPath: '/superadmin/accounts',
+    employeePath: '/employee/accounts',
+    permissions: accountAnyPermissions,
   },
   {
     superadminPath: '/superadmin/analytics',

@@ -1,6 +1,38 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 
+type InvoiceSettings = {
+  companyName: string | null;
+  gstin: string | null;
+  address: string | null;
+  state: string | null;
+  termsAndConditions: string | null;
+};
+
+type InvoicePayment = {
+  memberName: string;
+  planName: string;
+  transactionRef?: string | null;
+  customerEmail?: string | null;
+  customerMobile?: string | null;
+  customerState?: string | null;
+};
+
+type InvoicePDFTemplateProps = {
+  invoiceSettings: InvoiceSettings;
+  payment: InvoicePayment | null;
+  logoUrl?: string | null;
+  taxableValue: number;
+  totalAmount: number;
+  gstRate: number;
+  isIntraState: boolean;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  invoiceNumber: string;
+  formattedDate: string;
+};
+
 const styles = StyleSheet.create({
   page: {
     padding: 30,
@@ -302,21 +334,20 @@ const numberToWordsInr = (num: number): string => {
   return 'Rupees ' + res.trim() + ' Only';
 };
 
-export const InvoicePDFTemplate = ({ 
-  invoiceSettings, 
-  payment, 
+export const InvoicePDFTemplate = ({
+  invoiceSettings,
+  payment,
   logoUrl,
   taxableValue,
   totalAmount,
   gstRate,
-  totalTax,
   isIntraState,
   cgstAmount,
   sgstAmount,
   igstAmount,
   invoiceNumber,
-  formattedDate 
-}: any) => {
+  formattedDate,
+}: InvoicePDFTemplateProps) => {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -325,8 +356,6 @@ export const InvoicePDFTemplate = ({
         <View style={styles.headerRow}>
           <View style={styles.logoContainer}>
             {logoUrl ? (
-              // Use @ts-ignore for the image src if it's external to avoid type warnings
-              // @ts-ignore
               <Image src={logoUrl} style={styles.logo} />
             ) : (
               <View style={styles.fallbackLogo}>

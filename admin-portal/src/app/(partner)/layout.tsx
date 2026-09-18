@@ -642,7 +642,7 @@ export default function PartnerLayout({
             </div>
           </div>
         </header>
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">{children}</div>
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

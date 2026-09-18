@@ -6,8 +6,6 @@ import {
   Briefcase,
   MapPin,
   Clock,
-  Building2,
-  Users,
   Calendar,
   IndianRupee,
   CheckCircle2,
@@ -17,15 +15,53 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
+interface JobDepartment {
+  name?: string | null;
+}
+
+interface JobSummary {
+  id: string;
+  slug: string;
+  title: string;
+  locationCity?: string | null;
+  locationState?: string | null;
+  employmentType: string;
+}
+
+interface JobDetail {
+  id: string;
+  slug: string;
+  title: string;
+  jobCode?: string | null;
+  department?: JobDepartment | null;
+  locationAddress?: string | null;
+  locationCity?: string | null;
+  locationState?: string | null;
+  employmentType: string;
+  workMode: string;
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  vacancies: number;
+  deadline?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  responsibilities?: string[] | null;
+  requirements?: string[] | null;
+  salaryVisibility: boolean;
+  minSalary?: number | null;
+  maxSalary?: number | null;
+  postedAt?: string | null;
+}
+
 interface JobDetailClientProps {
-  job: any;
-  relatedJobs: any[];
+  job: JobDetail;
+  relatedJobs: JobSummary[];
 }
 
 export default function JobDetailClient({ job, relatedJobs }: JobDetailClientProps) {
   const { t } = useTranslation();
 
-  const formatSalary = (min: number | null, max: number | null, currency = 'INR') => {
+  const formatSalary = (min: number | null | undefined, max: number | null | undefined) => {
     const minVal = min ? Number(min) : null;
     const maxVal = max ? Number(max) : null;
     if (!minVal && !maxVal) return t('careers.notDisclosed', 'Not Disclosed');
@@ -224,7 +260,7 @@ export default function JobDetailClient({ job, relatedJobs }: JobDetailClientPro
                     <span className="text-gray-400 block text-[10px] sm:text-[11px] uppercase font-bold tracking-wider mb-0.5">{t('careers.offeredCompensation', 'Offered Compensation')}</span>
                     <span className="font-extrabold text-gray-900 text-base sm:text-lg">
                       {job.salaryVisibility
-                        ? formatSalary(job.minSalary, job.maxSalary, job.currency)
+                          ? formatSalary(job.minSalary, job.maxSalary)
                         : t('careers.notDisclosed', 'Not Disclosed')}
                     </span>
                   </div>
@@ -268,7 +304,7 @@ export default function JobDetailClient({ job, relatedJobs }: JobDetailClientPro
                 </h3>
 
                 <div className="space-y-3">
-                  {relatedJobs.map((rel: any) => (
+                  {relatedJobs.map((rel) => (
                     <Link
                       key={rel.id}
                       href={`/jobs/${rel.slug}`}

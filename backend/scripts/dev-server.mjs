@@ -142,7 +142,7 @@ const checkExistingApi = (targetPort) =>
       {
         host: 'localhost',
         port: Number(targetPort),
-        path: '/api/auth/setup-status',
+        path: '/health',
         method: 'GET',
         timeout: 2500,
       },
@@ -189,10 +189,16 @@ const printManagedStatus = async () => {
   const pidRecord = readPidFile();
   const apiRunning = await checkExistingApi(port);
 
-  if (pidRecord?.pid && isProcessRunning(pidRecord.pid)) {
+  if (pidRecord?.pid && isProcessRunning(pidRecord.pid) && apiRunning) {
     console.log(
       `Managed backend dev server is running at http://${host}:${pidRecord.port} (PID ${pidRecord.pid}).`
     );
+    return;
+  }
+
+  if (pidRecord?.pid && isProcessRunning(pidRecord.pid)) {
+    console.log(`Managed backend process (PID ${pidRecord.pid}) exists, but the API is not serving on port ${pidRecord.port}.`);
+    console.log('Run `npm run dev:stop`, then `npm run dev` to restart it.');
     return;
   }
 

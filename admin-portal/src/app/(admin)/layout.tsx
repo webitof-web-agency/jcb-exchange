@@ -10,10 +10,12 @@ import PortalBrand from '@/components/layout/PortalBrand';
 import BrandLoader from '@/components/ui/BrandLoader';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
+import { accountsNavItems } from '@/lib/accountsPermissions';
+import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3 } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet } from 'lucide-react';
 import { MessageCircle } from 'lucide-react';
 import {
   employeeBrandsPermissions,
@@ -86,6 +88,16 @@ const getRequiredPermissionsForPath = (pathname: string) => {
 
   if (pathname === '/employee/brands' || pathname === '/superadmin/brands') {
     return employeeBrandsPermissions;
+  }
+
+  const matchedAccount = accountsNavItems.find((item) =>
+    pathname === `/employee/accounts/${item.key}` ||
+    pathname.startsWith(`/employee/accounts/${item.key}/`) ||
+    pathname === `/superadmin/accounts/${item.key}` ||
+    pathname.startsWith(`/superadmin/accounts/${item.key}/`)
+  );
+  if (matchedAccount) {
+    return matchedAccount.permissions;
   }
 
   const matchedModule = employeeModuleNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
@@ -169,6 +181,22 @@ export default function AdminLayout({
     ? recruitmentMenuExpansion.value
     : null;
   const isRecruitmentDropdownExpanded = isRecruitmentMenuExpanded ?? isRecruitmentSectionActive;
+
+  const visibleAccountsNavItems = useMemo(
+    () => (isSuperAdmin
+      ? accountsNavItems
+      : accountsNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions))),
+    [isSuperAdmin, userPermissions]
+  );
+  const isAccountsSectionActive = pathname.startsWith('/superadmin/accounts') || pathname.startsWith('/employee/accounts') || pathname.startsWith('/admin/accounts');
+  const [accountsMenuExpansion, setAccountsMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const isAccountsMenuExpanded = accountsMenuExpansion.pathname === pathname
+    ? accountsMenuExpansion.value
+    : null;
+  const isAccountsDropdownExpanded = isAccountsMenuExpanded ?? isAccountsSectionActive;
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -417,7 +445,20 @@ export default function AdminLayout({
     );
   }
 
-  const visibleNavItems = isSuperAdmin ? navItems : isEmployee ? employeeNavItems : adminNavItems;
+  const baseVisibleNavItems = isSuperAdmin ? navItems : isEmployee ? employeeNavItems : adminNavItems;
+  const uniqueBaseVisibleNavItems = baseVisibleNavItems.filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
+  );
+  const accountsMenuItem = {
+    href: `${isSuperAdmin ? '/superadmin' : isEmployee ? '/employee' : '/admin'}/accounts`,
+    labelKey: 'admin.accounts',
+    defaultLabel: 'Accounts',
+    icon: Wallet,
+    kind: 'accounts' as const,
+  };
+  const visibleNavItems = visibleAccountsNavItems.length > 0
+    ? insertAccountsNavItem(uniqueBaseVisibleNavItems, accountsMenuItem)
+    : uniqueBaseVisibleNavItems;
   const portalTitle = isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle');
   const displayName = user.name || (isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle'));
   const translatedRoleLabel =
@@ -431,6 +472,12 @@ export default function AdminLayout({
   const pageTitleMap: Record<string, string> = {
     '/superadmin/dashboard': t('admin.superAdminDashboard'),
     '/superadmin/analytics': t('admin.analytics'),
+    '/superadmin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/superadmin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/admin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/admin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/employee/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/employee/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
@@ -527,7 +574,7 @@ export default function AdminLayout({
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-5 sm:p-6 border-b border-white/10">
           <div>
             <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} subtitle={portalTitle} />
@@ -545,6 +592,7 @@ export default function AdminLayout({
             .map((item) => {
               const isActive = pathname === item.href;
               const Icon = item.icon;
+              const isAccountsMenu = item.kind === 'accounts';
 
               let badgeCount = 0;
               if (item.href.includes('enquiries')) {
@@ -556,33 +604,86 @@ export default function AdminLayout({
               else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
 
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
-                    ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                    }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+                <div key={item.href} className="space-y-2">
+                  {isAccountsMenu ? (
+                    <div className="space-y-1 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setAccountsMenuExpansion({
+                          pathname,
+                          value: !isAccountsDropdownExpanded,
+                        })}
+                        className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isAccountsSectionActive
+                            ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                            : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+                          }`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <Wallet className={`h-5 w-5 ${isAccountsSectionActive ? 'text-[#FFC107]' : ''}`} />
+                          <span>{t('admin.accounts', 'Accounts')}</span>
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${isAccountsDropdownExpanded ? 'rotate-180' : ''} ${isAccountsSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
+                            }`}
+                        />
+                      </button>
+
+                      {isAccountsDropdownExpanded ? (
+                        <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                          {visibleAccountsNavItems.map((subItem) => {
+                            const prefix = isEmployee ? '/employee' : isAdmin ? '/admin' : '/superadmin';
+                            const href = `${prefix}/accounts/${subItem.key}`;
+                            const isSubActive = pathname === href || pathname.startsWith(`${href}/`);
+
+                            return (
+                              <Link
+                                key={subItem.key}
+                                href={href}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isSubActive
+                                    ? 'bg-[#FFC107]/10 font-semibold text-white'
+                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                                  }`}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full ${isSubActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
+                                <span>{t(subItem.labelKey, subItem.defaultLabel)}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {!isAccountsMenu ? (
+                    <Link
+                      href={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
+                        ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+                          {badgeCount > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                        <span>{t(item.labelKey)}</span>
+                      </div>
                       {badgeCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                          {badgeCount > 99 ? '99+' : badgeCount}
                         </span>
                       )}
-                    </div>
-                    <span>{t(item.labelKey)}</span>
-                  </div>
-                  {badgeCount > 0 && (
-                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                      {badgeCount > 99 ? '99+' : badgeCount}
-                    </span>
-                  )}
-                </Link>
+                    </Link>
+                  ) : null}
+                </div>
               );
             })}
 
@@ -831,7 +932,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-100 overscroll-contain pb-12 sm:pb-16 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

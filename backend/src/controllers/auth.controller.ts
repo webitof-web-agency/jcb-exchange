@@ -1313,9 +1313,8 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
       return res.status(401).json({ error: 'Authentication required.' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-    });
+    // Always load role and direct permissions so session refresh cannot erase access.
+    const user = await fetchAuthenticatedUserById(req.user.id);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });

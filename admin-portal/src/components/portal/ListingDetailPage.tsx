@@ -31,6 +31,7 @@ import {
   ChevronRight,
   Camera,
   Play,
+  Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -42,7 +43,7 @@ import {
   uploadListingMediaToServer,
   type UploadedFileResult,
 } from '@/lib/fileUpload';
-import { formatPortalCurrency, formatPortalDate, formatPortalDateTime, formatPortalLabel } from '@/lib/partnerPortal';
+import { formatPortalCurrency, formatPortalDate, formatPortalLabel } from '@/lib/partnerPortal';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
@@ -239,6 +240,43 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
   return parsed;
 };
 
+const formatRegistrationNumber = (value?: string | null) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+
+  const compact = normalized.replace(/[\s-]+/g, '');
+  const standardMatch = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+  if (standardMatch) return [standardMatch[1], standardMatch[2], standardMatch[3], standardMatch[4]].join('-');
+
+  const stateAndNumberMatch = compact.match(/^([A-Z]{2})(\d{1,2})(\d{1,4})$/);
+  if (stateAndNumberMatch) return [stateAndNumberMatch[1], stateAndNumberMatch[2], stateAndNumberMatch[3]].join('-');
+
+  return normalized.replace(/[\s-]+/g, '-');
+};
+
+const formatAddressWithoutPinCode = (address?: string | null, pinCode?: string | null) => {
+  const normalizedAddress = String(address || '').trim();
+  const normalizedPinCode = String(pinCode || '').trim();
+  if (!normalizedAddress || !normalizedPinCode) return normalizedAddress;
+
+  const escapedPinCode = normalizedPinCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return normalizedAddress
+    .replace(new RegExp(`\\s*(?:,|-)\\s*${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(new RegExp(`\\s+${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(/[\s,-]+$/, '')
+    .trim();
+};
+
+const formatLocationSummary = (address?: string | null, city?: string | null, state?: string | null, pinCode?: string | null) => {
+  const cleanAddress = formatAddressWithoutPinCode(address, pinCode);
+  const addressText = cleanAddress.toLowerCase();
+  const locationParts = [city, state]
+    .map((part) => String(part || '').trim())
+    .filter((part) => part && !addressText.includes(part.toLowerCase()));
+
+  return [cleanAddress, ...locationParts].filter(Boolean).join(', ');
+};
+
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-800 border-gray-200',
   PENDING_APPROVAL: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -410,7 +448,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     selectedStateId: '',
     locationCity: listing.locationCity || '',
     selectedCityId: '',
-    address: listing.address || parsed.address || parsed.district || '',
+    address: formatAddressWithoutPinCode(listing.address || parsed.address || parsed.district, parsed.pinCode),
     pinCode: parsed.pinCode || '',
     nearbyLandmark: parsed.nearbyLandmark || '',
     condition: listing.condition || '',
@@ -491,6 +529,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [savingSection, setSavingSection] = useState<DetailSection | null>(null);
   const [categories, setCategories] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -517,6 +557,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     currentUserRole === 'SUPER_ADMIN' ||
     currentUserRole === 'ADMIN' ||
     hasPermission(user?.permissions, 'listings.update');
+  const canDelete =
+    currentUserRole === 'SUPER_ADMIN' ||
+    currentUserRole === 'PARTNER' ||
+    currentUserRole === 'CUSTOMER' ||
+    (currentUserRole === 'EMPLOYEE' && hasPermission(user?.permissions, 'listings.delete'));
   const backHref = isSuperAdmin ? '/superadmin/listings' : isEmployee ? '/employee/listings' : '/partner/listings';
   const effectiveSelectedStateId =
     form?.selectedStateId ||
@@ -781,6 +826,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         next.registrationYear = baseForm.registrationYear;
         next.insuranceExpiry = baseForm.insuranceExpiry;
         next.previousOwners = baseForm.previousOwners;
+        next.rtoDetails = baseForm.rtoDetails;
       }
 
       return next;
@@ -940,6 +986,21 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     }
   };
 
+  const handleDeleteListing = async () => {
+    if (!listing || isDeleting) return;
+
+    try {
+      setIsDeleting(true);
+      setError(null);
+      await api.delete(`/listings/${listing.id}`);
+      router.push(backHref);
+    } catch (deleteError: unknown) {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setError(getErrorMessage(deleteError, t('listingDetails.deleteFailed', 'Failed to delete listing.')));
+    }
+  };
+
   const handlePartnerMediaSelection = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) {
@@ -1048,14 +1109,27 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full bg-[#FFC107] px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
-                >
-                  <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  <span>{t('listingDetails.edit')}</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full bg-[#FFC107] px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
+                  >
+                    <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                    <span>{t('listingDetails.edit')}</span>
+                  </button>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-rose-700 shadow-sm transition hover:bg-rose-100"
+                      title={t('listingDetails.delete', 'Delete listing')}
+                    >
+                      <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      <span className="hidden sm:inline">{t('listingDetails.delete', 'Delete')}</span>
+                    </button>
+                  ) : null}
+                </>
               )}
             </div>
           ) : null}
@@ -1063,7 +1137,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       );
     }
     return () => setCustomHeader(null);
-  }, [listing, form, isEditing, savingSection, uploadingMedia, backHref, canEdit, setCustomHeader, resetSection, updateForm, saveSection, clearPendingMediaUploads, t]);
+  }, [listing, form, isEditing, savingSection, uploadingMedia, backHref, canEdit, canDelete, setCustomHeader, resetSection, updateForm, saveSection, clearPendingMediaUploads, t]);
 
   if (loading) {
     return (
@@ -1672,9 +1746,16 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     ) : (
                       <>
                         <p className="text-sm font-semibold text-gray-900">
-                          {[listing.address || parsedDetails.address || parsedDetails.district, listing.locationCity, listing.locationState].filter(Boolean).join(', ')}
-                          {parsedDetails.pinCode ? ` - ${parsedDetails.pinCode}` : ''}
+                          {formatLocationSummary(
+                            listing.address || parsedDetails.address || parsedDetails.district,
+                            listing.locationCity,
+                            listing.locationState,
+                            parsedDetails.pinCode,
+                          )}
                         </p>
+                        {parsedDetails.pinCode ? (
+                          <p className="mt-1 text-xs font-medium text-gray-500">{t('listingDetails.pinCode')}: {parsedDetails.pinCode}</p>
+                        ) : null}
                         {parsedDetails.nearbyLandmark ? (
                           <p className="mt-0.5 text-xs text-gray-500">{t('listingDetails.nearLabel', { landmark: parsedDetails.nearbyLandmark })}</p>
                         ) : null}
@@ -1689,6 +1770,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <div>
                   <p className="text-xs font-medium text-gray-500">{t('listingDetails.totalViews')}</p>
                   <p className="text-sm font-semibold text-gray-900">{t('listingDetails.totalViewsValue', { count: listing.views || 0 })}</p>
+                </div>
+              </li>
+
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 text-gray-400" />
+                <div>
+                  <p className="text-xs font-medium text-gray-500">{t('listingDetails.availability', 'Availability')}</p>
+                  <p className="text-sm font-semibold text-gray-900">{formatPortalLabel(listingStatusToAvailability(listing.status))}</p>
                 </div>
               </li>
 
@@ -1839,7 +1928,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.vehicleNumber', 'Vehicle Number')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{listing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{formatRegistrationNumber(listing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo) || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationYear')}</span>
@@ -1847,7 +1936,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><ShieldCheck className="h-4 w-4 text-gray-400" /> {t('listingDetails.insuranceExpiry')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.insuranceExpiry ? formatPortalDateTime(parsedDetails.insuranceExpiry).split(',')[0] : t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.insuranceExpiry ? formatPortalDate(parsedDetails.insuranceExpiry) : t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Info className="h-4 w-4 text-gray-400" /> {t('listingDetails.numberOfOwners')}</span>
@@ -1889,8 +1978,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                         ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],
                         ['HSRP', statusBadge(rto.hsrpStatus, 'hsrp')],
                         rto.rtoOffice ? ['RTO Office', <span key="ro" className="text-sm font-semibold text-gray-900">{rto.rtoOffice}</span>] : null,
-                        rto.rtoExpenses ? ['RTO Expenses', <span key="re" className="text-sm font-semibold text-gray-900">₹{Number(rto.rtoExpenses).toLocaleString('en-IN')}</span>] : null,
-                        rto.vehicleMaintenanceCost ? ['Maintenance Cost', <span key="mc" className="text-sm font-semibold text-gray-900">₹{Number(rto.vehicleMaintenanceCost).toLocaleString('en-IN')}</span>] : null,
+                        rto.rtoAgentName ? ['RTO Agent Name', <span key="ra" className="text-sm font-semibold text-gray-900">{rto.rtoAgentName}</span>] : null,
+                        rto.rtoExpenses != null ? ['RTO Expenses', <span key="re" className="text-sm font-semibold text-gray-900">{formatPortalCurrency(Number(rto.rtoExpenses))}</span>] : null,
+                        rto.vehicleMaintenanceCost != null ? ['Maintenance Cost', <span key="mc" className="text-sm font-semibold text-gray-900">{formatPortalCurrency(Number(rto.vehicleMaintenanceCost))}</span>] : null,
                       ] as ([string, React.ReactNode] | null)[]).filter((item): item is [string, React.ReactNode] => item !== null).map((item) => (
                         <div key={String(item[0])} className="flex items-center justify-between border-b border-gray-50 py-2">
                           <span className="text-sm text-gray-500">{item[0]}</span>
@@ -1905,6 +1995,39 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
           </div>
         </div>
       </div>
+
+      {isDeleteDialogOpen && listing ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <h3 className="mt-4 text-lg font-bold text-gray-900">{t('listingDetails.deleteListing', 'Delete listing')}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-600">
+              {t('listingDetails.deleteListingConfirmation', 'This action cannot be undone. The listing and its uploaded media will be removed.')}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                disabled={isDeleting}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+              >
+                {t('listingDetails.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteListing()}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? t('listingDetails.deleting', 'Deleting...') : t('listingDetails.delete', 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isLightboxOpen && activeMedia && activeMedia.type !== 'VIDEO' && (
         <div 

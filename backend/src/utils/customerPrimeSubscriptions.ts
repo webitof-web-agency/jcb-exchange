@@ -185,7 +185,13 @@ export const assertCustomerPrimeEligibility = async ({
   feature: 'CALL' | 'WHATSAPP' | 'SELL_LISTING';
 }) => {
   const accessPayload = await getCustomerPrimeAccessPayload({ userId, role });
-  const requiresPrime = accessPayload.gatingEnabled;
+  const requiresPrime = accessPayload.gatingEnabled && (
+    feature === 'CALL'
+      ? accessPayload.settings.requireForCall
+      : feature === 'WHATSAPP'
+        ? accessPayload.settings.requireForWhatsapp
+        : accessPayload.settings.requireForSellListing
+  );
 
   return {
     ...accessPayload,

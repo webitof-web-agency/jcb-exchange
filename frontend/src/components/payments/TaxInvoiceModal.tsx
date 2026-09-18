@@ -155,8 +155,7 @@ export default function TaxInvoiceModal({ isOpen, onClose, payment }: TaxInvoice
           taxableValue={taxableValue}
           totalAmount={totalAmount}
           gstRate={gstRate}
-          totalTax={totalTax}
-          isIntraState={isIntraState}
+           isIntraState={isIntraState}
           cgstAmount={cgstAmount}
           sgstAmount={sgstAmount}
           igstAmount={igstAmount}

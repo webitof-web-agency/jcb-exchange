@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Briefcase,
@@ -11,7 +13,6 @@ import {
   Filter,
   Users,
   Calendar,
-  IndianRupee,
   ChevronRight,
   Sparkles,
   ArrowRight,
@@ -23,6 +24,76 @@ interface JobDepartment {
   id: string;
   name: string;
   code: string;
+}
+
+interface JobFilterOptions {
+  departments: JobDepartment[];
+  employmentTypes: string[];
+  workModes: string[];
+  experienceLevels: string[];
+}
+
+interface FilterSelectProps {
+  label: string;
+  value: string;
+  placeholder: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}
+
+function FilterSelect({ label, value, placeholder, options, onChange }: FilterSelectProps) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const selectedOption = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={`flex w-full items-center justify-between rounded-xl border bg-gray-50 px-3 py-2 text-left text-sm text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-amber-500 ${open ? 'border-amber-500 bg-white' : 'border-gray-200 hover:border-gray-300'}`}
+      >
+        <span className="truncate">{selectedOption?.label || placeholder}</span>
+        <ChevronRight size={16} className={`ml-2 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-900 bg-white p-1 shadow-lg" role="listbox">
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => { onChange(''); setOpen(false); }}
+            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 ${!value ? 'font-medium text-gray-900' : 'text-gray-600'}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((option) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              key={option.value}
+              onClick={() => { onChange(option.value); setOpen(false); }}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 ${option.value === value ? 'bg-amber-50 font-semibold text-gray-900' : 'text-gray-700'}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface JobItem {
@@ -55,14 +126,18 @@ interface JobItem {
 export default function JobsPage() {
   const { t } = useTranslation();
   const [jobs, setJobs] = useState<JobItem[]>([]);
-  const [departments, setDepartments] = useState<JobDepartment[]>([]);
+  const [filterOptions, setFilterOptions] = useState<JobFilterOptions>({
+    departments: [],
+    employmentTypes: [],
+    workModes: [],
+    experienceLevels: [],
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedEmploymentType, setSelectedEmploymentType] = useState('');
   const [selectedWorkMode, setSelectedWorkMode] = useState('');
   const [selectedExperience, setSelectedExperience] = useState('');
@@ -79,7 +154,6 @@ export default function JobsPage() {
 
       if (searchTerm.trim()) params.q = searchTerm.trim();
       if (selectedDepartment) params.departmentId = selectedDepartment;
-      if (selectedLocation.trim()) params.location = selectedLocation.trim();
       if (selectedEmploymentType) params.employmentType = selectedEmploymentType;
       if (selectedWorkMode) params.workMode = selectedWorkMode;
       if (selectedExperience) params.experienceLevel = selectedExperience;
@@ -87,11 +161,16 @@ export default function JobsPage() {
       const res = await api.get('/recruitment/public/jobs', { params });
       if (res.data?.success) {
         setJobs(res.data.jobs || []);
-        if (res.data.departments) {
-          setDepartments(res.data.departments);
+        if (res.data.filterOptions) {
+          setFilterOptions({
+            departments: Array.isArray(res.data.filterOptions.departments) ? res.data.filterOptions.departments : [],
+            employmentTypes: Array.isArray(res.data.filterOptions.employmentTypes) ? res.data.filterOptions.employmentTypes : [],
+            workModes: Array.isArray(res.data.filterOptions.workModes) ? res.data.filterOptions.workModes : [],
+            experienceLevels: Array.isArray(res.data.filterOptions.experienceLevels) ? res.data.filterOptions.experienceLevels : [],
+          });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load jobs:', err);
       setError(t('careers.unableToLoad', 'Unable to load job postings right now. Please try again.'));
     } finally {
@@ -101,6 +180,8 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
+    // The request is intentionally re-run only when a user-facing filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDepartment, selectedEmploymentType, selectedWorkMode, selectedExperience, sortBy]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -108,7 +189,7 @@ export default function JobsPage() {
     fetchJobs();
   };
 
-  const formatSalary = (min: number | null, max: number | null, currency = 'INR') => {
+  const formatSalary = (min: number | null, max: number | null) => {
     if (!min && !max) return t('careers.bestInIndustry', 'Best in Industry');
     const formatter = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
     if (min && max) return `₹${formatter.format(min)} - ₹${formatter.format(max)} / yr`;
@@ -136,6 +217,18 @@ export default function JobsPage() {
     }
   };
 
+  const formatExperienceLevel = (level: string) => {
+    switch (level) {
+      case 'FRESHER': return t('careers.fresher', 'Fresher (0-1 yrs)');
+      case 'JUNIOR': return t('careers.junior', 'Junior (1-3 yrs)');
+      case 'MID_LEVEL': return t('careers.midLevel', 'Mid Level (3-6 yrs)');
+      case 'SENIOR': return t('careers.senior', 'Senior (5+ yrs)');
+      case 'LEAD': return t('careers.lead', 'Lead');
+      case 'EXECUTIVE': return t('careers.executive', 'Executive');
+      default: return level;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Hero Header Banner */}
@@ -151,9 +244,6 @@ export default function JobsPage() {
             {t('careers.heroTitle', 'Shape the Future of Heavy Equipment Mobility')}
           </h1>
 
-          <p className="max-w-2xl mx-auto text-sm sm:text-lg text-gray-300 font-light leading-relaxed">
-            {t('careers.heroSubtitle', "Join India's premier B2B commercial & heavy equipment marketplace. Explore opportunities across sales, engineering, operations, finance, and marketing.")}
-          </p>
 
           {/* Search Box inside Hero */}
           <form onSubmit={handleSearchSubmit} className="max-w-3xl mx-auto pt-4">
@@ -165,17 +255,6 @@ export default function JobsPage() {
                   placeholder={t('careers.searchPlaceholder', 'Job title, keyword, or skill...')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white text-gray-900 rounded-xl placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="relative w-full sm:w-48 flex items-center">
-                <MapPin size={18} className="absolute left-3.5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder={t('careers.locationPlaceholder', 'City or State')}
-                  value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white text-gray-900 rounded-xl placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
@@ -217,70 +296,40 @@ export default function JobsPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Department Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{t('careers.department', 'Department')}</label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">{t('careers.allDepartments', 'All Departments')}</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <FilterSelect
+              label={t('careers.department', 'Department')}
+              value={selectedDepartment}
+              placeholder={t('careers.allDepartments', 'All Departments')}
+              onChange={setSelectedDepartment}
+              options={filterOptions.departments.map((dept) => ({ value: dept.id, label: dept.name }))}
+            />
 
             {/* Employment Type Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{t('careers.employmentType', 'Employment Type')}</label>
-              <select
-                value={selectedEmploymentType}
-                onChange={(e) => setSelectedEmploymentType(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">{t('careers.allTypes', 'All Types')}</option>
-                <option value="FULL_TIME">{t('careers.fullTime', 'Full Time')}</option>
-                <option value="PART_TIME">{t('careers.partTime', 'Part Time')}</option>
-                <option value="CONTRACT">{t('careers.contract', 'Contract')}</option>
-                <option value="INTERNSHIP">{t('careers.internship', 'Internship')}</option>
-                <option value="FREELANCE">{t('careers.freelance', 'Freelance')}</option>
-              </select>
-            </div>
+            <FilterSelect
+              label={t('careers.employmentType', 'Employment Type')}
+              value={selectedEmploymentType}
+              placeholder={t('careers.allTypes', 'All Types')}
+              onChange={setSelectedEmploymentType}
+              options={filterOptions.employmentTypes.map((type) => ({ value: type, label: formatEmploymentType(type) }))}
+            />
 
             {/* Work Mode Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{t('careers.workMode', 'Work Mode')}</label>
-              <select
-                value={selectedWorkMode}
-                onChange={(e) => setSelectedWorkMode(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">{t('careers.allModes', 'All Modes')}</option>
-                <option value="ON_SITE">{t('careers.onSite', 'On-site')}</option>
-                <option value="REMOTE">{t('careers.remote', 'Remote')}</option>
-                <option value="HYBRID">{t('careers.hybrid', 'Hybrid')}</option>
-              </select>
-            </div>
+            <FilterSelect
+              label={t('careers.workMode', 'Work Mode')}
+              value={selectedWorkMode}
+              placeholder={t('careers.allModes', 'All Modes')}
+              onChange={setSelectedWorkMode}
+              options={filterOptions.workModes.map((mode) => ({ value: mode, label: formatWorkMode(mode) }))}
+            />
 
             {/* Experience Level Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{t('careers.experienceLevel', 'Experience Level')}</label>
-              <select
-                value={selectedExperience}
-                onChange={(e) => setSelectedExperience(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">{t('careers.anyExperience', 'Any Experience')}</option>
-                <option value="FRESHER">{t('careers.fresher', 'Fresher (0-1 yrs)')}</option>
-                <option value="JUNIOR">{t('careers.junior', 'Junior (1-3 yrs)')}</option>
-                <option value="MID_LEVEL">{t('careers.midLevel', 'Mid Level (3-6 yrs)')}</option>
-                <option value="SENIOR">{t('careers.senior', 'Senior (5+ yrs)')}</option>
-              </select>
-            </div>
+            <FilterSelect
+              label={t('careers.experienceLevel', 'Experience Level')}
+              value={selectedExperience}
+              placeholder={t('careers.anyExperience', 'Any Experience')}
+              onChange={setSelectedExperience}
+              options={filterOptions.experienceLevels.map((level) => ({ value: level, label: formatExperienceLevel(level) }))}
+            />
           </div>
         </div>
 
@@ -289,12 +338,11 @@ export default function JobsPage() {
           <h2 className="text-lg font-bold text-gray-900">
             {t('careers.openVacancies', 'Open Vacancies')} {!loading && `(${jobs.length})`}
           </h2>
-          {(selectedDepartment || selectedEmploymentType || selectedWorkMode || selectedExperience || searchTerm || selectedLocation) && (
+          {(selectedDepartment || selectedEmploymentType || selectedWorkMode || selectedExperience || searchTerm) && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedDepartment('');
-                setSelectedLocation('');
                 setSelectedEmploymentType('');
                 setSelectedWorkMode('');
                 setSelectedExperience('');
@@ -347,7 +395,6 @@ export default function JobsPage() {
               onClick={() => {
                 setSearchTerm('');
                 setSelectedDepartment('');
-                setSelectedLocation('');
                 setSelectedEmploymentType('');
                 setSelectedWorkMode('');
                 setSelectedExperience('');
@@ -419,7 +466,7 @@ export default function JobsPage() {
                       <span className="text-gray-400 block text-[10px] uppercase font-semibold">{t('careers.salaryRange', 'Salary Range')}</span>
                       <span className="font-semibold text-gray-900">
                         {job.salaryVisibility
-                          ? formatSalary(job.minSalary, job.maxSalary, job.currency)
+                          ? formatSalary(job.minSalary, job.maxSalary)
                           : t('careers.notDisclosed', 'Not Disclosed')}
                       </span>
                     </div>
