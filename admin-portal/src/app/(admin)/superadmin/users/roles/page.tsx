@@ -55,6 +55,15 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'SMS Notifications': [
+    {
+      groupName: 'SMS Notifications',
+      permissions: [
+        { id: 'sms.read', label: 'View SMS Notifications' },
+        { id: 'sms.manage', label: 'Manage SMS Settings & Automations' },
+      ],
+    },
+  ],
   'Listings': [
     {
       groupName: 'Listings',

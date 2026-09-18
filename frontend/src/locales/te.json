@@ -458,7 +458,12 @@
                  "googleLoginFailed":  "Google లాగిన్ విఫలమైంది. దయచేసి మళ్లీ ప్రయత్నించండి.",
                  "authFailed":  "ధృవీకరణ సమయంలో లోపం జరిగింది. దయచేసి మళ్లీ ప్రయత్నించండి.",
                  "sendOtpFailed":  "ప్రస్తుతం ఓటీపీ పంపలేకపోతున్నాము.",
-                 "verifyOtpFailed":  "ప్రస్తుతం ఓటీపీని ధృవీకరించలేకపోతున్నాము."
+                 "verifyOtpFailed":  "ప్రస్తుతం ఓటీపీని ధృవీకరించలేకపోతున్నాము.",
+                 "resendOtp":  "ఓటీపీని మళ్లీ పంపండి",
+                 "resendingOtp":  "ఓటీపీని మళ్లీ పంపుతోంది...",
+                 "resendOtpIn":  "{seconds} సెకన్లలో మళ్లీ పంపండి",
+                 "resendOtpFailed":  "ప్రస్తుతం ఓటీపీని మళ్లీ పంపలేకపోతున్నాము.",
+                 "otpExpiresIn":  "ఓటీపీ {seconds} సెకన్లలో ముగుస్తుంది"
              },
     "legalPages": {
       "breadcrumbAria": "Breadcrumb",

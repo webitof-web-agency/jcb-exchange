@@ -221,6 +221,33 @@ enum WhatsAppCampaignStatus {
   CANCELLED
 }
 
+enum SmsMessageStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum SmsOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum MobileOtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+}
+
+enum EmailOtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+}
+
 model User {
   id               String     @id @default(uuid())
   mobile           String?    @unique
@@ -275,6 +302,60 @@ model User {
   submittedInterviewFeedbacks InterviewFeedback[]        @relation("InterviewFeedbackAuthor")
   createdOffers              Offer[]                     @relation("OfferCreator")
   recruitmentActivityLogs    RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
+  mobileOtpChallenges        MobileOtpChallenge[]
+  emailOtpChallenges         EmailOtpChallenge[]
+}
+
+model MobileOtpChallenge {
+  id           String                   @id @default(uuid())
+  mobile       String
+  userId       String?
+  status       MobileOtpChallengeStatus @default(PENDING)
+  attemptCount Int                      @default(0)
+  resendCount  Int                      @default(0)
+  createdAt    DateTime                 @default(now())
+  lastSentAt   DateTime                 @default(now())
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([mobile, status, createdAt])
+  @@index([userId, status, createdAt])
+}
+
+model EmailOtpIntegrationSettings {
+  id                    String   @id @default("default")
+  enabled               Boolean  @default(false)
+  smtpHost              String   @default("smtp.gmail.com")
+  smtpPort              Int      @default(465)
+  smtpSecure            Boolean  @default(true)
+  senderEmail           String?
+  senderName            String   @default("JCB Exchange")
+  encryptedAppPassword  String?  @db.Text
+  otpExpiryMinutes      Int      @default(10)
+  otpLength             Int      @default(6)
+  updatedAt             DateTime @updatedAt
+  updatedByUserId       String?
+}
+
+model EmailOtpChallenge {
+  id           String                  @id @default(uuid())
+  email        String
+  userId       String?
+  otpHash      String
+  status       EmailOtpChallengeStatus @default(PENDING)
+  attemptCount Int                     @default(0)
+  resendCount  Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  lastSentAt   DateTime                @default(now())
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, status, createdAt])
+  @@index([userId, status, createdAt])
 }
 
 model AdminProfile {
@@ -950,6 +1031,79 @@ model WhatsAppOutbox {
 
   @@index([status, nextAttemptAt])
   @@map("whatsapp_outbox")
+}
+
+model SmsIntegrationSettings {
+  id                 String   @id @default("default")
+  enabled            Boolean  @default(false)
+  baseUrl            String   @default("https://sms.flowitof.com/dev")
+  senderId           String?
+  testRecipientPhone String?
+  smsDetails         String   @default("0")
+  encryptedApiKey    String?  @db.Text
+  updatedByUserId    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sms_integration_settings")
+}
+
+model SmsAutomationRule {
+  id                String   @id @default(uuid())
+  eventCode         String   @unique
+  enabled           Boolean  @default(false)
+  messageId         String?
+  variablesTemplate String?  @db.Text
+  recipientPolicy   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([enabled])
+  @@map("sms_automation_rules")
+}
+
+model SmsMessageLog {
+  id                String           @id @default(uuid())
+  eventCode         String
+  relatedEntityType String?
+  relatedEntityId   String?
+  recipientType     String
+  recipientPhone    String
+  status            SmsMessageStatus @default(QUEUED)
+  providerMessageId String?
+  errorCode         String?
+  errorMessage      String?          @db.Text
+  payloadSnapshot   Json?
+  dedupeKey         String?          @unique
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  outbox SmsOutbox?
+
+  @@index([eventCode, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([recipientType, status, createdAt])
+  @@map("sms_message_logs")
+}
+
+model SmsOutbox {
+  id            String          @id @default(uuid())
+  messageLogId  String          @unique
+  payload       Json
+  status        SmsOutboxStatus @default(PENDING)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime?       @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?         @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  messageLog SmsMessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("sms_outbox")
 }
 
 model WhatsAppConsent {

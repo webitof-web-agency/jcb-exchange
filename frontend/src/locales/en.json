@@ -507,7 +507,12 @@
     "googleLoginFailed": "Google login failed. Please try again.",
     "authFailed": "Error during authentication. Please try again.",
     "sendOtpFailed": "Unable to send OTP right now.",
-    "verifyOtpFailed": "Unable to verify OTP right now."
+    "verifyOtpFailed": "Unable to verify OTP right now.",
+    "resendOtp": "Resend OTP",
+    "resendingOtp": "Resending OTP...",
+    "resendOtpIn": "Resend in {seconds}s",
+    "resendOtpFailed": "Unable to resend OTP right now.",
+    "otpExpiresIn": "OTP expires in {seconds}s"
   },
   "careers": {
     "badge": "Careers at JCB Exchange",

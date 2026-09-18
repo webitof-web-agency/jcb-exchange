@@ -13,6 +13,7 @@ import {
   isWhatsAppTemplatePurposeAllowed,
   type WhatsAppTemplatePurpose,
 } from '../modules/whatsapp-core';
+import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -528,11 +529,29 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
   }
 };
 
-export const dispatchMarketplaceWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: MarketplaceWhatsAppEvent }) =>
-  dispatchConfiguredWhatsApp(input);
+export const dispatchMarketplaceWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: MarketplaceWhatsAppEvent }) => {
+  void dispatchMarketplaceSms({
+    eventCode: input.eventCode,
+    relatedEntityType: input.relatedEntityType,
+    relatedEntityId: input.relatedEntityId,
+    recipientType: input.recipientType,
+    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+  });
+  return dispatchConfiguredWhatsApp(input);
+};
 
-export const dispatchRecruitmentWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: RecruitmentWhatsAppEvent }) =>
-  dispatchConfiguredWhatsApp(input);
+export const dispatchRecruitmentWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: RecruitmentWhatsAppEvent }) => {
+  void dispatchRecruitmentSms({
+    eventCode: input.eventCode,
+    relatedEntityType: input.relatedEntityType,
+    relatedEntityId: input.relatedEntityId,
+    recipientType: input.recipientType,
+    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+  });
+  return dispatchConfiguredWhatsApp(input);
+};
 
 export const dispatchApprovedWhatsAppTemplate = async ({
   eventCode,

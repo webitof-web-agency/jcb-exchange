@@ -462,9 +462,8 @@ const isMeaningfulSettings = (settings: AppSettings) =>
     settings.googleAuth.clientId ||
     settings.mobileOtp.enabled ||
     settings.mobileOtp.apiKey ||
-    settings.mobileOtp.senderId ||
-    settings.mobileOtp.templateId ||
-    settings.mobileOtp.templateMessage ||
+    settings.mobileOtp.otpId ||
+    settings.mobileOtp.variablesValues ||
     settings.publicLeadRouting.useSellerContact ||
     settings.publicLeadRouting.adminCallNumber ||
     settings.publicLeadRouting.adminWhatsappNumber ||
@@ -846,7 +845,7 @@ export const updatePlatformRuntimeSettings = async ({
   mobileOtp?: Partial<
     Pick<
       MobileOtpSettings,
-      'enabled' | 'apiKey' | 'senderId' | 'templateId' | 'templateMessage'
+      'enabled' | 'apiKey' | 'otpId' | 'otpExpiry' | 'otpLength' | 'variablesValues'
     >
   > | null;
   publicLeadRouting?: Partial<Pick<PublicLeadRoutingSettings, 'useSellerContact' | 'adminCallNumber' | 'adminWhatsappNumber'>> | null;

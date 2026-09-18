@@ -458,7 +458,12 @@
                  "googleLoginFailed":  "Google लॉगिन अयशस्वी. कृपया पुन्हा प्रयत्न करा.",
                  "authFailed":  "प्रमाणीकरण दरम्यान त्रुटी आली. कृपया पुन्हा प्रयत्न करा.",
                  "sendOtpFailed":  "सध्या ओटीपी पाठवता येत नाही.",
-                 "verifyOtpFailed":  "सध्या ओटीपी पडताळता येत नाही."
+                 "verifyOtpFailed":  "सध्या ओटीपी पडताळता येत नाही.",
+                 "resendOtp":  "ओटीपी पुन्हा पाठवा",
+                 "resendingOtp":  "ओटीपी पुन्हा पाठवत आहे...",
+                 "resendOtpIn":  "{seconds} सेकंदांनी पुन्हा पाठवा",
+                 "resendOtpFailed":  "ओटीपी पुन्हा पाठवता येत नाही.",
+                 "otpExpiresIn":  "ओटीपी {seconds} सेकंदांत कालबाह्य होईल"
              },
     "legalPages": {
       "breadcrumbAria": "Breadcrumb",

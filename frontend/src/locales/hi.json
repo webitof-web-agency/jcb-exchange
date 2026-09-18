@@ -498,7 +498,12 @@
                  "googleLoginFailed":  "Google लॉगिन विफल हुआ। कृपया फिर से कोशिश करें।",
                  "authFailed":  "Authentication में त्रुटि आई। कृपया फिर से कोशिश करें।",
                  "sendOtpFailed":  "अभी OTP नहीं भेजी जा सकती।",
-                 "verifyOtpFailed":  "अभी OTP verify नहीं हो सकती।"
+                 "verifyOtpFailed":  "अभी OTP verify नहीं हो सकती।",
+                 "resendOtp":  "OTP फिर से भेजें",
+                 "resendingOtp":  "OTP फिर से भेजी जा रही है...",
+                 "resendOtpIn":  "{seconds} सेकंड में फिर भेजें",
+                 "resendOtpFailed":  "अभी OTP फिर से नहीं भेजी जा सकती।",
+                 "otpExpiresIn":  "OTP {seconds} सेकंड में समाप्त होगी"
              },
     "legalPages": {
       "breadcrumbAria": "Breadcrumb",

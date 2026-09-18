@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, FileText, ImagePlus, KeyRound, Phone, Save, ShieldCheck } from 'lucide-react';
+import { Building2, CreditCard, FileText, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -89,9 +89,25 @@ type SettingsResponse = {
   mobileOtp: {
     enabled: boolean;
     apiKey: string;
-    senderId: string;
-    templateId: string;
-    templateMessage: string;
+    apiKeyConfigured?: boolean;
+    otpId: string;
+    otpExpiry: number;
+    otpLength: number;
+    variablesValues: string;
+    updatedAt?: string | null;
+    updatedByUserId?: string | null;
+  };
+  emailOtp: {
+    enabled: boolean;
+    smtpHost: string;
+    smtpPort: number;
+    smtpSecure: boolean;
+    senderEmail: string;
+    senderName: string;
+    appPassword: string;
+    appPasswordConfigured?: boolean;
+    otpExpiryMinutes: number;
+    otpLength: number;
     updatedAt?: string | null;
     updatedByUserId?: string | null;
   };
@@ -163,14 +179,24 @@ type ListingPaymentFormPatch = {
 type MobileOtpFormState = {
   enabled: boolean;
   apiKey: string;
-  senderId: string;
-  templateId: string;
-  templateMessage: string;
+  otpId: string;
+  otpExpiry: string;
+  otpLength: string;
+  variablesValues: string;
 };
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;
   return axiosError.response?.data?.error || fallbackMessage;
+};
+
+type EmailOtpFormState = {
+  enabled: boolean;
+  senderEmail: string;
+  senderName: string;
+  appPassword: string;
+  otpExpiryMinutes: string;
+  otpLength: string;
 };
 
 const emptyListingPaymentForm: ListingPaymentFormState = {
@@ -313,11 +339,21 @@ export default function SuperAdminSettingsPage() {
   const [mobileOtpForm, setMobileOtpForm] = useState<MobileOtpFormState>({
     enabled: false,
     apiKey: '',
-    senderId: '',
-    templateId: '',
-    templateMessage: 'Your OTP for JCB Exchange is {#var#}. Validity 5 mins.',
+    otpId: '',
+    otpExpiry: '15',
+    otpLength: '6',
+    variablesValues: '',
   });
   const [otpSaving, setOtpSaving] = useState(false);
+  const [emailOtpForm, setEmailOtpForm] = useState<EmailOtpFormState>({
+    enabled: false,
+    senderEmail: '',
+    senderName: 'JCB Exchange',
+    appPassword: '',
+    otpExpiryMinutes: '10',
+    otpLength: '6',
+  });
+  const [emailOtpSaving, setEmailOtpSaving] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoadingError(null);
@@ -335,11 +371,18 @@ export default function SuperAdminSettingsPage() {
       setMobileOtpForm({
         enabled: response.data.mobileOtp.enabled,
         apiKey: response.data.mobileOtp.apiKey || '',
-        senderId: response.data.mobileOtp.senderId || '',
-        templateId: response.data.mobileOtp.templateId || '',
-        templateMessage:
-          response.data.mobileOtp.templateMessage ||
-          'Your OTP for JCB Exchange is {#var#}. Validity 5 mins.',
+        otpId: response.data.mobileOtp.otpId || '',
+        otpExpiry: String(response.data.mobileOtp.otpExpiry || 15),
+        otpLength: String(response.data.mobileOtp.otpLength || 6),
+        variablesValues: response.data.mobileOtp.variablesValues || '',
+      });
+      setEmailOtpForm({
+        enabled: response.data.emailOtp.enabled === true,
+        senderEmail: response.data.emailOtp.senderEmail || '',
+        senderName: response.data.emailOtp.senderName || 'JCB Exchange',
+        appPassword: response.data.emailOtp.appPassword || '',
+        otpExpiryMinutes: String(response.data.emailOtp.otpExpiryMinutes || 10),
+        otpLength: String(response.data.emailOtp.otpLength || 6),
       });
       setCustomerPrimeForm({
         enabled: response.data.customerPrime.enabled,
@@ -463,20 +506,20 @@ export default function SuperAdminSettingsPage() {
         mobileOtp: {
           enabled: mobileOtpForm.enabled,
           apiKey: mobileOtpForm.apiKey,
-          senderId: mobileOtpForm.senderId,
-          templateId: mobileOtpForm.templateId,
-          templateMessage: mobileOtpForm.templateMessage,
+          otpId: mobileOtpForm.otpId,
+          otpExpiry: Number(mobileOtpForm.otpExpiry),
+          otpLength: Number(mobileOtpForm.otpLength),
+          variablesValues: mobileOtpForm.variablesValues,
         },
       });
 
       setMobileOtpForm({
         enabled: response.data.mobileOtp.enabled,
         apiKey: response.data.mobileOtp.apiKey || '',
-        senderId: response.data.mobileOtp.senderId || '',
-        templateId: response.data.mobileOtp.templateId || '',
-        templateMessage:
-          response.data.mobileOtp.templateMessage ||
-          'Your OTP for JCB Exchange is {#var#}. Validity 5 mins.',
+        otpId: response.data.mobileOtp.otpId || '',
+        otpExpiry: String(response.data.mobileOtp.otpExpiry || 15),
+        otpLength: String(response.data.mobileOtp.otpLength || 6),
+        variablesValues: response.data.mobileOtp.variablesValues || '',
       });
       toast.success(response.data.message);
     } catch (error: unknown) {
@@ -562,6 +605,48 @@ export default function SuperAdminSettingsPage() {
 
   const updateCustomerPrimeForm = (nextState: Partial<CustomerPrimeFormState>) => {
     setCustomerPrimeForm((currentState) => ({
+      ...currentState,
+      ...nextState,
+    }));
+  };
+
+  const handleEmailOtpSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailOtpSaving(true);
+
+    try {
+      const response = await api.patch<{
+        message: string;
+        emailOtp: SettingsResponse['emailOtp'];
+      }>('/superadmin/settings', {
+        emailOtp: {
+          enabled: emailOtpForm.enabled,
+          senderEmail: emailOtpForm.senderEmail,
+          senderName: emailOtpForm.senderName,
+          appPassword: emailOtpForm.appPassword,
+          otpExpiryMinutes: Number(emailOtpForm.otpExpiryMinutes),
+          otpLength: Number(emailOtpForm.otpLength),
+        },
+      });
+
+      setEmailOtpForm({
+        enabled: response.data.emailOtp.enabled === true,
+        senderEmail: response.data.emailOtp.senderEmail || '',
+        senderName: response.data.emailOtp.senderName || 'JCB Exchange',
+        appPassword: response.data.emailOtp.appPassword || '',
+        otpExpiryMinutes: String(response.data.emailOtp.otpExpiryMinutes || 10),
+        otpLength: String(response.data.emailOtp.otpLength || 6),
+      });
+      toast.success(response.data.message);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save email OTP settings.'));
+    } finally {
+      setEmailOtpSaving(false);
+    }
+  };
+
+  const updateEmailOtpForm = (nextState: Partial<EmailOtpFormState>) => {
+    setEmailOtpForm((currentState) => ({
       ...currentState,
       ...nextState,
     }));
@@ -941,57 +1026,68 @@ export default function SuperAdminSettingsPage() {
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">SMS Gateway API Key</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">SMS API Key</span>
                         <input
-                          type="text"
+                          type="password"
                           value={mobileOtpForm.apiKey}
                           onChange={(event) => updateMobileOtpForm({ apiKey: event.target.value })}
-                          placeholder="e.g. AIzaSyA1..."
-                          disabled={!mobileOtpForm.enabled}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-50 disabled:text-gray-400"
+                          placeholder="Enter SMS API key"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                       </label>
 
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Sender ID</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Template ID (otp_id)</span>
                         <input
                           type="text"
-                          value={mobileOtpForm.senderId}
-                          onChange={(event) => updateMobileOtpForm({ senderId: event.target.value })}
-                          placeholder="e.g. JCBEXC"
-                          maxLength={6}
-                          disabled={!mobileOtpForm.enabled}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-50 disabled:text-gray-400"
+                          value={mobileOtpForm.otpId}
+                          onChange={(event) => updateMobileOtpForm({ otpId: event.target.value })}
+                          placeholder="Enter your OTP template ID"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                       </label>
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">DLT Template ID</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Expiry (minutes)</span>
                         <input
-                          type="text"
-                          value={mobileOtpForm.templateId}
-                          onChange={(event) => updateMobileOtpForm({ templateId: event.target.value })}
-                          placeholder="e.g. 1207161..."
-                          disabled={!mobileOtpForm.enabled}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-50 disabled:text-gray-400"
+                          type="number"
+                          min={1}
+                          max={10080}
+                          value={mobileOtpForm.otpExpiry}
+                          onChange={(event) => updateMobileOtpForm({ otpExpiry: event.target.value })}
+                          placeholder="15"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                       </label>
 
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Template Message</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Length</span>
                         <input
-                          type="text"
-                          value={mobileOtpForm.templateMessage}
-                          onChange={(event) =>
-                            updateMobileOtpForm({ templateMessage: event.target.value })
-                          }
-                          disabled={!mobileOtpForm.enabled}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-50 disabled:text-gray-400"
+                          type="number"
+                          min={4}
+                          max={10}
+                          value={mobileOtpForm.otpLength}
+                          onChange={(event) => updateMobileOtpForm({ otpLength: event.target.value })}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                       </label>
                   </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Extra Template Values (optional)</span>
+                    <input
+                      type="text"
+                      value={mobileOtpForm.variablesValues}
+                      onChange={(event) => updateMobileOtpForm({ variablesValues: event.target.value })}
+                      placeholder="Example: 15 or value1|15"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    />
+                    <span className="mt-1 block text-xs text-gray-500">
+                      Enter additional template values only; OTP is automatically appended. Use | to separate multiple values.
+                    </span>
+                  </label>
 
                   <div className="flex justify-end border-t border-gray-100 pt-2">
                     <button
@@ -1001,6 +1097,133 @@ export default function SuperAdminSettingsPage() {
                     >
                       <Save className="h-4 w-4" />
                       {otpSaving ? 'Saving...' : 'Save OTP Settings'}
+                    </button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="mb-6">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Authentication Settings</p>
+                  <h3 className="mt-1 text-xl font-bold text-gray-900">Email OTP / Gmail SMTP</h3>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Use a Gmail App Password. Your normal Gmail password will not work with SMTP.
+                  </p>
+                </div>
+
+                <form onSubmit={handleEmailOtpSubmit} className="space-y-6">
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900">Enable Email OTP Login</h4>
+                        <p className="mt-1 text-xs text-gray-500">
+                          When enabled, Email OTP appears on the public login form. When disabled, it is hidden.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={emailOtpForm.enabled}
+                        aria-label="Toggle Email OTP"
+                        onClick={() => updateEmailOtpForm({ enabled: !emailOtpForm.enabled })}
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
+                          emailOtpForm.enabled
+                            ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                            : 'border-gray-300 bg-white text-gray-600'
+                        }`}
+                      >
+                        <span
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                            emailOtpForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
+                              emailOtpForm.enabled ? 'translate-x-7' : 'translate-x-1'
+                            }`}
+                          />
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Gmail sender email</span>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+                        <input
+                          type="email"
+                          value={emailOtpForm.senderEmail}
+                          onChange={(event) => updateEmailOtpForm({ senderEmail: event.target.value })}
+                          placeholder="your-gmail@gmail.com"
+                          className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Sender name</span>
+                      <input
+                        type="text"
+                        value={emailOtpForm.senderName}
+                        onChange={(event) => updateEmailOtpForm({ senderName: event.target.value })}
+                        placeholder="JCB Exchange"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Gmail App Password</span>
+                    <input
+                      type="password"
+                      value={emailOtpForm.appPassword}
+                      onChange={(event) => updateEmailOtpForm({ appPassword: event.target.value })}
+                      placeholder="16-character Gmail App Password"
+                      autoComplete="new-password"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    />
+                    <span className="mt-1 block text-xs text-gray-500">
+                      Create it in Google Account &gt; Security &gt; 2-Step Verification &gt; App passwords. Leave the masked value unchanged when editing.
+                    </span>
+                  </label>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP expiry (minutes)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={emailOtpForm.otpExpiryMinutes}
+                        onChange={(event) => updateEmailOtpForm({ otpExpiryMinutes: event.target.value })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP length</span>
+                      <input
+                        type="number"
+                        min={4}
+                        max={10}
+                        value={emailOtpForm.otpLength}
+                        onChange={(event) => updateEmailOtpForm({ otpLength: event.target.value })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-100 pt-2">
+                    <button
+                      type="submit"
+                      disabled={emailOtpSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {emailOtpSaving ? 'Saving...' : 'Save Email OTP Settings'}
                     </button>
                   </div>
                 </form>
@@ -1139,6 +1362,7 @@ export default function SuperAdminSettingsPage() {
                       {customerPrimeForm.enabled ? 'Prime payments enabled' : 'Prime payments disabled'}
                     </span>
                   </div>
+
                 </div>
               </section>
 
@@ -1400,6 +1624,7 @@ export default function SuperAdminSettingsPage() {
                   </div>
                 </form>
               </section>
+
             </>
           ) : null}
           {activeTab === 'payments' ? (

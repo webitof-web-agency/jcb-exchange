@@ -23,6 +23,11 @@ import {
 } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
 import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
+import {
+  EmailOtpSettingsError,
+  getEmailOtpAdminSettings,
+  updateEmailOtpSettings,
+} from '../services/emailOtp.service';
 import { getCustomerPrimeAccessState, normalizePrimeValidityUnit } from '../utils/customerPrime';
 import {
   approveCustomerPrimeSubscription,
@@ -50,6 +55,18 @@ const serializeListingPaymentSettingsForAdmin = (settings: ListingPaymentSetting
     ...settings.phonepe,
     clientSecret: maskSecret(settings.phonepe.clientSecret),
   },
+});
+
+const serializeMobileOtpSettingsForAdmin = (settings: Awaited<ReturnType<typeof getAppSettings>>['mobileOtp']) => ({
+  enabled: settings.enabled,
+  apiKey: maskSecret(settings.apiKey),
+  apiKeyConfigured: Boolean(settings.apiKey),
+  otpId: settings.otpId || '',
+  otpExpiry: settings.otpExpiry,
+  otpLength: settings.otpLength,
+  variablesValues: settings.variablesValues || '',
+  updatedAt: settings.updatedAt,
+  updatedByUserId: settings.updatedByUserId,
 });
 
 const normalizePhoneNumber = (value?: string | null) => {
@@ -615,8 +632,9 @@ export const getDashboardSummary = async (req: Request, res: Response, next: Nex
 
 export const getPlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const [settings, defaultSuperAdminContact, recentPrimePayments] = await Promise.all([
+    const [settings, emailOtp, defaultSuperAdminContact, recentPrimePayments] = await Promise.all([
       getAppSettings(),
+      getEmailOtpAdminSettings(),
       getDefaultSuperAdminContact(),
       listCustomerPrimeSubscriptions({ take: 10 }),
     ]);
@@ -628,15 +646,8 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
         updatedAt: settings.googleAuth.updatedAt,
         updatedByUserId: settings.googleAuth.updatedByUserId,
       },
-      mobileOtp: {
-        enabled: settings.mobileOtp.enabled,
-        apiKey: settings.mobileOtp.apiKey || '',
-        senderId: settings.mobileOtp.senderId || '',
-        templateId: settings.mobileOtp.templateId || '',
-        templateMessage: settings.mobileOtp.templateMessage || '',
-        updatedAt: settings.mobileOtp.updatedAt,
-        updatedByUserId: settings.mobileOtp.updatedByUserId,
-      },
+      mobileOtp: serializeMobileOtpSettingsForAdmin(settings.mobileOtp),
+      emailOtp,
       publicLeadRouting: {
         useSellerContact: settings.publicLeadRouting.useSellerContact,
         adminCallNumber: defaultSuperAdminContact.adminCallNumber || '',
@@ -655,21 +666,34 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
       companyInvoice: settings.companyInvoice,
     });
   } catch (error) {
+    if (error instanceof EmailOtpSettingsError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+
     next(error);
   }
 };
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, googleAuthEnabled, mobileOtp, publicLeadRouting, customerPrime, listingPayment, companyInvoice } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingPayment, companyInvoice } = req.body as {
       googleClientId?: string;
       googleAuthEnabled?: boolean;
       mobileOtp?: {
         enabled?: boolean;
         apiKey?: string;
-        senderId?: string;
-        templateId?: string;
-        templateMessage?: string;
+        otpId?: string;
+        otpExpiry?: number;
+        otpLength?: number;
+        variablesValues?: string;
+      };
+      emailOtp?: {
+        enabled?: boolean;
+        senderEmail?: string;
+        senderName?: string;
+        appPassword?: string;
+        otpExpiryMinutes?: number;
+        otpLength?: number;
       };
       publicLeadRouting?: {
         useSellerContact?: boolean;
@@ -697,6 +721,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       googleClientId === undefined &&
       googleAuthEnabled === undefined &&
       !mobileOtp &&
+      !emailOtp &&
       !publicLeadRouting &&
       !customerPrime &&
       !listingPayment &&
@@ -719,14 +744,16 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
     }
 
     if (mobileOtp) {
+      const currentSettings = await getAppSettings();
       settingsPayload.mobileOtp = {
         enabled: mobileOtp.enabled === true,
-        ...(mobileOtp.apiKey !== undefined ? { apiKey: mobileOtp.apiKey } : {}),
-        ...(mobileOtp.senderId !== undefined ? { senderId: mobileOtp.senderId } : {}),
-        ...(mobileOtp.templateId !== undefined ? { templateId: mobileOtp.templateId } : {}),
-        ...(mobileOtp.templateMessage !== undefined
-          ? { templateMessage: mobileOtp.templateMessage }
+        ...(mobileOtp.apiKey !== undefined
+          ? { apiKey: isMaskedSecret(mobileOtp.apiKey) ? currentSettings.mobileOtp.apiKey : mobileOtp.apiKey }
           : {}),
+        ...(mobileOtp.otpId !== undefined ? { otpId: mobileOtp.otpId } : {}),
+        ...(mobileOtp.otpExpiry !== undefined ? { otpExpiry: Number(mobileOtp.otpExpiry) } : {}),
+        ...(mobileOtp.otpLength !== undefined ? { otpLength: Number(mobileOtp.otpLength) } : {}),
+        ...(mobileOtp.variablesValues !== undefined ? { variablesValues: mobileOtp.variablesValues } : {}),
       };
     }
 
@@ -790,8 +817,11 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       };
     }
 
-    const [settings, defaultSuperAdminContact, recentPrimePayments] = await Promise.all([
+    const [settings, emailOtpSettings, defaultSuperAdminContact, recentPrimePayments] = await Promise.all([
       updatePlatformRuntimeSettings(settingsPayload),
+      emailOtp
+        ? updateEmailOtpSettings({ ...emailOtp, updatedByUserId: req.user?.id || null })
+        : getEmailOtpAdminSettings(),
       getDefaultSuperAdminContact(),
       listCustomerPrimeSubscriptions({ take: 10 }),
     ]);
@@ -804,15 +834,8 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         updatedAt: settings.googleAuth.updatedAt,
         updatedByUserId: settings.googleAuth.updatedByUserId,
       },
-      mobileOtp: {
-        enabled: settings.mobileOtp.enabled,
-        apiKey: settings.mobileOtp.apiKey || '',
-        senderId: settings.mobileOtp.senderId || '',
-        templateId: settings.mobileOtp.templateId || '',
-        templateMessage: settings.mobileOtp.templateMessage || '',
-        updatedAt: settings.mobileOtp.updatedAt,
-        updatedByUserId: settings.mobileOtp.updatedByUserId,
-      },
+      mobileOtp: serializeMobileOtpSettingsForAdmin(settings.mobileOtp),
+      emailOtp: emailOtpSettings,
       publicLeadRouting: {
         useSellerContact: settings.publicLeadRouting.useSellerContact,
         adminCallNumber: defaultSuperAdminContact.adminCallNumber || '',
@@ -828,6 +851,10 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       companyInvoice: settings.companyInvoice,
     });
   } catch (error) {
+    if (error instanceof EmailOtpSettingsError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+
     next(error);
   }
 };

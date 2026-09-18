@@ -37,7 +37,12 @@ type AuthResponseUser = {
 
 type MobileOtpConfigResponse = {
   enabled: boolean;
+  otpLength?: number;
+  otpExpirySeconds?: number;
+  resendCooldownSeconds?: number;
 };
+
+type EmailOtpConfigResponse = MobileOtpConfigResponse;
 
 export default function AuthModal() {
   const { t } = useTranslation();
@@ -49,25 +54,62 @@ export default function AuthModal() {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState('');
+  const [emailOtp, setEmailOtp] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOtpSending, setIsOtpSending] = useState(false);
   const [isOtpVerifying, setIsOtpVerifying] = useState(false);
+  const [isOtpResending, setIsOtpResending] = useState(false);
   const [isMobileOtpEnabled, setIsMobileOtpEnabled] = useState(false);
-  const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
+  const [isEmailOtpEnabled, setIsEmailOtpEnabled] = useState(false);
+  const [otpLength, setOtpLength] = useState(6);
+  const [otpExpirySeconds, setOtpExpirySeconds] = useState(15 * 60);
+  const [otpExpiresAt, setOtpExpiresAt] = useState(0);
+  const [otpResendCooldownSeconds, setOtpResendCooldownSeconds] = useState(45);
+  const [otpResendAvailableAt, setOtpResendAvailableAt] = useState(0);
+  const [loginMethod, setLoginMethod] = useState<'password' | 'mobileOtp' | 'emailOtp'>('password');
   const [otpChallengeId, setOtpChallengeId] = useState('');
   const [otpMaskedMobile, setOtpMaskedMobile] = useState('');
+  const [emailOtpChallengeId, setEmailOtpChallengeId] = useState('');
+  const [emailOtpMaskedEmail, setEmailOtpMaskedEmail] = useState('');
+  const [emailOtpLength, setEmailOtpLength] = useState(6);
+  const [emailOtpExpirySeconds, setEmailOtpExpirySeconds] = useState(10 * 60);
+  const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState(0);
+  const [emailOtpResendCooldownSeconds, setEmailOtpResendCooldownSeconds] = useState(45);
+  const [emailOtpResendAvailableAt, setEmailOtpResendAvailableAt] = useState(0);
+  const [isEmailOtpSending, setIsEmailOtpSending] = useState(false);
+  const [isEmailOtpVerifying, setIsEmailOtpVerifying] = useState(false);
+  const [isEmailOtpResending, setIsEmailOtpResending] = useState(false);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [isGoogleScriptReady, setIsGoogleScriptReady] = useState(
     typeof window !== 'undefined' && !!window.google
   );
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleInitializedRef = useRef(false);
+  const [otpResendNow, setOtpResendNow] = useState(0);
+  const otpResendSecondsRemaining = otpResendAvailableAt
+    ? Math.max(0, Math.ceil((otpResendAvailableAt - otpResendNow) / 1000))
+    : 0;
+  const otpSecondsRemaining = otpExpiresAt
+    ? Math.max(0, Math.ceil((otpExpiresAt - otpResendNow) / 1000))
+    : otpExpirySeconds;
+  const emailOtpResendSecondsRemaining = emailOtpResendAvailableAt
+    ? Math.max(0, Math.ceil((emailOtpResendAvailableAt - otpResendNow) / 1000))
+    : 0;
+  const emailOtpSecondsRemaining = emailOtpExpiresAt
+    ? Math.max(0, Math.ceil((emailOtpExpiresAt - otpResendNow) / 1000))
+    : emailOtpExpirySeconds;
 
   const isGoogleConfigured =
     !!googleClientId && !googleClientId.startsWith('YOUR_');
   const canRenderGoogleLogin = isGoogleConfigured;
+  const activeLoginMethod =
+    loginMethod === 'mobileOtp' && isMobileOtpEnabled
+      ? 'mobileOtp'
+      : loginMethod === 'emailOtp' && isEmailOtpEnabled
+        ? 'emailOtp'
+        : 'password';
 
   const showLoginSuccessToast = useCallback((userName?: string | null, email?: string | null) => {
     const displayName = userName?.trim() || email?.split('@')[0] || 'User';
@@ -117,19 +159,42 @@ export default function AuthModal() {
 
     const loadGoogleConfig = async () => {
       try {
-        const [googleResponse, otpConfigResponse] = await Promise.all([
+        const [googleResponse, otpConfigResponse, emailOtpConfigResponse] = await Promise.allSettled([
           api.get<{ enabled: boolean; clientId: string | null }>('/auth/google-config'),
           api.get<MobileOtpConfigResponse>('/auth/mobile-otp/config'),
+          api.get<EmailOtpConfigResponse>('/auth/email-otp/config'),
         ]);
 
         if (!cancelled) {
-          setGoogleClientId(googleResponse.data.enabled ? googleResponse.data.clientId : null);
-          setIsMobileOtpEnabled(otpConfigResponse.data.enabled === true);
+          if (googleResponse.status === 'fulfilled') {
+            setGoogleClientId(googleResponse.value.data.enabled ? googleResponse.value.data.clientId : null);
+          } else {
+            setGoogleClientId(null);
+          }
+
+          if (otpConfigResponse.status === 'fulfilled') {
+            setIsMobileOtpEnabled(otpConfigResponse.value.data.enabled === true);
+            setOtpLength(Math.min(10, Math.max(4, otpConfigResponse.value.data.otpLength || 6)));
+            setOtpExpirySeconds(Math.max(60, otpConfigResponse.value.data.otpExpirySeconds || 15 * 60));
+            setOtpResendCooldownSeconds(Math.max(1, otpConfigResponse.value.data.resendCooldownSeconds || 45));
+          } else {
+            setIsMobileOtpEnabled(false);
+          }
+
+          if (emailOtpConfigResponse.status === 'fulfilled') {
+            setIsEmailOtpEnabled(emailOtpConfigResponse.value.data.enabled === true);
+            setEmailOtpLength(Math.min(10, Math.max(4, emailOtpConfigResponse.value.data.otpLength || 6)));
+            setEmailOtpExpirySeconds(Math.max(60, emailOtpConfigResponse.value.data.otpExpirySeconds || 10 * 60));
+            setEmailOtpResendCooldownSeconds(Math.max(1, emailOtpConfigResponse.value.data.resendCooldownSeconds || 45));
+          } else {
+            setIsEmailOtpEnabled(false);
+          }
         }
       } catch {
         if (!cancelled) {
           setGoogleClientId(null);
           setIsMobileOtpEnabled(false);
+          setIsEmailOtpEnabled(false);
         }
       }
     };
@@ -140,6 +205,15 @@ export default function AuthModal() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!otpChallengeId && !emailOtpChallengeId) {
+      return;
+    }
+
+    const timer = window.setInterval(() => setOtpResendNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [otpChallengeId, emailOtpChallengeId]);
 
   useEffect(() => {
     if (
@@ -244,6 +318,11 @@ export default function AuthModal() {
       const response = await api.post('/auth/login/mobile-otp/send', { mobile });
       setOtpChallengeId(response.data.challengeId || '');
       setOtpMaskedMobile(response.data.maskedMobile || '');
+      setOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || otpLength)));
+      setOtpExpirySeconds(Number(response.data.expiresInSeconds) || otpExpirySeconds);
+      setOtpResendNow(Date.now());
+      setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
+      setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
     } catch (err: unknown) {
       const errorMessage =
         err && typeof err === 'object' && 'response' in err
@@ -253,6 +332,32 @@ export default function AuthModal() {
       setError(errorMessage);
     } finally {
       setIsOtpSending(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setError('');
+    setIsOtpResending(true);
+
+    try {
+      const response = await api.post('/auth/login/mobile-otp/resend', { mobile });
+      setOtpChallengeId(response.data.challengeId || otpChallengeId);
+      setOtpMaskedMobile(response.data.maskedMobile || otpMaskedMobile);
+      setOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || otpLength)));
+      setOtpExpirySeconds(Number(response.data.expiresInSeconds) || otpExpirySeconds);
+      setOtpResendNow(Date.now());
+      setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
+      setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
+      setOtp('');
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.resendOtpFailed')
+          : t('auth.resendOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsOtpResending(false);
     }
   };
 
@@ -278,6 +383,91 @@ export default function AuthModal() {
       setError(errorMessage);
     } finally {
       setIsOtpVerifying(false);
+    }
+  };
+
+  const handleSendEmailOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsEmailOtpSending(true);
+
+    try {
+      if (!email.includes('@')) {
+        setError(t('auth.validEmail'));
+        setIsEmailOtpSending(false);
+        return;
+      }
+
+      const response = await api.post('/auth/login/email-otp/send', { email });
+      const expiresInSeconds = Number(response.data.expiresInSeconds) || emailOtpExpirySeconds;
+      setEmailOtpChallengeId(response.data.challengeId || '');
+      setEmailOtpMaskedEmail(response.data.maskedEmail || '');
+      setEmailOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || emailOtpLength)));
+      setEmailOtpExpirySeconds(expiresInSeconds);
+      setOtpResendNow(Date.now());
+      setEmailOtpExpiresAt(Date.now() + expiresInSeconds * 1000);
+      setEmailOtpResendAvailableAt(Date.now() + emailOtpResendCooldownSeconds * 1000);
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.sendOtpFailed')
+          : t('auth.sendOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsEmailOtpSending(false);
+    }
+  };
+
+  const handleResendEmailOtp = async () => {
+    setError('');
+    setIsEmailOtpResending(true);
+
+    try {
+      const response = await api.post('/auth/login/email-otp/resend', { email });
+      const expiresInSeconds = Number(response.data.expiresInSeconds) || emailOtpExpirySeconds;
+      setEmailOtpChallengeId(response.data.challengeId || emailOtpChallengeId);
+      setEmailOtpMaskedEmail(response.data.maskedEmail || emailOtpMaskedEmail);
+      setEmailOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || emailOtpLength)));
+      setEmailOtpExpirySeconds(expiresInSeconds);
+      setOtpResendNow(Date.now());
+      setEmailOtpExpiresAt(Date.now() + expiresInSeconds * 1000);
+      setEmailOtpResendAvailableAt(Date.now() + emailOtpResendCooldownSeconds * 1000);
+      setEmailOtp('');
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.resendOtpFailed')
+          : t('auth.resendOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsEmailOtpResending(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsEmailOtpVerifying(true);
+
+    try {
+      const response = await api.post('/auth/login/email-otp/verify', {
+        challengeId: emailOtpChallengeId,
+        email,
+        otp: emailOtp,
+      });
+      const { token, user } = response.data as { token: string; user: AuthResponseUser };
+      completeAuth(token, user, true);
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.verifyOtpFailed')
+          : t('auth.verifyOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsEmailOtpVerifying(false);
     }
   };
 
@@ -314,7 +504,13 @@ export default function AuthModal() {
             ) : null}
 
           <form
-            onSubmit={isLogin && loginMethod === 'otp' ? (otpChallengeId ? handleVerifyOtp : handleSendOtp) : handleSubmit}
+            onSubmit={
+              isLogin && activeLoginMethod === 'mobileOtp'
+                ? (otpChallengeId ? handleVerifyOtp : handleSendOtp)
+                : isLogin && activeLoginMethod === 'emailOtp'
+                  ? (emailOtpChallengeId ? handleVerifyEmailOtp : handleSendEmailOtp)
+                  : handleSubmit
+            }
             className="space-y-3"
           >
             {!isLogin ? (
@@ -334,7 +530,7 @@ export default function AuthModal() {
               </div>
             ) : null}
 
-            {isLogin && isMobileOtpEnabled && loginMethod === 'otp' ? (
+            {isLogin && activeLoginMethod === 'mobileOtp' ? (
               <>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{t('auth.mobileNumber')}</label>
@@ -358,7 +554,10 @@ export default function AuthModal() {
                       <input
                         type="text"
                         value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, otpLength))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={otpLength}
                         className="block w-full rounded-md border border-gray-300 px-4 py-2 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                         placeholder={t('auth.otp')}
                         required
@@ -367,6 +566,23 @@ export default function AuthModal() {
                     <p className="mt-2 text-xs text-gray-500">
                       {t('auth.otpSentTo', { mobile: otpMaskedMobile || t('auth.mobileNumber').toLowerCase() })}
                     </p>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                      <span className="text-gray-500">
+                      {t('auth.otpExpiresIn', { seconds: otpSecondsRemaining })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleResendOtp()}
+                        disabled={isOtpResending || otpResendSecondsRemaining > 0}
+                        className="font-semibold text-jcb-dark hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                      >
+                        {isOtpResending
+                          ? t('auth.resendingOtp')
+                          : otpResendSecondsRemaining > 0
+                            ? t('auth.resendOtpIn', { seconds: otpResendSecondsRemaining })
+                            : t('auth.resendOtp')}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </>
@@ -404,27 +620,68 @@ export default function AuthModal() {
                   </div>
                 ) : null}
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('auth.password')}</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 pr-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
-                      placeholder="********"
-                      required
-                    />
-                    <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 focus:outline-none"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
+                {isLogin && activeLoginMethod === 'emailOtp' ? (
+                  emailOtpChallengeId ? (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">{t('auth.otp')}</label>
+                      <input
+                        type="text"
+                        value={emailOtp}
+                        onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, emailOtpLength))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={emailOtpLength}
+                        className="block w-full rounded-md border border-gray-300 px-4 py-2 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                        placeholder={t('auth.otp')}
+                        required
+                      />
+                      <p className="mt-2 text-xs text-gray-500">
+                        {t('auth.emailOtpSentTo', 'Email OTP sent to {email}', {
+                          email: emailOtpMaskedEmail || email.toLowerCase(),
+                        })}
+                      </p>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                        <span className="text-gray-500">
+                          {t('auth.otpExpiresIn', { seconds: emailOtpSecondsRemaining })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleResendEmailOtp()}
+                          disabled={isEmailOtpResending || emailOtpResendSecondsRemaining > 0}
+                          className="font-semibold text-jcb-dark hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                        >
+                          {isEmailOtpResending
+                            ? t('auth.resendingOtp')
+                            : emailOtpResendSecondsRemaining > 0
+                              ? t('auth.resendOtpIn', { seconds: emailOtpResendSecondsRemaining })
+                              : t('auth.resendOtp')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">{t('auth.password')}</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 pr-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                        placeholder="********"
+                        required
+                      />
+                      <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
 
@@ -433,10 +690,10 @@ export default function AuthModal() {
             <div className="pt-2 space-y-3">
               <button
                 type="submit"
-                disabled={isSubmitting || isOtpSending || isOtpVerifying}
+                disabled={isSubmitting || isOtpSending || isOtpVerifying || isOtpResending || isEmailOtpSending || isEmailOtpVerifying || isEmailOtpResending}
                 className="flex w-full justify-center rounded-md border border-transparent bg-jcb-yellow px-4 py-2.5 text-sm font-bold text-jcb-dark shadow-sm transition-colors hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-jcb-yellow focus:ring-offset-2 disabled:opacity-50"
               >
-                {isLogin && loginMethod === 'otp'
+                {isLogin && activeLoginMethod === 'mobileOtp'
                   ? otpChallengeId
                     ? isOtpVerifying
                       ? `${t('auth.verifyOtpAndLogin')}...`
@@ -444,6 +701,14 @@ export default function AuthModal() {
                     : isOtpSending
                       ? t('auth.sendingOtp')
                       : t('auth.sendOtp')
+                  : isLogin && activeLoginMethod === 'emailOtp'
+                    ? emailOtpChallengeId
+                      ? isEmailOtpVerifying
+                        ? `${t('auth.verifyOtpAndLogin')}...`
+                        : t('auth.verifyOtpAndLogin')
+                      : isEmailOtpSending
+                        ? t('auth.sendingOtp')
+                        : t('auth.sendOtp')
                   : isSubmitting
                     ? t('auth.pleaseWait')
                     : isLogin
@@ -451,13 +716,15 @@ export default function AuthModal() {
                       : t('auth.createAccount')}
               </button>
 
-              {isLogin && loginMethod === 'otp' && otpChallengeId ? (
+              {isLogin && activeLoginMethod === 'mobileOtp' && otpChallengeId ? (
                 <button
                   type="button"
                   onClick={() => {
                     setOtpChallengeId('');
                     setOtpMaskedMobile('');
                     setOtp('');
+                    setOtpExpiresAt(0);
+                    setOtpResendAvailableAt(0);
                     setError('');
                   }}
                   className="w-full text-sm font-semibold text-jcb-dark hover:underline"
@@ -466,21 +733,64 @@ export default function AuthModal() {
                 </button>
               ) : null}
 
+              {isLogin && activeLoginMethod === 'emailOtp' && emailOtpChallengeId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailOtpChallengeId('');
+                    setEmailOtpMaskedEmail('');
+                    setEmailOtp('');
+                    setEmailOtpExpiresAt(0);
+                    setEmailOtpResendAvailableAt(0);
+                    setError('');
+                  }}
+                  className="w-full text-sm font-semibold text-jcb-dark hover:underline"
+                >
+                  {t('auth.changeEmailAddress', 'Change email address')}
+                </button>
+              ) : null}
+
               {isLogin && isMobileOtpEnabled ? (
                 <button
                   type="button"
                   onClick={() => {
-                    setLoginMethod(loginMethod === 'password' ? 'otp' : 'password');
+                    setLoginMethod(loginMethod === 'mobileOtp' ? 'password' : 'mobileOtp');
                     setError('');
-                    if (loginMethod === 'otp') {
+                    if (loginMethod === 'mobileOtp') {
                       setOtpChallengeId('');
                       setOtpMaskedMobile('');
                       setOtp('');
+                      setOtpExpiresAt(0);
+                      setOtpResendAvailableAt(0);
                     }
                   }}
                   className="flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
                 >
-                  {loginMethod === 'password' ? t('auth.loginWithOtp') : t('auth.loginWithPassword')}
+                  {loginMethod === 'mobileOtp'
+                    ? t('auth.loginWithPassword')
+                    : t('auth.loginWithMobileOtp', 'Login with Mobile OTP')}
+                </button>
+              ) : null}
+
+              {isLogin && isEmailOtpEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMethod(loginMethod === 'emailOtp' ? 'password' : 'emailOtp');
+                    setError('');
+                    if (loginMethod === 'emailOtp') {
+                      setEmailOtpChallengeId('');
+                      setEmailOtpMaskedEmail('');
+                      setEmailOtp('');
+                      setEmailOtpExpiresAt(0);
+                      setEmailOtpResendAvailableAt(0);
+                    }
+                  }}
+                  className="flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                >
+                  {loginMethod === 'emailOtp'
+                    ? t('auth.loginWithPassword')
+                    : t('auth.loginWithEmailOtp', 'Login with Email OTP')}
                 </button>
               ) : null}
             </div>

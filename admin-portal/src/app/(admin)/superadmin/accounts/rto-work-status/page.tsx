@@ -114,6 +114,7 @@ export default function RTOWorkStatusPage() {
   const [selected, setSelected] = useState<RtoRecord | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
   const [states, setStates] = useState<Option[]>([]);
   const [cities, setCities] = useState<Option[]>([]);
@@ -272,10 +273,10 @@ export default function RTOWorkStatusPage() {
   const paginationItems = useMemo(() => buildPaginationItems(currentPage, totalPages), [currentPage, totalPages]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const openCreate = () => { if (!canCreateRto) return; setEditingId(null); setForm(emptyForm); setCities([]); setError(''); setModalOpen(true); };
+  const openCreate = () => { if (!canCreateRto) return; setEditingId(null); setForm(emptyForm); setCities([]); setError(''); setTermsAccepted(false); setModalOpen(true); };
   const openEdit = async (record: RtoRecord) => {
     if (!canUpdateRto) return;
-    setEditingId(record.id); setForm({ ...record, taxStatus: record.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', fitnessStatus: record.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', insuranceStatus: record.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', pucStatus: record.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', hsrpStatus: record.hsrpStatus === 'YES' ? 'YES' : 'NO', noteSheet: record.noteSheet || '' }); setError(''); setModalOpen(true);
+    setEditingId(record.id); setForm({ ...record, taxStatus: record.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', fitnessStatus: record.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', insuranceStatus: record.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', pucStatus: record.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID', hsrpStatus: record.hsrpStatus === 'YES' ? 'YES' : 'NO', noteSheet: record.noteSheet || '' }); setError(''); setTermsAccepted(false); setModalOpen(true);
     const state = states.find((item) => item.name.toLowerCase() === record.rtoAgentState.toLowerCase());
     if (state) {
       const response = await api.get(`/locations/cities/${state.id}`);
@@ -294,6 +295,10 @@ export default function RTOWorkStatusPage() {
     event.preventDefault(); setError('');
     if (editingId ? !canUpdateRto : !canCreateRto) {
       setError('You do not have permission to manage RTO records.');
+      return;
+    }
+    if (!termsAccepted) {
+      setError('You must accept the Terms & Conditions to save the RTO record.');
       return;
     }
     if (!form.customerName || !form.vehicleNumber || !form.vehicleType || !form.vehicleModel || !form.sellerName || !form.purchaserName || !form.rtoOffice || !form.rtoAgentName || !form.rtoAgentState || !form.rtoAgentCity) {
@@ -480,8 +485,33 @@ export default function RTOWorkStatusPage() {
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Vehicle Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field><Field label="Hours Running *"><div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 transition focus-within:border-amber-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20"><input className="w-full bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none" inputMode="numeric" required min={1} value={form.hourRunning ?? ''} onChange={(e) => update('hourRunning', e.target.value.replace(/\D/g, '') ? Number(e.target.value.replace(/\D/g, '')) : null)} /><span className="flex items-center border-l border-gray-200 bg-gray-100 px-3 text-sm font-semibold text-gray-500">HR</span></div></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={validities.map((item) => ({ value: item, label: label(item) }))} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (nextStatus !== 'VALID' && nextStatus !== 'EXPIRED') update(dateKey, null); }} />{(form[statusKey] === 'VALID' || form[statusKey] === 'EXPIRED') ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid *"><StyledSelect value={form.hsrpStatus} options={(['YES', 'NO'] as HsrpStatus[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hsrpStatus', value as HsrpStatus)} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Seller, Purchaser & RTO Agent</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Seller Name *"><input className={inputClass} value={form.sellerName} onChange={(e) => update('sellerName', e.target.value.toUpperCase())} /></Field><Field label="Seller Number"><input className={inputClass} inputMode="numeric" value={form.sellerNumber} onChange={(e) => update('sellerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Purcheser Name *"><input className={inputClass} value={form.purchaserName} onChange={(e) => update('purchaserName', e.target.value.toUpperCase())} /></Field><Field label="Purcheser Number"><input className={inputClass} inputMode="numeric" value={form.purchaserNumber} onChange={(e) => update('purchaserNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="RTO Office *"><input className={inputClass} value={form.rtoOffice} onChange={(e) => update('rtoOffice', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent Name *"><input className={inputClass} value={form.rtoAgentName} onChange={(e) => update('rtoAgentName', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent State *"><StyledSelect value={form.rtoAgentState} placeholder="Select state" options={[{ value: '', label: 'Select state' }, ...states.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => void changeState(value)} /></Field><Field label="RTO Agent City *"><StyledSelect value={form.rtoAgentCity} placeholder="Select city" disabled={!form.rtoAgentState} options={[{ value: '', label: 'Select city' }, ...cities.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('rtoAgentCity', value)} /></Field><Field label="RTO Agent Number"><input className={inputClass} inputMode="numeric" value={form.rtoAgentNumber} onChange={(e) => update('rtoAgentNumber', e.target.value.replace(/\D/g, ''))} /></Field></div></section>
-      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Expenses & Status</h3><div className="grid gap-4 md:grid-cols-3"><Field label="RTO Expenses *"><input className={inputClass} type="number" min="1" required value={form.rtoExpenses} onChange={(e) => update('rtoExpenses', Number(e.target.value))} /></Field><Field label="RTO Expenses Advance"><input className={inputClass} type="number" min="0" value={form.rtoExpensesAdvance} onChange={(e) => update('rtoExpensesAdvance', Number(e.target.value))} /></Field><Field label="RTO Expenses Balance"><input className={`${inputClass} bg-gray-100`} readOnly value={Math.max(0, Number(form.rtoExpenses) - Number(form.rtoExpensesAdvance))} /></Field><Field label="Document Send Date"><input className={inputClass} type="date" value={form.documentSendDate ? String(form.documentSendDate).slice(0, 10) : ''} onChange={(e) => update('documentSendDate', e.target.value || null)} /></Field><Field label="RTO Status"><StyledSelect value={form.rtoStatus} options={statuses.map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('rtoStatus', value as Status)} /></Field><Field label="Vehicle Maintenance Cost *"><input className={inputClass} type="number" min="1" required value={form.vehicleMaintenanceCost} onChange={(e) => update('vehicleMaintenanceCost', Number(e.target.value))} /></Field><Field label="Note Sheet" wide><textarea className={`${inputClass} min-h-24`} value={form.noteSheet || ''} onChange={(e) => update('noteSheet', e.target.value)} /></Field></div></section>
-      <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={() => setModalOpen(false)} className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200">Cancel</button><button disabled={saving} type="submit" className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-gray-950 hover:bg-amber-600 disabled:opacity-60">{saving ? 'Saving...' : editingId ? 'Update Record' : 'Save Record'}</button></div>
+      <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-4">
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+            className="mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+          />
+          <span className="text-xs font-medium text-gray-700 leading-relaxed">
+            I hereby confirm that all submitted customer, vehicle, and RTO details are accurate and verified. I agree to the{' '}
+            <a
+              href="/terms-and-conditions"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="font-bold text-amber-800 underline decoration-amber-500 underline-offset-2 hover:text-amber-900"
+            >
+              Terms & Conditions
+            </a>
+            {' '}and official compliance rules for managing RTO records.
+          </span>
+        </label>
+      </div>
+      <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+        <button type="button" onClick={() => setModalOpen(false)} className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200">Cancel</button>
+        <button disabled={!termsAccepted || saving} type="submit" className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-gray-950 hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50 transition">{saving ? 'Saving...' : editingId ? 'Update Record' : 'Save Record'}</button>
+      </div>
     </form></div></div> : null}
   </div>;
 }

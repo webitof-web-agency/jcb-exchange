@@ -3,6 +3,7 @@ export const employeeRolesPermissions = ['roles.read', 'roles.create', 'roles.up
 export const employeeBrandsPermissions = ['brands.read', 'brands.create', 'brands.update', 'brands.delete'];
 export const employeeFooterPermissions = ['footer.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
+export const employeeSmsPermissions = ['sms.read', 'sms.manage'];
 
 import { accountAnyPermissions } from '@/lib/accountsPermissions';
 import {
@@ -35,6 +36,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/whatsapp',
     employeePath: '/employee/whatsapp',
     permissions: employeeWhatsAppPermissions,
+  },
+  {
+    superadminPath: '/superadmin/sms',
+    employeePath: '/employee/sms',
+    permissions: employeeSmsPermissions,
   },
   {
     superadminPath: '/superadmin/listings',

@@ -1,47 +1,31 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import { randomUUID } from 'crypto';
-
 export type MobileOtpSettings = {
   enabled: boolean;
   apiKey: string | null;
-  senderId: string | null;
-  templateId: string | null;
-  templateMessage: string | null;
+  otpId: string | null;
+  otpExpiry: number;
+  otpLength: number;
+  variablesValues: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
 
-type MobileOtpSession = {
-  id: string;
-  mobile: string;
-  userId: string | null;
-  createdAt: string;
-  expiresAt: string;
-  lastSentAt: string;
-  attemptCount: number;
-  verifiedAt: string | null;
+type LegacyMobileOtpSettings = Partial<MobileOtpSettings> & {
+  templateId?: string | null;
 };
 
-type MobileOtpSessionStore = {
-  sessions: MobileOtpSession[];
-};
-
-const OTP_EXPIRY_MINUTES = 5;
-const OTP_COOLDOWN_SECONDS = 45;
-const OTP_MAX_VERIFY_ATTEMPTS = 5;
-const sessionDirectory = path.resolve(process.cwd(), 'runtime');
-const sessionFilePath = path.join(sessionDirectory, 'mobile-otp-sessions.json');
-
-export const defaultMobileOtpTemplateMessage =
-  'Your OTP for JCB Exchange is {#var#}. Validity 5 mins.';
+export const FLOWITOF_DEFAULT_OTP_BASE_URL = 'https://sms.flowitof.com/dev/otp';
+export const MOBILE_OTP_COOLDOWN_SECONDS = 45;
+export const MOBILE_OTP_RESEND_WINDOW_SECONDS = 10 * 60;
+export const MOBILE_OTP_MAX_RESENDS = 5;
+export const MOBILE_OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 export const defaultMobileOtpSettings: MobileOtpSettings = {
   enabled: false,
   apiKey: null,
-  senderId: null,
-  templateId: null,
-  templateMessage: defaultMobileOtpTemplateMessage,
+  otpId: null,
+  otpExpiry: 15,
+  otpLength: 6,
+  variablesValues: null,
   updatedAt: null,
   updatedByUserId: null,
 };
@@ -51,57 +35,27 @@ const normalizeTrimmedValue = (value?: string | null) => {
   return trimmedValue ? trimmedValue : null;
 };
 
+const normalizeInteger = (value: unknown, minimum: number, maximum: number, fallback: number) => {
+  const parsedValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < minimum || parsedValue > maximum) {
+    return fallback;
+  }
+
+  return parsedValue;
+};
+
 export const normalizeMobileOtpSettings = (
-  settings?: Partial<MobileOtpSettings> | null,
+  settings?: LegacyMobileOtpSettings | null,
 ): MobileOtpSettings => ({
   enabled: settings?.enabled === true,
-  apiKey: normalizeTrimmedValue(settings?.apiKey) || null,
-  senderId: normalizeTrimmedValue(settings?.senderId)?.toUpperCase() || null,
-  templateId: normalizeTrimmedValue(settings?.templateId) || null,
-  templateMessage:
-    normalizeTrimmedValue(settings?.templateMessage) || defaultMobileOtpTemplateMessage,
+  apiKey: normalizeTrimmedValue(settings?.apiKey),
+  otpId: normalizeTrimmedValue(settings?.otpId ?? settings?.templateId),
+  otpExpiry: normalizeInteger(settings?.otpExpiry, 1, 10080, defaultMobileOtpSettings.otpExpiry),
+  otpLength: normalizeInteger(settings?.otpLength, 4, 10, defaultMobileOtpSettings.otpLength),
+  variablesValues: normalizeTrimmedValue(settings?.variablesValues),
   updatedAt: settings?.updatedAt || null,
   updatedByUserId: settings?.updatedByUserId || null,
 });
-
-const ensureSessionFile = async () => {
-  await fs.mkdir(sessionDirectory, { recursive: true });
-
-  try {
-    await fs.access(sessionFilePath);
-  } catch {
-    const defaultStore: MobileOtpSessionStore = { sessions: [] };
-    await fs.writeFile(sessionFilePath, JSON.stringify(defaultStore, null, 2), 'utf8');
-  }
-};
-
-const readSessionStore = async (): Promise<MobileOtpSessionStore> => {
-  await ensureSessionFile();
-
-  try {
-    const content = await fs.readFile(sessionFilePath, 'utf8');
-    const parsed = JSON.parse(content) as Partial<MobileOtpSessionStore>;
-
-    return {
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-    };
-  } catch {
-    return { sessions: [] };
-  }
-};
-
-const writeSessionStore = async (store: MobileOtpSessionStore) => {
-  await ensureSessionFile();
-  await fs.writeFile(sessionFilePath, JSON.stringify(store, null, 2), 'utf8');
-};
-
-const pruneExpiredSessions = (sessions: MobileOtpSession[]) => {
-  const now = Date.now();
-  return sessions.filter((session) => {
-    const expiresAt = new Date(session.expiresAt).getTime();
-    return session.verifiedAt || expiresAt > now;
-  });
-};
 
 export const normalizeLoginMobileNumber = (value?: string | null) => {
   const digitsOnly = value?.replace(/\D/g, '') || '';
@@ -121,110 +75,24 @@ export const normalizeLoginMobileNumber = (value?: string | null) => {
   return null;
 };
 
-export const toInternationalMobileNumber = (mobile: string) => {
-  if (mobile.startsWith('91') && mobile.length === 12) {
-    return mobile;
-  }
-
-  return `91${mobile}`;
-};
-
 export const maskMobileNumber = (mobile: string) =>
   mobile.length < 4 ? mobile : `${'*'.repeat(Math.max(0, mobile.length - 4))}${mobile.slice(-4)}`;
 
-export const getMobileOtpCooldownSeconds = async (mobile: string) => {
-  const store = await readSessionStore();
-  const activeSessions = pruneExpiredSessions(store.sessions);
+export const getFlowitofOtpBaseUrl = () => {
+  const configuredUrl = process.env.FLOWITOF_OTP_BASE_URL?.trim() || FLOWITOF_DEFAULT_OTP_BASE_URL;
 
-  const latestSession = activeSessions
-    .filter((session) => session.mobile === mobile)
-    .sort((left, right) => new Date(right.lastSentAt).getTime() - new Date(left.lastSentAt).getTime())[0];
-
-  if (!latestSession) {
-    return 0;
-  }
-
-  const cooldownEndsAt =
-    new Date(latestSession.lastSentAt).getTime() + OTP_COOLDOWN_SECONDS * 1000;
-  const secondsRemaining = Math.ceil((cooldownEndsAt - Date.now()) / 1000);
-
-  return secondsRemaining > 0 ? secondsRemaining : 0;
-};
-
-export const createMobileOtpSession = async ({
-  mobile,
-  userId,
-}: {
-  mobile: string;
-  userId?: string | null;
-}) => {
-  const store = await readSessionStore();
-  const activeSessions = pruneExpiredSessions(store.sessions);
-  const now = new Date();
-  const session: MobileOtpSession = {
-    id: randomUUID(),
-    mobile,
-    userId: userId || null,
-    createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString(),
-    lastSentAt: now.toISOString(),
-    attemptCount: 0,
-    verifiedAt: null,
-  };
-
-  activeSessions.push(session);
-  await writeSessionStore({ sessions: activeSessions });
-
-  return session;
-};
-
-export const getMobileOtpSessionById = async (sessionId: string) => {
-  const store = await readSessionStore();
-  const activeSessions = pruneExpiredSessions(store.sessions);
-
-  if (activeSessions.length !== store.sessions.length) {
-    await writeSessionStore({ sessions: activeSessions });
-  }
-
-  return activeSessions.find((session) => session.id === sessionId) || null;
-};
-
-export const recordMobileOtpAttempt = async ({
-  sessionId,
-  verified,
-}: {
-  sessionId: string;
-  verified: boolean;
-}) => {
-  const store = await readSessionStore();
-  const activeSessions = pruneExpiredSessions(store.sessions);
-  const nextSessions = activeSessions.map((session) => {
-    if (session.id !== sessionId) {
-      return session;
+  try {
+    const parsedUrl = new URL(configuredUrl);
+    if (parsedUrl.protocol !== 'https:') {
+      throw new Error('Flowitof OTP base URL must use HTTPS.');
     }
 
-    return {
-      ...session,
-      attemptCount: verified ? session.attemptCount : session.attemptCount + 1,
-      verifiedAt: verified ? new Date().toISOString() : session.verifiedAt,
-    };
-  });
+    return configuredUrl.replace(/\/+$/, '');
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('must use HTTPS')) {
+      throw error;
+    }
 
-  await writeSessionStore({ sessions: nextSessions });
-
-  return nextSessions.find((session) => session.id === sessionId) || null;
+    throw new Error('Flowitof OTP base URL is invalid.');
+  }
 };
-
-export const invalidateMobileOtpSession = async (sessionId: string) => {
-  const store = await readSessionStore();
-  const nextSessions = store.sessions.filter((session) => session.id !== sessionId);
-  await writeSessionStore({ sessions: nextSessions });
-};
-
-export const isMobileOtpSessionExpired = (session: MobileOtpSession) =>
-  new Date(session.expiresAt).getTime() <= Date.now();
-
-export const canAttemptMobileOtpVerification = (session: MobileOtpSession) =>
-  session.attemptCount < OTP_MAX_VERIFY_ATTEMPTS;
-
-export const getMobileOtpExpiryMinutes = () => OTP_EXPIRY_MINUTES;
