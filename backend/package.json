@@ -8,7 +8,7 @@
     "dev:status": "node scripts/dev-server.mjs status",
     "generate": "prisma generate",
     "build": "prisma generate && tsc",
-    "start": "node dist/src/server.js",
+    "start": "prisma migrate deploy && node dist/src/server.js",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "seed:listings": "tsx scripts/seed-listings.ts"
