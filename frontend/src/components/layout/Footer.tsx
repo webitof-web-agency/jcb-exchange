@@ -174,7 +174,7 @@ export default function Footer() {
 
   return (
     <>
-      <footer className="bg-[#1A1A1A] text-gray-300 pt-16 pb-6 px-6 md:px-12 w-full mt-auto border-t-[10px] border-[#E6E6E6]">
+      <footer className="hidden lg:block bg-[#1A1A1A] text-gray-300 pt-16 pb-6 px-6 md:px-12 w-full mt-auto border-t-[10px] border-[#E6E6E6]">
         <div className="max-w-[1200px] mx-auto">
           {/* Top Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-10 sm:gap-x-6 lg:gap-x-0 mb-12 md:mb-16">

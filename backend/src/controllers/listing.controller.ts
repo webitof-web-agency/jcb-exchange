@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
 import prisma from '../lib/prisma';
 import { detachLeadsFromListing, getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
@@ -1168,7 +1170,19 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
     const updatedListing = await prismaAny.$transaction(async (tx: any) => {
       if (hasMediaField) {
+        const oldMedia = await tx.media.findMany({
+          where: { listingId },
+          select: { url: true }
+        });
         await tx.media.deleteMany({ where: { listingId } });
+        
+        // Delete old media from Google Drive
+        for (const m of oldMedia) {
+          if (m.url) {
+            const fileId = extractDriveFileId(m.url);
+            if (fileId) await deleteFileFromDrive(fileId);
+          }
+        }
       }
 
       const nextListing = await tx.listing.update({
@@ -1281,9 +1295,21 @@ export const deleteListing = async (req: Request, res: Response, next: NextFunct
     await prismaAny.$transaction(async (tx: any) => {
       await detachLeadsFromListing(tx, existingListing);
 
+      const oldMedia = await tx.media.findMany({
+        where: { listingId },
+        select: { url: true }
+      });
+
       await tx.media.deleteMany({
         where: { listingId },
       });
+      
+      for (const m of oldMedia) {
+        if (m.url) {
+          const fileId = extractDriveFileId(m.url);
+          if (fileId) await deleteFileFromDrive(fileId);
+        }
+      }
 
       await tx.listing.delete({
         where: { id: listingId },

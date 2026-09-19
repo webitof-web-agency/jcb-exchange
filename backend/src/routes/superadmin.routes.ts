@@ -22,6 +22,8 @@ import {
   getCustomerPrimePayments,
   getListingPaymentSubmissionById,
   getListingPaymentSubmissions,
+  getGoogleDriveSettings,
+  updateGoogleDrive,
   updatePlatformSettings,
   saveAdminPartnerOnboarding,
   submitAdminPartnerOnboarding,
@@ -87,6 +89,8 @@ router.get('/inspection-section', canManageSettings, getInspectionSectionContent
 router.put('/inspection-section', canManageSettings, updateInspectionSectionContent);
 router.get('/site-logo', canManageSettings, getSiteLogoContent);
 router.put('/site-logo', canManageSettings, updateSiteLogoContent);
+router.get('/google-drive', canManageSettings, getGoogleDriveSettings);
+router.put('/google-drive', canManageSettings, updateGoogleDrive);
 router.get('/settings', canManageSettings, getPlatformSettings);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
 router.get('/translations/catalog', canManageTranslations, getTranslationCatalog);

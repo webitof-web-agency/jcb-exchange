@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs/promises';
 import prisma from '../lib/prisma';
+import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
 import { secureUploadDir } from '../utils/documentUpload';
 import {
   ensureDefaultRecruitmentData,
@@ -2972,6 +2973,16 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
     const id = getParamString(req.params.id);
     const offer = await prisma.offer.findUnique({ where: { id } });
     if (!offer) return res.status(404).json({ success: false, error: 'Offer not found.' });
+
+    if (offer.offerLetterUrl) {
+      const fileId = extractDriveFileId(offer.offerLetterUrl);
+      if (fileId) {
+        await deleteFileFromDrive(fileId).catch(err => {
+          console.warn(`Failed to delete Offer Letter ${fileId} from Drive:`, err);
+        });
+      }
+    }
+
     await prisma.offer.delete({ where: { id } });
     await logRecruitmentActivity({
       candidateId: offer.candidateId,

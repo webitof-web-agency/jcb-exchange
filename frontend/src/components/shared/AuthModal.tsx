@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import Script from 'next/script';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
@@ -472,26 +473,31 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-white md:bg-black/60 md:p-4 md:backdrop-blur-sm">
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setIsGoogleScriptReady(true)}
       />
-      <div className="flex min-h-full items-center justify-center">
-        <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
-          <div className="relative flex items-center justify-center bg-[#1A1A1A] px-6 py-4 min-h-[64px]">
-            <SiteBrand variant="navbar" align="center" />
+      <div className="flex min-h-full items-start md:items-center justify-center">
+        <div className="w-full min-h-screen md:min-h-0 md:h-auto md:max-w-md overflow-hidden md:rounded-xl bg-white md:shadow-2xl animate-in slide-in-from-bottom-4 md:zoom-in duration-200">
+          <div className="relative flex items-center justify-center bg-transparent md:bg-[#1A1A1A] px-6 py-2 md:py-4 min-h-[48px] md:min-h-[64px]">
+            <div className="hidden md:block">
+              <SiteBrand variant="navbar" align="center" />
+            </div>
+            <div className="md:hidden flex items-center justify-center w-full">
+              <Image src="/mainlogo.png" alt="JCB Exchange" width={140} height={40} className="object-contain" />
+            </div>
             <button
               onClick={() => setAuthModalOpen(false)}
-              className="absolute right-6 text-gray-400 transition-colors hover:text-white"
+              className="absolute top-3 right-3 md:top-1/2 md:-translate-y-1/2 md:right-6 text-gray-600 md:text-gray-400 transition-colors hover:text-gray-900 md:hover:text-white"
             >
               <X size={24} />
             </button>
           </div>
 
-          <div className="p-5 sm:p-6">
-            <div className="mb-3 text-center">
+          <div className="p-5 pt-0 md:pt-6 sm:p-6 flex flex-col">
+            <div className="mb-4 -mt-2 md:mt-0 text-center">
               <h4 className="text-2xl font-bold text-gray-900">
                 {isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}
               </h4>

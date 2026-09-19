@@ -2,6 +2,7 @@ import { ListingStatus, Role } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
+import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
 import {
   buildAuthUserPayload,
   buildOnboardingResponse,
@@ -678,7 +679,7 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingPayment, companyInvoice } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingPayment, companyInvoice, mobileApp, googleDrive } = req.body as {
       googleClientId?: string;
       googleAuthEnabled?: boolean;
       mobileOtp?: {
@@ -717,6 +718,16 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         defaultGstRate?: number;
         termsAndConditions?: string;
       };
+      mobileApp?: {
+        playStoreLink?: string;
+        appStoreLink?: string;
+      };
+      googleDrive?: {
+        clientId?: string;
+        clientSecret?: string;
+        refreshToken?: string;
+        backupFolderId?: string;
+      };
     };
 
     if (
@@ -727,7 +738,9 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       !publicLeadRouting &&
       !customerPrime &&
       !listingPayment &&
-      !companyInvoice
+      !companyInvoice &&
+      !mobileApp &&
+      !googleDrive
     ) {
       return res.status(400).json({
         error: 'No platform setting changes were provided.',
@@ -756,6 +769,26 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         ...(mobileOtp.otpExpiry !== undefined ? { otpExpiry: Number(mobileOtp.otpExpiry) } : {}),
         ...(mobileOtp.otpLength !== undefined ? { otpLength: Number(mobileOtp.otpLength) } : {}),
         ...(mobileOtp.variablesValues !== undefined ? { variablesValues: mobileOtp.variablesValues } : {}),
+      };
+    }
+
+    if (mobileApp) {
+      settingsPayload.mobileApp = {
+        ...(mobileApp.playStoreLink !== undefined ? { playStoreLink: mobileApp.playStoreLink } : {}),
+        ...(mobileApp.appStoreLink !== undefined ? { appStoreLink: mobileApp.appStoreLink } : {}),
+        updatedAt: new Date().toISOString(),
+        updatedByUserId: req.user?.id || null,
+      };
+    }
+
+    if (googleDrive) {
+      settingsPayload.googleDrive = {
+        ...(googleDrive.clientId !== undefined ? { clientId: googleDrive.clientId } : {}),
+        ...(googleDrive.clientSecret !== undefined ? { clientSecret: googleDrive.clientSecret } : {}),
+        ...(googleDrive.refreshToken !== undefined ? { refreshToken: googleDrive.refreshToken } : {}),
+        ...(googleDrive.backupFolderId !== undefined ? { backupFolderId: googleDrive.backupFolderId } : {}),
+        updatedAt: new Date().toISOString(),
+        updatedByUserId: req.user?.id || null,
       };
     }
 
@@ -2672,6 +2705,24 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         listingsPendingApproval: listingsPendingApprovalCount,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getGoogleDriveSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+    res.status(200).json({ success: true, googleDrive: settings.googleDrive });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateGoogleDrive = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await updatePlatformRuntimeSettings({ googleDrive: req.body, updatedByUserId: req.user?.id || null });
+    res.status(200).json({ success: true, googleDrive: settings.googleDrive });
   } catch (error) {
     next(error);
   }

@@ -1342,6 +1342,8 @@ export const getPublicSearchFilters = async (req: Request, res: Response, next: 
 export const getPublicListingById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    // 2. IP / Unique View Tracking (24 hour limit)
+    const cacheKey = `${req.ip}_${id}`;
     if (!id) {
       return res.status(400).json({ success: false, error: 'Listing ID is required.' });
     }
@@ -1666,3 +1668,21 @@ export const getPublicInvoiceSettings = async (req: Request, res: Response, next
 };
 
 
+
+
+export const getMobileAppSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        playStoreLink: settings.mobileApp.playStoreLink,
+        appStoreLink: settings.mobileApp.appStoreLink,
+        updatedAt: settings.mobileApp.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -1,9 +1,9 @@
 "use client";
 
 import Image from 'next/image';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, Shapes } from 'lucide-react';
+import { ArrowRight, Search, Shapes, Truck, ChevronRight, LayoutGrid, ChevronDown, ArrowUpDown } from 'lucide-react';
 import api, { API_ORIGIN } from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -23,11 +23,11 @@ import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
 
 function CategoryIconBadge({ icon, name }: { icon?: PublicCategory['icon']; name: string }) {
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-full border border-yellow-100 bg-[#fff8db] text-gray-700 shadow-sm">
+    <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-full border border-yellow-100 bg-[#fff8db] text-gray-700 shadow-sm shrink-0">
       <CategoryIconRenderer
         svgData={icon?.svgData}
         name={name}
-        className="flex h-6 w-6 items-center justify-center text-gray-700"
+        className="flex h-4 w-4 md:h-6 md:w-6 items-center justify-center text-gray-700"
       />
       <span className="sr-only">{name}</span>
     </div>
@@ -56,6 +56,7 @@ export default function CategoriesPageClient() {
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('popular');
 
   useEffect(() => {
     let cancelled = false;
@@ -86,12 +87,25 @@ export default function CategoriesPageClient() {
 
   const filteredCategories = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return categories;
+    let result = categories;
+    
+    if (normalizedSearch) {
+      result = result.filter((category) => category.name.toLowerCase().includes(normalizedSearch));
     }
+    
+    // Apply sorting
+    result = [...result].sort((a, b) => {
+      if (sortBy === 'name-asc') {
+        return a.name.localeCompare(b.name);
+      } else if (sortBy === 'name-desc') {
+        return b.name.localeCompare(a.name);
+      } else { // popular
+        return b.count - a.count;
+      }
+    });
 
-    return categories.filter((category) => category.name.toLowerCase().includes(normalizedSearch));
-  }, [categories, search]);
+    return result;
+  }, [categories, search, sortBy]);
 
   const totalMachines = useMemo(
     () => categories.reduce((sum, category) => sum + category.count, 0),
@@ -99,126 +113,114 @@ export default function CategoriesPageClient() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f6f4ef] pb-16 pt-10">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#111827_0%,#1f2937_55%,#3a321d_100%)] px-6 py-10 text-white shadow-xl sm:px-10">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.35em] text-jcb-yellow">{t('categories.browseCategories')}</p>
-              <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl lg:text-5xl">
-                {t('categories.heroTitle')}
-              </h1>
-              <p className="mt-4 max-w-xl text-sm text-white/75 sm:text-base">
-                {t('categories.heroDescription')}
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/55">{t('categories.liveCategories')}</p>
-                <p className="mt-2 text-3xl font-black text-white">{formatMachineCount(categories.length)}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/55">{t('categories.publishedMachines')}</p>
-                <p className="mt-2 text-3xl font-black text-jcb-yellow">{formatMachineCount(totalMachines)}</p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-[#f3f4f6] pb-16">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
+        
+        {/* Header - Outside the card */}
+        <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-4">
+          <div className="flex-shrink-0">
+            <h2 className="text-[28px] sm:text-3xl font-black text-gray-900 tracking-tight">{t('categories.allCategories') || 'All Categories'}</h2>
           </div>
-        </section>
 
-        <section className="mt-8 rounded-[28px] border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
-          <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-extrabold text-gray-900">{t('categories.allCategories')}</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                {t('categories.allCategoriesDescription')}
+          <div className="relative w-full md:max-w-md xl:max-w-[300px]">
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('categories.searchPlaceholder') || 'Search categories...'}
+              className="w-full h-10 rounded-full border border-gray-300 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 shadow-sm outline-none transition focus:border-jcb-yellow focus:ring-1 focus:ring-jcb-yellow"
+            />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          </div>
+        </div>
+
+        {/* The Card containing ONLY the grid */}
+        <section className="sm:rounded-[28px] sm:border sm:border-gray-200 sm:bg-white sm:p-7 relative z-10">
+          <div className="flex flex-row items-center justify-between mb-4 sm:mb-6 gap-3 sm:border-b sm:border-gray-100 pb-2 sm:pb-4">
+            
+            {/* Desktop Left Side Stats */}
+            <div className="hidden sm:flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[15px] font-bold text-gray-500">{categories.length}</span>
+                <span className="text-sm font-bold text-gray-500">Categories</span>
+              </div>
+              <div className="h-4 w-[2px] bg-gray-200"></div>
+              <Link href="/machines" className="group flex items-center gap-1.5 transition-colors">
+                <span className="text-[15px] font-bold text-gray-500 group-hover:text-jcb-yellow transition-colors">{totalMachines}</span>
+                <span className="text-sm font-bold text-gray-500 group-hover:text-jcb-yellow transition-colors">Machines</span>
+                <ArrowRight className="h-4 w-4 ml-1 text-gray-400 group-hover:text-jcb-yellow transition-colors" strokeWidth={3} />
+              </Link>
+            </div>
+
+            {/* Right Side Sort & Mobile Stats */}
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:block text-sm font-semibold text-gray-500 mr-1">Sort by:</div>
+              <SortDropdown value={sortBy} onChange={setSortBy} />
+            </div>
+            <span className="text-[12px] font-medium text-gray-500 sm:hidden">{categories.length} categories</span>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={`category-loading-${index}`} className="h-[180px] sm:h-[220px] md:h-[260px] animate-pulse rounded-2xl border border-gray-100 bg-[#fcfbf8]" />
+              ))}
+            </div>
+          ) : filteredCategories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf8] px-6 py-16 text-center">
+              <Shapes className="h-12 w-12 text-gray-300" />
+              <h3 className="mt-4 text-xl font-bold text-gray-900">{t('categories.noCategoriesFound')}</h3>
+              <p className="mt-2 max-w-md text-sm text-gray-500">
+                {t('categories.noCategoriesDescription')}
               </p>
-              <div className="mt-3">
-                <Link href="/machines" className="text-sm font-bold text-jcb-yellow hover:text-yellow-600">
-                  View all machines
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
+              {filteredCategories.map((category) => (
+                <Link
+                  href={`/machines?category=${category.id}`}
+                  key={category.id}
+                  className="group flex flex-col overflow-hidden rounded-[16px] sm:rounded-[20px] border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-1 hover:border-gray-300"
+                >
+                  <div className="relative h-[110px] sm:h-[140px] md:h-[160px] w-full overflow-hidden bg-[#f4f2ea]">
+                    {category.featuredImage ? (
+                      <Image
+                        src={getMediaUrl(category.featuredImage) || category.featuredImage}
+                        alt={`${category.name} heavy equipment`}
+                        fill
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-gray-400">No Image</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 sm:p-4 md:p-5">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <div className="flex h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-full bg-[#fff5d0] text-gray-800">
+                        <CategoryIconRenderer svgData={category.icon?.svgData} name={category.name} className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-extrabold text-gray-900 text-[13px] sm:text-sm md:text-[15px] truncate">{category.name}</h4>
+                        <p className="mt-0.5 text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 truncate">
+                          {category.count} live machines
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex h-5 w-5 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400 transition-colors group-hover:bg-gray-100 group-hover:text-gray-700">
+                      <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" strokeWidth={3} />
+                    </div>
+                  </div>
                 </Link>
-              </div>
+              ))}
             </div>
-
-            <div className="relative w-full md:w-80">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('categories.searchPlaceholder')}
-                className="w-full rounded-xl border border-gray-200 bg-[#faf8f3] py-3 pl-11 pr-4 text-sm font-medium text-gray-800 outline-none transition focus:border-jcb-yellow"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6">
-            {loading ? (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={`category-loading-${index}`} className="h-[310px] animate-pulse rounded-2xl border border-gray-100 bg-[#fcfbf8] p-5" />
-                ))}
-              </div>
-            ) : filteredCategories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf8] px-6 py-16 text-center">
-                <Shapes className="h-12 w-12 text-gray-300" />
-                <h3 className="mt-4 text-xl font-bold text-gray-900">{t('categories.noCategoriesFound')}</h3>
-                <p className="mt-2 max-w-md text-sm text-gray-500">
-                  {t('categories.noCategoriesDescription')}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {filteredCategories.map((category) => (
-                    <Link
-                      href={`/machines?category=${category.id}`}
-                      key={category.id}
-                      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-[#fcfbf8] p-5 transition-all hover:-translate-y-1 hover:border-jcb-yellow/40 hover:shadow-lg"
-                    >
-                    <div className="mb-4 flex items-start justify-between">
-                      <CategoryIconBadge icon={category.icon} name={category.name} />
-                      <ArrowRight className="h-4 w-4 text-gray-300 transition-colors group-hover:text-jcb-yellow" />
-                    </div>
-
-                    <div>
-                      <h3 className="text-xl font-extrabold text-gray-900">{category.name}</h3>
-                      <p className="mt-2 text-sm font-semibold text-gray-500">
-                        {t('categories.liveMachinesCount', { count: formatMachineCount(category.count) })}
-                      </p>
-                    </div>
-
-                    <div className="relative mt-5 h-48 overflow-hidden rounded-xl bg-white">
-                      {category.featuredImage ? (
-                        <Image
-                          src={getMediaUrl(category.featuredImage) || category.featuredImage}
-                          alt={`${category.name} heavy equipment category`}
-                          fill
-                          sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                          className="object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#fff7db] to-[#efe9de]">
-                          <span className="px-4 text-center text-sm font-bold uppercase tracking-[0.26em] text-gray-500">
-                            {category.name}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-5 flex items-center justify-between border-t border-gray-200 pt-4">
-                      <span className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">{t('categories.categoryView')}</span>
-                      <span className="text-sm font-bold text-gray-900 group-hover:text-jcb-yellow">
-                        {t('categories.browseMachines')}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </section>
 
-        <section className="mt-8 rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+        <section className="hidden md:block mt-8 rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="max-w-4xl space-y-4 text-sm leading-7 text-gray-600">
             <h2 className="text-2xl font-extrabold text-gray-900">Explore equipment categories with real market demand</h2>
             <p>
@@ -233,6 +235,69 @@ export default function CategoriesPageClient() {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function SortDropdown({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
+  
+  const options = [
+    { value: 'popular', label: t('categories.sortPopular') || 'Popular' },
+    { value: 'name-asc', label: t('categories.sortNameAsc') || 'Name (A-Z)' },
+    { value: 'name-desc', label: t('categories.sortNameDesc') || 'Name (Z-A)' },
+  ];
+
+  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full sm:w-auto" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between rounded-full border border-gray-300 bg-white px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-gray-700 shadow-sm outline-none transition focus:border-jcb-yellow focus:ring-1 focus:ring-jcb-yellow hover:bg-gray-50 gap-2 min-w-[140px] sm:min-w-[160px]"
+      >
+        <div className="flex items-center gap-1.5">
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-500" />
+          <span>{selectedOption.label}</span>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 mt-2 w-full min-w-[140px] sm:min-w-[160px] rounded-2xl border border-gray-200 bg-white py-1.5 shadow-lg right-0 animate-in fade-in slide-in-from-top-2 duration-200">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-gray-100 ${
+                value === option.value ? 'bg-gray-50 font-bold text-gray-900' : 'text-gray-700'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

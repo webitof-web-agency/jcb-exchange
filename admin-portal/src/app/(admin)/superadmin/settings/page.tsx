@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, FileText, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
+import { Building2, CreditCard, FileText, HardDrive, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -128,6 +128,16 @@ type SettingsResponse = {
   };
   listingPayment: ListingPaymentFormState;
   companyInvoice?: CompanyInvoiceFormState;
+  mobileApp?: {
+    playStoreLink: string | null;
+    appStoreLink: string | null;
+    updatedAt?: string | null;
+  };
+};
+
+type MobileAppFormState = {
+  playStoreLink: string;
+  appStoreLink: string;
 };
 
 type LeadRoutingFormState = {
@@ -242,7 +252,7 @@ const detectRazorpayModeFromKeyId = (keyId?: string | null): 'TEST' | 'LIVE' | n
 };
 
 export default function SuperAdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<'security' | 'leadRouting' | 'homepage' | 'payments' | 'invoice'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive'>('security');
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false);
   const [leadRoutingForm, setLeadRoutingForm] = useState<LeadRoutingFormState>({
@@ -256,6 +266,21 @@ export default function SuperAdminSettingsPage() {
   const [leadRoutingSaving, setLeadRoutingSaving] = useState(false);
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
+  const [googleDriveSaving, setGoogleDriveSaving] = useState(false);
+  const [mobileAppSaving, setMobileAppSaving] = useState(false);
+
+  const [googleDriveSettings, setGoogleDriveSettings] = useState({
+    clientId: '',
+    clientSecret: '',
+    refreshToken: '',
+    backupFolderId: '',
+  });
+  
+  const [mobileAppForm, setMobileAppForm] = useState<MobileAppFormState>({
+    playStoreLink: '',
+    appStoreLink: '',
+  });
+
   const [customerPrimeForm, setCustomerPrimeForm] = useState<CustomerPrimeFormState>({
     enabled: false,
     upiId: '',
@@ -426,6 +451,24 @@ export default function SuperAdminSettingsPage() {
           defaultGstRate: response.data.companyInvoice.defaultGstRate !== undefined ? String(response.data.companyInvoice.defaultGstRate) : '18',
           termsAndConditions: response.data.companyInvoice.termsAndConditions || 'This is a computer-generated tax invoice and does not require a physical signature.',
         });
+      }
+
+      setMobileAppForm({
+        playStoreLink: response.data.mobileApp?.playStoreLink || '',
+        appStoreLink: response.data.mobileApp?.appStoreLink || '',
+      });
+
+      // Fetch Google Drive settings
+      try {
+        const driveRes = await api.get('/superadmin/google-drive');
+        setGoogleDriveSettings({
+          clientId: driveRes.data.clientId || '',
+          clientSecret: driveRes.data.clientSecret || '',
+          refreshToken: driveRes.data.refreshToken || '',
+          backupFolderId: driveRes.data.backupFolderId || '',
+        });
+      } catch (err) {
+        console.warn('Failed to load Google Drive settings:', err);
       }
     } catch (error: unknown) {
       setLoadingError(getApiErrorMessage(error, 'Unable to load platform settings.'));
@@ -671,6 +714,58 @@ export default function SuperAdminSettingsPage() {
     }));
   };
 
+  const handleMobileAppSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMobileAppSaving(true);
+
+    try {
+      const response = await api.patch<{
+        message: string;
+        mobileApp: SettingsResponse['mobileApp'];
+      }>('/superadmin/settings', {
+        mobileApp: {
+          playStoreLink: mobileAppForm.playStoreLink,
+          appStoreLink: mobileAppForm.appStoreLink,
+        },
+      });
+
+      setMobileAppForm({
+        playStoreLink: response.data.mobileApp?.playStoreLink || '',
+        appStoreLink: response.data.mobileApp?.appStoreLink || '',
+      });
+      toast.success(response.data.message);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save mobile app settings.'));
+    } finally {
+      setMobileAppSaving(false);
+    }
+  };
+
+  const updateMobileAppForm = (nextState: Partial<MobileAppFormState>) => {
+    setMobileAppForm((currentState) => ({
+      ...currentState,
+      ...nextState,
+    }));
+  };
+
+  const handleGoogleDriveSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setGoogleDriveSaving(true);
+    try {
+      const response = await api.put('/superadmin/google-drive', {
+        clientId: googleDriveSettings.clientId,
+        clientSecret: googleDriveSettings.clientSecret,
+        refreshToken: googleDriveSettings.refreshToken,
+        backupFolderId: googleDriveSettings.backupFolderId,
+      });
+      toast.success(response.data.message || 'Google Drive settings updated successfully.');
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save Google Drive settings.'));
+    } finally {
+      setGoogleDriveSaving(false);
+    }
+  };
+
   const handleListingPaymentSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setListingPaymentSaving(true);
@@ -875,6 +970,30 @@ export default function SuperAdminSettingsPage() {
             >
               <FileText className="h-4 w-4" />
               Invoice & GST
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('mobileApp')}
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                activeTab === 'mobileApp'
+                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                  : 'border-transparent text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Phone className="h-4 w-4" />
+              Mobile App
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('googleDrive')}
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                activeTab === 'googleDrive'
+                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                  : 'border-transparent text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <HardDrive className="h-4 w-4" />
+              Google Drive
             </button>
           </nav>
         </aside>
@@ -1975,6 +2094,123 @@ export default function SuperAdminSettingsPage() {
                 </form>
               </section>
             </>
+          ) : null}
+
+          {activeTab === 'googleDrive' ? (
+            <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gray-900 px-6 py-8 sm:px-8">
+                <div className="relative flex items-center justify-between">
+                  <div>
+                    <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Google Drive Integration</h2>
+                    <p className="mt-2 text-sm text-gray-300 max-w-xl">
+                      Configure your Google Drive API credentials here. This is used for uploading listings, logos, and daily database backups to your personal Google Drive storage instead of keeping them on local servers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 sm:p-8">
+                <form onSubmit={handleGoogleDriveSubmit} className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Client ID</span>
+                      <input
+                        type="text"
+                        value={googleDriveSettings.clientId}
+                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientId: e.target.value })}
+                        placeholder="Client ID"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Client Secret</span>
+                      <input
+                        type="password"
+                        value={googleDriveSettings.clientSecret}
+                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientSecret: e.target.value })}
+                        placeholder="Client Secret"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                    <label className="block md:col-span-2">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Refresh Token</span>
+                      <input
+                        type="password"
+                        value={googleDriveSettings.refreshToken}
+                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, refreshToken: e.target.value })}
+                        placeholder="Refresh Token (from OAuth2 Playground)"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                    <label className="block md:col-span-2">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Database Backup Folder ID (Optional)</span>
+                      <input
+                        type="text"
+                        value={googleDriveSettings.backupFolderId}
+                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, backupFolderId: e.target.value })}
+                        placeholder="e.g. 1A2B3C4D5E6F7G8H9I0J"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Leave blank to upload daily CSV backups to the root directory of your Google Drive.
+                      </p>
+                    </label>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={googleDriveSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {googleDriveSaving ? 'Saving...' : 'Save Drive Settings'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </section>
+          ) : null}
+
+          {activeTab === 'mobileApp' ? (
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-6">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Mobile Settings</p>
+                <h3 className="mt-1 text-xl font-bold text-gray-900">Mobile App Links</h3>
+              </div>
+              <form onSubmit={handleMobileAppSubmit} className="space-y-6">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Play Store Link</span>
+                    <input
+                      type="url"
+                      value={mobileAppForm.playStoreLink}
+                      onChange={(e) => updateMobileAppForm({ playStoreLink: e.target.value })}
+                      placeholder="https://play.google.com/store/apps/details?id=..."
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">App Store Link</span>
+                    <input
+                      type="url"
+                      value={mobileAppForm.appStoreLink}
+                      onChange={(e) => updateMobileAppForm({ appStoreLink: e.target.value })}
+                      placeholder="https://apps.apple.com/app/..."
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    />
+                  </label>
+                </div>
+                <div className="flex justify-end border-t border-gray-100 pt-4">
+                  <button
+                    type="submit"
+                    disabled={mobileAppSaving}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Save className="h-4 w-4" />
+                    {mobileAppSaving ? 'Saving...' : 'Save App Links'}
+                  </button>
+                </div>
+              </form>
+            </section>
           ) : null}
         </div>
       </div>

@@ -331,6 +331,7 @@ export default function JobsPage() {
               options={filterOptions.experienceLevels.map((level) => ({ value: level, label: formatExperienceLevel(level) }))}
             />
           </div>
+
         </div>
 
         {/* Results Header */}

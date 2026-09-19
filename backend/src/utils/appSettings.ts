@@ -197,6 +197,41 @@ export const normalizeCompanyInvoiceSettings = (
   updatedByUserId: settings?.updatedByUserId || null,
 });
 
+export type GoogleDriveSettings = {
+  clientId: string | null;
+  clientSecret: string | null;
+  refreshToken: string | null;
+  backupFolderId: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export const normalizeGoogleDriveSettings = (
+  settings?: Partial<GoogleDriveSettings> | null,
+): GoogleDriveSettings => ({
+  clientId: settings?.clientId?.trim() || null,
+  clientSecret: settings?.clientSecret?.trim() || null,
+  refreshToken: settings?.refreshToken?.trim() || null,
+  backupFolderId: settings?.backupFolderId?.trim() || null,
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
+
+export type MobileAppSettings = {
+  playStoreLink: string | null;
+  appStoreLink: string | null;
+  updatedAt?: string | null;
+  updatedByUserId?: string | null;
+};
+
+export const normalizeMobileAppSettings = (
+  settings?: Partial<MobileAppSettings> | null,
+): MobileAppSettings => ({
+  playStoreLink: settings?.playStoreLink?.trim() || null,
+  appStoreLink: settings?.appStoreLink?.trim() || null,
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
 type AppSettings = {
   googleAuth: GoogleAuthSettings;
   mobileOtp: MobileOtpSettings;
@@ -204,6 +239,8 @@ type AppSettings = {
   customerPrime: CustomerPrimeSettings;
   listingPayment: ListingPaymentSettings;
   companyInvoice: CompanyInvoiceSettings;
+  googleDrive: GoogleDriveSettings;
+  mobileApp: MobileAppSettings;
   financeSupport: {
     items: FinanceSupportItem[];
   };
@@ -349,6 +386,8 @@ const defaultSettings: AppSettings = {
       updatedByUserId: null,
     },
   },
+  googleDrive: normalizeGoogleDriveSettings(),
+  mobileApp: normalizeMobileAppSettings(),
   companyInvoice: {
     companyName: 'JCB Exchange',
     gstin: null,
@@ -411,6 +450,8 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
   customerPrime: normalizeCustomerPrimeSettings(parsed?.customerPrime),
   listingPayment: normalizeListingPaymentSettings(parsed?.listingPayment),
   companyInvoice: normalizeCompanyInvoiceSettings(parsed?.companyInvoice),
+  googleDrive: normalizeGoogleDriveSettings(parsed?.googleDrive),
+  mobileApp: normalizeMobileAppSettings(parsed?.mobileApp),
   financeSupport: {
     items: normalizeFinanceSupportItems(parsed?.financeSupport?.items),
   },
@@ -838,6 +879,8 @@ export const updatePlatformRuntimeSettings = async ({
   customerPrime,
   listingPayment,
   companyInvoice,
+  googleDrive,
+  mobileApp,
   updatedByUserId,
 }: {
   googleClientId?: string | null;
@@ -865,6 +908,8 @@ export const updatePlatformRuntimeSettings = async ({
   > | null;
   listingPayment?: Partial<ListingPaymentSettings> | null;
   companyInvoice?: Partial<CompanyInvoiceSettings> | null;
+  googleDrive?: Partial<GoogleDriveSettings> | null;
+  mobileApp?: Partial<MobileAppSettings> | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
@@ -875,6 +920,8 @@ export const updatePlatformRuntimeSettings = async ({
   const hasCustomerPrimeUpdate = customerPrime !== undefined;
   const hasListingPaymentUpdate = listingPayment !== undefined;
   const hasCompanyInvoiceUpdate = companyInvoice !== undefined;
+  const hasGoogleDriveUpdate = googleDrive !== undefined;
+  const hasMobileAppUpdate = mobileApp !== undefined;
 
   const nextSettings: AppSettings = {
     ...currentSettings,
@@ -953,6 +1000,26 @@ export const updatePlatformRuntimeSettings = async ({
         updatedByUserId: updatedByUserId || null,
       }
       : currentSettings.companyInvoice,
+    googleDrive: hasGoogleDriveUpdate
+      ? {
+        ...normalizeGoogleDriveSettings({
+          ...currentSettings.googleDrive,
+          ...googleDrive,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.googleDrive,
+    mobileApp: hasMobileAppUpdate
+      ? {
+        ...normalizeMobileAppSettings({
+          ...currentSettings.mobileApp,
+          ...mobileApp,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.mobileApp,
   };
 
   await persistSettings(nextSettings);

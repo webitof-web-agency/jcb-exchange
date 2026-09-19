@@ -17,6 +17,7 @@ import {
   getHeroImage,
   getInspectionSection,
   getSiteLogo,
+  getMobileAppSettings,
   getPublicListings,
   getRecentListings,
   getPublicCategories,
@@ -88,6 +89,7 @@ router.get('/footer', getFooterSettings);
 router.get('/hero-image', getHeroImage);
 router.get('/inspection-section', getInspectionSection);
 router.get('/site-logo', getSiteLogo);
+router.get('/mobile-app', getMobileAppSettings);
 router.get('/translations', getTranslationOverrides);
 router.post('/translations/register-missing', registerMissingTranslationKeys);
 router.get('/public-listings', getPublicListings);

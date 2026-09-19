@@ -200,17 +200,7 @@ export const getDocumentUploadMiddleware = (
   purpose: UploadPurpose = 'document'
 ) =>
   multer({
-    storage: multer.diskStorage({
-      destination: (_req, _file, callback) => {
-        const targetDirectory = getUploadDirectory(visibility, purpose);
-        ensureDirectory(targetDirectory);
-        callback(null, targetDirectory);
-      },
-      filename: (_req, file, callback) => {
-        const extension = getExtensionFromOriginalName(file.originalname);
-        callback(null, `${Date.now()}-${crypto.randomUUID()}${extension}`);
-      },
-    }),
+    storage: multer.memoryStorage(),
     fileFilter: (_req, file, callback) => {
       const allowed =
         purpose === 'resume' || purpose === 'offer-letter'

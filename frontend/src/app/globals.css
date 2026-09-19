@@ -21,15 +21,9 @@ body {
   @apply antialiased;
 }
 
-/* Toast Notification High Z-Index Overrides */
-.Toastify__toast-container,
-.Toastify__toast-container--top-right,
-.Toastify__toast-container--top-center,
-.Toastify__toast-container--top-left,
-.Toastify__toast-container--bottom-right,
-.Toastify__toast-container--bottom-center,
-.Toastify__toast-container--bottom-left {
-  z-index: 999999 !important;
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 @keyframes marqueeLeft {
@@ -42,19 +36,10 @@ body {
   100% { transform: translateX(0); }
 }
 
-/* ── Brand Loader Ring Animation ── */
-@keyframes brandSpin {
-  0%   { stroke-dashoffset: 0; transform: rotate(0deg); }
-  100% { stroke-dashoffset: 0; transform: rotate(360deg); }
-}
-
-@keyframes brandPulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.65; }
-}
-
-.brand-loader-text {
-  animation: brandPulse 2s ease-in-out infinite;
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+  display: flex;
+  width: max-content;
 }
 
 .animate-marquee-left {
@@ -92,6 +77,8 @@ body {
   pointer-events: none;
 }
 
+
+
 .finance-marquee-bleed {
   position: relative;
   left: 50%;
@@ -99,7 +86,6 @@ body {
   margin-left: -50vw;
   margin-right: -50vw;
 }
-
 /* Range Slider Styles */
 .thumb,
 .thumb::-webkit-slider-thumb {
@@ -149,4 +135,40 @@ body {
   margin-top: 4px;
   pointer-events: all;
   position: relative;
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+\n
+/* Toast Notification High Z-Index Overrides */
+.Toastify__toast-container,
+.Toastify__toast-container--top-right,
+.Toastify__toast-container--top-center,
+.Toastify__toast-container--top-left,
+.Toastify__toast-container--bottom-right,
+.Toastify__toast-container--bottom-center,
+.Toastify__toast-container--bottom-left {
+  z-index: 999999 !important;
+}
+
+/* ── Brand Loader Ring Animation ── */
+@keyframes brandSpin {
+  0%   { stroke-dashoffset: 0; transform: rotate(0deg); }
+  100% { stroke-dashoffset: 0; transform: rotate(360deg); }
+}
+
+@keyframes brandPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+
+.brand-loader-text {
+  animation: brandPulse 2s ease-in-out infinite;
 }
