@@ -144,8 +144,6 @@ whatsappfront/
 !backend/src/services/whatsappCredentialCrypto.ts
 !backend/src/services/whatsappCredentialCrypto.test.ts
 !backend/src/services/whatsappIntegration.service.ts
-!backend/src/services/whatsappAudience.service.ts
-!backend/src/services/whatsappAutomationEvents.test.ts
 !backend/src/controllers/whatsapp.controller.ts
 !backend/src/controllers/whatsappWebhook.controller.ts
 !backend/src/routes/whatsapp.routes.ts

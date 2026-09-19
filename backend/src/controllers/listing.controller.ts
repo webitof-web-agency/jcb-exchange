@@ -8,8 +8,7 @@ import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibil
 import { PushNotificationService } from '../services/pushNotification.service';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
-import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
-import { shouldDispatchPublishedBroadcast } from '../modules/whatsapp-core';
+import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
 import { syncListingRtoForListing } from '../services/listingRto.service';
 
 const prismaAny = prisma as any;
@@ -1380,25 +1379,6 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
         locationCity: updatedListing.locationCity,
         locationState: updatedListing.locationState,
         categoryName: updatedListing.category?.name,
-      });
-    }
-
-    if (shouldDispatchPublishedBroadcast({ previousStatus: existingListing.status, nextStatus: requestedStatus })) {
-      void dispatchPublishedWhatsApp({
-        eventCode: 'MARKETPLACE_NEW_LISTING_PUBLISHED',
-        relatedEntityType: 'LISTING',
-        relatedEntityId: updatedListing.id,
-        payloadSnapshot: {
-          listingId: updatedListing.id,
-          listingTitle: updatedListing.title,
-          listingSlug: updatedListing.slug,
-          listingStatus: updatedListing.status,
-          categoryName: updatedListing.category?.name,
-          brandName: updatedListing.brand?.name,
-          modelName: updatedListing.model?.name,
-          locationCity: updatedListing.locationCity,
-          locationState: updatedListing.locationState,
-        },
       });
     }
 

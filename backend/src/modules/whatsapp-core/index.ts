@@ -6,4 +6,3 @@ export * from './campaignPolicy';
 export * from './reminderPolicy';
 export * from './webhookUrl';
 export * from './templatePurposePolicy';
-export * from './publishedBroadcastPolicy';

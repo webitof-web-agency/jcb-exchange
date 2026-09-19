@@ -176,7 +176,6 @@ const marketplaceEventDetails: Record<string, { title: string; recipient: string
   LISTING_PAYMENT_REJECTED: { title: 'Payment rejected', recipient: 'Customer + Partner', preview: 'Buyer and listing owner receive rejection.' },
   CUSTOMER_PRIME_APPROVED: { title: 'Prime activated', recipient: 'Customer', preview: 'Prime subscription activation confirmation.' },
   CUSTOMER_PRIME_REJECTED: { title: 'Prime rejected', recipient: 'Customer', preview: 'Prime payment review result.' },
-  MARKETPLACE_NEW_LISTING_PUBLISHED: { title: 'New vehicle listing published', recipient: 'Opted-in customers', preview: 'Announces a newly approved vehicle listing.' },
 };
 
 const recruitmentEventDetails: Record<string, { title: string; recipient: string; preview: string }> = {
@@ -189,7 +188,6 @@ const recruitmentEventDetails: Record<string, { title: string; recipient: string
   RECRUITMENT_INTERVIEW_CANCELLED: { title: 'Interview cancelled', recipient: 'Candidate', preview: 'Confirms interview cancellation.' },
   RECRUITMENT_OFFER_SENT: { title: 'Offer sent', recipient: 'Candidate', preview: 'Confirms an employment offer is available.' },
   RECRUITMENT_OFFER_STATUS_UPDATED: { title: 'Offer status update', recipient: 'Candidate', preview: 'Shares the candidate-safe offer status.' },
-  RECRUITMENT_NEW_JOB_PUBLISHED: { title: 'New job published', recipient: 'Opted-in job seekers', preview: 'Announces a newly published job opening.' },
 };
 
 const emptyForm: SettingsForm = {
