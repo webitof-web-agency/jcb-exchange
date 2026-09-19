@@ -473,7 +473,7 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-white md:bg-black/60 md:p-4 md:backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-white md:bg-black/60 md:p-4 md:backdrop-blur-sm">
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"

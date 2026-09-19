@@ -25,6 +25,7 @@ import {
   secureUploadDir,
   getPublicHeroImageUrl,
 } from '../utils/documentUpload';
+import { uploadFileToDrive } from '../services/googleDrive.service';
 
 const prismaAny = prisma as any;
 
@@ -145,38 +146,19 @@ const buildUploadResponse = (
   req: Request,
   file: Express.Multer.File,
   visibility: 'public' | 'secure',
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
+  fileUrl: string,
+  fileName: string
 ) => {
-  const fileUrl = visibility === 'public'
-    ? purpose === 'listing-media'
-      ? getPublicListingMediaUrl(file.filename)
-      : purpose === 'finance-support'
-        ? getPublicFinanceSupportImageUrl(file.filename)
-        : purpose === 'hero-image'
-          ? getPublicHeroImageUrl(file.filename)
-          : purpose === 'inspection-section'
-            ? getPublicInspectionSectionImageUrl(file.filename)
-          : purpose === 'site-logo'
-            ? getPublicSiteLogoUrl(file.filename)
-          : purpose === 'site-dark-logo'
-            ? getPublicSiteDarkLogoUrl(file.filename)
-          : purpose === 'site-favicon'
-            ? getPublicSiteFaviconUrl(file.filename)
-          : purpose === 'site-manifest-icon'
-            ? getPublicSiteManifestIconUrl(file.filename)
-          : getPublicDocumentUrl(file.filename)
-    : getSecureDocumentUrl(file.filename);
-
   return {
     message: 'File uploaded successfully.',
     file: {
       access: visibility,
-      fileName: file.filename,
+      fileName: fileName,
       originalName: file.originalname,
       mimeType: file.mimetype,
       size: file.size,
       fileUrl,
-      absoluteUrl: `${getApiOrigin(req)}${fileUrl}`,
+      absoluteUrl: fileUrl, // Drive URL is already absolute
     },
   };
 };
@@ -190,7 +172,11 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    res.status(201).json(buildUploadResponse(req, file, 'secure'));
+    
+    // Upload to Google Drive (Resumes/Secure)
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    
+    res.status(201).json(buildUploadResponse(req, file, 'secure', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -205,7 +191,11 @@ export const uploadPublicDocument = async (req: Request, res: Response, next: Ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    res.status(201).json(buildUploadResponse(req, file, 'public'));
+    
+    // Upload to Google Drive (Public)
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -228,7 +218,8 @@ export const uploadCustomerPrimeReceipt = async (req: Request, res: Response, ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    res.status(201).json(buildUploadResponse(req, file, 'public'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -251,7 +242,8 @@ export const uploadListingPaymentReceipt = async (req: Request, res: Response, n
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    res.status(201).json(buildUploadResponse(req, file, 'public'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -266,7 +258,8 @@ export const uploadPublicListingMedia = async (req: Request, res: Response, next
     }
 
     await enforceStoredFileSizePolicy(file, 'listing-media');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'listing-media'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -281,7 +274,8 @@ export const uploadPublicFinanceSupportImage = async (req: Request, res: Respons
     }
 
     await enforceStoredFileSizePolicy(file, 'finance-support');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'finance-support'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -296,7 +290,8 @@ export const uploadPublicHeroImage = async (req: Request, res: Response, next: N
     }
 
     await enforceStoredFileSizePolicy(file, 'hero-image');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'hero-image'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -311,7 +306,8 @@ export const uploadPublicInspectionSectionImage = async (req: Request, res: Resp
     }
 
     await enforceStoredFileSizePolicy(file, 'inspection-section');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'inspection-section'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -326,7 +322,8 @@ export const uploadPublicSiteLogoImage = async (req: Request, res: Response, nex
     }
 
     await enforceStoredFileSizePolicy(file, 'site-logo');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-logo'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -341,7 +338,8 @@ export const uploadPublicSiteDarkLogoImage = async (req: Request, res: Response,
     }
 
     await enforceStoredFileSizePolicy(file, 'site-dark-logo');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-dark-logo'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -356,7 +354,8 @@ export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, 
     }
 
     await enforceStoredFileSizePolicy(file, 'site-favicon');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-favicon'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }
@@ -371,7 +370,8 @@ export const uploadPublicSiteManifestIconImage = async (req: Request, res: Respo
     }
 
     await enforceStoredFileSizePolicy(file, 'site-manifest-icon');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-manifest-icon'));
+    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
   }

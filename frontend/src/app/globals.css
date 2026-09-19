@@ -138,3 +138,29 @@ body {
     scrollbar-width: none;
   }
 }
+\n
+/* Toast Notification High Z-Index Overrides */
+.Toastify__toast-container,
+.Toastify__toast-container--top-right,
+.Toastify__toast-container--top-center,
+.Toastify__toast-container--top-left,
+.Toastify__toast-container--bottom-right,
+.Toastify__toast-container--bottom-center,
+.Toastify__toast-container--bottom-left {
+  z-index: 999999 !important;
+}
+
+/* ── Brand Loader Ring Animation ── */
+@keyframes brandSpin {
+  0%   { stroke-dashoffset: 0; transform: rotate(0deg); }
+  100% { stroke-dashoffset: 0; transform: rotate(360deg); }
+}
+
+@keyframes brandPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+
+.brand-loader-text {
+  animation: brandPulse 2s ease-in-out infinite;
+}

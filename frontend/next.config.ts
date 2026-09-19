@@ -114,6 +114,11 @@ const nextConfig: NextConfig = {
         hostname: 'jcb-exchange.onrender.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'drive.google.com',
+        pathname: '/**',
+      },
       ...(dynamicPattern ? [dynamicPattern] : []),
     ],
   },

@@ -48,24 +48,199 @@ export type InspectionSectionSettings = {
 
 export type SiteLogoSettings = {
   imageUrl: string | null;
+  darkLogoUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
 
-export type MobileAppSettings = {
-  playStoreLink: string | null;
-  appStoreLink: string | null;
+export type FooterSocialLink = {
+  id: string;
+  platform: string;
+  url: string;
+  displayOrder: number;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
 
+export type FooterSettings = {
+  socialLinks: FooterSocialLink[];
+  contact: {
+    phoneNumber: string | null;
+    phoneLabel: string | null;
+    emailAddress: string | null;
+    emailLabel: string | null;
+    address: string | null;
+    updatedAt: string | null;
+    updatedByUserId: string | null;
+  };
+  legalPages: {
+    privacyPolicy: string | null;
+    termsConditions: string | null;
+    disclaimer: string | null;
+    updatedAt: string | null;
+    updatedByUserId: string | null;
+  };
+};
+
+export type ListingPaymentSettings = {
+  rtgs: {
+    enabled: boolean;
+    beneficiaryName: string | null;
+    bankName: string | null;
+    accountNumber: string | null;
+    ifscCode: string | null;
+    branchName: string | null;
+    instructions: string | null;
+  };
+  razorpay: {
+    enabled: boolean;
+    keyId: string | null;
+    keySecret: string | null;
+    webhookSecret: string | null;
+    mode: 'TEST' | 'LIVE';
+  };
+  phonepe: {
+    enabled: boolean;
+    clientId: string | null;
+    clientSecret: string | null;
+    clientVersion: string | null;
+    mode: 'TEST' | 'LIVE';
+  };
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export const detectRazorpayModeFromKeyId = (keyId?: string | null): 'TEST' | 'LIVE' | null => {
+  const normalizedKeyId = keyId?.trim();
+  if (!normalizedKeyId) {
+    return null;
+  }
+
+  if (normalizedKeyId.startsWith('rzp_test_')) {
+    return 'TEST';
+  }
+
+  if (normalizedKeyId.startsWith('rzp_live_')) {
+    return 'LIVE';
+  }
+
+  return null;
+};
+
+export const isValidRazorpayKeyId = (keyId?: string | null) =>
+  detectRazorpayModeFromKeyId(keyId) !== null;
+
+export const detectPhonePeModeFromClientId = (clientId?: string | null): 'TEST' | 'LIVE' => {
+  const normalizedClientId = clientId?.trim().toUpperCase();
+  if (!normalizedClientId) {
+    return 'TEST';
+  }
+
+  return /(TEST|UAT|SANDBOX|PREPROD)/.test(normalizedClientId) ? 'TEST' : 'LIVE';
+};
+
+export const normalizeListingPaymentSettings = (
+  settings?: Partial<ListingPaymentSettings> | null,
+): ListingPaymentSettings => ({
+  rtgs: {
+    enabled: settings?.rtgs?.enabled === true,
+    beneficiaryName: settings?.rtgs?.beneficiaryName?.trim() || null,
+    bankName: settings?.rtgs?.bankName?.trim() || null,
+    accountNumber: settings?.rtgs?.accountNumber?.trim() || null,
+    ifscCode: settings?.rtgs?.ifscCode?.trim()?.toUpperCase() || null,
+    branchName: settings?.rtgs?.branchName?.trim() || null,
+    instructions: settings?.rtgs?.instructions?.trim() || null,
+  },
+  razorpay: {
+    enabled: settings?.razorpay?.enabled === true,
+    keyId: settings?.razorpay?.keyId?.trim() || null,
+    keySecret: settings?.razorpay?.keySecret?.trim() || null,
+    webhookSecret: settings?.razorpay?.webhookSecret?.trim() || null,
+    mode: detectRazorpayModeFromKeyId(settings?.razorpay?.keyId) || 'TEST',
+  },
+  phonepe: {
+    enabled: settings?.phonepe?.enabled === true,
+    clientId: settings?.phonepe?.clientId?.trim() || null,
+    clientSecret: settings?.phonepe?.clientSecret?.trim() || null,
+    clientVersion: settings?.phonepe?.clientVersion?.trim() || '1',
+    mode: detectPhonePeModeFromClientId(settings?.phonepe?.clientId),
+  },
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
+
+export type CompanyInvoiceSettings = {
+  companyName: string | null;
+  gstin: string | null;
+  address: string | null;
+  state: string | null;
+  city: string | null;
+  defaultGstRate: number;
+  termsAndConditions: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export const normalizeCompanyInvoiceSettings = (
+  settings?: Partial<CompanyInvoiceSettings> | null,
+): CompanyInvoiceSettings => ({
+  companyName: settings?.companyName?.trim() || 'JCB Exchange',
+  gstin: settings?.gstin?.trim().toUpperCase() || null,
+  address: settings?.address?.trim() || null,
+  state: settings?.state?.trim() || 'Maharashtra',
+  city: settings?.city?.trim() || 'Mumbai',
+  defaultGstRate: typeof settings?.defaultGstRate === 'number' && !Number.isNaN(settings.defaultGstRate) ? settings.defaultGstRate : 18,
+  termsAndConditions: settings?.termsAndConditions?.trim() || 'This is a computer-generated tax invoice and does not require a physical signature.',
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
+
+export type GoogleDriveSettings = {
+  clientId: string | null;
+  clientSecret: string | null;
+  refreshToken: string | null;
+  backupFolderId: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export const normalizeGoogleDriveSettings = (
+  settings?: Partial<GoogleDriveSettings> | null,
+): GoogleDriveSettings => ({
+  clientId: settings?.clientId?.trim() || null,
+  clientSecret: settings?.clientSecret?.trim() || null,
+  refreshToken: settings?.refreshToken?.trim() || null,
+  backupFolderId: settings?.backupFolderId?.trim() || null,
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
+
+export type MobileAppSettings = {
+  playStoreLink: string | null;
+  appStoreLink: string | null;
+  updatedAt?: string | null;
+  updatedByUserId?: string | null;
+};
+
+export const normalizeMobileAppSettings = (
+  settings?: Partial<MobileAppSettings> | null,
+): MobileAppSettings => ({
+  playStoreLink: settings?.playStoreLink?.trim() || null,
+  appStoreLink: settings?.appStoreLink?.trim() || null,
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
 type AppSettings = {
   googleAuth: GoogleAuthSettings;
   mobileOtp: MobileOtpSettings;
   publicLeadRouting: PublicLeadRoutingSettings;
   customerPrime: CustomerPrimeSettings;
+  listingPayment: ListingPaymentSettings;
+  companyInvoice: CompanyInvoiceSettings;
+  googleDrive: GoogleDriveSettings;
+  mobileApp: MobileAppSettings;
   financeSupport: {
     items: FinanceSupportItem[];
   };
@@ -77,7 +252,7 @@ type AppSettings = {
   };
   inspectionSection: InspectionSectionSettings;
   siteLogo: SiteLogoSettings;
-  mobileApp: MobileAppSettings;
+  footer: FooterSettings;
 };
 
 const platformRuntimeSettingsKey = 'platform';
@@ -108,8 +283,10 @@ const settingsFileCandidates = Array.from(
   new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]),
 );
 const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
+const siteDarkLogoPublicUrlPrefix = '/uploads/public/site-dark-logo/';
 const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
 const siteManifestIconPublicUrlPrefix = '/uploads/public/site-manifest-icon/';
+const supportedFooterSocialPlatforms = new Set(['FACEBOOK', 'INSTAGRAM', 'TWITTER']);
 
 const defaultSettings: AppSettings = {
   googleAuth: {
@@ -139,6 +316,33 @@ const defaultSettings: AppSettings = {
     updatedAt: null,
     updatedByUserId: null,
   },
+  listingPayment: {
+    rtgs: {
+      enabled: false,
+      beneficiaryName: null,
+      bankName: null,
+      accountNumber: null,
+      ifscCode: null,
+      branchName: null,
+      instructions: null,
+    },
+    razorpay: {
+      enabled: false,
+      keyId: null,
+      keySecret: null,
+      webhookSecret: null,
+      mode: 'TEST',
+    },
+    phonepe: {
+      enabled: false,
+      clientId: null,
+      clientSecret: null,
+      clientVersion: '1',
+      mode: 'TEST',
+    },
+    updatedAt: null,
+    updatedByUserId: null,
+  },
   financeSupport: {
     items: [],
   },
@@ -157,17 +361,75 @@ const defaultSettings: AppSettings = {
   },
   siteLogo: {
     imageUrl: null,
+    darkLogoUrl: null,
     faviconUrl: null,
     manifestIconUrl: null,
     updatedAt: null,
     updatedByUserId: null,
   },
-  mobileApp: {
-    playStoreLink: null,
-    appStoreLink: null,
+  footer: {
+    socialLinks: [],
+    contact: {
+      phoneNumber: null,
+      phoneLabel: null,
+      emailAddress: null,
+      emailLabel: null,
+      address: null,
+      updatedAt: null,
+      updatedByUserId: null,
+    },
+    legalPages: {
+      privacyPolicy: null,
+      termsConditions: null,
+      disclaimer: null,
+      updatedAt: null,
+      updatedByUserId: null,
+    },
+  },
+  googleDrive: normalizeGoogleDriveSettings(),
+  mobileApp: normalizeMobileAppSettings(),
+  companyInvoice: {
+    companyName: 'JCB Exchange',
+    gstin: null,
+    address: null,
+    state: 'Maharashtra',
+    city: 'Mumbai',
+    defaultGstRate: 18,
+    termsAndConditions: 'This is a computer-generated tax invoice and does not require a physical signature.',
     updatedAt: null,
     updatedByUserId: null,
   },
+};
+
+const parseTimestamp = (value?: string | null) => {
+  if (!value) {
+    return 0;
+  }
+
+  const parsedValue = Date.parse(value);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
+
+const getSettingsFreshnessScore = (settings?: AppSettings | null) => {
+  if (!settings) {
+    return 0;
+  }
+
+  return Math.max(
+    parseTimestamp(settings.googleAuth.updatedAt),
+    parseTimestamp(settings.mobileOtp.updatedAt),
+    parseTimestamp(settings.publicLeadRouting.updatedAt),
+    parseTimestamp(settings.customerPrime.updatedAt),
+    parseTimestamp(settings.listingPayment?.updatedAt),
+    parseTimestamp(settings.heroImage.updatedAt),
+    parseTimestamp(settings.inspectionSection.updatedAt),
+    parseTimestamp(settings.siteLogo.updatedAt),
+    parseTimestamp(settings.companyInvoice.updatedAt),
+    parseTimestamp(settings.footer.contact.updatedAt),
+    parseTimestamp(settings.footer.legalPages.updatedAt),
+    ...settings.financeSupport.items.map((item) => parseTimestamp(item.updatedAt)),
+    ...settings.footer.socialLinks.map((item) => parseTimestamp(item.updatedAt)),
+  );
 };
 
 const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): AppSettings => ({
@@ -186,6 +448,10 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     updatedByUserId: parsed?.publicLeadRouting?.updatedByUserId || null,
   },
   customerPrime: normalizeCustomerPrimeSettings(parsed?.customerPrime),
+  listingPayment: normalizeListingPaymentSettings(parsed?.listingPayment),
+  companyInvoice: normalizeCompanyInvoiceSettings(parsed?.companyInvoice),
+  googleDrive: normalizeGoogleDriveSettings(parsed?.googleDrive),
+  mobileApp: normalizeMobileAppSettings(parsed?.mobileApp),
   financeSupport: {
     items: normalizeFinanceSupportItems(parsed?.financeSupport?.items),
   },
@@ -204,16 +470,30 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
   },
   siteLogo: {
     imageUrl: parsed?.siteLogo?.imageUrl?.trim() || null,
+    darkLogoUrl: parsed?.siteLogo?.darkLogoUrl?.trim() || null,
     faviconUrl: parsed?.siteLogo?.faviconUrl?.trim() || null,
     manifestIconUrl: parsed?.siteLogo?.manifestIconUrl?.trim() || null,
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
-  mobileApp: {
-    playStoreLink: parsed?.mobileApp?.playStoreLink?.trim() || null,
-    appStoreLink: parsed?.mobileApp?.appStoreLink?.trim() || null,
-    updatedAt: parsed?.mobileApp?.updatedAt || null,
-    updatedByUserId: parsed?.mobileApp?.updatedByUserId || null,
+  footer: {
+    socialLinks: normalizeFooterSocialLinks(parsed?.footer?.socialLinks),
+    contact: {
+      phoneNumber: normalizePhoneDisplayNumber(parsed?.footer?.contact?.phoneNumber) || null,
+      phoneLabel: parsed?.footer?.contact?.phoneLabel?.trim() || null,
+      emailAddress: normalizeEmailAddress(parsed?.footer?.contact?.emailAddress) || null,
+      emailLabel: parsed?.footer?.contact?.emailLabel?.trim() || null,
+      address: normalizeMultilineText(parsed?.footer?.contact?.address) || null,
+      updatedAt: parsed?.footer?.contact?.updatedAt || null,
+      updatedByUserId: parsed?.footer?.contact?.updatedByUserId || null,
+    },
+    legalPages: {
+      privacyPolicy: parsed?.footer?.legalPages?.privacyPolicy?.trim() || null,
+      termsConditions: parsed?.footer?.legalPages?.termsConditions?.trim() || null,
+      disclaimer: parsed?.footer?.legalPages?.disclaimer?.trim() || null,
+      updatedAt: parsed?.footer?.legalPages?.updatedAt || null,
+      updatedByUserId: parsed?.footer?.legalPages?.updatedByUserId || null,
+    },
   },
 });
 
@@ -223,9 +503,8 @@ const isMeaningfulSettings = (settings: AppSettings) =>
     settings.googleAuth.clientId ||
     settings.mobileOtp.enabled ||
     settings.mobileOtp.apiKey ||
-    settings.mobileOtp.senderId ||
-    settings.mobileOtp.templateId ||
-    settings.mobileOtp.templateMessage ||
+    settings.mobileOtp.otpId ||
+    settings.mobileOtp.variablesValues ||
     settings.publicLeadRouting.useSellerContact ||
     settings.publicLeadRouting.adminCallNumber ||
     settings.publicLeadRouting.adminWhatsappNumber ||
@@ -242,8 +521,12 @@ const isMeaningfulSettings = (settings: AppSettings) =>
     settings.siteLogo.imageUrl ||
     settings.siteLogo.faviconUrl ||
     settings.siteLogo.manifestIconUrl ||
-    settings.mobileApp.playStoreLink ||
-    settings.mobileApp.appStoreLink,
+    settings.footer.socialLinks.length > 0 ||
+    settings.footer.contact.phoneNumber ||
+    settings.footer.contact.phoneLabel ||
+    settings.footer.contact.emailAddress ||
+    settings.footer.contact.emailLabel ||
+    settings.footer.contact.address,
   );
 
 const normalizeClientId = (value?: string | null) => {
@@ -267,6 +550,54 @@ const normalizePhoneNumber = (value?: string | null) => {
   }
 
   return normalizedDigits;
+};
+
+const normalizePhoneDisplayNumber = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return normalizePhoneNumber(trimmedValue) ? trimmedValue : null;
+};
+
+const normalizeEmailAddress = (value?: string | null) => {
+  const trimmedValue = value?.trim().toLowerCase();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedValue) ? trimmedValue : null;
+};
+
+const normalizeMultilineText = (value?: string | null) => {
+  const normalizedValue = value
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return normalizedValue?.trim() || null;
+};
+
+const normalizeExternalUrl = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const candidateValue = /^https?:\/\//i.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`;
+
+  try {
+    const parsedUrl = new URL(candidateValue);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return null;
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return null;
+  }
 };
 
 const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): FinanceSupportItem[] => {
@@ -299,6 +630,39 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
     }));
 };
 
+const normalizeFooterSocialLinks = (items?: Partial<FooterSocialLink>[]): FooterSocialLink[] => {
+  const normalizedItems: FooterSocialLink[] = [];
+
+  for (const [index, item] of (items || []).entries()) {
+    const platform = item.platform?.trim().toUpperCase();
+    if (!platform || !supportedFooterSocialPlatforms.has(platform)) {
+      continue;
+    }
+
+    const url = normalizeExternalUrl(item.url);
+
+    if (!url) {
+      continue;
+    }
+
+    normalizedItems.push({
+      id: item.id?.trim() || randomUUID(),
+      platform,
+      url,
+      displayOrder: typeof item.displayOrder === 'number' ? item.displayOrder : index,
+      updatedAt: item.updatedAt || null,
+      updatedByUserId: item.updatedByUserId || null,
+    });
+  }
+
+  return normalizedItems
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+    .map((item, index) => ({
+      ...item,
+      displayOrder: index,
+    }));
+};
+
 const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
   const normalizedUrl = fileUrl?.trim();
   if (!normalizedUrl) {
@@ -307,6 +671,10 @@ const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
 
   if (normalizedUrl.startsWith(siteLogoPublicUrlPrefix)) {
     return path.join(uploadRootDir, normalizedUrl.replace(siteLogoPublicUrlPrefix, `public${path.sep}site-logo${path.sep}`));
+  }
+
+  if (normalizedUrl.startsWith(siteDarkLogoPublicUrlPrefix)) {
+    return path.join(uploadRootDir, normalizedUrl.replace(siteDarkLogoPublicUrlPrefix, `public${path.sep}site-dark-logo${path.sep}`));
   }
 
   if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
@@ -443,15 +811,32 @@ export const getAppSettings = async (): Promise<AppSettings> => {
 
   try {
     const databaseSettings = await readDatabaseSettings();
-    if (databaseSettings && isMeaningfulSettings(databaseSettings)) {
-      await writeSettingsFileSnapshot(databaseSettings);
-      return databaseSettings;
+    const fileSettings = await readFileSettings();
+    const databaseIsMeaningful = Boolean(databaseSettings && isMeaningfulSettings(databaseSettings));
+    const fileIsMeaningful = isMeaningfulSettings(fileSettings);
+
+    if (databaseIsMeaningful && fileIsMeaningful) {
+      const databaseFreshness = getSettingsFreshnessScore(databaseSettings);
+      const fileFreshness = getSettingsFreshnessScore(fileSettings);
+      const preferredSettings = fileFreshness > databaseFreshness ? fileSettings : (databaseSettings as AppSettings);
+
+      if (preferredSettings === fileSettings) {
+        await persistDatabaseSettings(fileSettings);
+      } else {
+        await writeSettingsFileSnapshot(databaseSettings as AppSettings);
+      }
+
+      return preferredSettings;
     }
 
-    const fileSettings = await readFileSettings();
+    if (databaseIsMeaningful) {
+      await writeSettingsFileSnapshot(databaseSettings as AppSettings);
+      return databaseSettings as AppSettings;
+    }
 
-    if (isMeaningfulSettings(fileSettings)) {
+    if (fileIsMeaningful) {
       await persistDatabaseSettings(fileSettings);
+      return fileSettings;
     }
 
     return databaseSettings || fileSettings;
@@ -492,6 +877,9 @@ export const updatePlatformRuntimeSettings = async ({
   mobileOtp,
   publicLeadRouting,
   customerPrime,
+  listingPayment,
+  companyInvoice,
+  googleDrive,
   mobileApp,
   updatedByUserId,
 }: {
@@ -500,7 +888,7 @@ export const updatePlatformRuntimeSettings = async ({
   mobileOtp?: Partial<
     Pick<
       MobileOtpSettings,
-      'enabled' | 'apiKey' | 'senderId' | 'templateId' | 'templateMessage'
+      'enabled' | 'apiKey' | 'otpId' | 'otpExpiry' | 'otpLength' | 'variablesValues'
     >
   > | null;
   publicLeadRouting?: Partial<Pick<PublicLeadRoutingSettings, 'useSellerContact' | 'adminCallNumber' | 'adminWhatsappNumber'>> | null;
@@ -518,7 +906,10 @@ export const updatePlatformRuntimeSettings = async ({
       | 'requireForSellListing'
     >
   > | null;
-  mobileApp?: Partial<Pick<MobileAppSettings, 'playStoreLink' | 'appStoreLink'>> | null;
+  listingPayment?: Partial<ListingPaymentSettings> | null;
+  companyInvoice?: Partial<CompanyInvoiceSettings> | null;
+  googleDrive?: Partial<GoogleDriveSettings> | null;
+  mobileApp?: Partial<MobileAppSettings> | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
@@ -527,6 +918,9 @@ export const updatePlatformRuntimeSettings = async ({
   const hasMobileOtpUpdate = mobileOtp !== undefined;
   const hasPublicLeadRoutingUpdate = publicLeadRouting !== undefined;
   const hasCustomerPrimeUpdate = customerPrime !== undefined;
+  const hasListingPaymentUpdate = listingPayment !== undefined;
+  const hasCompanyInvoiceUpdate = companyInvoice !== undefined;
+  const hasGoogleDriveUpdate = googleDrive !== undefined;
   const hasMobileAppUpdate = mobileApp !== undefined;
 
   const nextSettings: AppSettings = {
@@ -574,10 +968,54 @@ export const updatePlatformRuntimeSettings = async ({
         updatedByUserId: updatedByUserId || null,
       }
       : currentSettings.customerPrime,
+    listingPayment: hasListingPaymentUpdate
+      ? {
+        ...normalizeListingPaymentSettings({
+          ...currentSettings.listingPayment,
+          ...listingPayment,
+          rtgs: {
+            ...currentSettings.listingPayment.rtgs,
+            ...listingPayment?.rtgs,
+          },
+          razorpay: {
+            ...currentSettings.listingPayment.razorpay,
+            ...listingPayment?.razorpay,
+          },
+          phonepe: {
+            ...currentSettings.listingPayment.phonepe,
+            ...listingPayment?.phonepe,
+          },
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.listingPayment,
+    companyInvoice: hasCompanyInvoiceUpdate
+      ? {
+        ...normalizeCompanyInvoiceSettings({
+          ...currentSettings.companyInvoice,
+          ...companyInvoice,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.companyInvoice,
+    googleDrive: hasGoogleDriveUpdate
+      ? {
+        ...normalizeGoogleDriveSettings({
+          ...currentSettings.googleDrive,
+          ...googleDrive,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.googleDrive,
     mobileApp: hasMobileAppUpdate
       ? {
-        playStoreLink: mobileApp?.playStoreLink !== undefined ? (mobileApp.playStoreLink?.trim() || null) : currentSettings.mobileApp.playStoreLink,
-        appStoreLink: mobileApp?.appStoreLink !== undefined ? (mobileApp.appStoreLink?.trim() || null) : currentSettings.mobileApp.appStoreLink,
+        ...normalizeMobileAppSettings({
+          ...currentSettings.mobileApp,
+          ...mobileApp,
+        }),
         updatedAt: nextTimestamp,
         updatedByUserId: updatedByUserId || null,
       }
@@ -672,21 +1110,25 @@ export const updateInspectionSectionSettings = async ({
 
 export const updateSiteLogoSettings = async ({
   imageUrl,
+  darkLogoUrl,
   faviconUrl,
   manifestIconUrl,
   updatedByUserId,
 }: {
   imageUrl?: string | null;
+  darkLogoUrl?: string | null;
   faviconUrl?: string | null;
   manifestIconUrl?: string | null;
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
   const normalizedImageUrl = imageUrl?.trim() || null;
+  const normalizedDarkLogoUrl = darkLogoUrl === undefined ? currentSettings.siteLogo.darkLogoUrl : darkLogoUrl?.trim() || null;
   const normalizedFaviconUrl = faviconUrl?.trim() || null;
   const normalizedManifestIconUrl = manifestIconUrl?.trim() || null;
 
   const previousImageUrl = currentSettings.siteLogo.imageUrl;
+  const previousDarkLogoUrl = currentSettings.siteLogo.darkLogoUrl;
   const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
   const previousManifestIconUrl = currentSettings.siteLogo.manifestIconUrl;
 
@@ -694,6 +1136,7 @@ export const updateSiteLogoSettings = async ({
     ...currentSettings,
     siteLogo: {
       imageUrl: normalizedImageUrl,
+      darkLogoUrl: normalizedDarkLogoUrl,
       faviconUrl: normalizedFaviconUrl,
       manifestIconUrl: normalizedManifestIconUrl,
       updatedAt: new Date().toISOString(),
@@ -707,6 +1150,9 @@ export const updateSiteLogoSettings = async ({
   if (previousImageUrl && previousImageUrl !== normalizedImageUrl) {
     cleanupTargets.push(previousImageUrl);
   }
+  if (previousDarkLogoUrl && previousDarkLogoUrl !== normalizedDarkLogoUrl) {
+    cleanupTargets.push(previousDarkLogoUrl);
+  }
   if (previousFaviconUrl && previousFaviconUrl !== normalizedFaviconUrl) {
     cleanupTargets.push(previousFaviconUrl);
   }
@@ -715,6 +1161,53 @@ export const updateSiteLogoSettings = async ({
   }
 
   await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));
+
+  return nextSettings;
+};
+
+export const updateFooterSettings = async ({
+  socialLinks,
+  contact,
+  legalPages,
+  updatedByUserId,
+}: {
+  socialLinks?: Array<Partial<FooterSocialLink>>;
+  contact?: Partial<FooterSettings['contact']>;
+  legalPages?: Partial<FooterSettings['legalPages']>;
+  updatedByUserId?: string | null;
+}) => {
+  const currentSettings = await getAppSettings();
+  const nextTimestamp = new Date().toISOString();
+  const normalizedSocialLinks = normalizeFooterSocialLinks(socialLinks).map((item) => ({
+    ...item,
+    updatedAt: nextTimestamp,
+    updatedByUserId: updatedByUserId || null,
+  }));
+
+  const nextSettings: AppSettings = {
+    ...currentSettings,
+    footer: {
+      socialLinks: normalizedSocialLinks,
+      contact: {
+        phoneNumber: normalizePhoneDisplayNumber(contact?.phoneNumber) || null,
+        phoneLabel: contact?.phoneLabel?.trim() || null,
+        emailAddress: normalizeEmailAddress(contact?.emailAddress) || null,
+        emailLabel: contact?.emailLabel?.trim() || null,
+        address: normalizeMultilineText(contact?.address) || null,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      },
+      legalPages: {
+        privacyPolicy: legalPages?.privacyPolicy !== undefined ? (legalPages.privacyPolicy?.trim() || null) : currentSettings.footer.legalPages.privacyPolicy,
+        termsConditions: legalPages?.termsConditions !== undefined ? (legalPages.termsConditions?.trim() || null) : currentSettings.footer.legalPages.termsConditions,
+        disclaimer: legalPages?.disclaimer !== undefined ? (legalPages.disclaimer?.trim() || null) : currentSettings.footer.legalPages.disclaimer,
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      },
+    },
+  };
+
+  await persistSettings(nextSettings);
 
   return nextSettings;
 };

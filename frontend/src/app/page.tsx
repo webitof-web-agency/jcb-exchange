@@ -4,12 +4,25 @@ import Image from 'next/image';
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, ChevronDown, ArrowRight, Package, Truck, Coins, FileText, Handshake } from 'lucide-react';
+import { Search, MapPin, ChevronDown, ArrowRight, Package, Truck, Coins, FileText, Handshake, Briefcase, Sparkles } from 'lucide-react';
 import { useNotificationStore } from '@/store/notificationStore';
 import api, { API_ORIGIN } from '@/lib/api';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
 import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
+
+
+type FeaturedJobItem = {
+  id: string;
+  slug: string;
+  title: string;
+  department: { name: string } | null;
+  workMode: string;
+  locationCity: string;
+  locationState: string;
+  employmentType: string;
+  vacancies: number;
+};
 
 type FinanceSupportItem = {
   id: string;
@@ -96,6 +109,7 @@ export default function Home() {
   const [inspectionContent, setInspectionContent] = React.useState<InspectionSectionContent | null>(null);
   const [browseCategories, setBrowseCategories] = React.useState<PublicCategory[]>([]);
   const [searchCategories, setSearchCategories] = React.useState<PublicCategory[]>([]);
+  const [featuredJobs, setFeaturedJobs] = React.useState<FeaturedJobItem[]>([]);
   const [searchLocations, setSearchLocations] = React.useState<PublicSearchLocation[]>([]);
   const [playStoreLink, setPlayStoreLink] = React.useState<string | null>(null);
   const [appStoreLink, setAppStoreLink] = React.useState<string | null>(null);
@@ -177,13 +191,14 @@ export default function Home() {
 
     const loadData = async () => {
       try {
-        const [financeRes, heroRes, inspectionRes, categoriesRes, filtersRes, mobileAppRes] = await Promise.all([
+        const [financeRes, heroRes, inspectionRes, categoriesRes, filtersRes, mobileAppRes, jobsRes] = await Promise.all([
           api.get<{ success: boolean; data: FinanceSupportItem[] }>('/master/finance-support').catch(() => null),
           api.get<{ success: boolean; data: { imageUrl: string | null; headline?: string | null } }>('/master/hero-image').catch(() => null),
           api.get<{ success: boolean; data: InspectionSectionContent }>('/master/inspection-section').catch(() => null),
           api.get<{ success: boolean; data: PublicCategory[] }>('/master/public-categories').catch(() => null),
           api.get<{ success: boolean; data: PublicSearchFilters }>('/master/public-search-filters').catch(() => null),
           api.get<{ success: boolean; data: any }>('/master/mobile-app').catch(() => null),
+            api.get<{ success: boolean; jobs: FeaturedJobItem[] }>('/recruitment/public/jobs?limit=4').catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -222,6 +237,13 @@ export default function Home() {
         } else {
           setSearchCategories([]);
           setSearchLocations([]);
+        }
+
+        
+        if (jobsRes?.data?.success) {
+          setFeaturedJobs(jobsRes.data.jobs || []);
+        } else {
+          setFeaturedJobs([]);
         }
 
         if (mobileAppRes?.data?.success) {
@@ -501,13 +523,34 @@ export default function Home() {
 
           <div className="flex flex-col md:border-t md:border-gray-200">
             {browseCategories.length === 0 ? (
-              <div className="py-12 flex justify-center space-x-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={`skel-${i}`} className="flex flex-col items-center animate-pulse">
-                    <div className="h-16 w-16 bg-gray-200 rounded-full mb-4"></div>
-                    <div className="h-3 w-20 bg-gray-200 rounded"></div>
-                  </div>
-                ))}
+              <div className="animate-pulse">
+                {/* Desktop skeleton: match the loaded four-column category rows. */}
+                <div className="hidden md:flex md:flex-col">
+                  {Array.from({ length: 3 }).map((_, rowIndex) => (
+                    <div key={`desktop-skeleton-row-${rowIndex}`} className="grid grid-cols-4 gap-4 border-b border-gray-200 py-8 last:border-b-0">
+                      {Array.from({ length: 4 }).map((__, columnIndex) => (
+                        <div key={`desktop-skeleton-${rowIndex}-${columnIndex}`} className="flex flex-col items-center justify-center">
+                          <div className="mb-4 h-12 w-16 rounded-md bg-gray-200 sm:h-16 sm:w-20" />
+                          <div className="h-3 w-24 rounded bg-gray-200" />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Mobile skeleton: match the loaded three-column category cards. */}
+                <div className="flex flex-col px-1 md:hidden">
+                  {Array.from({ length: 2 }).map((_, rowIndex) => (
+                    <div key={`mobile-skeleton-row-${rowIndex}`} className="grid grid-cols-3 gap-2 py-1">
+                      {Array.from({ length: 3 }).map((__, columnIndex) => (
+                        <div key={`mobile-skeleton-${rowIndex}-${columnIndex}`} className="flex min-h-[66px] flex-col items-center justify-center rounded-xl border border-gray-100 bg-white p-2 shadow-sm">
+                          <div className="mb-1 h-8 w-10 rounded-md bg-gray-200" />
+                          <div className="h-2.5 w-14 rounded bg-gray-200" />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
               <>
@@ -564,6 +607,53 @@ export default function Home() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* 2.75 SEARCH-FRIENDLY SERVICE SUMMARY */}
+      <section className="hidden md:block w-full border-y border-gray-200 bg-white px-4 py-10 sm:px-6 sm:py-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <h2 className="text-2xl font-bold leading-tight text-gray-900 sm:text-3xl">
+              Construction Machinery Buy &amp; Sell
+            </h2>
+            <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-gray-600 sm:text-base">
+              Find verified used construction equipment and pre-owned construction machines across India. Compare second hand JCB listings on JCB Exchange, explore commercial vehicle buy sell opportunities, and get help with used machine RTO services.
+            </p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Used Construction Equipment
+            </Link>
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Second Hand JCB
+            </Link>
+            <Link
+              href="/dealers"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Commercial Vehicle Buy Sell
+            </Link>
+            <Link
+              href="/dealers"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED] sm:col-span-2 lg:col-span-1"
+            >
+              Used Machine RTO Services
+            </Link>
+            <Link
+              href="/machines"
+              className="rounded-lg border border-gray-200 bg-[#FAF9F6] p-4 text-sm font-bold text-gray-900 transition-colors hover:border-jcb-yellow hover:bg-[#FFF9ED]"
+            >
+              Pre-Owned Construction Machines
+            </Link>
           </div>
         </div>
       </section>
@@ -847,6 +937,95 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+
+      {/* 6. CAREERS & OPEN POSITIONS SECTION */}
+      <section className="hidden md:block py-8 sm:py-10 px-4 sm:px-6 bg-gray-50/80 text-gray-900 w-full border-t border-gray-200/80">
+        <div className="max-w-7xl mx-auto space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200/80 pb-4">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
+                <Sparkles size={12} className="text-amber-600" />
+                <span>{t('careers.badge', 'Careers at JCB Exchange')}</span>
+              </div>
+              <h2 className="text-base sm:text-xl font-bold tracking-tight text-gray-900">
+                {t('careers.homeHeading', "Join India's Leading Heavy Equipment Network")}
+              </h2>
+            </div>
+
+            <Link
+              href="/jobs"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-extrabold text-xs rounded-xl transition-all shadow-xs shrink-0 self-start sm:self-auto"
+            >
+              <span>{t('careers.viewAllPositions', 'View All Open Positions')}</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          {featuredJobs.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {featuredJobs.map((job) => (
+                <Link
+                  key={job.id}
+                  href={`/jobs/${job.slug}`}
+                  className="group bg-white hover:bg-amber-50/20 border border-gray-200/80 hover:border-amber-400 p-4 rounded-xl transition-all duration-300 flex flex-col justify-between shadow-xs hover:shadow-md"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/60 text-[10px] font-bold truncate max-w-[130px]">
+                        {job.department?.name || t('careers.department', 'Department')}
+                      </span>
+                      <span className="text-[9px] text-gray-600 font-semibold uppercase bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                        {job.workMode === 'REMOTE' ? t('careers.remote', 'Remote') : job.workMode === 'HYBRID' ? t('careers.hybrid', 'Hybrid') : t('careers.onSite', 'On-site')}
+                      </span>
+                    </div>
+
+                    <h3 className="text-sm font-bold text-gray-900 group-hover:text-amber-600 transition-colors line-clamp-1">
+                      {job.title}
+                    </h3>
+
+                    <div className="space-y-1 text-xs text-gray-500">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin size={12} className="text-gray-400 shrink-0" />
+                        <span className="truncate">{job.locationCity}, {job.locationState}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Briefcase size={12} className="text-gray-400 shrink-0" />
+                        <span>
+                          {job.employmentType === 'FULL_TIME' ? t('careers.fullTime', 'Full Time') : job.employmentType === 'PART_TIME' ? t('careers.partTime', 'Part Time') : job.employmentType === 'CONTRACT' ? t('careers.contract', 'Contract') : job.employmentType === 'INTERNSHIP' ? t('careers.internship', 'Internship') : job.employmentType === 'FREELANCE' ? t('careers.freelance', 'Freelance') : job.employmentType.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span className="text-gray-500 text-[11px] font-medium">
+                      {job.vacancies} {job.vacancies === 1 ? t('careers.opening', 'Opening') : t('careers.openings', 'Openings')}
+                    </span>
+                    <span className="text-amber-600 text-xs font-bold group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                      {t('careers.applyNow', 'Apply Now')} &rarr;
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200/80 p-6 text-center space-y-3 shadow-xs">
+              <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto border border-amber-100">
+                <Briefcase size={20} />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900">{t('careers.constantlyHiringTitle', "We're Constantly Hiring Talent")}</h3>
+              <Link
+                href="/jobs"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-bold text-xs rounded-xl transition-all shadow-xs"
+              >
+                <span>{t('careers.browsePortal', 'Browse Careers Portal')}</span>
+                <ArrowRight size={13} />
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 

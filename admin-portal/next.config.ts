@@ -106,6 +106,11 @@ const nextConfig: NextConfig = {
         hostname: 'prezentokracja.pl',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'drive.google.com',
+        pathname: '/**',
+      },
       ...(uploadsPattern ? [uploadsPattern] : []),
       ...(legacyApiUploadsPattern ? [legacyApiUploadsPattern] : []),
     ],

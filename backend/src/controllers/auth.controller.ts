@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
+import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
 import { ensureBootstrapSuperAdmin } from '../utils/bootstrapSuperAdmin';
 import {
   ACCOUNT_INACTIVE_CODE,
@@ -828,6 +829,22 @@ export const saveOnboardingData = async ({
         : null,
     },
   });
+
+  const existingKycDocs = await prismaAny.kycDocument.findMany({
+    where: { partnerProfileId: partnerProfile.id },
+    select: { fileUrl: true },
+  });
+
+  for (const doc of existingKycDocs) {
+    if (doc.fileUrl) {
+      const fileId = extractDriveFileId(doc.fileUrl);
+      if (fileId) {
+        await deleteFileFromDrive(fileId).catch(err => {
+          console.warn(`Failed to delete KYC document ${fileId} from Drive:`, err);
+        });
+      }
+    }
+  }
 
   await prismaAny.kycDocument.deleteMany({
     where: { partnerProfileId: partnerProfile.id },

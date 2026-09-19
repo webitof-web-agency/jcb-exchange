@@ -13,6 +13,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n/config";
 import {
   SITE_DESCRIPTION,
+  SITE_KEYWORDS,
   SITE_NAME,
   SITE_OG_IMAGE,
   SITE_TWITTER_IMAGE,
@@ -50,6 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s | ${SITE_NAME}`,
     },
     description: SITE_DESCRIPTION,
+    keywords: SITE_KEYWORDS,
     applicationName: SITE_NAME,
     alternates: {
       canonical: '/',
@@ -152,7 +154,7 @@ export default async function RootLayout({
         <AuthModal />
         <ToastViewport />
         <PushNotificationManager />
-        <ToastContainer position="bottom-right" />
+        <ToastContainer position="bottom-right" style={{ zIndex: 999999 }} />
       </body>
     </html>
   );

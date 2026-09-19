@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase } from 'lucide-react';
 import SellVehicleModal from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
@@ -328,6 +328,14 @@ export default function Navbar() {
               <Link href="/sold-vehicles" className="transition-colors hover:text-white">
                 {t('navbar.soldVehicles')}
               </Link>
+
+              <Link
+                href="/jobs"
+                className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                  }`}
+              >
+                {t('navbar.careers', 'Careers')}
+              </Link>
             </nav>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
@@ -567,6 +575,16 @@ export default function Navbar() {
           >
             <CheckCircle2 size={18} className={pathname === '/sold-vehicles' ? 'text-[#FFC107]' : 'text-gray-400'} />
             <span>{t('navbar.soldVehicles')}</span>
+          </Link>
+
+          <Link
+            href="/jobs"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+              }`}
+          >
+            <Briefcase size={18} className={pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('navbar.careers', 'Careers')}</span>
           </Link>
 
           {isAuthenticated ? (

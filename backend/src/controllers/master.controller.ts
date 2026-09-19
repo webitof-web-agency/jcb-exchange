@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
-import { getAppSettings } from '../utils/appSettings';
+import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
 import { getSoldListingCutoff } from '../utils/soldListingRetention';
 import {
   getMarketplaceSellerPresentation,
@@ -8,8 +8,79 @@ import {
   getPublicMarketplaceListingWhere,
   isPublicMarketplaceListingVisible,
 } from '../utils/publicListingVisibility';
+import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.service';
 
 const prismaAny = prisma as any;
+
+type PublicListingFormDetails = {
+  variant: string | null;
+  registrationYear: string | null;
+  registrationNo: string | null;
+  chassisOrSerialNo: string | null;
+  previousOwners: string | null;
+  fuelType: string | null;
+  transmission: string | null;
+  pinCode: string | null;
+  nearbyLandmark: string | null;
+  insuranceExpiry: string | null;
+};
+
+const parsePublicListingFormDetails = (description?: string | null): PublicListingFormDetails => {
+  const details: PublicListingFormDetails = {
+    variant: null,
+    registrationYear: null,
+    registrationNo: null,
+    chassisOrSerialNo: null,
+    previousOwners: null,
+    fuelType: null,
+    transmission: null,
+    pinCode: null,
+    nearbyLandmark: null,
+    insuranceExpiry: null,
+  };
+
+  for (const line of String(description || '').split(/\r?\n/)) {
+    const match = line.trim().match(/^([^:]+):\s*(.+)$/);
+    if (!match) continue;
+
+    const keyPart = match[1];
+    const valuePart = match[2];
+    if (!keyPart || !valuePart) continue;
+
+    const key = keyPart.trim().toLowerCase();
+    const value = valuePart.trim();
+    if (!value) continue;
+
+    switch (key) {
+      case 'variant': details.variant = value; break;
+      case 'registration year': details.registrationYear = value; break;
+      case 'registration no': details.registrationNo = value; break;
+      case 'chassis/serial':
+      case 'chassis / serial':
+      case 'chassis or serial': details.chassisOrSerialNo = value; break;
+      case 'owners': details.previousOwners = value; break;
+      case 'fuel': details.fuelType = value; break;
+      case 'transmission': details.transmission = value; break;
+      case 'pin':
+      case 'pin code': details.pinCode = value; break;
+      case 'landmark': details.nearbyLandmark = value; break;
+      case 'insurance expiry': details.insuranceExpiry = value; break;
+      default: break;
+    }
+  }
+
+  return details;
+};
+
+const getPublicListingAvailability = (status?: string | null) => {
+  switch (String(status || '').toUpperCase()) {
+    case 'SOLD': return 'SOLD';
+    case 'RESERVED': return 'RESERVED';
+    case 'PENDING_APPROVAL':
+    case 'CHANGES_REQUESTED': return 'PENDING';
+    default: return 'AVAILABLE';
+  }
+};
 
 const buildVisibleSoldListingWhere = (now = new Date()) => {
   const cutoff = getSoldListingCutoff(now);
@@ -41,6 +112,28 @@ const getPublicListingPrice = (listing: {
 
   return Number.isFinite(basePrice) ? basePrice : 0;
 };
+
+const isBuyNowPaymentConfigured = (settings: Awaited<ReturnType<typeof getAppSettings>>['listingPayment']) =>
+  Boolean(
+    (
+      settings.rtgs.enabled &&
+      settings.rtgs.beneficiaryName &&
+      settings.rtgs.bankName &&
+      settings.rtgs.accountNumber &&
+      settings.rtgs.ifscCode
+    ) ||
+    (
+      settings.razorpay.enabled &&
+      detectRazorpayModeFromKeyId(settings.razorpay.keyId) &&
+      settings.razorpay.keySecret
+    ) ||
+    (
+      settings.phonepe.enabled &&
+      settings.phonepe.clientId &&
+      settings.phonepe.clientSecret &&
+      settings.phonepe.clientVersion
+    ),
+  );
 
 const buildPublicMarketplaceFeedWhere = ({
   status,
@@ -853,6 +946,7 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
       success: true,
       data: {
         imageUrl: settings.siteLogo.imageUrl,
+        darkLogoUrl: settings.siteLogo.darkLogoUrl,
         faviconUrl: settings.siteLogo.faviconUrl,
         manifestIconUrl: settings.siteLogo.manifestIconUrl,
         updatedAt: settings.siteLogo.updatedAt,
@@ -863,16 +957,16 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-export const getMobileAppSettings = async (req: Request, res: Response, next: NextFunction) => {
+export const getFooterSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const settings = await getAppSettings();
 
     res.status(200).json({
       success: true,
       data: {
-        playStoreLink: settings.mobileApp.playStoreLink,
-        appStoreLink: settings.mobileApp.appStoreLink,
-        updatedAt: settings.mobileApp.updatedAt,
+        socialLinks: settings.footer.socialLinks,
+        contact: settings.footer.contact,
+        legalPages: settings.footer.legalPages,
       },
     });
   } catch (error) {
@@ -1254,6 +1348,8 @@ export const getPublicSearchFilters = async (req: Request, res: Response, next: 
 export const getPublicListingById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    // 2. IP / Unique View Tracking (24 hour limit)
+    const cacheKey = `${req.ip}_${id}`;
     if (!id) {
       return res.status(400).json({ success: false, error: 'Listing ID is required.' });
     }
@@ -1314,6 +1410,27 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
           },
         },
         saleRecord: true,
+        rtoRecords: {
+          orderBy: { createdAt: 'desc' as const },
+          take: 1,
+          select: {
+            vehicleNumber: true,
+            hirePurchaseStatus: true,
+            taxStatus: true,
+            taxValidUntil: true,
+            fitnessStatus: true,
+            fitnessValidUntil: true,
+            insuranceStatus: true,
+            insuranceValidUntil: true,
+            pucStatus: true,
+            pucValidUntil: true,
+            hsrpStatus: true,
+            rtoOffice: true,
+            rtoAgentName: true,
+            vehicleMaintenanceCost: true,
+            rtoExpenses: true,
+          },
+        },
       },
     });
 
@@ -1354,6 +1471,9 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       customerPrimeSubscriptions: listing.partner?.customerPrimeSubscriptions,
     });
 
+    const latestRto = (listing.rtoRecords as any)?.[0] || null;
+    const formDetails = parsePublicListingFormDetails(listing.description);
+
     const responseData = {
       id: listing.id,
       title: listing.title,
@@ -1363,10 +1483,22 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       operatingHours: listing.operatingHours,
       locationCity: listing.locationCity,
       locationState: listing.locationState,
+      address: listing.address,
       condition: listing.condition,
       description: listing.description,
       additionalDescription: listing.additionalDescription,
       grossPower: listing.grossPower,
+      variant: formDetails.variant,
+      registrationYear: formDetails.registrationYear,
+      registrationNo: formDetails.registrationNo,
+      chassisOrSerialNo: formDetails.chassisOrSerialNo,
+      previousOwners: formDetails.previousOwners,
+      fuelType: formDetails.fuelType,
+      transmission: formDetails.transmission,
+      currentAvailability: getPublicListingAvailability(listing.status),
+      pinCode: formDetails.pinCode,
+      nearbyLandmark: formDetails.nearbyLandmark,
+      insuranceExpiry: formDetails.insuranceExpiry,
       status: listing.status,
       views: listing.views,
       category: listing.category,
@@ -1387,6 +1519,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         workingHours: listing.partner?.partnerProfile?.workingHours,
       },
       publicContact,
+      buyNowPaymentAvailable: listing.status !== 'SOLD' && isBuyNowPaymentConfigured(settings.listingPayment),
       media: listing.media,
       featuredImage:
         listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
@@ -1400,7 +1533,24 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         buyerCity: listing.saleRecord.buyerCity,
         buyerState: listing.saleRecord.buyerState,
         soldAt: listing.saleRecord.soldAt,
-        soldPrice: Number(listing.saleRecord.soldPrice || 0)
+        soldPrice: Number(listing.saleRecord.soldPrice || 0),
+      } : null,
+      vehicleCompliance: latestRto ? {
+        vehicleNumber: latestRto.vehicleNumber || null,
+        hirePurchaseStatus: latestRto.hirePurchaseStatus || null,
+        taxStatus: latestRto.taxStatus || null,
+        taxValidUntil: latestRto.taxValidUntil ? new Date(latestRto.taxValidUntil).toISOString() : null,
+        fitnessStatus: latestRto.fitnessStatus || null,
+        fitnessValidUntil: latestRto.fitnessValidUntil ? new Date(latestRto.fitnessValidUntil).toISOString() : null,
+        insuranceStatus: latestRto.insuranceStatus || null,
+        insuranceValidUntil: latestRto.insuranceValidUntil ? new Date(latestRto.insuranceValidUntil).toISOString() : null,
+        pucStatus: latestRto.pucStatus || null,
+        pucValidUntil: latestRto.pucValidUntil ? new Date(latestRto.pucValidUntil).toISOString() : null,
+        hsrpStatus: latestRto.hsrpStatus || null,
+        rtoOffice: latestRto.rtoOffice || null,
+        rtoAgentName: latestRto.rtoAgentName || null,
+        vehicleMaintenanceCost: latestRto.vehicleMaintenanceCost != null ? Number(latestRto.vehicleMaintenanceCost) : null,
+        rtoExpenses: latestRto.rtoExpenses != null ? Number(latestRto.rtoExpenses) : null,
       } : null,
     };
 
@@ -1433,13 +1583,19 @@ const isBot = (userAgent: string) => {
 
 export const incrementListingView = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || '');
     if (!id) {
       return res.status(400).json({ success: false, error: 'Listing ID is required.' });
     }
 
     const userAgent = (req.headers['user-agent'] as string) || '';
     const ip = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'unknown';
+    const requestBody = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+    const anonymousId = typeof requestBody.anonymousId === 'string' ? requestBody.anonymousId.trim().slice(0, 128) : '';
+    const sessionId = typeof requestBody.sessionId === 'string' ? requestBody.sessionId.trim().slice(0, 128) : '';
+    const normalizedIp = ip.split(',')[0]?.trim() || 'unknown';
+    const fallbackVisitorId = `ip:${hashDedupeKey(normalizedIp)}`;
+    const visitorId = anonymousId || sessionId || fallbackVisitorId;
 
     // 1. Bot Protection
     if (isBot(userAgent)) {
@@ -1447,8 +1603,8 @@ export const incrementListingView = async (req: Request, res: Response, next: Ne
       return res.status(200).json({ success: true, data: { views: listing?.views || 0 } });
     }
 
-    // 2. IP / Unique View Tracking (24 hour limit)
-    const cacheKey = `${ip}_${id}`;
+    // 2. Visitor / IP unique view tracking (24 hour limit)
+    const cacheKey = `${visitorId}_${id}`;
     const lastViewed = viewCache.get(cacheKey);
     const now = Date.now();
 
@@ -1468,7 +1624,28 @@ export const incrementListingView = async (req: Request, res: Response, next: Ne
           increment: 1,
         },
       },
-      select: { views: true },
+      select: {
+        views: true,
+        partnerId: true,
+        brandId: true,
+        modelId: true,
+        categoryId: true,
+        manufacturingYear: true,
+      },
+    });
+
+    void recordAnalyticsEvent({
+      eventType: 'LISTING_VIEW',
+      listingId: id,
+      partnerId: listing.partnerId,
+      brandId: listing.brandId,
+      modelId: listing.modelId,
+      categoryId: listing.categoryId,
+      manufacturingYear: listing.manufacturingYear,
+      source: 'public_listing_detail',
+      anonymousId: anonymousId || (!sessionId ? fallbackVisitorId : null),
+      sessionId: sessionId || null,
+      dedupeKey: hashDedupeKey(`${id}:${visitorId}:${new Date().toISOString().slice(0, 10)}`),
     });
 
     res.status(200).json({
@@ -1484,4 +1661,34 @@ export const incrementListingView = async (req: Request, res: Response, next: Ne
   }
 };
 
+export const getPublicInvoiceSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+    res.json({
+      invoice: settings.companyInvoice,
+      siteLogo: settings.siteLogo.imageUrl,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
+
+
+
+export const getMobileAppSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        playStoreLink: settings.mobileApp.playStoreLink,
+        appStoreLink: settings.mobileApp.appStoreLink,
+        updatedAt: settings.mobileApp.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
