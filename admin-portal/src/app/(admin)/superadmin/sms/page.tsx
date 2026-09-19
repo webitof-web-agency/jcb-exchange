@@ -114,10 +114,6 @@ function RuleCard({
 }) {
   const [draft, setDraft] = useState(rule);
 
-  useEffect(() => {
-    setDraft(rule);
-  }, [rule]);
-
   return (
     <section className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5 lg:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
