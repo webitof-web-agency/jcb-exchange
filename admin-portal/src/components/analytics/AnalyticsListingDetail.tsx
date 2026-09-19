@@ -368,7 +368,7 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
           <button type="button" onClick={() => setIsLightboxOpen(false)} className="absolute right-3 top-3 z-[110] flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:right-6 sm:top-6" aria-label="Close media viewer"><X className="h-6 w-6" /></button>
           <div className="relative flex h-full w-full max-w-7xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
             {activeIsVideo ? (
-              <video src={resolveMediaUrl(activeMedia.url)} controls autoPlay playsInline className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} />
+              <video src={resolveMediaUrl(activeMedia.url)} controls muted autoPlay playsInline className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} />
             ) : (
               <div className="flex h-full w-full items-center justify-center overflow-auto">
                 <div className="origin-center transition-transform duration-200" style={{ transform: `scale(${zoom})` }}>

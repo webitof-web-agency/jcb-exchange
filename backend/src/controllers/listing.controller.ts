@@ -8,7 +8,9 @@ import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibil
 import { PushNotificationService } from '../services/pushNotification.service';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
-import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
+import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
+import { dispatchPublishedSms } from '../services/smsIntegration.service';
+import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { syncListingRtoForListing } from '../services/listingRto.service';
 
 const prismaAny = prisma as any;
@@ -1379,6 +1381,34 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
         locationCity: updatedListing.locationCity,
         locationState: updatedListing.locationState,
         categoryName: updatedListing.category?.name,
+      });
+    }
+
+    if (shouldDispatchSmsPublishedBroadcast({ previousStatus: existingListing.status, nextStatus: requestedStatus })) {
+      const publishedPayload = {
+        listingId: updatedListing.id,
+        listingTitle: updatedListing.title,
+        vehicleShortTitle: [updatedListing.manufacturingYear, updatedListing.brand?.name, updatedListing.model?.name]
+          .filter((value) => value !== undefined && value !== null && String(value).trim())
+          .join(' ') || updatedListing.title,
+        listingStatus: updatedListing.status,
+        categoryName: updatedListing.category?.name,
+        brandName: updatedListing.brand?.name,
+        modelName: updatedListing.model?.name,
+        locationCity: updatedListing.locationCity,
+        locationState: updatedListing.locationState,
+      };
+      void dispatchPublishedSms({
+        eventCode: 'MARKETPLACE_NEW_LISTING_PUBLISHED',
+        relatedEntityType: 'LISTING',
+        relatedEntityId: updatedListing.id,
+        payloadSnapshot: publishedPayload,
+      });
+      void dispatchPublishedWhatsApp({
+        eventCode: 'MARKETPLACE_NEW_LISTING_PUBLISHED',
+        relatedEntityType: 'LISTING',
+        relatedEntityId: updatedListing.id,
+        payloadSnapshot: publishedPayload,
       });
     }
 

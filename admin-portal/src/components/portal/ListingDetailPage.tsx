@@ -1241,7 +1241,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     <div key={mediaItem.fileUrl} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                       <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-black">
                         {mediaItem.previewType === 'VIDEO' ? (
-                          <video src={mediaItem.absoluteUrl} controls className="h-full w-full object-cover" />
+                          <video src={mediaItem.absoluteUrl} controls muted playsInline className="h-full w-full object-cover" />
                         ) : (
                           <Image
                             src={mediaItem.absoluteUrl}
@@ -1279,6 +1279,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     <video
                       src={getAbsoluteFileUrl(activeMedia.url)}
                       controls
+                      muted
+                      playsInline
                       className="max-h-full max-w-full object-contain"
                       onError={() => markMediaUnavailable(activeMedia.id)}
                     />
@@ -1391,6 +1393,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                           <div className="relative flex h-full w-full items-center justify-center bg-gray-900 text-white group">
                             <video
                               src={getAbsoluteFileUrl(mediaItem.url)}
+                              muted
+                              playsInline
                               className="absolute inset-0 h-full w-full object-cover opacity-60"
                               onError={() => markMediaUnavailable(mediaItem.id)}
                             />

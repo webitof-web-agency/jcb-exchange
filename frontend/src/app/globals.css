@@ -33,13 +33,13 @@ body {
 }
 
 @keyframes marqueeLeft {
-  0% { transform: translateX(100vw); }
-  100% { transform: translateX(-100%); }
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 @keyframes marqueeRight {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100vw); }
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
 }
 
 /* ── Brand Loader Ring Animation ── */
@@ -66,6 +66,14 @@ body {
 .animate-marquee-right {
   animation: marqueeRight 10s linear infinite;
   display: flex;
+  width: max-content;
+}
+
+.finance-marquee-track {
+  will-change: transform;
+}
+
+.finance-marquee-group {
   width: max-content;
 }
 

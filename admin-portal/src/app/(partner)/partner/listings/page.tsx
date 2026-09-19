@@ -366,7 +366,7 @@ const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
 const imageUploadHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
-const videoUploadHelper = `Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB`;
+const videoUploadHelper = `Auto-optimized MP4 (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB`;
 
 const formatCurrency = (value: string | number) => {
   const numericValue = typeof value === 'number' ? value : Number(value || 0);
@@ -2118,7 +2118,7 @@ function ListingMediaUploadBox({
                 : `Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB`}
             </span>
           ) : null}
-          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">Uploading...</span> : null}
+          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">Optimizing &amp; uploading...</span> : null}
         </div>
 
         <input

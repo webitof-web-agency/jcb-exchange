@@ -22,7 +22,9 @@ import {
   TalentPoolCategory,
   Prisma,
 } from '@prisma/client';
-import { dispatchRecruitmentWhatsApp } from '../services/whatsappIntegration.service';
+import { dispatchPublishedWhatsApp, dispatchRecruitmentWhatsApp } from '../services/whatsappIntegration.service';
+import { dispatchPublishedSms } from '../services/smsIntegration.service';
+import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
@@ -1114,6 +1116,29 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       }
     }
 
+    if (shouldDispatchSmsPublishedBroadcast({ previousStatus: null, nextStatus: job.status })) {
+      const publishedPayload = {
+        jobId: job.id,
+        jobCode: job.jobCode,
+        jobTitle: job.title,
+        jobSlug: job.slug,
+        locationCity: job.locationCity,
+        locationState: job.locationState,
+      };
+      void dispatchPublishedSms({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: job.id,
+        payloadSnapshot: publishedPayload,
+      });
+      void dispatchPublishedWhatsApp({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: job.id,
+        payloadSnapshot: publishedPayload,
+      });
+    }
+
     res.status(201).json({
       success: true,
       job,
@@ -1190,6 +1215,29 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
           });
         }
       }
+    }
+
+    if (shouldDispatchSmsPublishedBroadcast({ previousStatus: existingJob.status, nextStatus: updatedJob.status })) {
+      const publishedPayload = {
+        jobId: updatedJob.id,
+        jobCode: updatedJob.jobCode,
+        jobTitle: updatedJob.title,
+        jobSlug: updatedJob.slug,
+        locationCity: updatedJob.locationCity,
+        locationState: updatedJob.locationState,
+      };
+      void dispatchPublishedSms({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: updatedJob.id,
+        payloadSnapshot: publishedPayload,
+      });
+      void dispatchPublishedWhatsApp({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: updatedJob.id,
+        payloadSnapshot: publishedPayload,
+      });
     }
 
     res.status(200).json({
@@ -1287,6 +1335,11 @@ export const updateJobStatus = async (req: Request, res: Response, next: NextFun
       return res.status(400).json({ success: false, error: 'Valid status is required.' });
     }
 
+    const existingJob = await prisma.job.findUnique({ where: { id }, select: { status: true } });
+    if (!existingJob) {
+      return res.status(404).json({ success: false, error: 'Job posting not found.' });
+    }
+
     const job = await prisma.job.update({
       where: { id },
       data: {
@@ -1295,6 +1348,29 @@ export const updateJobStatus = async (req: Request, res: Response, next: NextFun
         closedAt: status === 'CLOSED' ? new Date() : null,
       },
     });
+
+    if (shouldDispatchSmsPublishedBroadcast({ previousStatus: existingJob.status, nextStatus: job.status })) {
+      const publishedPayload = {
+        jobId: job.id,
+        jobCode: job.jobCode,
+        jobTitle: job.title,
+        jobSlug: job.slug,
+        locationCity: job.locationCity,
+        locationState: job.locationState,
+      };
+      void dispatchPublishedSms({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: job.id,
+        payloadSnapshot: publishedPayload,
+      });
+      void dispatchPublishedWhatsApp({
+        eventCode: 'RECRUITMENT_NEW_JOB_PUBLISHED',
+        relatedEntityType: 'JOB',
+        relatedEntityId: job.id,
+        payloadSnapshot: publishedPayload,
+      });
+    }
 
     res.status(200).json({
       success: true,

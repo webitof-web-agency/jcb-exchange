@@ -1073,15 +1073,9 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
 
 export const getRecentListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const freshListingCutoff = new Date();
-    freshListingCutoff.setDate(freshListingCutoff.getDate() - 7);
-
     const listings = await prismaAny.listing.findMany({
       where: {
         ...buildPublicMarketplaceFeedWhere({}),
-        createdAt: {
-          gte: freshListingCutoff,
-        },
       },
       include: {
         media: {

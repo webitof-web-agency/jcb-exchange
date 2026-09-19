@@ -588,7 +588,7 @@ export default function SellVehicleModal({
   const showToast = useToastStore((state) => state.showToast);
   const { token, user, hasHydrated, setAuthModalOpen } = useAuthStore();
   const imageUploadHelper = `${t('sellModal.autoCompressed')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.inputMaxSuffix')}`;
-  const videoUploadHelper = `${t('sellModal.maxLabel')} ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.andLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`;
+  const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-optimized MP4 (muted).')} ${t('sellModal.maxLabel')} ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.andLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`;
   const localizedMediaLabels: Record<MediaSlotKey, string> = {
     'front-view': t('sellModal.mediaSlots.frontView'),
     'rear-view': t('sellModal.mediaSlots.rearView'),
@@ -1577,7 +1577,7 @@ export default function SellVehicleModal({
                 {viewListing.media.map((m) => (
                   <div key={m.id} className="relative aspect-video overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
                     {m.type === 'VIDEO' ? (
-                      <video src={getAbsoluteFileUrl(m.url)} controls className="h-full w-full object-contain" />
+                      <video src={getAbsoluteFileUrl(m.url)} controls muted playsInline className="h-full w-full object-contain" />
                     ) : (
                       <a href={getAbsoluteFileUrl(m.url)} target="_blank" rel="noreferrer" className="group block h-full w-full">
                         <Image
@@ -1766,7 +1766,7 @@ function ListingMediaUploadBox({
                 : `${t('sellModal.maxLabel')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB`}
             </span>
           ) : null}
-          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">{t('sellModal.uploading')}</span> : null}
+          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">{t('sellModal.optimizingUploading', 'Optimizing & uploading...')}</span> : null}
         </div>
 
         <input

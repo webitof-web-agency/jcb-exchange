@@ -70,9 +70,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         });
       }
     } catch {
-      set({
-        recentListings: [],
-      });
+      // Keep the last successful feed visible during a transient refresh/API failure.
+      // The next successful response remains the source of truth.
     }
   },
 

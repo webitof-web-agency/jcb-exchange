@@ -9,7 +9,10 @@ import {
   renderSmsVariables,
   resolveSmsTestRecipientPhone,
   sendDltSms,
+  getSmsPublishedBroadcastRecipientType,
+  type SmsPublishedBroadcastEvent,
 } from '../modules/sms-core';
+import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
 
 const SETTINGS_ID = 'default';
 const MASKED_SECRET = '********';
@@ -22,6 +25,7 @@ export const marketplaceSmsEvents = [
   'LISTING_PAYMENT_REJECTED',
   'CUSTOMER_PRIME_APPROVED',
   'CUSTOMER_PRIME_REJECTED',
+  'MARKETPLACE_NEW_LISTING_PUBLISHED',
 ] as const;
 
 export type MarketplaceSmsEvent = (typeof marketplaceSmsEvents)[number];
@@ -36,6 +40,7 @@ export const recruitmentSmsEvents = [
   'RECRUITMENT_INTERVIEW_CANCELLED',
   'RECRUITMENT_OFFER_SENT',
   'RECRUITMENT_OFFER_STATUS_UPDATED',
+  'RECRUITMENT_NEW_JOB_PUBLISHED',
 ] as const;
 
 export type RecruitmentSmsEvent = (typeof recruitmentSmsEvents)[number];
@@ -344,6 +349,44 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
 
 export const dispatchMarketplaceSms = (input: Omit<SmsDispatchInput, 'eventCode'> & { eventCode: MarketplaceSmsEvent }) => dispatchConfiguredSms(input);
 export const dispatchRecruitmentSms = (input: Omit<SmsDispatchInput, 'eventCode'> & { eventCode: RecruitmentSmsEvent }) => dispatchConfiguredSms(input);
+
+export const dispatchPublishedSms = async ({
+  eventCode,
+  relatedEntityType,
+  relatedEntityId,
+  payloadSnapshot,
+}: {
+  eventCode: SmsPublishedBroadcastEvent;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  payloadSnapshot?: Record<string, unknown>;
+}) => {
+  try {
+    const audience = eventCode === 'MARKETPLACE_NEW_LISTING_PUBLISHED' ? 'MARKETPLACE' as const : 'RECRUITMENT' as const;
+    const recipientType = getSmsPublishedBroadcastRecipientType(eventCode);
+    const recipients = await getSmsPublishedBroadcastRecipients(audience);
+    const results = await Promise.all(recipients.map((recipient) => dispatchConfiguredSms({
+      eventCode,
+      relatedEntityType,
+      relatedEntityId,
+      recipientType,
+      recipientPhone: recipient.recipientPhone,
+      payloadSnapshot: {
+        ...(payloadSnapshot || {}),
+        sourceEntityType: recipient.sourceEntityType,
+        sourceEntityId: recipient.sourceEntityId,
+      },
+    })));
+    return {
+      audienceCount: recipients.length,
+      queuedCount: results.filter((result) => result.queued).length,
+      skippedCount: results.filter((result) => !result.queued).length,
+    };
+  } catch (error) {
+    console.error(`SMS published broadcast failed for ${eventCode}:`, error);
+    return { audienceCount: 0, queuedCount: 0, skippedCount: 0 };
+  }
+};
 
 export const sendSmsTestMessage = async ({ messageId, variablesValues, actorUserId }: { messageId: string; variablesValues?: string; actorUserId: string }) => {
   const settings = await getEnabledSmsSettings();

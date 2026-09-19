@@ -28,6 +28,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",

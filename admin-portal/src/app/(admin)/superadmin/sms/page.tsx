@@ -60,6 +60,7 @@ const marketplaceEvents: Record<string, { title: string; recipient: string }> = 
   LISTING_PAYMENT_REJECTED: { title: 'Listing payment rejected', recipient: 'Customer / Partner' },
   CUSTOMER_PRIME_APPROVED: { title: 'Customer Prime approved', recipient: 'Customer' },
   CUSTOMER_PRIME_REJECTED: { title: 'Customer Prime rejected', recipient: 'Customer' },
+  MARKETPLACE_NEW_LISTING_PUBLISHED: { title: 'New vehicle listing published', recipient: 'Active customers' },
 };
 
 const recruitmentEvents: Record<string, { title: string; recipient: string }> = {
@@ -72,6 +73,7 @@ const recruitmentEvents: Record<string, { title: string; recipient: string }> = 
   RECRUITMENT_INTERVIEW_CANCELLED: { title: 'Interview cancelled', recipient: 'Candidate' },
   RECRUITMENT_OFFER_SENT: { title: 'Offer sent', recipient: 'Candidate' },
   RECRUITMENT_OFFER_STATUS_UPDATED: { title: 'Offer status updated', recipient: 'Candidate' },
+  RECRUITMENT_NEW_JOB_PUBLISHED: { title: 'New job published', recipient: 'Candidates' },
 };
 
 const variableHelp = 'Optional: fill this only when the approved DLT template has variables. Use event values without braces, separated by |. Example: customerName|listingTitle|status.';

@@ -22,9 +22,11 @@ import {
   isVideoMimeType,
   MAX_DOCUMENT_UPLOAD_SIZE,
   MAX_LISTING_VIDEO_UPLOAD_SIZE,
+  publicListingMediaUploadDir,
   secureUploadDir,
   getPublicHeroImageUrl,
 } from '../utils/documentUpload';
+import { transcodeListingVideo } from '../utils/videoTranscoder';
 
 const prismaAny = prisma as any;
 
@@ -258,16 +260,38 @@ export const uploadListingPaymentReceipt = async (req: Request, res: Response, n
 };
 
 export const uploadPublicListingMedia = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
+  const file = getUploadedFile(req);
 
+  try {
     if (!file) {
       return res.status(400).json({ error: 'A file is required.' });
     }
 
     await enforceStoredFileSizePolicy(file, 'listing-media');
-    res.status(201).json(buildUploadResponse(req, file, 'public', 'listing-media'));
+
+    if (!isVideoMimeType(file.mimetype)) {
+      return res.status(201).json(buildUploadResponse(req, file, 'public', 'listing-media'));
+    }
+
+    const optimizedVideo = await transcodeListingVideo({
+      inputPath: file.path,
+      outputDirectory: publicListingMediaUploadDir,
+      originalName: file.originalname,
+    });
+    await cleanupFile(file.path);
+
+    const optimizedFile: Express.Multer.File = {
+      ...file,
+      filename: optimizedVideo.outputFilename,
+      path: optimizedVideo.outputPath,
+      destination: publicListingMediaUploadDir,
+      mimetype: 'video/mp4',
+      size: optimizedVideo.size,
+    };
+
+    return res.status(201).json(buildUploadResponse(req, optimizedFile, 'public', 'listing-media'));
   } catch (error) {
+    await cleanupFile(file?.path);
     next(error);
   }
 };

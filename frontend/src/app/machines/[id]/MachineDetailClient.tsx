@@ -61,6 +61,13 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
+const getVideoMimeType = (url?: string | null) => {
+  const normalizedUrl = String(url || '').toLowerCase();
+  if (normalizedUrl.endsWith('.webm')) return 'video/webm';
+  if (normalizedUrl.endsWith('.mov')) return 'video/quicktime';
+  return 'video/mp4';
+};
+
 const getLocationLabel = (listing: MachineListingDetail, fallback: string) => {
   const invalidValues = new Set(['n/a', 'na', 'nan', 'null', 'undefined']);
   const parts = [listing.locationCity, listing.locationState]
@@ -963,10 +970,12 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     <div key={video.id} className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
                       <video
                         controls
+                        muted
+                        playsInline
                         className="w-full h-auto max-h-[70vh] object-contain bg-black"
                         preload="metadata"
                       >
-                        <source src={getAbsoluteMediaUrl(video.url)} type={video.url.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                        <source src={getAbsoluteMediaUrl(video.url)} type={getVideoMimeType(video.url)} />
                         Your browser does not support the video tag.
                       </video>
                     </div>
@@ -1242,10 +1251,11 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 src={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')}
                 controls
                 autoPlay
+                muted
                 playsInline
                 className="h-full w-full object-contain"
               >
-                <source src={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')} type={videos[activeVideoIndex]?.url?.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
+                <source src={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')} type={getVideoMimeType(videos[activeVideoIndex]?.url)} />
                 Your browser does not support the video tag.
               </video>
             </div>

@@ -242,17 +242,6 @@ export default function Home() {
     };
   }, []);
 
-  const financeRows = React.useMemo(() => {
-    const normalizedItems = uniqueFinanceSupportItems.filter((item) => item.imageUrl);
-    const row1 = normalizedItems.filter((_, index) => index % 2 === 0);
-    const row2 = normalizedItems.filter((_, index) => index % 2 === 1);
-
-    return {
-      row1,
-      row2: row2.length ? row2 : row1,
-    };
-  }, [uniqueFinanceSupportItems]);
-
   const categoryOptions = searchCategories.length > 0 ? searchCategories : browseCategories;
 
   const renderFinanceCard = (item: FinanceSupportItem, key: string) => (
@@ -653,23 +642,17 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <>
-            <div className="finance-marquee-shell finance-marquee-bleed mb-5 flex w-screen overflow-hidden">
-              <div className="animate-marquee-left flex items-center gap-5 px-8 py-2">
-                {financeRows.row1.map((item, index) =>
-                  renderFinanceCard(item, `r1-${item.id}-${index}`)
-                )}
-              </div>
+          <div className="finance-marquee-shell finance-marquee-bleed flex w-screen overflow-hidden">
+            <div className="animate-marquee-left finance-marquee-track flex">
+              {[0, 1].map((copy) => (
+                <div className="finance-marquee-group flex shrink-0 items-center gap-5 px-8 py-2" key={`finance-copy-${copy}`}>
+                  {uniqueFinanceSupportItems.map((item, index) =>
+                    renderFinanceCard(item, `finance-${copy}-${item.id}-${index}`)
+                  )}
+                </div>
+              ))}
             </div>
-
-            <div className="finance-marquee-shell finance-marquee-bleed flex w-screen overflow-hidden">
-              <div className="animate-marquee-right flex items-center gap-5 px-8 py-2">
-                {financeRows.row2.map((item, index) =>
-                  renderFinanceCard(item, `r2-${item.id}-${index}`)
-                )}
-              </div>
-            </div>
-          </>
+          </div>
         )}
       </section>
 

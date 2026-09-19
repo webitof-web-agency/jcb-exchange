@@ -11,9 +11,15 @@ import {
   normalizeWhatsAppRecipientPhone,
   assertWhatsAppTemplatePurpose,
   isWhatsAppTemplatePurposeAllowed,
+  getWhatsAppPublishedBroadcastAudience,
+  getWhatsAppPublishedBroadcastConsentCategory,
+  getWhatsAppPublishedBroadcastRecipientType,
+  getWhatsAppPublishedTemplateComponents,
   type WhatsAppTemplatePurpose,
+  type WhatsAppPublishedBroadcastEvent,
 } from '../modules/whatsapp-core';
 import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
+import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -26,6 +32,7 @@ export const marketplaceWhatsAppEvents = [
   'LISTING_PAYMENT_REJECTED',
   'CUSTOMER_PRIME_APPROVED',
   'CUSTOMER_PRIME_REJECTED',
+  'MARKETPLACE_NEW_LISTING_PUBLISHED',
 ] as const;
 
 export type MarketplaceWhatsAppEvent = (typeof marketplaceWhatsAppEvents)[number];
@@ -40,6 +47,7 @@ export const recruitmentWhatsAppEvents = [
   'RECRUITMENT_INTERVIEW_CANCELLED',
   'RECRUITMENT_OFFER_SENT',
   'RECRUITMENT_OFFER_STATUS_UPDATED',
+  'RECRUITMENT_NEW_JOB_PUBLISHED',
 ] as const;
 
 export type RecruitmentWhatsAppEvent = (typeof recruitmentWhatsAppEvents)[number];
@@ -551,6 +559,48 @@ export const dispatchRecruitmentWhatsApp = (input: Omit<AutomationDispatchInput,
     ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
   });
   return dispatchConfiguredWhatsApp(input);
+};
+
+export const dispatchPublishedWhatsApp = async ({
+  eventCode,
+  relatedEntityType,
+  relatedEntityId,
+  payloadSnapshot = {},
+}: {
+  eventCode: WhatsAppPublishedBroadcastEvent;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  payloadSnapshot?: Record<string, unknown>;
+}) => {
+  try {
+    const audience = getWhatsAppPublishedBroadcastAudience(eventCode);
+    const consentCategory = getWhatsAppPublishedBroadcastConsentCategory(eventCode);
+    const recipientType = getWhatsAppPublishedBroadcastRecipientType(eventCode);
+    const templateComponents = getWhatsAppPublishedTemplateComponents(eventCode, payloadSnapshot);
+    const recipients = await getWhatsAppPublishedBroadcastRecipients(audience, consentCategory);
+    const results = await Promise.all(recipients.map((recipient) => dispatchConfiguredWhatsApp({
+      eventCode,
+      relatedEntityType,
+      relatedEntityId,
+      recipientType,
+      recipientPhone: recipient.recipientPhone,
+      templateComponents,
+      payloadSnapshot: {
+        ...payloadSnapshot,
+        sourceEntityType: recipient.sourceEntityType,
+        sourceEntityId: recipient.sourceEntityId,
+      },
+    })));
+
+    return {
+      audienceCount: recipients.length,
+      queuedCount: results.filter((result) => result.queued).length,
+      skippedCount: results.filter((result) => !result.queued).length,
+    };
+  } catch (error) {
+    console.error(`WhatsApp published broadcast failed for ${eventCode}:`, error);
+    return { audienceCount: 0, queuedCount: 0, skippedCount: 0 };
+  }
 };
 
 export const dispatchApprovedWhatsAppTemplate = async ({

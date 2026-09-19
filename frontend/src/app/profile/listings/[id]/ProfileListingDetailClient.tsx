@@ -584,7 +584,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 <div className={`grid gap-4 ${videos.length > 1 ? 'lg:grid-cols-2' : ''}`}>
                   {videos.map((video) => (
                     <div key={video.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-black">
-                      <video controls className="h-auto max-h-[70vh] w-full object-contain" preload="metadata">
+                      <video controls muted playsInline className="h-auto max-h-[70vh] w-full object-contain" preload="metadata">
                         <source
                           src={getAbsoluteMediaUrl(video.url)}
                           type={
