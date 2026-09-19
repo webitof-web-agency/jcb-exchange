@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase } from 'lucide-react';
@@ -14,6 +14,7 @@ import { getPortalMenuLabel, getPortalTarget, getPublicRoleLabel, PORTAL_ROLES }
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
+import { isReactNativeWebView } from '@/lib/nativeApp';
 
 type ProfileResponse = {
   user: {
@@ -43,6 +44,8 @@ type ProfileResponse = {
     portalHomeRoute?: string | null;
   };
 };
+
+const subscribeToNativeBridge = () => () => undefined;
 
 export default function Navbar() {
   const { locale, t } = useTranslation();
@@ -74,7 +77,11 @@ export default function Navbar() {
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
   const [playStoreLink, setPlayStoreLink] = useState<string | null>(null);
   const [appStoreLink, setAppStoreLink] = useState<string | null>(null);
-  const [isWebView, setIsWebView] = useState(false);
+  const isWebView = useSyncExternalStore(
+    subscribeToNativeBridge,
+    () => isReactNativeWebView(window),
+    () => false,
+  );
   const pathname = usePathname();
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -96,10 +103,6 @@ export default function Navbar() {
   }, [isMobileMenuOpen]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsWebView(!!(window as any).ReactNativeWebView);
-    }
-
     api.get('/master/mobile-app')
       .then(res => {
         if (res.data?.success) {

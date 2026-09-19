@@ -59,6 +59,11 @@ type PublicSearchFilters = {
   locations: PublicSearchLocation[];
 };
 
+type MobileAppSettings = {
+  playStoreLink?: string | null;
+  appStoreLink?: string | null;
+};
+
 const getListingStatusBadge = (status?: string | null) => {
   const normalizedStatus = String(status || '').trim().toUpperCase();
 
@@ -205,7 +210,7 @@ export default function Home() {
           api.get<{ success: boolean; data: InspectionSectionContent }>('/master/inspection-section').catch(() => null),
           api.get<{ success: boolean; data: PublicCategory[] }>('/master/public-categories').catch(() => null),
           api.get<{ success: boolean; data: PublicSearchFilters }>('/master/public-search-filters').catch(() => null),
-          api.get<{ success: boolean; data: any }>('/master/mobile-app').catch(() => null),
+          api.get<{ success: boolean; data: MobileAppSettings }>('/master/mobile-app').catch(() => null),
             api.get<{ success: boolean; jobs: FeaturedJobItem[] }>('/recruitment/public/jobs?limit=4').catch(() => null),
         ]);
 
