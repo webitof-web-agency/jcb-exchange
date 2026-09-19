@@ -10,15 +10,11 @@ import {
   type WhatsAppReminderKind,
 } from '../modules/whatsapp-core';
 import { dispatchApprovedWhatsAppTemplate, isWhatsAppIntegrationEnabled } from './whatsappIntegration.service';
+import { getOptedInWhatsAppRecipients, type WhatsAppAudienceRecipient } from './whatsappAudience.service';
 
 const CAMPAIGN_LIMIT = 200;
 type CampaignCategory = 'MARKETING' | 'JOB_ALERTS';
-type CampaignRecipientInput = {
-  recipientType: 'CUSTOMER' | 'CANDIDATE';
-  recipientPhone: string;
-  sourceEntityType: 'USER' | 'CANDIDATE';
-  sourceEntityId: string;
-};
+type CampaignRecipientInput = WhatsAppAudienceRecipient;
 
 const normalizePhone = (phone?: string | null) => normalizeWhatsAppRecipientPhone(phone) || null;
 
@@ -29,23 +25,6 @@ export const saveWhatsAppConsent = async ({ phone, category, optedIn, actorUserI
     where: { phone_category: { phone: normalizedPhone, category } },
     update: { optedIn, source: 'SUPERADMIN_PORTAL', updatedByUserId: actorUserId },
     create: { phone: normalizedPhone, category, optedIn, source: 'SUPERADMIN_PORTAL', updatedByUserId: actorUserId },
-  });
-};
-
-const getOptedInRecipients = async (category: CampaignCategory): Promise<CampaignRecipientInput[]> => {
-  const consents = await prisma.whatsAppConsent.findMany({ where: { category, optedIn: true }, select: { phone: true } });
-  const optedInPhones = new Set(consents.map((consent) => consent.phone));
-  if (category === 'MARKETING') {
-    const users = await prisma.user.findMany({ where: { role: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true } });
-    return users.flatMap((user) => {
-      const phone = normalizePhone(user.whatsappNumber || user.mobile);
-      return phone && optedInPhones.has(phone) ? [{ recipientType: 'CUSTOMER' as const, recipientPhone: phone, sourceEntityType: 'USER', sourceEntityId: user.id }] : [];
-    });
-  }
-  const candidates = await prisma.candidate.findMany({ select: { id: true, mobile: true } });
-  return candidates.flatMap((candidate) => {
-    const phone = normalizePhone(candidate.mobile);
-    return phone && optedInPhones.has(phone) ? [{ recipientType: 'CANDIDATE' as const, recipientPhone: phone, sourceEntityType: 'CANDIDATE', sourceEntityId: candidate.id }] : [];
   });
 };
 
@@ -81,7 +60,7 @@ export const createWhatsAppCampaign = async ({ name, category, templateId, actor
   const template = await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, status: true, metaTemplateId: true, category: true } });
   if (!template || template.status !== 'APPROVED' || !template.metaTemplateId) throw new Error('Select an approved Meta template.');
   if (!isWhatsAppTemplatePurposeAllowed(template.category, [category])) throw new Error('Selected template does not belong to this campaign category.');
-  const recipients = (await getOptedInRecipients(category)).slice(0, CAMPAIGN_LIMIT);
+  const recipients = (await getOptedInWhatsAppRecipients(category)).slice(0, CAMPAIGN_LIMIT);
   return createCampaignFromRecipients({
     name: trimmedName,
     category,
@@ -100,7 +79,7 @@ export const createWhatsAppReminderCampaign = async ({ kind, templateId, actorUs
   if (!isWhatsAppTemplatePurposeAllowed(template.category, [definition.category])) {
     throw new Error('Selected template does not belong to this reminder type.');
   }
-  const optedInRecipients = await getOptedInRecipients(definition.category);
+  const optedInRecipients = await getOptedInWhatsAppRecipients(definition.category);
   let recipients = optedInRecipients;
   if (kind === 'INTERVIEW_48_HOURS') {
     const now = new Date();

@@ -22,7 +22,8 @@ import {
   updateSiteLogoSettings,
 } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
-import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
+import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
+import { shouldDispatchPublishedBroadcast } from '../modules/whatsapp-core';
 import {
   EmailOtpSettingsError,
   getEmailOtpAdminSettings,
@@ -2187,6 +2188,14 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
       return res.status(400).json({ error: 'Invalid listing status.' });
     }
 
+    const existingListing = await prisma.listing.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!existingListing) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+
     const listing = await prisma.listing.update({
       where: { id },
       data: { status },
@@ -2227,6 +2236,20 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
         recipientType: 'PARTNER',
         recipientPhone: listing.partner.whatsappNumber || listing.partner.mobile,
         payloadSnapshot: { listingId: listing.id, listingTitle: listing.title, listingStatus: status },
+      });
+
+    }
+
+    if (shouldDispatchPublishedBroadcast({ previousStatus: existingListing.status, nextStatus: status })) {
+      void dispatchPublishedWhatsApp({
+        eventCode: 'MARKETPLACE_NEW_LISTING_PUBLISHED',
+        relatedEntityType: 'LISTING',
+        relatedEntityId: listing.id,
+        payloadSnapshot: {
+          listingId: listing.id,
+          listingTitle: listing.title,
+          listingStatus: listing.status,
+        },
       });
     }
 

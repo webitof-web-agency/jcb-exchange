@@ -12,8 +12,11 @@ import {
   assertWhatsAppTemplatePurpose,
   isWhatsAppTemplatePurposeAllowed,
   type WhatsAppTemplatePurpose,
+  type PublishedBroadcastEvent,
+  getPublishedBroadcastAudience,
 } from '../modules/whatsapp-core';
 import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
+import { getOptedInWhatsAppRecipients } from './whatsappAudience.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -26,6 +29,7 @@ export const marketplaceWhatsAppEvents = [
   'LISTING_PAYMENT_REJECTED',
   'CUSTOMER_PRIME_APPROVED',
   'CUSTOMER_PRIME_REJECTED',
+  'MARKETPLACE_NEW_LISTING_PUBLISHED',
 ] as const;
 
 export type MarketplaceWhatsAppEvent = (typeof marketplaceWhatsAppEvents)[number];
@@ -40,6 +44,7 @@ export const recruitmentWhatsAppEvents = [
   'RECRUITMENT_INTERVIEW_CANCELLED',
   'RECRUITMENT_OFFER_SENT',
   'RECRUITMENT_OFFER_STATUS_UPDATED',
+  'RECRUITMENT_NEW_JOB_PUBLISHED',
 ] as const;
 
 export type RecruitmentWhatsAppEvent = (typeof recruitmentWhatsAppEvents)[number];
@@ -530,27 +535,73 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
 };
 
 export const dispatchMarketplaceWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: MarketplaceWhatsAppEvent }) => {
-  void dispatchMarketplaceSms({
-    eventCode: input.eventCode,
-    relatedEntityType: input.relatedEntityType,
-    relatedEntityId: input.relatedEntityId,
-    recipientType: input.recipientType,
-    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
-    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
-  });
+  if (input.eventCode !== 'MARKETPLACE_NEW_LISTING_PUBLISHED') {
+    void dispatchMarketplaceSms({
+      eventCode: input.eventCode,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientType: input.recipientType,
+      ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+    });
+  }
   return dispatchConfiguredWhatsApp(input);
 };
 
 export const dispatchRecruitmentWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: RecruitmentWhatsAppEvent }) => {
-  void dispatchRecruitmentSms({
-    eventCode: input.eventCode,
-    relatedEntityType: input.relatedEntityType,
-    relatedEntityId: input.relatedEntityId,
-    recipientType: input.recipientType,
-    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
-    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
-  });
+  if (input.eventCode !== 'RECRUITMENT_NEW_JOB_PUBLISHED') {
+    void dispatchRecruitmentSms({
+      eventCode: input.eventCode,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientType: input.recipientType,
+      ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+    });
+  }
   return dispatchConfiguredWhatsApp(input);
+};
+
+export const dispatchPublishedWhatsApp = async ({
+  eventCode,
+  relatedEntityType,
+  relatedEntityId,
+  payloadSnapshot,
+  templateComponents,
+}: {
+  eventCode: PublishedBroadcastEvent;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  payloadSnapshot?: Record<string, unknown>;
+  templateComponents?: unknown;
+}) => {
+  try {
+    const audience = getPublishedBroadcastAudience(eventCode);
+    const recipients = await getOptedInWhatsAppRecipients(audience.consentCategory);
+    const uniqueRecipients = Array.from(new Map(recipients.map((recipient) => [recipient.recipientPhone, recipient])).values());
+    const results = await Promise.all(uniqueRecipients.map((recipient) => dispatchConfiguredWhatsApp({
+      eventCode,
+      relatedEntityType,
+      relatedEntityId,
+      recipientType: audience.recipientType,
+      recipientPhone: recipient.recipientPhone,
+      ...(templateComponents === undefined ? {} : { templateComponents }),
+      payloadSnapshot: {
+        ...(payloadSnapshot || {}),
+        consentCategory: audience.consentCategory,
+        sourceEntityType: recipient.sourceEntityType,
+        sourceEntityId: recipient.sourceEntityId,
+      },
+    })));
+    return {
+      audienceCount: uniqueRecipients.length,
+      queuedCount: results.filter((result) => result.queued).length,
+      skippedCount: results.filter((result) => !result.queued).length,
+    };
+  } catch (error) {
+    console.error(`WhatsApp published broadcast failed for ${eventCode}:`, error);
+    return { audienceCount: 0, queuedCount: 0, skippedCount: 0 };
+  }
 };
 
 export const dispatchApprovedWhatsAppTemplate = async ({
