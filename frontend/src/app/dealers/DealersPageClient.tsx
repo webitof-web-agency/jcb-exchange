@@ -13,6 +13,7 @@ import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymen
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateDealerSlugPath } from '@/lib/seoUtils';
+import BrandLoader from '@/components/ui/BrandLoader';
 
 interface Dealer {
   id: string;
@@ -128,7 +129,7 @@ export default function DealersPageClient() {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-jcb-yellow"></div>
+            <BrandLoader size="md" variant="section" bg="light" />
           </div>
         ) : dealers.length === 0 ? (
           <div className="rounded-xl border border-gray-200 bg-white py-20 text-center text-gray-500 shadow-sm">

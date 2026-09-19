@@ -2,10 +2,11 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, Eye, UserCheck, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -18,6 +19,16 @@ import {
   uploadListingMediaToServer,
 } from '@/lib/fileUpload';
 import { generateAdminListingDetailPath } from '@/lib/routePaths';
+import { YEAR_SELECT_OPTIONS } from '@/lib/listingDateOptions';
+import {
+  isValidDigitsOnlyValue,
+  isValidPinCodeValue,
+  isValidYearValue,
+  sanitizeListingFieldValue,
+  sanitizeListingFormData,
+} from '@/lib/listingFormSanitizers';
+import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 
 type ListingFormState = {
   category: string;
@@ -37,7 +48,7 @@ type ListingFormState = {
   title: string;
   price: string;
   state: string;
-  district: string;
+  address: string;
   city: string;
 
   pinCode: string;
@@ -57,11 +68,18 @@ type ListingFormState = {
   soldAt: string;
   selectedBuyerStateId: string;
   selectedBuyerCityId: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 type CategoryOption = {
   id: string;
   name: string;
+};
+
+type ListingFormDependencies = {
+  categories: CategoryOption[];
+  brands: Option[];
+  states: Option[];
 };
 
 type ListingRecord = {
@@ -71,6 +89,7 @@ type ListingRecord = {
   manufacturingYear: number;
   locationState: string;
   locationCity: string;
+  address?: string | null;
   status: string;
   createdAt: string;
   brand?: { name: string };
@@ -99,6 +118,16 @@ type ListingRecord = {
     invoiceNo?: string | null;
     notes?: string | null;
   } | null;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus'];
+    taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null;
+    insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null;
+    hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+  }>;
   media: Array<{
     id: string;
     url: string;
@@ -145,6 +174,7 @@ type ParsedListingDetails = {
   previousOwners: string;
   fuelType: string;
   transmission: string;
+  address: string;
   district: string;
 
   pinCode: string;
@@ -170,7 +200,7 @@ const initialForm: ListingFormState = {
   title: '',
   price: '',
   state: '',
-  district: '',
+  address: '',
   city: '',
 
   pinCode: '',
@@ -190,6 +220,7 @@ const initialForm: ListingFormState = {
   soldAt: new Date().toISOString().split('T')[0],
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
+  rtoDetails: emptyListingRtoForm,
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -406,6 +437,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   previousOwners: '',
   fuelType: '',
   transmission: '',
+  address: '',
   district: '',
 
   pinCode: '',
@@ -461,6 +493,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'transmission':
         parsed.transmission = value;
         break;
+      case 'address':
+        parsed.address = value;
+        break;
       case 'district':
         parsed.district = value;
         break;
@@ -494,7 +529,6 @@ const buildListingDescription = (form: ListingFormState) =>
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
-    form.district ? `District: ${form.district}` : '',
 
     form.pinCode ? `PIN: ${form.pinCode}` : '',
     form.nearbyLandmark ? `Landmark: ${form.nearbyLandmark}` : '',
@@ -706,6 +740,7 @@ export default function PartnerListingsPage() {
   const [states, setStates] = useState<Option[]>([]);
   const [cities, setCities] = useState<Option[]>([]);
   const [buyerCities, setBuyerCities] = useState<Option[]>([]);
+  const formDependenciesRef = useRef<Promise<ListingFormDependencies> | null>(null);
   const [listings, setListings] = useState<ListingRecord[]>([]);
   const [mediaState, setMediaState] = useState<MediaSlotState>(createEmptyMediaState);
   const [previewState, setPreviewState] = useState<MediaPreviewState>(createEmptyPreviewState);
@@ -733,9 +768,45 @@ export default function PartnerListingsPage() {
   const [openActionDropdownId, setOpenActionDropdownId] = useState<string | null>(null);
 
   const refreshListings = async () => {
-    const response = await api.get<{ listings: ListingRecord[] }>('/listings');
+    const response = await api.get<{ listings: ListingRecord[] }>('/listings?compact=true');
     setListings(response.data.listings || []);
   };
+
+  const ensureFormDependencies = useCallback(() => {
+    if (formDependenciesRef.current) {
+      return formDependenciesRef.current;
+    }
+
+    const dependenciesPromise = (async () => {
+      const [categoryResponse, brandResponse, countriesResponse] = await Promise.all([
+        api.get<{ data: CategoryOption[] }>('/master/categories'),
+        api.get<{ data: Option[] }>('/master/brands'),
+        api.get<Option[]>('/locations/countries'),
+      ]);
+      const nextCategories = categoryResponse.data.data || [];
+      const nextBrands = brandResponse.data.data || [];
+      const india = countriesResponse.data.find((country) => country.name === 'India');
+      const nextStates = india
+        ? (await api.get<Option[]>(`/locations/states/${india.id}`)).data
+        : [];
+
+      setCategories(nextCategories);
+      setBrands(nextBrands);
+      setStates(nextStates);
+
+      return {
+        categories: nextCategories,
+        brands: nextBrands,
+        states: nextStates,
+      };
+    })().catch((loadError) => {
+      formDependenciesRef.current = null;
+      throw loadError;
+    });
+
+    formDependenciesRef.current = dependenciesPromise;
+    return dependenciesPromise;
+  }, []);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -753,42 +824,13 @@ export default function PartnerListingsPage() {
 
     const loadPageData = async () => {
       try {
-        const [categoryResponse, brandResponse, listingResponse, countriesResult] = await Promise.allSettled([
-          api.get<{ data: CategoryOption[] }>('/master/categories'),
-          api.get<{ data: Option[] }>('/master/brands'),
-          api.get<{ listings: ListingRecord[] }>('/listings'),
-          api.get<Option[]>('/locations/countries'),
-        ]);
+        const listingResponse = await api.get<{ listings: ListingRecord[] }>('/listings?compact=true');
 
         if (cancelled) {
           return;
         }
 
-        if (categoryResponse.status === 'fulfilled') {
-          setCategories(categoryResponse.value.data.data || []);
-        } else {
-          throw categoryResponse.reason;
-        }
-
-        if (brandResponse.status === 'fulfilled') {
-          setBrands(brandResponse.value.data.data || []);
-        } else {
-          setBrands([]);
-        }
-
-        if (listingResponse.status === 'fulfilled') {
-          setListings(listingResponse.value.data.listings || []);
-        } else {
-          setListings([]);
-        }
-
-        if (countriesResult.status === 'fulfilled') {
-          const india = countriesResult.value.data.find((c) => c.name === 'India');
-          if (india) {
-            const statesResult = await api.get<Option[]>(`/locations/states/${india.id}`);
-            setStates(statesResult.data);
-          }
-        }
+        setListings(listingResponse.data.listings || []);
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : 'Unable to load listing data.');
@@ -907,7 +949,9 @@ export default function PartnerListingsPage() {
         listing.locationCity,
         listing.locationState,
         listing.condition,
+        listing.address,
         listing.description,
+        parsedDetails.address,
         parsedDetails.variant,
         parsedDetails.registrationNo,
         parsedDetails.chassisOrSerialNo,
@@ -932,15 +976,19 @@ export default function PartnerListingsPage() {
     setPreviewState(createEmptyPreviewState());
     setEditingListingId(null);
     setIsModalOpen(true);
+    void ensureFormDependencies().catch(() => {
+      setError('Unable to load listing form options. Please try again.');
+    });
   };
 
-  const populateEditForm = (listing: ListingRecord) => {
+  const populateEditForm = (listing: ListingRecord, availableStates = states) => {
     setMessage('');
     setError('');
     setEditingListingId(listing.id);
     const parsedDetails = parseListingDescription(listing.description);
+    const linkedRto = listing.rtoRecords?.[0];
     const buyerStateName = listing.saleRecord?.buyerState || '';
-    const matchedBuyerState = states.find((s) => s.name.toLowerCase() === buyerStateName.toLowerCase());
+    const matchedBuyerState = availableStates.find((s) => s.name.toLowerCase() === buyerStateName.toLowerCase());
     const initialBuyerStateId = matchedBuyerState ? String(matchedBuyerState.id) : '';
 
     setForm({
@@ -950,7 +998,7 @@ export default function PartnerListingsPage() {
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationYear: parsedDetails.registrationYear,
-      registrationNo: parsedDetails.registrationNo,
+      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -961,16 +1009,16 @@ export default function PartnerListingsPage() {
       title: listing.title || '',
       price: String(listing.price || ''),
       state: listing.locationState || '',
-      district: parsedDetails.district,
+      address: listing.address || parsedDetails.address || parsedDetails.district,
       city: listing.locationCity || '',
 
       pinCode: parsedDetails.pinCode,
       nearbyLandmark: parsedDetails.nearbyLandmark,
       description: parsedDetails.rawDescription,
       additionalDescription: listing.additionalDescription || '',
-      grossPower: listing.grossPower || '',
+      grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
       selectedStateId: '',
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -981,6 +1029,21 @@ export default function PartnerListingsPage() {
       soldAt: listing.saleRecord?.soldAt ? new Date(listing.saleRecord.soldAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       selectedBuyerStateId: initialBuyerStateId,
       selectedBuyerCityId: '',
+      rtoDetails: {
+        hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        rtoOffice: linkedRto?.rtoOffice || '',
+        rtoAgentName: linkedRto?.rtoAgentName || '',
+        rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+        vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+      },
     });
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -992,10 +1055,18 @@ export default function PartnerListingsPage() {
 
   const openEditModal = async (listing: ListingRecord) => {
     try {
-      const response = await api.get<{ listing: ListingRecord }>(`/listings/${listing.id}`);
-      populateEditForm(response.data.listing || listing);
+      const [response, dependencies] = await Promise.all([
+        api.get<{ listing: ListingRecord }>(`/listings/${listing.id}`),
+        ensureFormDependencies(),
+      ]);
+      populateEditForm(response.data.listing || listing, dependencies.states);
     } catch {
-      populateEditForm(listing);
+      try {
+        const dependencies = await ensureFormDependencies();
+        populateEditForm(listing, dependencies.states);
+      } catch {
+        populateEditForm(listing);
+      }
     }
   };
 
@@ -1012,13 +1083,95 @@ export default function PartnerListingsPage() {
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({
+      ...current,
+      [key]: typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value,
+    }));
+  };
+
+  const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
+    setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
+
+    const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const rtoBase = {
+      registrationNo: sanitizedForm.registrationNo,
+      vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+      vehicleModel: sanitizedForm.model,
+      operatingHours: sanitizedForm.operatingHours,
+      insuranceExpiry: sanitizedForm.insuranceExpiry,
+    };
+    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
+
+    if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
+      setError('Price must contain digits only.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidYearValue(sanitizedForm.manufacturingYear)) {
+      setError('Manufacturing year must be a 4-digit year.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidDigitsOnlyValue(sanitizedForm.operatingHours)) {
+      setError('Operating hours must contain digits only.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidYearValue(sanitizedForm.registrationYear)) {
+      setError('Registration year must be a 4-digit year.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidDigitsOnlyValue(sanitizedForm.previousOwners)) {
+      setError('Previous owners must contain digits only.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidPinCodeValue(sanitizedForm.pinCode)) {
+      setError('Pin code must be exactly 6 digits.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (sanitizedForm.currentAvailability === 'SOLD') {
+      if (!sanitizedForm.buyerName.trim()) {
+        setError('Buyer Name is required when marking a vehicle as SOLD.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (sanitizedForm.buyerPhone.length !== 10) {
+        setError('Buyer Mobile Number must be 10 digits when marking a vehicle as SOLD.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
+        setError('Final Sold Price is required when marking a vehicle as SOLD.');
+        setForm(sanitizedForm);
+        return;
+      }
+    }
+
+    setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
 
     setSaving(true);
 
@@ -1039,28 +1192,30 @@ export default function PartnerListingsPage() {
         .filter(Boolean);
 
       const payload: Record<string, unknown> = {
-        categoryId: form.category,
-        brandName: form.brand,
-        modelName: form.model,
-        title: form.title || `${form.brand} ${form.model}`.trim(),
-        price: form.price,
-        manufacturingYear: form.manufacturingYear,
-        operatingHours: form.operatingHours,
-        locationState: form.state,
-        locationCity: form.city,
-        condition: form.condition,
-        description: buildListingDescription(form),
-        additionalDescription: form.additionalDescription,
-        grossPower: form.grossPower,
-        isNegotiable: form.isNegotiable,
+        categoryId: sanitizedForm.category,
+        brandName: sanitizedForm.brand,
+        modelName: sanitizedForm.model,
+        title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
+        price: sanitizedForm.price,
+        manufacturingYear: sanitizedForm.manufacturingYear,
+        operatingHours: sanitizedForm.operatingHours,
+        locationState: sanitizedForm.state,
+        locationCity: sanitizedForm.city,
+        address: sanitizedForm.address,
+        condition: sanitizedForm.condition,
+        description: buildListingDescription(sanitizedForm),
+        additionalDescription: sanitizedForm.additionalDescription,
+        grossPower: sanitizedForm.grossPower,
+        isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (form.currentAvailability !== 'PENDING') {
-        payload.status = availabilityToListingStatus(form.currentAvailability);
+      if (sanitizedForm.currentAvailability !== 'PENDING') {
+        payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
-      if (form.currentAvailability === 'SOLD') {
+      if (sanitizedForm.currentAvailability === 'SOLD') {
         if (!form.buyerName.trim()) {
           throw new Error('Buyer Name is required when marking a vehicle as SOLD.');
         }
@@ -1072,12 +1227,12 @@ export default function PartnerListingsPage() {
         }
 
         payload.buyerDetails = {
-          buyerName: form.buyerName.trim(),
-          buyerPhone: form.buyerPhone.trim(),
-          buyerCity: form.buyerCity.trim() || undefined,
-          buyerState: form.buyerState.trim() || undefined,
-          soldPrice: form.soldPrice,
-          soldAt: form.soldAt || new Date().toISOString().split('T')[0],
+          buyerName: sanitizedForm.buyerName.trim(),
+          buyerPhone: sanitizedForm.buyerPhone.trim(),
+          buyerCity: sanitizedForm.buyerCity.trim() || undefined,
+          buyerState: sanitizedForm.buyerState.trim() || undefined,
+          soldPrice: sanitizedForm.soldPrice,
+          soldAt: sanitizedForm.soldAt || new Date().toISOString().split('T')[0],
         };
       }
 
@@ -1085,11 +1240,11 @@ export default function PartnerListingsPage() {
 
       if (editingListingId) {
         const updateResponse = await api.put<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}`, payload);
-        const shouldSyncAvailability = form.currentAvailability !== 'PENDING';
+        const shouldSyncAvailability = sanitizedForm.currentAvailability !== 'PENDING';
 
         if (shouldSyncAvailability) {
           response = await api.patch<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}/availability`, {
-            status: availabilityToListingStatus(form.currentAvailability),
+            status: availabilityToListingStatus(sanitizedForm.currentAvailability),
             buyerDetails: payload.buyerDetails,
           });
         } else {
@@ -1224,7 +1379,7 @@ export default function PartnerListingsPage() {
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
 
         {loadingListings ? (
-          <div className="p-12 text-center text-sm text-gray-500">Loading your listings...</div>
+          <BrandLoader variant="section" size="sm" bg="light" text="Loading your listings..." />
         ) : filteredListings.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-50">
@@ -1262,6 +1417,8 @@ export default function PartnerListingsPage() {
                 {filteredListings.map((listing) => {
                   const cover = getCoverMedia(listing);
                   const parsedDetails = parseListingDescription(listing.description);
+                  const linkedRto = listing.rtoRecords?.[0];
+                  const vehicleNumber = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
                   const availability = listingStatusToAvailability(listing.status);
                   const isUpdatingAvailability = updatingAvailabilityIds.includes(listing.id);
                   const isApprovalPending = isApprovalPendingStatus(listing.status);
@@ -1473,15 +1630,43 @@ export default function PartnerListingsPage() {
                       <input value={form.variant} onChange={(event) => updateField('variant', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Gross Power">
-                      <input value={form.grossPower} onChange={(event) => updateField('grossPower', event.target.value)} className={fieldClassName} placeholder="e.g. 76 hp (56 kW)" />
+                      <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={form.grossPower}
+                          onChange={(event) => updateField('grossPower', event.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={(event) => { if (!/[0-9]|Backspace|Delete|ArrowLeft|ArrowRight|Tab|Home|End/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault(); }}
+                          className="flex-1 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none"
+                          placeholder="e.g. 170"
+                        />
+                        <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-500 select-none">HP</span>
+                      </div>
                     </Field>
                     <Field label="Manufacture Year">
-                      <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
+                      <SearchableSelect
+                        options={YEAR_SELECT_OPTIONS}
+                        value={form.manufacturingYear}
+                        displayValue={form.manufacturingYear}
+                        onChange={(option) => updateField('manufacturingYear', String(option.id))}
+                        placeholder="Select manufacture year"
+                        searchable={false}
+                        className="bg-[#F8FAFC]"
+                      />
                     </Field>
                     <Field label="Registration Year">
-                      <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
+                      <SearchableSelect
+                        options={YEAR_SELECT_OPTIONS}
+                        value={form.registrationYear}
+                        displayValue={form.registrationYear}
+                        onChange={(option) => updateField('registrationYear', String(option.id))}
+                        placeholder="Select registration year"
+                        searchable={false}
+                        className="bg-[#F8FAFC]"
+                      />
                     </Field>
-                    <Field label="Registration No.">
+                    <Field label="Vehicle Number">
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Insurance Expiry Date">
@@ -1544,15 +1729,18 @@ export default function PartnerListingsPage() {
                         searchable={false}
                         className="bg-[#F8FAFC]"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        {form.currentAvailability === 'PENDING'
-                          ? 'This listing is waiting for approval. Super admin or an authorized employee will publish it after review.'
-                          : 'Availability changes apply to already approved listings only.'}
-                      </p>
                     </Field>
                   </div>
 
-                  {form.currentAvailability === 'SOLD' && (
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={updateRtoField}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                />
+
+                {form.currentAvailability === 'SOLD' && (
                     <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />
@@ -1714,8 +1902,8 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="District">
-                      <input value={form.district} onChange={(event) => updateField('district', event.target.value)} className={fieldClassName} />
+                    <Field label={t('sellModal.address', 'Address')}>
+                      <input value={form.address} onChange={(event) => updateField('address', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="City">
                       <SearchableSelect

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Mail, Lock, User, Phone, BriefcaseBusiness } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -73,7 +74,7 @@ export default function SignupPage() {
   };
 
   if (statusLoading) {
-    return <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center text-white">{t('common.loading')}</div>;
+    return <BrandLoader variant="fullscreen" size="lg" bg="dark" text={t('common.loading')} />;
   }
 
   const pageTitle = isFirstSetup ? t('authPortal.createSuperAdminAccount') : t('authPortal.startPartnerApplication');

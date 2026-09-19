@@ -6,10 +6,12 @@ import {
   uploadPublicSiteManifestIconImage,
   uploadPublicSiteFaviconImage,
   uploadPublicSiteLogoImage,
+  uploadPublicSiteDarkLogoImage,
   getSecureDocument,
   uploadPublicListingMedia,
   uploadPublicDocument,
   uploadCustomerPrimeReceipt,
+  uploadListingPaymentReceipt,
   uploadSecureDocument,
 } from '../controllers/document.controller';
 import { requireAuth, requirePortalOperator } from '../middlewares/auth.middleware';
@@ -24,12 +26,14 @@ const publicFinanceSupportUpload = getDocumentUploadMiddleware('public', 'financ
 const publicHeroImageUpload = getDocumentUploadMiddleware('public', 'hero-image');
 const publicInspectionSectionUpload = getDocumentUploadMiddleware('public', 'inspection-section');
 const publicSiteLogoUpload = getDocumentUploadMiddleware('public', 'site-logo');
+const publicSiteDarkLogoUpload = getDocumentUploadMiddleware('public', 'site-dark-logo');
 const publicSiteFaviconUpload = getDocumentUploadMiddleware('public', 'site-favicon');
 const publicSiteManifestIconUpload = getDocumentUploadMiddleware('public', 'site-manifest-icon');
 
 router.post('/upload/secure', requireAuth, requirePortalOperator, secureUpload.single('file'), uploadSecureDocument);
 router.post('/upload/public', requireAuth, requirePortalOperator, publicUpload.single('file'), uploadPublicDocument);
 router.post('/upload/public/customer-prime-receipt', requireAuth, publicUpload.single('file'), uploadCustomerPrimeReceipt);
+router.post('/upload/public/listing-payment-receipt', requireAuth, publicUpload.single('file'), uploadListingPaymentReceipt);
 router.post(
   '/upload/public/finance-support',
   requireAuth,
@@ -57,6 +61,13 @@ router.post(
   requirePortalOperator,
   publicSiteLogoUpload.single('file'),
   uploadPublicSiteLogoImage
+);
+router.post(
+  '/upload/public/site-dark-logo',
+  requireAuth,
+  requirePortalOperator,
+  publicSiteDarkLogoUpload.single('file'),
+  uploadPublicSiteDarkLogoImage
 );
 router.post(
   '/upload/public/site-favicon',

@@ -80,7 +80,7 @@ const formatDate = (value?: string | null) =>
   value
     ? new Intl.DateTimeFormat('en-IN', {
         day: '2-digit',
-        month: 'short',
+        month: '2-digit',
         year: 'numeric',
       }).format(new Date(value))
     : '-';
@@ -492,7 +492,7 @@ export default function SuperAdminVerificationsPage() {
                             selectedDetail.profile.businessName || selectedDetail.profile.ownerName || selectedDetail.ownerName
                           )}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">{new Date(item.createdAt).toLocaleString('en-IN')}</p>
+                        <p className="mt-1 text-xs text-gray-500">{new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</p>
                         {item.comment ? <p className="mt-2 text-sm text-gray-600">{item.comment}</p> : null}
                       </div>
                     ))}

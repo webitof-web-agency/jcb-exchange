@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { request } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -142,7 +142,7 @@ const checkExistingApi = (targetPort) =>
       {
         host: 'localhost',
         port: Number(targetPort),
-        path: '/api/auth/setup-status',
+        path: '/health',
         method: 'GET',
         timeout: 2500,
       },
@@ -189,10 +189,16 @@ const printManagedStatus = async () => {
   const pidRecord = readPidFile();
   const apiRunning = await checkExistingApi(port);
 
-  if (pidRecord?.pid && isProcessRunning(pidRecord.pid)) {
+  if (pidRecord?.pid && isProcessRunning(pidRecord.pid) && apiRunning) {
     console.log(
       `Managed backend dev server is running at http://${host}:${pidRecord.port} (PID ${pidRecord.pid}).`
     );
+    return;
+  }
+
+  if (pidRecord?.pid && isProcessRunning(pidRecord.pid)) {
+    console.log(`Managed backend process (PID ${pidRecord.pid}) exists, but the API is not serving on port ${pidRecord.port}.`);
+    console.log('Run `npm run dev:stop`, then `npm run dev` to restart it.');
     return;
   }
 
@@ -249,6 +255,17 @@ if (!(await canListen(port))) {
 }
 
 removeStaleSourceArtifacts(sourceDir);
+
+const generateResult = spawnSync('npx', ['prisma', 'generate'], {
+  cwd: rootDir,
+  env: { ...process.env, PORT: port },
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+});
+
+if (generateResult.status !== 0) {
+  process.exit(generateResult.status ?? 1);
+}
 
 const tsxCliPath = resolve(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 

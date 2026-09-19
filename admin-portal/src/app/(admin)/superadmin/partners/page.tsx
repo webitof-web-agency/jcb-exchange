@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, KeyRound, Pencil, Search, Trash2, X, ChevronDown, Plus, MoreVertical } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { usePathname, useRouter } from 'next/navigation';
 import { hasAnyPermission } from '@/lib/permissionUtils';
@@ -211,7 +212,7 @@ export default function SuperAdminListingsPage() {
       }
 
       try {
-        const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners');
+        const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners?compact=true');
         if (!cancelled) {
           setPartners(response.data.partners.filter(isPartnerRecord));
         }
@@ -290,7 +291,7 @@ export default function SuperAdminListingsPage() {
       await api.post('/superadmin/partners', {
         ...createForm,
       });
-      const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners');
+      const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners?compact=true');
       setPartners(response.data.partners.filter(isPartnerRecord));
       setIsCreateModalOpen(false);
       setCreateForm({
@@ -636,7 +637,7 @@ export default function SuperAdminListingsPage() {
         ) : null}
 
         {loading ? (
-          <div className="p-5 text-sm text-gray-500">Loading partners...</div>
+          <BrandLoader variant="section" size="sm" bg="light" text="Loading partners..." />
         ) : filteredPartners.length === 0 ? (
           <div className="p-5 text-sm text-gray-500">No partners found.</div>
         ) : (

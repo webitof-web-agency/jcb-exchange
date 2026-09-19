@@ -15,12 +15,23 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import messaging from '@react-native-firebase/messaging';
-import { getWebAppUrl, getWebAppUrlHint } from '../config/webApp';
+import {
+  getApiBaseUrl,
+  getBusinessEmail,
+  getSupportEmail,
+  getSupportMailtoUrl,
+  getWebAppUrl,
+  getWhatsappSupportNumber,
+  getWhatsappSupportUrl,
+} from '../config/appConfig';
 import { buildFcmSyncScript } from '../lib/fcmBridge';
-import { getApiBaseUrl } from '../config/firebase';
 
 interface Props {
   onWebLoaded?: () => void;
+}
+
+function getMessageText(value: string | object | undefined, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
 }
 
 function HybridWebView({ onWebLoaded }: Props) {
@@ -33,7 +44,17 @@ function HybridWebView({ onWebLoaded }: Props) {
   const [webReady, setWebReady] = useState(false);
   const webAppUrl = getWebAppUrl();
   const apiBaseUrl = getApiBaseUrl();
-  const [currentUrl, setCurrentUrl] = useState(webAppUrl);
+  const supportEmail = getSupportEmail();
+  const businessEmail = getBusinessEmail();
+  const whatsappSupportNumber = getWhatsappSupportNumber();
+  const whatsappSupportUrl = getWhatsappSupportUrl();
+  const hasSupportContacts = Boolean(supportEmail || businessEmail || whatsappSupportUrl);
+  const configurationError = !webAppUrl
+    ? 'WEB_APP_URL is not configured for the mobile shell.'
+    : !apiBaseUrl
+      ? 'API_BASE_URL is not configured for the mobile shell.'
+      : null;
+  const [currentUrl, setCurrentUrl] = useState(webAppUrl || 'about:blank');
 
   const syncFcmToken = useCallback(
     (token: string) => {
@@ -66,7 +87,7 @@ function HybridWebView({ onWebLoaded }: Props) {
   useEffect(() => {
     const requestFcmToken = async () => {
       try {
-        if (Platform.OS === 'android' && Platform.Version >= 33) {
+        if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
           const granted = await PermissionsAndroid.request(
             PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
           );
@@ -138,8 +159,13 @@ function HybridWebView({ onWebLoaded }: Props) {
     const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
       console.log('🔔 FIREBASE NOTIFICATION RECEIVED IN FOREGROUND:', JSON.stringify(remoteMessage, null, 2));
       
-      const title = remoteMessage.notification?.title || remoteMessage.data?.title || 'Notification';
-      const body = remoteMessage.notification?.body || remoteMessage.data?.body || '';
+      const title =
+        getMessageText(remoteMessage.notification?.title) ||
+        getMessageText(remoteMessage.data?.title) ||
+        'Notification';
+      const body =
+        getMessageText(remoteMessage.notification?.body) ||
+        getMessageText(remoteMessage.data?.body);
       const hasAction = Boolean(remoteMessage.data?.path || remoteMessage.data?.url || remoteMessage.data?.link);
 
       if (hasAction) {
@@ -215,7 +241,9 @@ function HybridWebView({ onWebLoaded }: Props) {
     return () => subscription.remove();
   }, [canGoBack]);
 
-  if (errorMessage) {
+  const resolvedErrorMessage = errorMessage ?? configurationError;
+
+  if (resolvedErrorMessage) {
     return (
       <View style={styles.fallbackContainer}>
         <View style={styles.iconContainer}>
@@ -226,32 +254,53 @@ function HybridWebView({ onWebLoaded }: Props) {
           We couldn't connect to the server. Please check your internet connection and try again.
         </Text>
 
-        <Pressable style={styles.button} onPress={retry}>
-          <Text style={styles.buttonLabel}>Try Again</Text>
-        </Pressable>
+        {!configurationError ? (
+          <Pressable style={styles.button} onPress={retry}>
+            <Text style={styles.buttonLabel}>Try Again</Text>
+          </Pressable>
+        ) : null}
 
-        <View style={{ marginTop: 40, width: '100%' }}>
-          <Text style={{ textAlign: 'center', fontSize: 14, color: '#64748B', marginBottom: 12, fontWeight: '600' }}>
-            Need Help? Contact Support
-          </Text>
-          <View style={styles.supportBox}>
-            <Pressable style={styles.supportItem} onPress={() => openExternalLink('mailto:support@jcbexchange.com')}>
-              <Text style={styles.supportLabel}>Customer Support Email</Text>
-              <Text style={styles.supportLink}>support@jcbexchange.com</Text>
-            </Pressable>
-            <Pressable style={styles.supportItem} onPress={() => openExternalLink('whatsapp://send?phone=917451965755')}>
-              <Text style={styles.supportLabel}>WhatsApp Support</Text>
-              <Text style={styles.supportLink}>+91 7451965755</Text>
-            </Pressable>
-            <Pressable style={styles.supportItemLast} onPress={() => openExternalLink('mailto:business@jcbexchange.com')}>
-              <Text style={styles.supportLabel}>Partner / Agent Inquiry</Text>
-              <Text style={styles.supportLink}>business@jcbexchange.com</Text>
-            </Pressable>
+        {hasSupportContacts ? (
+          <View style={styles.supportSection}>
+            <Text style={styles.supportHeading}>
+              Need Help? Contact Support
+            </Text>
+            <View style={styles.supportBox}>
+              {supportEmail ? (
+                <Pressable
+                  style={whatsappSupportUrl || businessEmail ? styles.supportItem : styles.supportItemLast}
+                  onPress={() => openExternalLink(getSupportMailtoUrl(supportEmail))}
+                >
+                  <Text style={styles.supportLabel}>Customer Support Email</Text>
+                  <Text style={styles.supportLink}>{supportEmail}</Text>
+                </Pressable>
+              ) : null}
+              {whatsappSupportUrl ? (
+                <Pressable
+                  style={businessEmail ? styles.supportItem : styles.supportItemLast}
+                  onPress={() => openExternalLink(whatsappSupportUrl)}
+                >
+                  <Text style={styles.supportLabel}>WhatsApp Support</Text>
+                  <Text style={styles.supportLink}>
+                    {whatsappSupportNumber ? `+${whatsappSupportNumber}` : ''}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {businessEmail ? (
+                <Pressable
+                  style={styles.supportItemLast}
+                  onPress={() => openExternalLink(getSupportMailtoUrl(businessEmail))}
+                >
+                  <Text style={styles.supportLabel}>Partner / Agent Inquiry</Text>
+                  <Text style={styles.supportLink}>{businessEmail}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
-        </View>
+        ) : null}
         
-        <Text style={[styles.hint, { marginTop: 10, textAlign: 'center' }]}>
-          Error: {errorMessage}
+        <Text style={styles.errorHint}>
+          Error: {resolvedErrorMessage}
         </Text>
       </View>
     );
@@ -321,7 +370,7 @@ function HybridWebView({ onWebLoaded }: Props) {
       />
       {loading && (
         <View style={styles.topLoadingBar}>
-          <ActivityIndicator size="small" color="#FFB800" style={{ marginRight: 8 }} />
+          <ActivityIndicator size="small" color="#FFB800" style={styles.topLoadingIndicator} />
           <Text style={styles.topLoadingText}>Loading JCB Exchange...</Text>
         </View>
       )}
@@ -379,6 +428,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  supportSection: {
+    marginTop: 40,
+    width: '100%',
+  },
+  supportHeading: {
+    textAlign: 'center',
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 12,
+    fontWeight: '600',
+  },
   supportItem: {
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -405,6 +465,13 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   hint: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  errorHint: {
+    marginTop: 10,
+    textAlign: 'center',
     color: '#94A3B8',
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -455,6 +522,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
+  },
+  topLoadingIndicator: {
+    marginRight: 8,
   },
   topLoadingText: {
     color: '#FFB800',

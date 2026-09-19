@@ -10,6 +10,7 @@ export const MAX_FINANCE_SUPPORT_IMAGE_INPUT_SIZE = 2 * 1024 * 1024;
 export const MAX_HERO_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_INSPECTION_SECTION_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_SITE_LOGO_IMAGE_INPUT_SIZE = 2 * 1024 * 1024;
+export const MAX_SITE_DARK_LOGO_IMAGE_INPUT_SIZE = MAX_SITE_LOGO_IMAGE_INPUT_SIZE;
 export const MAX_SITE_FAVICON_IMAGE_INPUT_SIZE = 1024 * 1024;
 export const MAX_SITE_MANIFEST_ICON_IMAGE_INPUT_SIZE = 1024 * 1024;
 const MAX_IMAGE_WIDTH = 1920;
@@ -26,6 +27,8 @@ const INSPECTION_SECTION_TARGET_MIN_IMAGE_SIZE = 450 * 1024;
 const INSPECTION_SECTION_TARGET_MAX_IMAGE_SIZE = 1800 * 1024;
 const SITE_LOGO_TARGET_MIN_IMAGE_SIZE = 80 * 1024;
 const SITE_LOGO_TARGET_MAX_IMAGE_SIZE = 220 * 1024;
+const SITE_DARK_LOGO_TARGET_MIN_IMAGE_SIZE = SITE_LOGO_TARGET_MIN_IMAGE_SIZE;
+const SITE_DARK_LOGO_TARGET_MAX_IMAGE_SIZE = SITE_LOGO_TARGET_MAX_IMAGE_SIZE;
 const SITE_FAVICON_TARGET_MAX_IMAGE_SIZE = 80 * 1024;
 const SITE_FAVICON_MAX_DIMENSION = 512;
 const SITE_MANIFEST_ICON_TARGET_MAX_IMAGE_SIZE = 160 * 1024;
@@ -176,6 +179,18 @@ export const validateSiteLogoImageFile = async (file: File) => {
 
   if (file.size > MAX_SITE_LOGO_IMAGE_INPUT_SIZE) {
     throw new Error(`Site logo image must be ${bytesToReadableLimit(MAX_SITE_LOGO_IMAGE_INPUT_SIZE)} or smaller.`);
+  }
+};
+
+export const validateSiteDarkLogoImageFile = async (file: File) => {
+  const isImage = allowedImageTypes.has(file.type);
+
+  if (!isImage) {
+    throw new Error('Only JPG, PNG, and WEBP images are allowed.');
+  }
+
+  if (file.size > MAX_SITE_DARK_LOGO_IMAGE_INPUT_SIZE) {
+    throw new Error(`Dark logo image must be ${bytesToReadableLimit(MAX_SITE_DARK_LOGO_IMAGE_INPUT_SIZE)} or smaller.`);
   }
 };
 
@@ -414,6 +429,15 @@ export const prepareSiteLogoImageForUpload = async (file: File) => {
   });
 };
 
+export const prepareSiteDarkLogoImageForUpload = async (file: File) => {
+  await validateSiteDarkLogoImageFile(file);
+
+  return compressImageForUpload(file, {
+    targetMinBytes: SITE_DARK_LOGO_TARGET_MIN_IMAGE_SIZE,
+    targetMaxBytes: SITE_DARK_LOGO_TARGET_MAX_IMAGE_SIZE,
+  });
+};
+
 export const prepareSiteFaviconImageForUpload = async (file: File) => {
   await validateSiteFaviconImageFile(file);
 
@@ -635,6 +659,24 @@ export const uploadSiteLogoImageToServer = async (file: File) => {
 
   const response = await api.post<{ file: UploadedFileResult }>(
     '/documents/upload/public/site-logo',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+
+  return response.data.file;
+};
+
+export const uploadSiteDarkLogoImageToServer = async (file: File) => {
+  const preparedFile = await prepareSiteDarkLogoImageForUpload(file);
+  const formData = new FormData();
+  formData.append('file', preparedFile);
+
+  const response = await api.post<{ file: UploadedFileResult }>(
+    '/documents/upload/public/site-dark-logo',
     formData,
     {
       headers: {

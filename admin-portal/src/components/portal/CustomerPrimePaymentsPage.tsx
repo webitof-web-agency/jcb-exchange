@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { CheckCircle2, ChevronDown, Search, XCircle } from 'lucide-react';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 
 type PrimePaymentRecord = {
@@ -65,6 +66,7 @@ export default function CustomerPrimePaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
   const [openFilterDropdown, setOpenFilterDropdown] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
@@ -205,7 +207,7 @@ export default function CustomerPrimePaymentsPage() {
           </div>
         </div>
         {loading ? (
-          <div className="p-8 text-sm text-gray-500">Loading payment queue...</div>
+          <BrandLoader variant="section" size="sm" bg="light" text="Loading payment queue..." />
         ) : filteredPayments.length === 0 ? (
           <div className="p-8">
             <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center">
@@ -238,14 +240,13 @@ export default function CustomerPrimePaymentsPage() {
                     </td>
                     <td className="p-4 text-sm text-gray-700">
                       {payment.receiptUrl ? (
-                        <a
-                          href={getAbsoluteFileUrl(payment.receiptUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-[#9A7600] transition hover:bg-yellow-50"
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReceipt(getAbsoluteFileUrl(payment.receiptUrl))}
+                          className="inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-[#9A7600] transition hover:bg-yellow-50 cursor-pointer"
                         >
                           View Receipt
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-gray-400">Receipt missing</span>
                       )}
@@ -306,6 +307,38 @@ export default function CustomerPrimePaymentsPage() {
           </div>
         )}
       </div>
+
+      {/* Receipt Modal */}
+      {selectedReceipt && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setSelectedReceipt(null)}
+        >
+          <div 
+            className="relative w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4">
+              <h3 className="text-lg font-bold text-gray-900">Payment Receipt</h3>
+              <button 
+                type="button"
+                onClick={() => setSelectedReceipt(null)}
+                className="rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-50/50 min-h-[300px]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={selectedReceipt} 
+                alt="Payment Receipt" 
+                className="max-h-full max-w-full rounded-lg object-contain shadow-sm border border-gray-200"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -54,7 +54,7 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
 
   try {
     const response = await fetch(`${API_BASE_URL}/master/public-listings`, {
-      next: { revalidate: 60 },
+      cache: 'no-store',
     });
 
     if (!response.ok) {

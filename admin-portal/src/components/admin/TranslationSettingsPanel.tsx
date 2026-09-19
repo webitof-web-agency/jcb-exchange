@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { LOCALE_LABELS, SUPPORTED_LOCALES, type AppLocale } from '@/lib/i18n/config';
 import { useLanguageStore } from '@/store/languageStore';
 
@@ -553,10 +554,7 @@ export default function TranslationSettingsPanel() {
       {/* Translation Keys List */}
       <section className="space-y-4">
         {loading ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm space-y-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent" />
-            <p className="text-sm font-semibold text-slate-600">Loading translation catalog...</p>
-          </div>
+          <BrandLoader variant="section" size="sm" bg="light" text="Loading translation catalog..." className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm" />
         ) : filteredItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm space-y-3">
             <Search className="h-10 w-10 text-slate-300" />

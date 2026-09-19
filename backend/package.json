@@ -6,8 +6,9 @@
     "dev": "node scripts/dev-server.mjs",
     "dev:stop": "node scripts/dev-server.mjs stop",
     "dev:status": "node scripts/dev-server.mjs status",
-    "build": "tsc",
-    "start": "node dist/src/server.js",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc",
+    "start": "prisma migrate deploy && node dist/src/server.js",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "seed:listings": "tsx scripts/seed-listings.ts"
@@ -30,6 +31,7 @@
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
+    "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
     "prisma": "^7.9.1",
     "web-push": "^3.6.7"
@@ -38,6 +40,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
+    "@types/nodemailer": "^8.0.2",
     "@types/web-push": "^3.6.4",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",

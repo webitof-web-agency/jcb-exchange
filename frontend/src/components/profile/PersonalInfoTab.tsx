@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { User, Phone, Mail, MessageCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
+import BrandLoader from '@/components/ui/BrandLoader';
 
 type ProfileResponse = {
   user: {
@@ -41,6 +42,8 @@ export default function PersonalInfoTab() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [states, setStates] = useState<Option[]>([]);
@@ -80,6 +83,8 @@ export default function PersonalInfoTab() {
 
     const fetchProfile = async () => {
       try {
+        setLoadError(null);
+        setLoading(true);
         const [profileResponse, countriesResponse] = await Promise.all([
           api.get<ProfileResponse>('/auth/profile'),
           api.get<Option[]>('/locations/countries'),
@@ -124,13 +129,14 @@ export default function PersonalInfoTab() {
         }
       } catch (error) {
         console.error('Failed to fetch profile', error);
+        setLoadError('Unable to load your profile details right now.');
       } finally {
         setLoading(false);
       }
     };
 
     void fetchProfile();
-  }, [hasHydrated, loadCities]);
+  }, [hasHydrated, loadCities, retryCount]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -185,7 +191,24 @@ export default function PersonalInfoTab() {
   if (!hasHydrated || loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent"></div>
+        <BrandLoader size="md" variant="section" bg="light" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-6 text-center">
+        <AlertCircle className="h-8 w-8 text-rose-600" />
+        <h2 className="mt-3 text-lg font-bold text-rose-900">Unable to load profile</h2>
+        <p className="mt-1 text-sm text-rose-700">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryCount((count) => count + 1)}
+          className="mt-5 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-bold text-black transition-colors hover:bg-yellow-400"
+        >
+          Retry
+        </button>
       </div>
     );
   }

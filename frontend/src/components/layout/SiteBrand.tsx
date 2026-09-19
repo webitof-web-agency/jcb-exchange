@@ -44,9 +44,6 @@ export default function SiteBrand({
     };
   }, []);
 
-  const fallbackClass = variant === 'footer'
-    ? 'text-[20px] md:text-[22px] font-extrabold tracking-wide text-[#F0C85C]'
-    : 'text-[1.1rem] sm:text-xl md:text-2xl font-bold italic tracking-wider text-jcb-yellow leading-none';
   const widthClass = variant === 'footer'
     ? 'w-full max-w-[240px] md:max-w-[360px]'
     : 'w-full max-w-[200px] sm:max-w-[240px] md:max-w-[300px]';

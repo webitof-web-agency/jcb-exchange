@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import SoldVehiclesPageClient from './SoldVehiclesPageClient';
+import { getSiteBranding } from '@/lib/siteBranding';
 
 export const metadata: Metadata = {
   title: 'Sold Vehicles & Equipment',
@@ -22,7 +22,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function SoldVehiclesPage() {
+export default async function SoldVehiclesPage() {
+  const branding = await getSiteBranding();
   const collectionSchema = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -45,7 +46,7 @@ export default function SoldVehiclesPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
       />
       <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC]" />}>
-        <SoldVehiclesPageClient />
+        <SoldVehiclesPageClient initialLogoUrl={branding.darkLogoUrl || branding.logoUrl} />
       </Suspense>
       </>
     );

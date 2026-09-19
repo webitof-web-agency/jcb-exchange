@@ -15,21 +15,58 @@ import {
 } from '../utils/accountAccess';
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import {
-  canAttemptMobileOtpVerification,
-  createMobileOtpSession,
-  getMobileOtpCooldownSeconds,
-  getMobileOtpExpiryMinutes,
-  getMobileOtpSessionById,
-  invalidateMobileOtpSession,
-  isMobileOtpSessionExpired,
-  maskMobileNumber,
   normalizeLoginMobileNumber,
-  recordMobileOtpAttempt,
-  toInternationalMobileNumber,
+  maskMobileNumber,
 } from '../utils/mobileOtp';
+import {
+  canResendMobileOtpChallenge,
+  canVerifyMobileOtpChallenge,
+  createMobileOtpChallenge,
+  expireMobileOtpChallenge,
+  getLatestMobileOtpChallenge,
+  getMobileOtpChallenge,
+  getMobileOtpCooldownSeconds,
+  markMobileOtpChallengeVerified,
+  recordMobileOtpAttempt,
+  updateMobileOtpChallengeAfterResend,
+} from '../services/mobileOtpChallenge.service';
+import {
+  FlowitofOtpError,
+  resendFlowitofOtp,
+  sendFlowitofOtp,
+  verifyFlowitofOtp,
+} from '../services/flowitofOtp.service';
+import {
+  EmailOtpSettingsError,
+  getEmailOtpHashSecret,
+  getEmailOtpPublicConfig,
+  getEmailOtpSettings,
+  sendEmailOtp,
+} from '../services/emailOtp.service';
+import {
+  canResendEmailOtpChallenge,
+  createEmailOtpChallenge,
+  expireEmailOtpChallenge,
+  getEmailOtpChallenge,
+  getEmailOtpCooldownSeconds,
+  getLatestEmailOtpChallenge,
+  markEmailOtpChallengeVerified,
+  recordEmailOtpAttempt,
+  updateEmailOtpChallengeAfterResend,
+} from '../services/emailOtpChallenge.service';
+import {
+  canVerifyEmailOtpChallenge,
+  generateEmailOtp,
+  hashEmailOtp,
+  maskEmailOtpAddress,
+  matchesEmailOtp,
+  normalizeEmailOtpAddress,
+  EMAIL_OTP_MAX_VERIFY_ATTEMPTS,
+} from '../utils/emailOtp';
 import {
   createCustomerPrimeSubscriptionRequest,
   getCustomerPrimeAccessPayload,
+  listCustomerPrimeSubscriptionsForUser,
 } from '../utils/customerPrimeSubscriptions';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
@@ -281,7 +318,7 @@ export const buildAuthUserPayload = async (user: any) => {
   };
 
   if (user.role === 'SUPER_ADMIN') {
-    const adminProfile = await prismaAny.adminProfile.findUnique({
+    const adminProfile = user.adminProfile || await prismaAny.adminProfile.findUnique({
       where: { userId: user.id },
       select: {
         title: true,
@@ -298,18 +335,16 @@ export const buildAuthUserPayload = async (user: any) => {
   }
 
   if (user.role === 'ADMIN' || user.role === 'EMPLOYEE') {
-    const [permissions, customRole] = await Promise.all([
-      prismaAny.adminPermission.findMany({
-        where: { adminUserId: user.id },
-        select: { permission: true },
-      }),
-      user.customRoleId
-        ? prismaAny.customRole.findUnique({
-            where: { id: user.customRoleId },
-            select: { id: true, name: true, permissions: true },
-          })
-        : Promise.resolve(null),
-    ]);
+    const permissions = user.adminPermissions || await prismaAny.adminPermission.findMany({
+      where: { adminUserId: user.id },
+      select: { permission: true },
+    });
+    const customRole = user.customRoleId
+      ? (user.customRole || await prismaAny.customRole.findUnique({
+          where: { id: user.customRoleId },
+          select: { id: true, name: true, permissions: true },
+        }))
+      : null;
     const resolvedPermissions =
       customRole?.permissions && Array.isArray(customRole.permissions)
         ? customRole.permissions
@@ -326,8 +361,9 @@ export const buildAuthUserPayload = async (user: any) => {
   }
 
   if (canHoldPartnerProfile(user.role)) {
-    const partnerProfile =
-      await prismaAny.partnerProfile.findUnique({
+    const partnerProfile = user.partnerProfile !== undefined
+      ? user.partnerProfile
+      : await prismaAny.partnerProfile.findUnique({
         where: { userId: user.id },
         select: {
           ownerName: true,
@@ -411,99 +447,6 @@ const assertAccountAccessOrRespond = (res: Response, user: unknown) => {
   }
 
   return false;
-};
-
-const sendMobileOtpViaGateway = async ({
-  apiKey,
-  mobileNumber,
-  templateId,
-  senderId,
-  templateMessage,
-}: {
-  apiKey: string;
-  mobileNumber: string;
-  templateId?: string | null;
-  senderId?: string | null;
-  templateMessage?: string | null;
-}) => {
-  if (templateId) {
-    const response = await fetch(
-      `https://control.msg91.com/api/v5/otp?template_id=${encodeURIComponent(templateId)}&mobile=${encodeURIComponent(
-        mobileNumber,
-      )}&authkey=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-
-    const payload = (await response.json().catch(() => null)) as
-      | { type?: string; message?: string }
-      | null;
-
-    if (!response.ok || payload?.type === 'error') {
-      throw new Error(payload?.message || 'Unable to send OTP right now.');
-    }
-
-    return;
-  }
-
-  if (!senderId || !templateMessage) {
-    throw new Error('OTP gateway configuration is incomplete.');
-  }
-
-  const response = await fetch(
-    `https://world.msg91.com/api/otp.php?authkey=${encodeURIComponent(apiKey)}&mobile=${encodeURIComponent(
-      mobileNumber,
-    )}&message=${encodeURIComponent(templateMessage)}&sender=${encodeURIComponent(
-      senderId,
-    )}&otp_expiry=${getMobileOtpExpiryMinutes()}`,
-    {
-      method: 'GET',
-    },
-  );
-
-  const payload = (await response.json().catch(() => null)) as
-    | { type?: string; message?: string }
-    | null;
-
-  if (!response.ok || payload?.type === 'error') {
-    throw new Error(payload?.message || 'Unable to send OTP right now.');
-  }
-};
-
-const verifyMobileOtpViaGateway = async ({
-  apiKey,
-  mobileNumber,
-  otp,
-}: {
-  apiKey: string;
-  mobileNumber: string;
-  otp: string;
-}) => {
-  const response = await fetch(
-    `https://control.msg91.com/api/v5/otp/verify?otp=${encodeURIComponent(otp)}&mobile=${encodeURIComponent(
-      mobileNumber,
-    )}`,
-    {
-      method: 'GET',
-      headers: {
-        authkey: apiKey,
-      },
-    },
-  );
-
-  const payload = (await response.json().catch(() => null)) as
-    | { type?: string; message?: string }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(payload?.message || 'OTP verification failed.');
-  }
-
-  return (payload?.message || '').toLowerCase().includes('verified');
 };
 
 type GoogleTokenInfo = {
@@ -1044,7 +987,10 @@ export const getMobileOtpConfig = async (req: Request, res: Response, next: Next
     const settings = await getAppSettings();
 
     res.json({
-      enabled: settings.mobileOtp.enabled,
+      enabled: settings.mobileOtp.enabled && Boolean(settings.mobileOtp.apiKey && settings.mobileOtp.otpId),
+      otpLength: settings.mobileOtp.otpLength,
+      otpExpirySeconds: settings.mobileOtp.otpExpiry * 60,
+      resendCooldownSeconds: 45,
     });
   } catch (error) {
     next(error);
@@ -1060,7 +1006,7 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       return res.status(400).json({ error: 'Mobile OTP login is currently disabled.' });
     }
 
-    if (!settings.mobileOtp.apiKey) {
+    if (!settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
       return res.status(400).json({ error: 'Mobile OTP gateway is not configured yet.' });
     }
 
@@ -1070,7 +1016,13 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
     }
 
     const user = await prisma.user.findFirst({
-      where: { mobile: normalizedMobile },
+      where: {
+        OR: [
+          { mobile: normalizedMobile },
+          { mobile: `91${normalizedMobile}` },
+          { mobile: `0${normalizedMobile}` },
+        ],
+      },
       select: { id: true },
     });
 
@@ -1090,28 +1042,206 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       });
     }
 
-    const internationalMobileNumber = toInternationalMobileNumber(normalizedMobile);
+    await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
 
-    await sendMobileOtpViaGateway({
-      apiKey: settings.mobileOtp.apiKey,
-      mobileNumber: internationalMobileNumber,
-      templateId: settings.mobileOtp.templateId,
-      senderId: settings.mobileOtp.senderId,
-      templateMessage: settings.mobileOtp.templateMessage,
-    });
-
-    const session = await createMobileOtpSession({
+    const challenge = await createMobileOtpChallenge({
       mobile: normalizedMobile,
       userId: user.id,
+      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
     });
 
-    res.json({
+    return res.json({
       message: 'OTP sent successfully.',
-      challengeId: session.id,
-      expiresInSeconds: getMobileOtpExpiryMinutes() * 60,
+      challengeId: challenge.id,
+      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
+      otpLength: settings.mobileOtp.otpLength,
       maskedMobile: maskMobileNumber(normalizedMobile),
     });
   } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const getEmailOtpConfig = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await getEmailOtpPublicConfig());
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendEmailLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getEmailOtpSettings();
+    if (!settings.enabled || !settings.senderEmail || !settings.appPassword) {
+      return res.status(400).json({ error: 'Email OTP login is currently unavailable.' });
+    }
+
+    const email = normalizeEmailOtpAddress(req.body?.email);
+    if (!email) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this email address.' });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(user.id);
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
+    }
+
+    const cooldownSeconds = await getEmailOtpCooldownSeconds(email);
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+        retryAfterSeconds: cooldownSeconds,
+      });
+    }
+
+    const otp = generateEmailOtp(settings.otpLength);
+    await sendEmailOtp({ to: email, otp, settings });
+    const challenge = await createEmailOtpChallenge({
+      email,
+      userId: user.id,
+      otpHash: hashEmailOtp(email, otp, getEmailOtpHashSecret()),
+      expiresInSeconds: settings.otpExpiryMinutes * 60,
+    });
+
+    return res.json({
+      message: 'OTP sent successfully.',
+      challengeId: challenge.id,
+      expiresInSeconds: settings.otpExpiryMinutes * 60,
+      otpLength: settings.otpLength,
+      maskedEmail: maskEmailOtpAddress(email),
+    });
+  } catch (error) {
+    if (error instanceof EmailOtpSettingsError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const verifyEmailLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getEmailOtpSettings();
+    if (!settings.enabled || !settings.senderEmail || !settings.appPassword) {
+      return res.status(400).json({ error: 'Email OTP login is currently unavailable.' });
+    }
+
+    const challengeId = String(req.body?.challengeId || '').trim();
+    const email = normalizeEmailOtpAddress(req.body?.email);
+    const otp = String(req.body?.otp || '').trim();
+    if (!challengeId || !email || !new RegExp(`^\\d{${settings.otpLength}}$`).test(otp)) {
+      return res.status(400).json({ error: 'Challenge, email, and OTP are required.' });
+    }
+
+    const challenge = await getEmailOtpChallenge(challengeId);
+    if (!challenge || challenge.email !== email) {
+      return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
+    }
+
+    if (!canVerifyEmailOtpChallenge(challenge)) {
+      await expireEmailOtpChallenge(challenge.id);
+      return res.status(400).json({ error: 'OTP expired or is no longer valid. Please request a new OTP.' });
+    }
+
+    if (!matchesEmailOtp(email, otp, challenge.otpHash, getEmailOtpHashSecret())) {
+      const updatedChallenge = await recordEmailOtpAttempt(challenge.id);
+      if (updatedChallenge.attemptCount >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS) {
+        await expireEmailOtpChallenge(challenge.id);
+      }
+
+      return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+    }
+
+    await markEmailOtpChallengeVerified(challenge.id);
+    const user = await prisma.user.findUnique({ where: { id: challenge.userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this email address.' });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(user.id);
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
+    }
+
+    const authUser = await buildAuthUserPayload(currentUser as any);
+    const token = signAuthToken(authUser);
+
+    return res.json({
+      message: 'OTP verified successfully.',
+      token,
+      user: authUser,
+    });
+  } catch (error) {
+    if (error instanceof EmailOtpSettingsError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const resendEmailLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getEmailOtpSettings();
+    if (!settings.enabled || !settings.senderEmail || !settings.appPassword) {
+      return res.status(400).json({ error: 'Email OTP login is currently unavailable.' });
+    }
+
+    const email = normalizeEmailOtpAddress(req.body?.email);
+    if (!email) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+
+    const cooldownSeconds = await getEmailOtpCooldownSeconds(email);
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+        retryAfterSeconds: cooldownSeconds,
+      });
+    }
+
+    const challenge = await getLatestEmailOtpChallenge(email);
+    if (!challenge || !canResendEmailOtpChallenge(challenge)) {
+      return res.status(404).json({ error: 'No active OTP request is available to resend.' });
+    }
+
+    const otp = generateEmailOtp(settings.otpLength);
+    await sendEmailOtp({ to: email, otp, settings });
+    const updatedChallenge = await updateEmailOtpChallengeAfterResend(
+      challenge.id,
+      hashEmailOtp(email, otp, getEmailOtpHashSecret()),
+      settings.otpExpiryMinutes * 60,
+    );
+
+    return res.json({
+      message: 'OTP resent successfully.',
+      challengeId: updatedChallenge.id,
+      expiresInSeconds: settings.otpExpiryMinutes * 60,
+      otpLength: settings.otpLength,
+      maskedEmail: maskEmailOtpAddress(email),
+    });
+  } catch (error) {
+    if (error instanceof EmailOtpSettingsError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+
     next(error);
   }
 };
@@ -1125,11 +1255,11 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
     };
     const settings = await getAppSettings();
 
-    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey) {
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
       return res.status(400).json({ error: 'Mobile OTP login is currently unavailable.' });
     }
 
-    if (!challengeId || !otp) {
+    if (!challengeId || !otp || !/^\d{4,10}$/.test(otp.trim())) {
       return res.status(400).json({ error: 'Challenge and OTP are required.' });
     }
 
@@ -1138,47 +1268,45 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
     }
 
-    const session = await getMobileOtpSessionById(challengeId);
-    if (!session || session.mobile !== normalizedMobile) {
+    const challenge = await getMobileOtpChallenge(challengeId);
+    if (!challenge || challenge.mobile !== normalizedMobile) {
       return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
     }
 
-    if (isMobileOtpSessionExpired(session)) {
-      await invalidateMobileOtpSession(session.id);
+    if (new Date(challenge.expiresAt).getTime() <= Date.now()) {
+      await expireMobileOtpChallenge(challenge.id);
       return res.status(400).json({ error: 'OTP expired. Please request a new OTP.' });
     }
 
-    if (!canAttemptMobileOtpVerification(session)) {
-      await invalidateMobileOtpSession(session.id);
+    if (!canVerifyMobileOtpChallenge(challenge)) {
+      await expireMobileOtpChallenge(challenge.id);
       return res.status(429).json({ error: 'Too many invalid attempts. Please request a new OTP.' });
     }
 
-    const verified = await verifyMobileOtpViaGateway({
-      apiKey: settings.mobileOtp.apiKey,
-      mobileNumber: toInternationalMobileNumber(normalizedMobile),
-      otp: otp.trim(),
-    });
+    try {
+      await verifyFlowitofOtp(normalizedMobile, otp.trim(), settings.mobileOtp);
+    } catch (error) {
+      if (error instanceof FlowitofOtpError && error.status === 400) {
+        const updatedChallenge = await recordMobileOtpAttempt(challenge.id);
+        if (!canVerifyMobileOtpChallenge(updatedChallenge)) {
+          await expireMobileOtpChallenge(challenge.id);
+        }
 
-    if (!verified) {
-      const updatedSession = await recordMobileOtpAttempt({
-        sessionId: session.id,
-        verified: false,
-      });
-
-      if (updatedSession && !canAttemptMobileOtpVerification(updatedSession)) {
-        await invalidateMobileOtpSession(session.id);
+        return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
       }
 
-      return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+      if (error instanceof FlowitofOtpError && error.status === 404) {
+        await expireMobileOtpChallenge(challenge.id);
+        return res.status(400).json({ error: 'OTP expired or is no longer valid. Please request a new OTP.' });
+      }
+
+      throw error;
     }
 
-    await recordMobileOtpAttempt({
-      sessionId: session.id,
-      verified: true,
-    });
+    await markMobileOtpChallengeVerified(challenge.id);
 
-    const user = await prisma.user.findFirst({
-      where: { mobile: normalizedMobile },
+    const user = await prisma.user.findUnique({
+      where: { id: challenge.userId },
       select: { id: true, isMobileVerified: true },
     });
 
@@ -1186,18 +1314,16 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       return res.status(404).json({ error: 'No account found with this mobile number.' });
     }
 
-    if (!user.isMobileVerified) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          isMobileVerified: true,
-        },
-      });
-    }
-
     const currentUser = await fetchAuthenticatedUserById(user.id);
     if (assertAccountAccessOrRespond(res, currentUser)) {
       return;
+    }
+
+    if (!user.isMobileVerified) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isMobileVerified: true },
+      });
     }
 
     const authUser = await buildAuthUserPayload(currentUser as any);
@@ -1209,6 +1335,10 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       user: authUser,
     });
   } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
     next(error);
   }
 };
@@ -1313,9 +1443,8 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
       return res.status(401).json({ error: 'Authentication required.' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-    });
+    // Always load role and direct permissions so session refresh cannot erase access.
+    const user = await fetchAuthenticatedUserById(req.user.id);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
@@ -1342,6 +1471,98 @@ export const getCustomerPrimeAccess = async (req: Request, res: Response, next: 
     return res.json({
       access: accessPayload,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { mobile } = req.body as { mobile?: string };
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
+      return res.status(400).json({ error: 'Mobile OTP login is currently unavailable.' });
+    }
+
+    const normalizedMobile = normalizeLoginMobileNumber(mobile);
+    if (!normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const cooldownSeconds = await getMobileOtpCooldownSeconds(normalizedMobile);
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+        retryAfterSeconds: cooldownSeconds,
+      });
+    }
+
+    const challenge = await getLatestMobileOtpChallenge(normalizedMobile);
+    if (!challenge || !canResendMobileOtpChallenge(challenge)) {
+      return res.status(404).json({ error: 'No active OTP request is available to resend.' });
+    }
+
+    await resendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+    const updatedChallenge = await updateMobileOtpChallengeAfterResend(
+      challenge.id,
+      settings.mobileOtp.otpExpiry * 60,
+    );
+
+    return res.json({
+      message: 'OTP resent successfully.',
+      challengeId: updatedChallenge.id,
+      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
+      otpLength: settings.mobileOtp.otpLength,
+      maskedMobile: maskMobileNumber(normalizedMobile),
+    });
+  } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const getCustomerPrimeHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    const subscriptions = await listCustomerPrimeSubscriptionsForUser({
+      userId: req.user.id,
+      take: 25,
+    });
+
+    const history = subscriptions.map((subscription: any) => {
+      const settingsSnapshot = subscription.settingsSnapshot || {};
+      const validityValue = Number(settingsSnapshot.validityValue || 0);
+      const validityUnit = String(settingsSnapshot.validityUnit || 'DAYS').toUpperCase() === 'MONTHS' ? 'MONTHS' : 'DAYS';
+      const planDurationLabel =
+        validityValue > 0
+          ? `${validityValue} ${validityUnit === 'MONTHS' ? (validityValue === 1 ? 'month' : 'months') : validityValue === 1 ? 'day' : 'days'}`
+          : 'Prime Membership';
+      const displayName =
+        subscription.user?.name?.trim() ||
+        subscription.user?.mobile?.trim() ||
+        'Prime Customer';
+
+      return {
+        id: subscription.id,
+        memberName: displayName,
+        planName: `JCB Exchange Prime - ${planDurationLabel}`,
+        amount: Number(subscription.paidAmount || 0),
+        status: subscription.status,
+        submittedAt: subscription.submittedAt,
+        startedAt: subscription.startedAt,
+        expiresAt: subscription.expiresAt,
+        receiptUrl: subscription.receiptUrl || null,
+      };
+    });
+
+    return res.json({ history });
   } catch (error) {
     next(error);
   }

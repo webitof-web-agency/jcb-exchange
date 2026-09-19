@@ -6,11 +6,14 @@ import crypto from 'crypto';
 export type UploadVisibility = 'public' | 'secure';
 export type UploadPurpose =
   | 'document'
+  | 'resume'
+  | 'offer-letter'
   | 'listing-media'
   | 'finance-support'
   | 'hero-image'
   | 'inspection-section'
   | 'site-logo'
+  | 'site-dark-logo'
   | 'site-favicon'
   | 'site-manifest-icon';
 
@@ -19,6 +22,14 @@ const allowedDocumentMimeTypes = new Set([
   'image/png',
   'image/webp',
   'application/pdf',
+]);
+
+const allowedResumeMimeTypes = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
 ]);
 
 const allowedListingMediaMimeTypes = new Set([
@@ -35,6 +46,14 @@ const allowedDocumentExtensionsByMimeType: Record<string, string[]> = {
   'image/png': ['.png'],
   'image/webp': ['.webp'],
   'application/pdf': ['.pdf'],
+};
+
+const allowedResumeExtensionsByMimeType: Record<string, string[]> = {
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
 };
 
 const allowedListingMediaExtensionsByMimeType: Record<string, string[]> = {
@@ -75,6 +94,7 @@ export const publicFinanceSupportUploadDir = path.join(publicUploadDir, 'finance
 export const publicHeroImageUploadDir = path.join(publicUploadDir, 'hero-image');
 export const publicInspectionSectionUploadDir = path.join(publicUploadDir, 'inspection-section');
 export const publicSiteLogoUploadDir = path.join(publicUploadDir, 'site-logo');
+export const publicSiteDarkLogoUploadDir = path.join(publicUploadDir, 'site-dark-logo');
 export const publicSiteFaviconUploadDir = path.join(publicUploadDir, 'site-favicon');
 export const publicSiteManifestIconUploadDir = path.join(publicUploadDir, 'site-manifest-icon');
 
@@ -92,6 +112,7 @@ export const ensureUploadDirectories = () => {
   ensureDirectory(publicHeroImageUploadDir);
   ensureDirectory(publicInspectionSectionUploadDir);
   ensureDirectory(publicSiteLogoUploadDir);
+  ensureDirectory(publicSiteDarkLogoUploadDir);
   ensureDirectory(publicSiteFaviconUploadDir);
   ensureDirectory(publicSiteManifestIconUploadDir);
 };
@@ -111,6 +132,10 @@ const getUploadDirectory = (visibility: UploadVisibility, purpose: UploadPurpose
 
   if (visibility === 'public' && purpose === 'site-logo') {
     return publicSiteLogoUploadDir;
+  }
+
+  if (visibility === 'public' && purpose === 'site-dark-logo') {
+    return publicSiteDarkLogoUploadDir;
   }
 
   if (visibility === 'public' && purpose === 'site-favicon') {
@@ -160,6 +185,16 @@ export const isAllowedFinanceSupportImageFile = (mimeType: string, originalName:
   return allowedExtensions.includes(extension);
 };
 
+export const isAllowedResumeFile = (mimeType: string, originalName: string) => {
+  if (!allowedResumeMimeTypes.has(mimeType)) {
+    return false;
+  }
+
+  const extension = getExtensionFromOriginalName(originalName);
+  const allowedExtensions = allowedResumeExtensionsByMimeType[mimeType] || [];
+  return allowedExtensions.includes(extension);
+};
+
 export const getDocumentUploadMiddleware = (
   visibility: UploadVisibility,
   purpose: UploadPurpose = 'document'
@@ -178,20 +213,24 @@ export const getDocumentUploadMiddleware = (
     }),
     fileFilter: (_req, file, callback) => {
       const allowed =
-        purpose === 'listing-media'
-          ? isAllowedListingMediaFile(file.mimetype, file.originalname)
-          : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
-            ? isAllowedFinanceSupportImageFile(file.mimetype, file.originalname)
-            : isAllowedDocumentFile(file.mimetype, file.originalname);
+        purpose === 'resume' || purpose === 'offer-letter'
+          ? isAllowedResumeFile(file.mimetype, file.originalname)
+          : purpose === 'listing-media'
+            ? isAllowedListingMediaFile(file.mimetype, file.originalname)
+              : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-dark-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
+              ? isAllowedFinanceSupportImageFile(file.mimetype, file.originalname)
+              : isAllowedDocumentFile(file.mimetype, file.originalname);
 
       if (!allowed) {
         callback(
           new Error(
-            purpose === 'listing-media'
-              ? 'Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.'
-              : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
-                ? 'Only JPG, PNG, and WEBP images are allowed.'
-              : 'Only JPG, PNG, WEBP, and PDF files are allowed.'
+            purpose === 'resume' || purpose === 'offer-letter'
+              ? 'Only PDF, DOC, and DOCX files are allowed for resumes and documents.'
+              : purpose === 'listing-media'
+                ? 'Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.'
+                : purpose === 'finance-support' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
+                  ? 'Only JPG, PNG, and WEBP images are allowed.'
+                  : 'Only JPG, PNG, WEBP, and PDF files are allowed.'
           )
         );
         return;
@@ -206,6 +245,8 @@ export const getDocumentUploadMiddleware = (
           : purpose === 'inspection-section'
             ? MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE
           : purpose === 'site-logo'
+            ? MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE
+          : purpose === 'site-dark-logo'
             ? MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE
           : purpose === 'site-favicon'
             ? MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE
@@ -231,5 +272,6 @@ export const getPublicFinanceSupportImageUrl = (fileName: string) => `/uploads/p
 export const getPublicHeroImageUrl = (fileName: string) => `/uploads/public/hero-image/${fileName}`;
 export const getPublicInspectionSectionImageUrl = (fileName: string) => `/uploads/public/inspection-section/${fileName}`;
 export const getPublicSiteLogoUrl = (fileName: string) => `/uploads/public/site-logo/${fileName}`;
+export const getPublicSiteDarkLogoUrl = (fileName: string) => `/uploads/public/site-dark-logo/${fileName}`;
 export const getPublicSiteFaviconUrl = (fileName: string) => `/uploads/public/site-favicon/${fileName}`;
 export const getPublicSiteManifestIconUrl = (fileName: string) => `/uploads/public/site-manifest-icon/${fileName}`;

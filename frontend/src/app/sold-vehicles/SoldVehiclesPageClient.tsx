@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
+import BrandLoader from '@/components/ui/BrandLoader';
+import { formatListingLocation } from '@/lib/listingLocation';
 
 interface MachineListing {
   id: string;
@@ -29,6 +31,7 @@ interface MachineListing {
   isNegotiable: boolean;
   manufacturingYear: number | null;
   operatingHours: number | null;
+  address?: string | null;
   locationCity: string | null;
   locationState: string | null;
   condition: string | null;
@@ -213,7 +216,7 @@ function SortIconButton({
   );
 }
 
-export default function SoldVehiclesPageClient() {
+export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogoUrl?: string | null }) {
   const { t } = useTranslation();
   const [listings, setListings] = useState<MachineListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -550,8 +553,13 @@ export default function SoldVehiclesPageClient() {
         {/* Loading State */}
         {loading ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-16 text-center shadow-xs space-y-3">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent" />
-            <p className="text-sm font-semibold text-slate-600">{t('soldVehicles.loading')}</p>
+            <BrandLoader
+              size="md"
+              variant="section"
+              bg="light"
+              text={t('soldVehicles.loading')}
+              initialLogoUrl={initialLogoUrl}
+            />
           </div>
         ) : error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-sm font-semibold text-red-700">
@@ -592,7 +600,10 @@ export default function SoldVehiclesPageClient() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {paginatedListings.map((item) => {
-                const locationLabel = [item.locationCity, item.locationState].filter(Boolean).join(', ') || 'India';
+                const locationLabel = formatListingLocation(item, {
+                  includeAddress: true,
+                  fallback: 'India',
+                });
                 const imageUrl = getMediaUrl(item.featuredImage);
                 // "gadi ka name likha ho": We will use item.title directly instead of brand/model logic
                 const finalTitle = item.title || 'Equipment';

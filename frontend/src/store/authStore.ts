@@ -47,6 +47,27 @@ const getLocalStorage = (key: string) => {
   return null;
 };
 
+const isUsableAuthToken = (token: string | null) => {
+  if (!token) {
+    return false;
+  }
+
+  try {
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) {
+      return false;
+    }
+
+    const normalizedPayload = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4), '=');
+    const payload = JSON.parse(atob(paddedPayload)) as { exp?: unknown };
+
+    return typeof payload.exp === 'number' && Number.isFinite(payload.exp) && payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   user: null,
@@ -56,12 +77,33 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrateAuth: () => {
     const token = getLocalStorage('frontend_portal_token');
     const localStorageUser = getLocalStorage('frontend_portal_user');
-    const user = localStorageUser ? JSON.parse(localStorageUser) : null;
+    let user: AuthUser | null = null;
+
+    try {
+      user = localStorageUser ? (JSON.parse(localStorageUser) as AuthUser) : null;
+    } catch {
+      user = null;
+    }
+
+    if (isUsableAuthToken(token) && user) {
+      set({
+        token,
+        user,
+        isAuthenticated: true,
+        hasHydrated: true,
+      });
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('frontend_portal_token');
+      localStorage.removeItem('frontend_portal_user');
+    }
 
     set({
-      token,
-      user,
-      isAuthenticated: !!token && !!user,
+      token: null,
+      user: null,
+      isAuthenticated: false,
       hasHydrated: true,
     });
   },

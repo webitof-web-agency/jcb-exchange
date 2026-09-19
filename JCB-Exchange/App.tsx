@@ -6,11 +6,10 @@ import {
   Animated,
   StyleSheet,
   Image,
-  View,
-  Text,
   ActivityIndicator,
   NativeModules,
 } from 'react-native';
+import type { Permission } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import HybridWebView from './src/screens/HybridWebView';
 
@@ -54,15 +53,15 @@ function App() {
     }
 
     const requestLaunchPermissions = async () => {
-      const permissions: string[] = [];
+      const permissions: Permission[] = [
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+      ];
 
-      if (Platform.Version >= 33) {
+      if (Number(Platform.Version) >= 33) {
         permissions.push(
           PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
         );
       }
-
-      permissions.push(PermissionsAndroid.PERMISSIONS.CAMERA);
 
       try {
         await PermissionsAndroid.requestMultiple(permissions);
@@ -81,13 +80,13 @@ function App() {
         backgroundColor={showSplash ? '#FFFFFF' : '#F7F7F8'}
         translucent={false}
       />
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#1A1D20' }}>
+      <SafeAreaView style={styles.safeArea}>
         <HybridWebView onWebLoaded={() => setWebViewLoaded(true)} />
         {showSplash && (
           <Animated.View style={[StyleSheet.absoluteFill, styles.splashContainer, { opacity: fadeAnim }]}>
             <Image
               source={require('./src/assets/bg-pattern.png')}
-              style={[StyleSheet.absoluteFill, { opacity: 0.08 }]}
+              style={[StyleSheet.absoluteFill, styles.logoBackground]}
               resizeMode="cover"
             />
             <Image
@@ -104,6 +103,10 @@ function App() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#1A1D20',
+  },
   splashContainer: {
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
@@ -116,15 +119,11 @@ const styles = StyleSheet.create({
     height: 240,
     marginBottom: 10,
   },
+  logoBackground: {
+    opacity: 0.08,
+  },
   loader: {
     marginVertical: 20,
-  },
-  welcomeText: {
-    color: '#1A1D20',
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    textAlign: 'center',
   },
 });
 

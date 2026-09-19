@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../lib/prisma';
+import { allowedAdminPermissions } from '../utils/adminPermissions';
 
 const normalizePermissionList = (permissions: unknown) =>
   Array.isArray(permissions)
@@ -8,7 +9,7 @@ const normalizePermissionList = (permissions: unknown) =>
           permissions
             .filter((permission): permission is string => typeof permission === 'string')
             .map((permission) => permission.trim())
-            .filter(Boolean)
+            .filter((permission) => permission && allowedAdminPermissions.has(permission))
         )
       )
     : [];
@@ -22,7 +23,7 @@ const mapRole = async (role: any) => {
     id: role.id,
     name: role.name,
     description: role.description,
-    permissions: Array.isArray(role.permissions) ? role.permissions : [],
+    permissions: normalizePermissionList(role.permissions),
     usersCount,
     createdAt: role.createdAt,
     updatedAt: role.updatedAt,

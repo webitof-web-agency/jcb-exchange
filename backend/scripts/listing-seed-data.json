@@ -8,7 +8,7 @@
       "This file is normalized for seeding: assetLibrary holds real media URLs, and listings reference those assets by key.",
       "Seller refs must resolve to the existing verified partner or active prime customer records in resolvedUsers.",
       "Only form-backed fields are included in each listing.",
-      "Fields such as variant, registrationYear, registrationNo, chassisOrSerialNo, previousOwners, fuelType, transmission, district, pinCode, nearbyLandmark, and insuranceExpiry are packed into the listing description during seed execution.",
+      "Fields such as variant, registrationYear, registrationNo, chassisOrSerialNo, previousOwners, fuelType, transmission, address, pinCode, nearbyLandmark, and insuranceExpiry are packed into the listing description during seed execution.",
       "A single working walkaround video asset is reused across all listings.",
       "Customer-created and partner-created listings will initially be created as PENDING_APPROVAL by the backend route, then optionally published after approval.",
       "Resolved IDs are included so seed data mirrors the UI form flow and stores linked master-data references during execution.",
@@ -53,15 +53,6 @@
         "email": "megh@gmail.com",
         "mobile": "6789438748",
         "primeExpiresAt": "2026-09-23T12:31:37.581Z"
-      },
-      {
-        "ref": "yash-prime",
-        "resolvedSellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "resolvedPrimeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
-        "name": "yash",
-        "email": "yash@gmail.com",
-        "mobile": "1234567890",
-        "primeExpiresAt": "2026-10-10T06:43:23.783Z"
       }
     ]
   },
@@ -4753,7 +4744,7 @@
         "price": 2450000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -4913,7 +4904,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -4944,7 +4935,7 @@
         "price": 2270000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -5117,7 +5108,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -5148,7 +5139,7 @@
         "price": 2130000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -5321,7 +5312,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -5352,7 +5343,7 @@
         "price": 2660000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -5525,7 +5516,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -5556,7 +5547,7 @@
         "price": 2030000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -5729,7 +5720,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -5760,7 +5751,7 @@
         "price": 2570000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Near Wagholi toll naka, Pune, Maharashtra - 411014",
         "cityName": "Pune",
         "pinCode": "411014",
         "nearbyLandmark": "Near Wagholi toll naka",
@@ -5933,7 +5924,7 @@
         "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
         "primeSubscriptionId": null,
         "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
-        "brandId": "59218fa2-be18-4f7c-90bb-2b656d5b7276",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
         "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
         "stateId": 4008,
         "cityId": 133504,
@@ -5944,7 +5935,7 @@
     {
       "seedKey": "partner-amarbb-wheel-loader-ahmedabad-001",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -5964,7 +5955,7 @@
         "price": 1980000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -6114,9 +6105,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -6128,14 +6119,14 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bull-4dx-ahmedabad-002",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -6155,7 +6146,7 @@
         "price": 1760000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -6318,9 +6309,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -6332,14 +6323,14 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bull-4dx-ahmedabad-003",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -6359,7 +6350,7 @@
         "price": 2120000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -6522,9 +6513,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -6536,14 +6527,14 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bull-4dx-ahmedabad-004",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -6563,7 +6554,7 @@
         "price": 1620000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -6726,9 +6717,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -6740,14 +6731,14 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bull-4dx-ahmedabad-005",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -6767,7 +6758,7 @@
         "price": 2240000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -6930,9 +6921,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -6944,14 +6935,14 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bull-4dx-ahmedabad-006",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Wheel Loader",
         "brandName": "BULL",
@@ -6971,7 +6962,7 @@
         "price": 1890000,
         "isNegotiable": true,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Near Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Near Naroda GIDC",
@@ -7134,9 +7125,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -7148,8 +7139,8 @@
         "modelId": "aa6c5aaf-7bc0-4689-8636-7c1816425420",
         "stateId": 4030,
         "cityId": 57606,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
@@ -7175,7 +7166,7 @@
         "price": 3850000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -7366,7 +7357,7 @@
         "price": 3540000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -7570,7 +7561,7 @@
         "price": 4040000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -7774,7 +7765,7 @@
         "price": 3380000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -7978,7 +7969,7 @@
         "price": 4190000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -8182,7 +8173,7 @@
         "price": 3920000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Ahmedabad",
+        "address": "Naroda GIDC, Ahmedabad, Gujarat - 382330",
         "cityName": "Ahmedabad",
         "pinCode": "382330",
         "nearbyLandmark": "Naroda GIDC",
@@ -8364,8 +8355,8 @@
       }
     },
     {
-      "seedKey": "prime-yash-motor-grader-lucknow-001",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-01-prime-replacement-motor-grader-lucknow-001",
+      "sellerRef": "amar-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -8386,7 +8377,7 @@
         "price": 2750000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -8529,9 +8520,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
         }
       },
       "primeLeadCustomer": {
@@ -8542,9 +8533,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -8555,8 +8546,8 @@
       }
     },
     {
-      "seedKey": "yash-beml-motor-grader-lucknow-002",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-02-replacement-beml-motor-grader-lucknow-002",
+      "sellerRef": "amarbb-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -8577,7 +8568,7 @@
         "price": 2500000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -8733,9 +8724,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
         }
       },
       "primeLeadCustomer": {
@@ -8746,9 +8737,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -8759,8 +8750,8 @@
       }
     },
     {
-      "seedKey": "yash-beml-motor-grader-lucknow-003",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-03-replacement-beml-motor-grader-lucknow-003",
+      "sellerRef": "megh-prime",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -8781,7 +8772,7 @@
         "price": 2910000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -8937,9 +8928,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "primeLeadCustomer": {
@@ -8950,9 +8941,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
         "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -8963,8 +8954,8 @@
       }
     },
     {
-      "seedKey": "yash-beml-motor-grader-lucknow-004",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-04-replacement-beml-motor-grader-lucknow-004",
+      "sellerRef": "amar-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -8985,7 +8976,7 @@
         "price": 2340000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -9141,9 +9132,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
         }
       },
       "primeLeadCustomer": {
@@ -9154,9 +9145,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -9167,8 +9158,8 @@
       }
     },
     {
-      "seedKey": "yash-beml-motor-grader-lucknow-005",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-05-replacement-beml-motor-grader-lucknow-005",
+      "sellerRef": "amarbb-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -9189,7 +9180,7 @@
         "price": 3040000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -9345,9 +9336,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
         }
       },
       "primeLeadCustomer": {
@@ -9358,9 +9349,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -9371,8 +9362,8 @@
       }
     },
     {
-      "seedKey": "yash-beml-motor-grader-lucknow-006",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-06-replacement-beml-motor-grader-lucknow-006",
+      "sellerRef": "megh-prime",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Motor Grader",
@@ -9393,7 +9384,7 @@
         "price": 2830000,
         "isNegotiable": true,
         "stateName": "Uttar Pradesh",
-        "district": "Lucknow",
+        "address": "Transport Nagar, Lucknow, Uttar Pradesh - 226008",
         "cityName": "Lucknow",
         "pinCode": "226008",
         "nearbyLandmark": "Transport Nagar",
@@ -9549,9 +9540,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "primeLeadCustomer": {
@@ -9562,9 +9553,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
         "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
         "categoryId": "3ba45c7a-6226-462b-b30f-6a0c5330f807",
         "brandId": "418ffb55-d3de-4cf3-aee4-c1ea498cca5d",
         "modelId": "14ddbceb-417e-4b31-86d5-1dd1a2b3accd",
@@ -9597,7 +9588,7 @@
         "price": 2190000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -9788,7 +9779,7 @@
         "price": 2010000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -9992,7 +9983,7 @@
         "price": 2320000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -10196,7 +10187,7 @@
         "price": 1870000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -10400,7 +10391,7 @@
         "price": 2430000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -10604,7 +10595,7 @@
         "price": 2250000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Indore",
+        "address": "Dewas Naka industrial belt, Indore, Madhya Pradesh - 452010",
         "cityName": "Indore",
         "pinCode": "452010",
         "nearbyLandmark": "Dewas Naka industrial belt",
@@ -10788,7 +10779,7 @@
     {
       "seedKey": "partner-amarbb-forklift-jaipur-001",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -10808,7 +10799,7 @@
         "price": 1750000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -10958,9 +10949,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -10972,14 +10963,14 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bobcat-forklift-jaipur-002",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -10999,7 +10990,7 @@
         "price": 1630000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -11162,9 +11153,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -11176,14 +11167,14 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bobcat-forklift-jaipur-003",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -11203,7 +11194,7 @@
         "price": 1840000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -11366,9 +11357,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -11380,14 +11371,14 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bobcat-forklift-jaipur-004",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -11407,7 +11398,7 @@
         "price": 1550000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -11570,9 +11561,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -11584,14 +11575,14 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bobcat-forklift-jaipur-005",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -11611,7 +11602,7 @@
         "price": 1920000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -11774,9 +11765,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -11788,14 +11779,14 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-bobcat-forklift-jaipur-006",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Forklift",
         "brandName": "Bobcat",
@@ -11815,7 +11806,7 @@
         "price": 1800000,
         "isNegotiable": true,
         "stateName": "Rajasthan",
-        "district": "Jaipur",
+        "address": "Sitapura Industrial Area, Jaipur, Rajasthan - 302013",
         "cityName": "Jaipur",
         "pinCode": "302013",
         "nearbyLandmark": "Sitapura Industrial Area",
@@ -11978,9 +11969,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -11992,8 +11983,8 @@
         "modelId": "bc9ac3d9-421d-4240-a75f-73094ac02278",
         "stateId": 4014,
         "cityId": 132201,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
@@ -12019,7 +12010,7 @@
         "price": 2250000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -12210,7 +12201,7 @@
         "price": 2060000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -12414,7 +12405,7 @@
         "price": 2360000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -12618,7 +12609,7 @@
         "price": 1950000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -12822,7 +12813,7 @@
         "price": 2460000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -13026,7 +13017,7 @@
         "price": 2310000,
         "isNegotiable": true,
         "stateName": "Maharashtra",
-        "district": "Nagpur",
+        "address": "MIDC Hingna, Nagpur, Maharashtra - 440016",
         "cityName": "Nagpur",
         "pinCode": "440016",
         "nearbyLandmark": "MIDC Hingna",
@@ -13208,8 +13199,8 @@
       }
     },
     {
-      "seedKey": "prime-yash-bulldozer-surat-001",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-07-prime-replacement-bulldozer-surat-001",
+      "sellerRef": "amar-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -13230,7 +13221,7 @@
         "price": 3450000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -13373,9 +13364,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
         }
       },
       "primeLeadCustomer": {
@@ -13386,9 +13377,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -13399,8 +13390,8 @@
       }
     },
     {
-      "seedKey": "yash-komatsu-d65-surat-002",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-08-replacement-komatsu-d65-surat-002",
+      "sellerRef": "amarbb-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -13421,7 +13412,7 @@
         "price": 3210000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -13577,9 +13568,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
         }
       },
       "primeLeadCustomer": {
@@ -13590,9 +13581,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -13603,8 +13594,8 @@
       }
     },
     {
-      "seedKey": "yash-komatsu-d65-surat-003",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-09-replacement-komatsu-d65-surat-003",
+      "sellerRef": "megh-prime",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -13625,7 +13616,7 @@
         "price": 3600000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -13781,9 +13772,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "primeLeadCustomer": {
@@ -13794,9 +13785,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
         "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -13807,8 +13798,8 @@
       }
     },
     {
-      "seedKey": "yash-komatsu-d65-surat-004",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-10-replacement-komatsu-d65-surat-004",
+      "sellerRef": "amar-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -13829,7 +13820,7 @@
         "price": 3090000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -13985,9 +13976,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amar@gmail.com",
+          "mobile": "8563289563",
+          "name": "amar"
         }
       },
       "primeLeadCustomer": {
@@ -13998,9 +13989,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "1cceca3b-b234-4f74-8da2-cf2683a59934",
+        "partnerProfileId": "9b69f5e7-3649-45fa-874c-9c0750d9c164",
+        "primeSubscriptionId": null,
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -14011,8 +14002,8 @@
       }
     },
     {
-      "seedKey": "yash-komatsu-d65-surat-005",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-11-replacement-komatsu-d65-surat-005",
+      "sellerRef": "amarbb-partner",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -14033,7 +14024,7 @@
         "price": 3730000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -14189,9 +14180,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "amarbb@gmail.com",
+          "mobile": "9865246523",
+          "name": "Amarbb"
         }
       },
       "primeLeadCustomer": {
@@ -14202,9 +14193,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "sellerUserId": "a1adaf60-5382-4011-b27c-ce34eb960481",
+        "partnerProfileId": "2505e184-b3c9-4d01-97c8-06b6b1486bc7",
+        "primeSubscriptionId": null,
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -14215,8 +14206,8 @@
       }
     },
     {
-      "seedKey": "yash-komatsu-d65-surat-006",
-      "sellerRef": "yash-prime",
+      "seedKey": "replacement-12-replacement-komatsu-d65-surat-006",
+      "sellerRef": "megh-prime",
       "primeLeadCustomerRef": null,
       "formData": {
         "categoryName": "Bulldozer",
@@ -14237,7 +14228,7 @@
         "price": 3520000,
         "isNegotiable": false,
         "stateName": "Gujarat",
-        "district": "Surat",
+        "address": "Sachin GIDC, Surat, Gujarat - 395010",
         "cityName": "Surat",
         "pinCode": "395010",
         "nearbyLandmark": "Sachin GIDC",
@@ -14393,9 +14384,9 @@
       },
       "seller": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "primeLeadCustomer": {
@@ -14406,9 +14397,9 @@
         }
       },
       "resolvedIds": {
-        "sellerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
         "partnerProfileId": null,
-        "primeSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6",
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
         "categoryId": "50c8677e-e9f6-4677-95c2-e3dd932bb5bb",
         "brandId": "32ab2bdf-c715-46ef-9709-1c61f670b9df",
         "modelId": "c74c8eba-f781-452f-b8ba-3f88bb5af3d3",
@@ -14441,7 +14432,7 @@
         "price": 2650000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -14632,7 +14623,7 @@
         "price": 2500000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -14836,7 +14827,7 @@
         "price": 2750000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -15040,7 +15031,7 @@
         "price": 2400000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -15244,7 +15235,7 @@
         "price": 2840000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -15448,7 +15439,7 @@
         "price": 2700000,
         "isNegotiable": true,
         "stateName": "Madhya Pradesh",
-        "district": "Bhopal",
+        "address": "Piplani Industrial Area, Bhopal, Madhya Pradesh - 462001",
         "cityName": "Bhopal",
         "pinCode": "462001",
         "nearbyLandmark": "Piplani Industrial Area",
@@ -15632,7 +15623,7 @@
     {
       "seedKey": "partner-amarbb-paver-pune-001",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -15652,7 +15643,7 @@
         "price": 4250000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -15802,9 +15793,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -15816,14 +15807,14 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-case-construction-ap-555f-pune-002",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -15843,7 +15834,7 @@
         "price": 4040000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -16006,9 +15997,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -16020,14 +16011,14 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-case-construction-ap-555f-pune-003",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -16047,7 +16038,7 @@
         "price": 4430000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -16210,9 +16201,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -16224,14 +16215,14 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-case-construction-ap-555f-pune-004",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -16251,7 +16242,7 @@
         "price": 3920000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -16414,9 +16405,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -16428,14 +16419,14 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-case-construction-ap-555f-pune-005",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -16455,7 +16446,7 @@
         "price": 4340000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -16618,9 +16609,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -16632,14 +16623,14 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
       }
     },
     {
       "seedKey": "amarbb-case-construction-ap-555f-pune-006",
       "sellerRef": "amarbb-partner",
-      "primeLeadCustomerRef": "yash-prime",
+      "primeLeadCustomerRef": "megh-prime",
       "formData": {
         "categoryName": "Paver",
         "brandName": "Case Construction",
@@ -16659,7 +16650,7 @@
         "price": 3820000,
         "isNegotiable": false,
         "stateName": "Maharashtra",
-        "district": "Pune",
+        "address": "Chakan MIDC, Pune, Maharashtra - 411057",
         "cityName": "Pune",
         "pinCode": "411057",
         "nearbyLandmark": "Chakan MIDC",
@@ -16822,9 +16813,9 @@
       },
       "primeLeadCustomer": {
         "selectors": {
-          "email": "yash@gmail.com",
-          "mobile": "1234567890",
-          "name": "yash"
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
         }
       },
       "resolvedIds": {
@@ -16836,8 +16827,113 @@
         "modelId": "2b9167d2-6323-4250-b92e-0ae6f15ec848",
         "stateId": 4008,
         "cityId": 133504,
-        "primeLeadCustomerUserId": "69607af9-7944-4859-8ca3-1cb8792fe96f",
-        "primeLeadSubscriptionId": "82eca7f4-e1ad-4a1f-99ff-80f171ea83e6"
+        "primeLeadCustomerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "primeLeadSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e"
+      }
+    },
+    {
+      "seedKey": "prime-megh-jcb-3dx-raipur-001",
+      "sellerRef": "megh-prime",
+      "primeLeadCustomerRef": null,
+      "formData": {
+        "categoryName": "Backhoe Loader",
+        "brandName": "JCB",
+        "modelName": "3DX",
+        "title": "JCB 3DX Megh Prime 2023 Field Ready",
+        "variant": "EcoXcellence",
+        "manufacturingYear": 2023,
+        "registrationYear": "2023",
+        "registrationNo": "CG04JCB2023",
+        "chassisOrSerialNo": "JCB3DXCG04202301",
+        "previousOwners": "1",
+        "condition": "Excellent",
+        "operatingHours": 1980,
+        "fuelType": "Diesel",
+        "transmission": "Manual",
+        "currentAvailability": "AVAILABLE",
+        "price": 2780000,
+        "isNegotiable": true,
+        "stateName": "Chhattisgarh",
+        "address": "Tatibandh industrial area, Raipur, Chhattisgarh - 492099",
+        "cityName": "Raipur",
+        "pinCode": "492099",
+        "nearbyLandmark": "Tatibandh industrial area",
+        "description": "Prime customer listed JCB 3DX with low operating hours, clean hydraulics, and strong digging performance.",
+        "additionalDescription": "Single-owner machine with a well-maintained cabin, recently serviced boom pins, and ready-to-work tyres.",
+        "grossPower": "76 hp (56 kW)",
+        "insuranceExpiry": "2027-12-31"
+      },
+      "media": [
+        {
+          "slot": "front-view",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": true,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader on a grassy hillside",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "rear-view",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader rear view",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "left-side",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader left side",
+          "sourceProvider": "unsplash"
+        },
+        {
+          "slot": "right-side",
+          "assetKey": "backhoe-loader",
+          "kind": "image",
+          "isFeatured": false,
+          "sourceUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "uploadedFileUrl": "https://www.mirrorlessons.com/wp-content/uploads/2013/08/RX100M2-sample-images-bird-rock-2.jpg",
+          "caption": "Backhoe loader right side",
+          "sourceProvider": "unsplash"
+        }
+      ],
+      "publishFlow": {
+        "requestAdminApproval": true,
+        "autoPublishAfterCreate": true
+      },
+      "seller": {
+        "selectors": {
+          "email": "megh@gmail.com",
+          "mobile": "6789438748",
+          "name": "megh"
+        }
+      },
+      "primeLeadCustomer": {
+        "selectors": {
+          "email": "",
+          "mobile": "",
+          "name": ""
+        }
+      },
+      "resolvedIds": {
+        "sellerUserId": "fe2fb6bd-87e6-4cc6-9948-b93e1cdd7319",
+        "partnerProfileId": null,
+        "primeSubscriptionId": "4ab25b9a-55be-4f40-a008-2a3c6019392e",
+        "categoryId": "8683987d-41d7-4e80-9ecb-ef53d9a86768",
+        "brandId": "f89910b4-7d7b-489e-b204-1f666751dce5",
+        "modelId": "b7ca7ae6-5b27-466b-b954-62031cc8a1da",
+        "stateId": 4007,
+        "cityId": 133225,
+        "primeLeadCustomerUserId": null,
+        "primeLeadSubscriptionId": null
       }
     }
   ]

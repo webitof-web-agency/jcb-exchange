@@ -9,6 +9,9 @@ import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect'
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
+import ListingRtoFields from '@/components/sell/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { sanitizeListingFieldValue, sanitizeListingFormData } from '@/lib/listingFormSanitizers';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -36,7 +39,7 @@ type ListingFormState = {
   title: string;
   price: string;
   state: string;
-  district: string;
+  address: string;
   city: string;
   pinCode: string;
   nearbyLandmark: string;
@@ -55,6 +58,7 @@ type ListingFormState = {
   soldAt: string;
   selectedBuyerStateId: string;
   selectedBuyerCityId: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 type CategoryOption = {
@@ -80,12 +84,20 @@ type ListingRecord = {
   additionalDescription?: string;
   grossPower?: string;
   isNegotiable?: boolean;
+  address?: string | null;
   media: Array<{
     id: string;
     url: string;
     type: string;
     slot?: string | null;
     isFeatured: boolean;
+  }>;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null; insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null; hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
 };
 
@@ -124,6 +136,7 @@ type ParsedListingDetails = {
   previousOwners: string;
   fuelType: string;
   transmission: string;
+  address: string;
   district: string;
   pinCode: string;
   nearbyLandmark: string;
@@ -135,6 +148,7 @@ export type EditableListing = {
   title?: string | null;
   price?: string | number | null;
   manufacturingYear?: number | null;
+  address?: string | null;
   locationState?: string | null;
   locationCity?: string | null;
   status?: string | null;
@@ -164,6 +178,7 @@ export type EditableListing = {
     slot?: string | null;
     isFeatured: boolean;
   }>;
+  rtoRecords?: ListingRecord['rtoRecords'];
 };
 
 const initialForm: ListingFormState = {
@@ -184,7 +199,7 @@ const initialForm: ListingFormState = {
   title: '',
   price: '',
   state: '',
-  district: '',
+  address: '',
   city: '',
   pinCode: '',
   nearbyLandmark: '',
@@ -203,6 +218,7 @@ const initialForm: ListingFormState = {
   soldAt: new Date().toISOString().split('T')[0],
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
+  rtoDetails: emptyListingRtoForm,
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -391,6 +407,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   previousOwners: '',
   fuelType: '',
   transmission: '',
+  address: '',
   district: '',
   pinCode: '',
   nearbyLandmark: '',
@@ -445,6 +462,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'transmission':
         parsed.transmission = value;
         break;
+      case 'address':
+        parsed.address = value;
+        break;
       case 'district':
         parsed.district = value;
         break;
@@ -478,7 +498,6 @@ const buildListingDescription = (form: ListingFormState) =>
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
-    form.district ? `District: ${form.district}` : '',
     form.pinCode ? `PIN: ${form.pinCode}` : '',
     form.nearbyLandmark ? `Landmark: ${form.nearbyLandmark}` : '',
     form.insuranceExpiry ? `Insurance expiry: ${form.insuranceExpiry}` : '',
@@ -727,6 +746,7 @@ export default function SellVehicleModal({
     setError('');
 
     const parsedDetails = parseListingDescription(listing.description);
+    const linkedRto = listing.rtoRecords?.[0];
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const initialBuyerStateId =
       states.find((option) => option.name.toLowerCase() === buyerStateName.toLowerCase())?.id
@@ -739,7 +759,7 @@ export default function SellVehicleModal({
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationYear: parsedDetails.registrationYear,
-      registrationNo: parsedDetails.registrationNo,
+      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -750,15 +770,15 @@ export default function SellVehicleModal({
       title: listing.title || '',
       price: String(listing.price || ''),
       state: listing.locationState || '',
-      district: parsedDetails.district,
+      address: listing.address || parsedDetails.address || parsedDetails.district,
       city: listing.locationCity || '',
       pinCode: parsedDetails.pinCode,
       nearbyLandmark: parsedDetails.nearbyLandmark,
       description: parsedDetails.rawDescription,
       additionalDescription: listing.additionalDescription || '',
-      grossPower: listing.grossPower || '',
+      grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
       selectedStateId: '', // To be handled optimally if we only have names
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -769,6 +789,21 @@ export default function SellVehicleModal({
       soldAt: listing.saleRecord?.soldAt ? new Date(listing.saleRecord.soldAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       selectedBuyerStateId: initialBuyerStateId,
       selectedBuyerCityId: '',
+      rtoDetails: {
+        hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        rtoOffice: linkedRto?.rtoOffice || '',
+        rtoAgentName: linkedRto?.rtoAgentName || '',
+        rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+        vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+      },
     });
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -825,7 +860,14 @@ export default function SellVehicleModal({
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({
+      ...current,
+      [key]: typeof value === 'string' ? sanitizeListingFieldValue(String(key), value) : value,
+    }));
+  };
+
+  const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
+    setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -858,6 +900,23 @@ export default function SellVehicleModal({
       return;
     }
 
+    const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const rtoBase = {
+      registrationNo: sanitizedForm.registrationNo,
+      vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
+      vehicleModel: sanitizedForm.model,
+      operatingHours: sanitizedForm.operatingHours,
+      insuranceExpiry: sanitizedForm.insuranceExpiry,
+    };
+    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -877,35 +936,37 @@ export default function SellVehicleModal({
         .filter(Boolean);
 
       const payload: Record<string, unknown> = {
-        categoryId: form.category,
-        brandName: form.brand,
-        modelName: form.model,
-        title: form.title || `${form.brand} ${form.model}`.trim(),
-        price: form.price,
-        manufacturingYear: form.manufacturingYear,
-        operatingHours: form.operatingHours,
-        locationState: form.state,
-        locationCity: form.city,
-        condition: form.condition,
-        description: buildListingDescription(form),
-        additionalDescription: form.additionalDescription,
-        grossPower: form.grossPower,
-        isNegotiable: form.isNegotiable,
+        categoryId: sanitizedForm.category,
+        brandName: sanitizedForm.brand,
+        modelName: sanitizedForm.model,
+        title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
+        price: sanitizedForm.price,
+        manufacturingYear: sanitizedForm.manufacturingYear,
+        operatingHours: sanitizedForm.operatingHours,
+        locationState: sanitizedForm.state,
+        locationCity: sanitizedForm.city,
+        address: sanitizedForm.address.trim() || undefined,
+        condition: sanitizedForm.condition,
+        description: buildListingDescription(sanitizedForm),
+        additionalDescription: sanitizedForm.additionalDescription,
+        grossPower: sanitizedForm.grossPower,
+        isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (form.currentAvailability !== 'PENDING') {
-        payload.status = availabilityToListingStatus(form.currentAvailability);
+      if (sanitizedForm.currentAvailability !== 'PENDING') {
+        payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
-      if (form.currentAvailability === 'SOLD') {
-        if (!form.buyerName.trim()) {
+      if (sanitizedForm.currentAvailability === 'SOLD') {
+        if (!sanitizedForm.buyerName.trim()) {
           throw new Error(t('sellModal.buyerNameRequired'));
         }
-        if (!form.buyerPhone.trim()) {
+        if (!sanitizedForm.buyerPhone.trim()) {
           throw new Error(t('sellModal.buyerPhoneRequired'));
         }
-        if (!form.soldPrice || Number(form.soldPrice) <= 0) {
+        if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
           throw new Error(t('sellModal.soldPriceRequired'));
         }
 
@@ -953,10 +1014,13 @@ export default function SellVehicleModal({
       resetFormState();
       shouldCloseAfterSave = true;
     } catch (submitError) {
-      const submitErrorMessage = getApiErrorMessage(
-        submitError,
-        editingListingId ? t('sellModal.updateFailed') : t('sellModal.postFailed')
-      );
+      const isSessionExpired = axios.isAxiosError(submitError) && submitError.response?.status === 401;
+      const submitErrorMessage = isSessionExpired
+        ? t('sellModal.signInRequired')
+        : getApiErrorMessage(
+            submitError,
+            editingListingId ? t('sellModal.updateFailed') : t('sellModal.postFailed')
+          );
       setError(submitErrorMessage);
       showToast({
         title: editingListingId ? t('sellModal.vehicleUpdateFailed') : t('sellModal.vehicleSubmitFailed'),
@@ -1067,7 +1131,19 @@ export default function SellVehicleModal({
                       <input value={form.variant} onChange={(event) => updateField('variant', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label={t('sellModal.grossPower')}>
-                      <input value={form.grossPower} onChange={(event) => updateField('grossPower', event.target.value)} className={fieldClassName} placeholder={t('sellModal.grossPowerPlaceholder')} />
+                      <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={form.grossPower}
+                          onChange={(event) => updateField('grossPower', event.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={(event) => { if (!/[0-9]|Backspace|Delete|ArrowLeft|ArrowRight|Tab|Home|End/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault(); }}
+                          className="flex-1 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none"
+                          placeholder="e.g. 170"
+                        />
+                        <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-500 select-none">HP</span>
+                      </div>
                     </Field>
                     <Field label={t('sellModal.manufactureYear')}>
                       <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
@@ -1075,7 +1151,7 @@ export default function SellVehicleModal({
                     <Field label={t('sellModal.registrationYear')}>
                       <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label={t('sellModal.registrationNumber')}>
+                    <Field label={t('sellModal.vehicleNumber', 'Vehicle Number')}>
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label={t('sellModal.insuranceExpiryDate')}>
@@ -1138,15 +1214,18 @@ export default function SellVehicleModal({
                         searchable={false}
                         className="bg-[#F8FAFC]"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        {form.currentAvailability === 'PENDING'
-                          ? t('sellModal.pendingAvailabilityHelp')
-                          : t('sellModal.availabilityHelp')}
-                      </p>
                     </Field>
                   </div>
 
-                  {form.currentAvailability === 'SOLD' && (
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={updateRtoField}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                />
+
+                {form.currentAvailability === 'SOLD' && (
                     <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />
@@ -1311,8 +1390,8 @@ export default function SellVehicleModal({
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label={t('sellModal.district')}>
-                      <input value={form.district} onChange={(event) => updateField('district', event.target.value)} className={fieldClassName} />
+                    <Field label={t('sellModal.address', 'Address')}>
+                      <input value={form.address} onChange={(event) => updateField('address', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label={t('sellModal.city')}>
                       <SearchableSelect
@@ -1453,7 +1532,7 @@ export default function SellVehicleModal({
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <DetailItem label={t('sellModal.variant')} value={parsedDetails.variant || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.registrationYear')} value={parsedDetails.registrationYear || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationNumber')} value={parsedDetails.registrationNo || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.vehicleNumber', 'Vehicle Number')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.insuranceExpiry')} value={parsedDetails.insuranceExpiry || t('sellModal.na')} />
@@ -1466,7 +1545,7 @@ export default function SellVehicleModal({
                           <DetailItem label={t('sellModal.fuelType')} value={parsedDetails.fuelType || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.transmission')} value={parsedDetails.transmission || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.grossPower')} value={viewListing.grossPower || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.district')} value={parsedDetails.district || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.address', 'Address')} value={viewListing.address || parsedDetails.address || parsedDetails.district || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.pinCode')} value={parsedDetails.pinCode || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.nearbyLandmark')} value={parsedDetails.nearbyLandmark || t('sellModal.na')} />
                         </div>
@@ -1716,8 +1795,3 @@ function ListingMediaUploadBox({
     </div>
   );
 }
-
-
-
-
-

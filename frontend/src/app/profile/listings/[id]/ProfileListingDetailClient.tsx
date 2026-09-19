@@ -28,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import api, { getAbsoluteMediaUrl } from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { resolveOwnedListingId } from '@/lib/privateRouteResolvers';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { generateProfileListingDetailPath } from '@/lib/privateRoutePaths';
@@ -66,6 +67,7 @@ type OwnedListingDetail = {
   title: string;
   price: string | number;
   status: string;
+  address?: string | null;
   manufacturingYear?: number | null;
   operatingHours?: string | number | null;
   locationCity?: string | null;
@@ -106,6 +108,7 @@ type ParsedListingDetails = {
   previousOwners: string;
   fuelType: string;
   transmission: string;
+  address: string;
   district: string;
   pinCode: string;
   nearbyLandmark: string;
@@ -121,6 +124,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   previousOwners: '',
   fuelType: '',
   transmission: '',
+  address: '',
   district: '',
   pinCode: '',
   nearbyLandmark: '',
@@ -172,6 +176,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
         break;
       case 'transmission':
         parsed.transmission = value;
+        break;
+      case 'address':
+        parsed.address = value;
         break;
       case 'district':
         parsed.district = value;
@@ -352,7 +359,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
   if (!hasHydrated || (loading && !listing)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-[#F8F9FA] px-4">
-        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent" />
+        <BrandLoader size="lg" variant="section" bg="light" />
       </div>
     );
   }
@@ -665,7 +672,7 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 <SpecCard icon={<Info className="h-4 w-4" />} label={t('profile.registrationNumber')} value={listing.registrationNo || parsedDetails.registrationNo || t('machineDetails.na')} />
                 <SpecCard icon={<Info className="h-4 w-4" />} label={t('profile.chassisNumber')} value={listing.chassisOrSerialNo || parsedDetails.chassisOrSerialNo || t('machineDetails.na')} />
                 <SpecCard icon={<UserRound className="h-4 w-4" />} label={t('profile.previousOwners')} value={String(listing.previousOwners || parsedDetails.previousOwners || t('machineDetails.na'))} />
-                <SpecCard icon={<MapPin className="h-4 w-4" />} label={t('machineDetails.districtLabel')} value={parsedDetails.district || t('machineDetails.na')} />
+                <SpecCard icon={<MapPin className="h-4 w-4" />} label={t('machineDetails.addressLabel', 'Address')} value={listing.address || parsedDetails.address || parsedDetails.district || t('machineDetails.na')} />
                 <SpecCard icon={<Globe className="h-4 w-4" />} label={t('profile.pinCode')} value={listing.pinCode || parsedDetails.pinCode || t('machineDetails.na')} />
                 <SpecCard icon={<Navigation className="h-4 w-4" />} label={t('machineDetails.nearbyLandmarkLabel')} value={listing.nearbyLandmark || parsedDetails.nearbyLandmark || t('machineDetails.na')} />
                 <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('profile.insuranceExpiry')} value={listing.insuranceExpiry || parsedDetails.insuranceExpiry || t('machineDetails.na')} />

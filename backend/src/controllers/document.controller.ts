@@ -10,6 +10,7 @@ import {
   getPublicSiteManifestIconUrl,
   getPublicSiteFaviconUrl,
   getPublicSiteLogoUrl,
+  getPublicSiteDarkLogoUrl,
   getSecureDocumentUrl,
   MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE,
   MAX_HERO_IMAGE_UPLOAD_SIZE,
@@ -45,7 +46,7 @@ const cleanupFile = async (filePath?: string) => {
 
 const enforceStoredFileSizePolicy = async (
   file: Express.Multer.File,
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
   if (isPdfMimeType(file.mimetype) && file.size > 3 * 1024 * 1024) {
     await cleanupFile(file.path);
@@ -89,6 +90,11 @@ const enforceStoredFileSizePolicy = async (
     throw new Error('Site logo image must be 2MB or smaller.');
   }
 
+  if (purpose === 'site-dark-logo' && file.size > MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE) {
+    await cleanupFile(file.path);
+    throw new Error('Dark logo image must be 2MB or smaller.');
+  }
+
   if (purpose === 'site-favicon' && file.size > MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE) {
     await cleanupFile(file.path);
     throw new Error('Favicon image must be 512KB or smaller.');
@@ -121,19 +127,25 @@ const isSecureDocumentOwner = async (userId: string, fileUrl: string) => {
 };
 
 const secureDocumentExists = async (fileUrl: string) => {
-  const matchingDocument = await prismaAny.kycDocument.findFirst({
-    where: { fileUrl },
-    select: { id: true },
-  });
+  const [kycDocument, candidateDocument] = await Promise.all([
+    prismaAny.kycDocument.findFirst({
+      where: { fileUrl },
+      select: { id: true },
+    }),
+    prismaAny.candidateDocument.findFirst({
+      where: { fileUrl },
+      select: { id: true },
+    }),
+  ]);
 
-  return !!matchingDocument;
+  return Boolean(kycDocument || candidateDocument);
 };
 
 const buildUploadResponse = (
   req: Request,
   file: Express.Multer.File,
   visibility: 'public' | 'secure',
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
   const fileUrl = visibility === 'public'
     ? purpose === 'listing-media'
@@ -146,6 +158,8 @@ const buildUploadResponse = (
             ? getPublicInspectionSectionImageUrl(file.filename)
           : purpose === 'site-logo'
             ? getPublicSiteLogoUrl(file.filename)
+          : purpose === 'site-dark-logo'
+            ? getPublicSiteDarkLogoUrl(file.filename)
           : purpose === 'site-favicon'
             ? getPublicSiteFaviconUrl(file.filename)
           : purpose === 'site-manifest-icon'
@@ -205,6 +219,29 @@ export const uploadCustomerPrimeReceipt = async (req: Request, res: Response, ne
 
     if (req.user.role !== 'CUSTOMER') {
       return res.status(403).json({ error: 'Prime receipt upload is available for customers only.' });
+    }
+
+    const file = getUploadedFile(req);
+
+    if (!file) {
+      return res.status(400).json({ error: 'A receipt file is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'document');
+    res.status(201).json(buildUploadResponse(req, file, 'public'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadListingPaymentReceipt = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Listing payment receipt upload is available for customers only.' });
     }
 
     const file = getUploadedFile(req);
@@ -295,6 +332,21 @@ export const uploadPublicSiteLogoImage = async (req: Request, res: Response, nex
   }
 };
 
+export const uploadPublicSiteDarkLogoImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const file = getUploadedFile(req);
+
+    if (!file) {
+      return res.status(400).json({ error: 'A file is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'site-dark-logo');
+    res.status(201).json(buildUploadResponse(req, file, 'public', 'site-dark-logo'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = getUploadedFile(req);
@@ -343,8 +395,8 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
-    const hasAccess = isAdmin || (await isSecureDocumentOwner(req.user.id, fileUrl));
+    const isStaffOperator = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const hasAccess = isStaffOperator || (await isSecureDocumentOwner(req.user.id, fileUrl));
 
     if (!hasAccess) {
       return res.status(403).json({ error: 'You do not have access to this document.' });

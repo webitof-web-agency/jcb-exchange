@@ -56,7 +56,7 @@ export default function SearchableSelect({
     const hasMatchingOption = options.some(
       (option) =>
         String(option.id).trim() === String(value).trim() ||
-        option.name.trim().toLowerCase() === fallbackLabel.toLowerCase()
+        String(option.name ?? '').trim().toLowerCase() === fallbackLabel.toLowerCase()
     );
 
     if (hasMatchingOption) {
@@ -78,13 +78,13 @@ export default function SearchableSelect({
   }, []);
 
   const filteredOptions = resolvedOptions.filter((option) =>
-    option.name.toLowerCase().includes(searchQuery.toLowerCase())
+    String(option.name ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const selectedOption = resolvedOptions.find(
-    (opt) => String(opt.id).trim() === String(value).trim() || opt.name.trim() === String(value).trim()
+    (opt) => String(opt.id).trim() === String(value).trim() || String(opt.name ?? '').trim() === String(value).trim()
   );
-  const displayValue = selectedOption ? selectedOption.name : fallbackLabel;
+  const displayValue = selectedOption ? String(selectedOption.name ?? '') : fallbackLabel;
 
   return (
     <div className={cn("relative w-full", className)} ref={wrapperRef}>
@@ -108,14 +108,14 @@ export default function SearchableSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <div className="absolute z-50 mt-1.5 max-h-60 w-full overflow-auto rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl transition-all">
           {searchable && (
-            <div className="sticky top-0 bg-white px-2 py-1.5">
+            <div className="sticky top-0 z-10 bg-white pb-1.5 pt-0.5 px-0.5">
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  className="w-full rounded-md bg-gray-50 py-1.5 pl-8 pr-3 text-sm outline-none placeholder:text-gray-400 focus:bg-gray-100"
+                  className="w-full rounded-xl bg-gray-50 py-2 pl-9 pr-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:bg-gray-100/80 transition"
                   placeholder={t('common.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -124,18 +124,18 @@ export default function SearchableSelect({
               </div>
             </div>
           )}
-          <ul className="mt-1 flex flex-col px-1">
+          <ul className="flex flex-col gap-0.5">
             {filteredOptions.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-gray-500">{t('common.noResultsFound')}</li>
+              <li className="px-3 py-2.5 text-sm text-gray-500">{t('common.noResultsFound')}</li>
             ) : (
               filteredOptions.map((option) => {
-                const isSelected = String(option.id) === String(value) || option.name === String(value);
+                const isSelected = String(option.id) === String(value) || String(option.name ?? '') === String(value);
                 return (
                   <li
                     key={option.id}
                     className={cn(
-                      "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900",
-                      isSelected && "bg-[#FFC107]/10 font-medium text-[#9a7600] hover:bg-[#FFC107]/20"
+                      "flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900",
+                      isSelected && "bg-amber-50 font-medium text-amber-900 hover:bg-amber-100/70"
                     )}
                     onClick={() => {
                       onChange(option);
@@ -143,8 +143,8 @@ export default function SearchableSelect({
                       setSearchQuery('');
                     }}
                   >
-                    <span>{option.name}</span>
-                    {isSelected && <Check className="h-4 w-4" />}
+                    <span className="truncate">{String(option.name ?? '')}</span>
+                    {isSelected && <Check className="h-4 w-4 text-amber-600 shrink-0 ml-2" />}
                   </li>
                 );
               })

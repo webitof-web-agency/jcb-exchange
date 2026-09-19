@@ -36,8 +36,8 @@ type ListingSeed = {
     price: number;
     isNegotiable?: boolean;
     stateName: string;
-    district?: string;
     cityName: string;
+    address?: string;
     pinCode?: string;
     nearbyLandmark?: string;
     description?: string;
@@ -81,7 +81,6 @@ const buildDescription = (listing: ListingSeed) => {
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
-    form.district ? `District: ${form.district}` : '',
     form.pinCode ? `Pin code: ${form.pinCode}` : '',
     form.nearbyLandmark ? `Landmark: ${form.nearbyLandmark}` : '',
     form.insuranceExpiry ? `Insurance expiry: ${form.insuranceExpiry}` : '',
@@ -233,6 +232,7 @@ const upsertListing = async (seedFile: ListingSeedFile, listing: ListingSeed) =>
           operatingHours: form.operatingHours ?? null,
           locationState: form.stateName,
           locationCity: form.cityName,
+          address: normalizeText(form.address) || null,
           condition: normalizeText(form.condition) || null,
           description: description || null,
           additionalDescription: normalizeText(form.additionalDescription) || null,
@@ -260,6 +260,7 @@ const upsertListing = async (seedFile: ListingSeedFile, listing: ListingSeed) =>
       operatingHours: form.operatingHours ?? null,
       locationState: form.stateName,
       locationCity: form.cityName,
+      address: normalizeText(form.address) || null,
       condition: normalizeText(form.condition) || null,
       description: description || null,
       additionalDescription: normalizeText(form.additionalDescription) || null,

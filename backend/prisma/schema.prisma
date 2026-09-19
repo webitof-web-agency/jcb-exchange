@@ -98,21 +98,6 @@ enum LeadStatus {
   LOST
 }
 
-enum AdminPermissionKey {
-  MANAGE_PARTNERS
-  REVIEW_KYC
-  REVIEW_LISTINGS
-  MANAGE_LEADS
-  MANAGE_FINANCE
-  MANAGE_REFUNDS
-  MANAGE_SUPPORT
-  MANAGE_CMS
-  MANAGE_SEO
-  VIEW_REPORTS
-  MANAGE_SETTINGS
-  MANAGE_ADMINS
-}
-
 enum PartnerStaffRole {
   OWNER
   LISTING_MANAGER
@@ -172,6 +157,9 @@ enum AuditEntityType {
   LISTING
   DEPOSIT
   AGREEMENT
+  RECRUITMENT_JOB
+  RECRUITMENT_APPLICATION
+  RECRUITMENT_CANDIDATE
 }
 
 enum CustomerPrimeSubscriptionStatus {
@@ -180,6 +168,84 @@ enum CustomerPrimeSubscriptionStatus {
   REJECTED
   EXPIRED
   CANCELLED
+}
+enum ListingPaymentMethod {
+  RTGS
+  RAZORPAY
+  PHONEPE
+}
+
+enum ListingPaymentStatus {
+  PENDING_VERIFICATION
+  APPROVED
+  REJECTED
+  FAILED
+  PAID
+}
+
+enum WhatsAppMessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+enum WhatsAppRecipientType {
+  CUSTOMER
+  PARTNER
+  SUPER_ADMIN
+  RECRUITER
+  CANDIDATE
+  TEST
+}
+
+enum WhatsAppOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum WhatsAppConsentCategory {
+  MARKETING
+  JOB_ALERTS
+}
+
+enum WhatsAppCampaignStatus {
+  DRAFT
+  SENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum SmsMessageStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum SmsOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum MobileOtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+}
+
+enum EmailOtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
 }
 
 model User {
@@ -220,9 +286,76 @@ model User {
   customerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeSubscriptions")
   approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeApprover")
   rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeRejector")
+  listingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentBuyer")
+  listingPaymentSellerSubmissions ListingPaymentSubmission[] @relation("ListingPaymentSeller")
+  reviewedListingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentReviewer")
   auditLogs          AuditLog[]           @relation("AuditActor")
   leadActivities     LeadActivity[]       @relation("LeadActivityActor")
   notifications      Notification[]
+  createdJobs                Job[]                       @relation("JobCreator")
+  assignedApplications       JobApplication[]            @relation("AssignedRecruiter")
+  stageHistoryChanges        ApplicationStageHistory[]   @relation("StageHistoryChanger")
+  authoredCandidateNotes     CandidateNote[]             @relation("CandidateNoteAuthor")
+  submittedCandidateRatings CandidateRating[]            @relation("CandidateRatingEvaluator")
+  scheduledInterviews        Interview[]                 @relation("InterviewScheduler")
+  conductedInterviews        Interview[]                 @relation("Interviewer")
+  submittedInterviewFeedbacks InterviewFeedback[]        @relation("InterviewFeedbackAuthor")
+  createdOffers              Offer[]                     @relation("OfferCreator")
+  recruitmentActivityLogs    RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
+  mobileOtpChallenges        MobileOtpChallenge[]
+  emailOtpChallenges         EmailOtpChallenge[]
+}
+
+model MobileOtpChallenge {
+  id           String                   @id @default(uuid())
+  mobile       String
+  userId       String?
+  status       MobileOtpChallengeStatus @default(PENDING)
+  attemptCount Int                      @default(0)
+  resendCount  Int                      @default(0)
+  createdAt    DateTime                 @default(now())
+  lastSentAt   DateTime                 @default(now())
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([mobile, status, createdAt])
+  @@index([userId, status, createdAt])
+}
+
+model EmailOtpIntegrationSettings {
+  id                    String   @id @default("default")
+  enabled               Boolean  @default(false)
+  smtpHost              String   @default("smtp.gmail.com")
+  smtpPort              Int      @default(465)
+  smtpSecure            Boolean  @default(true)
+  senderEmail           String?
+  senderName            String   @default("JCB Exchange")
+  encryptedAppPassword  String?  @db.Text
+  otpExpiryMinutes      Int      @default(10)
+  otpLength             Int      @default(6)
+  updatedAt             DateTime @updatedAt
+  updatedByUserId       String?
+}
+
+model EmailOtpChallenge {
+  id           String                  @id @default(uuid())
+  email        String
+  userId       String?
+  otpHash      String
+  status       EmailOtpChallengeStatus @default(PENDING)
+  attemptCount Int                     @default(0)
+  resendCount  Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  lastSentAt   DateTime                @default(now())
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, status, createdAt])
+  @@index([userId, status, createdAt])
 }
 
 model AdminProfile {
@@ -250,7 +383,7 @@ model CustomRole {
 model AdminPermission {
   id          String             @id @default(uuid())
   adminUserId String
-  permission  AdminPermissionKey
+  permission  String
   createdAt   DateTime           @default(now())
 
   adminUser User @relation(fields: [adminUserId], references: [id])
@@ -376,6 +509,7 @@ model Listing {
   operatingHours    Int?
   locationState     String
   locationCity      String
+  address           String?
   condition         String?
   description       String?       @db.Text
   additionalDescription String?   @db.Text
@@ -394,8 +528,152 @@ model Listing {
   media      Media[]
   leads      Lead[]
   saleRecord SaleRecord?
+  paymentSubmissions ListingPaymentSubmission[]
+  rtoRecords        VehicleRtoRecord[]
 
   @@index([status, soldAt])
+}
+
+enum RtoHirePurchaseStatus {
+  PENDING
+  ACTIVE
+  TERMINATED
+  NOT_APPLICABLE
+}
+
+enum RtoValidityStatus {
+  VALID
+  EXPIRED
+  NOT_AVAILABLE
+  LIFETIME
+  NOT_APPLICABLE
+  PENDING
+}
+
+enum RtoHsrpStatus {
+  YES
+  NO
+  PENDING
+  NOT_APPLICABLE
+}
+
+enum RtoWorkStatus {
+  PENDING
+  IN_PROGRESS
+  DOCUMENT_REQUIRED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+model VehicleRtoRecord {
+  id                    String                 @id @default(uuid())
+  listingId             String?
+  customerName          String
+  customerNumber        String
+  vehicleNumber         String
+  vehicleType           String
+  vehicleModel          String
+  hirePurchaseStatus    RtoHirePurchaseStatus @default(PENDING)
+  taxStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
+  taxValidUntil         DateTime?
+  fitnessStatus         RtoValidityStatus     @default(NOT_AVAILABLE)
+  fitnessValidUntil     DateTime?
+  insuranceStatus       RtoValidityStatus     @default(NOT_AVAILABLE)
+  insuranceValidUntil   DateTime?
+  pucStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
+  pucValidUntil         DateTime?
+  hsrpStatus            RtoHsrpStatus        @default(PENDING)
+  sellerName            String
+  sellerNumber          String
+  purchaserName         String
+  purchaserNumber       String
+  rtoOffice             String
+  rtoAgentName          String
+  rtoAgentState         String
+  rtoAgentCity          String
+  rtoAgentNumber        String
+  rtoExpenses           Decimal              @default(0) @db.Decimal(12, 2)
+  rtoExpensesAdvance    Decimal              @default(0) @db.Decimal(12, 2)
+  documentSendDate      DateTime?
+  rtoStatus             RtoWorkStatus        @default(PENDING)
+  noteSheet             String?              @db.Text
+  vehicleMaintenanceCost Decimal             @default(0) @db.Decimal(12, 2)
+  hourRunning          Int?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  listing               Listing?              @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleNumber])
+  @@index([rtoStatus])
+  @@index([documentSendDate])
+  @@index([rtoAgentState, rtoAgentCity])
+}
+
+model AnalyticsEvent {
+  id                 String   @id @default(uuid())
+  eventType          String
+  anonymousId        String?
+  sessionId          String?
+  actorUserId        String?
+  listingId          String?
+  partnerId          String?
+  brandId            String?
+  modelId            String?
+  categoryId         String?
+  manufacturingYear  Int?
+  query              String?
+  filterPayload      Json?
+  resultCount        Int?
+  source             String?
+  dedupeKey          String?  @unique
+  occurredAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@index([eventType, occurredAt])
+  @@index([listingId, eventType, occurredAt])
+  @@index([partnerId, eventType, occurredAt])
+  @@index([modelId, manufacturingYear, eventType, occurredAt])
+  @@index([anonymousId, eventType, occurredAt])
+}
+
+model ListingPaymentSubmission {
+  id                 String               @id @default(uuid())
+  listingId          String
+  buyerId            String
+  partnerId          String
+  method             ListingPaymentMethod
+  status             ListingPaymentStatus @default(PENDING_VERIFICATION)
+  amount             Decimal              @db.Decimal(12, 2)
+  transactionRef     String?
+  paymentNote        String?              @db.Text
+  receiptUrl         String?
+  razorpayOrderId    String?
+  razorpayPaymentId  String?
+  razorpaySignature  String?
+  phonepeMerchantOrderId String?
+  phonepeOrderId     String?
+  phonepeTransactionId String?
+  settingsSnapshot   Json
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  rejectionReason    String?              @db.Text
+  submittedAt        DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer      User    @relation("ListingPaymentBuyer", fields: [buyerId], references: [id])
+  partner    User    @relation("ListingPaymentSeller", fields: [partnerId], references: [id])
+  reviewedBy User?   @relation("ListingPaymentReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([listingId, status])
+  @@index([buyerId, status])
+  @@index([partnerId, status])
+  @@index([submittedAt])
 }
 
 model SaleRecord {
@@ -657,6 +935,235 @@ model PlatformRuntimeSettings {
   @@map("platform_runtime_settings")
 }
 
+model WhatsAppIntegrationSettings {
+  id                           String   @id @default("default")
+  enabled                      Boolean  @default(false)
+  graphApiVersion              String   @default("v23.0")
+  phoneNumberId                String?
+  businessAccountId            String?
+  testRecipientPhone           String?
+  encryptedAccessToken         String?  @db.Text
+  encryptedWebhookVerifyToken  String?  @db.Text
+  encryptedAppSecret           String?  @db.Text
+  updatedByUserId              String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@map("whatsapp_integration_settings")
+}
+
+model WhatsAppMetaTemplate {
+  id              String   @id @default(uuid())
+  metaTemplateId  String?  @unique
+  name            String
+  language        String   @default("en_US")
+  category        String?
+  status          String   @default("DRAFT")
+  components      Json?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  automationRules WhatsAppAutomationRule[]
+  campaigns       WhatsAppCampaign[]
+
+  @@unique([name, language])
+  @@index([status])
+  @@map("whatsapp_meta_templates")
+}
+
+model WhatsAppAutomationRule {
+  id              String   @id @default(uuid())
+  eventCode       String   @unique
+  enabled         Boolean  @default(false)
+  templateId      String?
+  recipientPolicy String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  template WhatsAppMetaTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([enabled])
+  @@map("whatsapp_automation_rules")
+}
+
+model WhatsAppMessageLog {
+  id                String                 @id @default(uuid())
+  eventCode         String
+  relatedEntityType String?
+  relatedEntityId   String?
+  recipientType     WhatsAppRecipientType
+  recipientPhone    String
+  status            WhatsAppMessageStatus  @default(QUEUED)
+  metaMessageId     String?                @unique
+  errorCode         String?
+  errorMessage      String?                @db.Text
+  payloadSnapshot   Json?
+  dedupeKey         String?                @unique
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  outbox WhatsAppOutbox?
+
+  @@index([eventCode, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([recipientType, status, createdAt])
+  @@map("whatsapp_message_logs")
+}
+
+model WhatsAppOutbox {
+  id            String               @id @default(uuid())
+  messageLogId  String               @unique
+  payload       Json
+  status        WhatsAppOutboxStatus @default(PENDING)
+  attempts      Int                  @default(0)
+  nextAttemptAt DateTime?            @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?              @db.Text
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  messageLog WhatsAppMessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("whatsapp_outbox")
+}
+
+model SmsIntegrationSettings {
+  id                 String   @id @default("default")
+  enabled            Boolean  @default(false)
+  baseUrl            String   @default("https://sms.flowitof.com/dev")
+  senderId           String?
+  testRecipientPhone String?
+  smsDetails         String   @default("0")
+  encryptedApiKey    String?  @db.Text
+  updatedByUserId    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sms_integration_settings")
+}
+
+model SmsAutomationRule {
+  id                String   @id @default(uuid())
+  eventCode         String   @unique
+  enabled           Boolean  @default(false)
+  messageId         String?
+  variablesTemplate String?  @db.Text
+  recipientPolicy   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([enabled])
+  @@map("sms_automation_rules")
+}
+
+model SmsMessageLog {
+  id                String           @id @default(uuid())
+  eventCode         String
+  relatedEntityType String?
+  relatedEntityId   String?
+  recipientType     String
+  recipientPhone    String
+  status            SmsMessageStatus @default(QUEUED)
+  providerMessageId String?
+  errorCode         String?
+  errorMessage      String?          @db.Text
+  payloadSnapshot   Json?
+  dedupeKey         String?          @unique
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  outbox SmsOutbox?
+
+  @@index([eventCode, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([recipientType, status, createdAt])
+  @@map("sms_message_logs")
+}
+
+model SmsOutbox {
+  id            String          @id @default(uuid())
+  messageLogId  String          @unique
+  payload       Json
+  status        SmsOutboxStatus @default(PENDING)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime?       @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?         @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  messageLog SmsMessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("sms_outbox")
+}
+
+model WhatsAppConsent {
+  id        String                   @id @default(uuid())
+  phone     String
+  category  WhatsAppConsentCategory
+  optedIn   Boolean                  @default(false)
+  source    String?
+  updatedByUserId String?
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+
+  @@unique([phone, category])
+  @@index([category, optedIn])
+  @@map("whatsapp_consents")
+}
+
+model WhatsAppCampaign {
+  id              String                 @id @default(uuid())
+  name            String
+  category        WhatsAppConsentCategory
+  templateId      String
+  status          WhatsAppCampaignStatus @default(DRAFT)
+  audienceFilters Json?
+  createdByUserId String
+  confirmedByUserId String?
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  template   WhatsAppMetaTemplate       @relation(fields: [templateId], references: [id])
+  recipients WhatsAppCampaignRecipient[]
+
+  @@index([status, createdAt])
+  @@map("whatsapp_campaigns")
+}
+
+model WhatsAppCampaignRecipient {
+  id              String                 @id @default(uuid())
+  campaignId      String
+  recipientType   WhatsAppRecipientType
+  recipientPhone  String
+  sourceEntityType String?
+  sourceEntityId  String?
+  messageLogId    String?
+  status          WhatsAppMessageStatus  @default(QUEUED)
+  errorMessage    String?                @db.Text
+  sentAt          DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  campaign WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, recipientPhone])
+  @@index([campaignId, status])
+  @@map("whatsapp_campaign_recipients")
+}
+
 model Country {
   id              Int     @id
   name            String
@@ -712,4 +1219,465 @@ model City {
 
   @@index([stateId])
   @@index([countryId])
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  CLOSED
+  ARCHIVED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  TEMPORARY
+  FREELANCE
+}
+
+enum WorkMode {
+  ON_SITE
+  REMOTE
+  HYBRID
+}
+
+enum ExperienceLevel {
+  FRESHER
+  JUNIOR
+  MID_LEVEL
+  SENIOR
+  LEAD
+  EXECUTIVE
+}
+
+enum CustomQuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  NUMBER
+  YES_NO
+  DROPDOWN
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+}
+
+enum CandidateEmploymentStatus {
+  EMPLOYED
+  UNEMPLOYED
+  SERVING_NOTICE
+  FREELANCER
+  STUDENT
+}
+
+enum DocumentCategory {
+  RESUME
+  COVER_LETTER
+  PORTFOLIO
+  OFFER_LETTER
+  OTHER
+}
+
+enum InterviewType {
+  PHONE
+  VIDEO
+  IN_PERSON
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  RESCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum InterviewRecommendation {
+  STRONG_HIRE
+  HIRE
+  MAYBE
+  NO_HIRE
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum TalentPoolCategory {
+  SALES
+  OPERATIONS
+  TECHNOLOGY
+  FINANCE
+  MANAGEMENT
+  OTHER
+}
+
+model JobDepartment {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs        Job[]
+}
+
+model Job {
+  id                   String             @id @default(uuid())
+  title                String
+  slug                 String             @unique
+  jobCode              String             @unique
+  departmentId         String
+  vacancies            Int                @default(1)
+  employmentType       EmploymentType     @default(FULL_TIME)
+  workMode             WorkMode           @default(ON_SITE)
+  locationCity         String
+  locationState        String
+  locationAddress      String?
+  minExperience        Float              @default(0)
+  maxExperience        Float?
+  minSalary            Decimal?           @db.Decimal(12, 2)
+  maxSalary            Decimal?           @db.Decimal(12, 2)
+  currency             String             @default("INR")
+  salaryVisibility     Boolean            @default(true)
+  educationRequirement String?
+  summary              String?            @db.Text
+  description          String             @db.Text
+  responsibilities     String[]
+  requirements         String[]
+  preferredSkills      String[]
+  benefits             String[]
+  workingHours         String?
+  aboutCompany         String?            @db.Text
+  startDate            DateTime?
+  deadline             DateTime?
+  resumeRequired       Boolean            @default(true)
+  coverLetterRequired  Boolean            @default(false)
+  seoTitle             String?
+  metaDescription      String?            @db.Text
+  ogImage              String?
+  canonicalUrl         String?
+  status               JobStatus          @default(DRAFT)
+  postedAt             DateTime?
+  closedAt             DateTime?
+  createdById          String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  department           JobDepartment      @relation(fields: [departmentId], references: [id])
+  createdBy            User?              @relation("JobCreator", fields: [createdById], references: [id])
+  customQuestions      JobCustomQuestion[]
+  applications         JobApplication[]
+  interviews           Interview[]
+  offers               Offer[]
+
+  @@index([status, postedAt])
+  @@index([departmentId])
+  @@index([employmentType])
+  @@index([workMode])
+}
+
+model JobCustomQuestion {
+  id          String             @id @default(uuid())
+  jobId       String
+  question    String
+  type        CustomQuestionType @default(SHORT_TEXT)
+  options     String[]
+  isRequired  Boolean            @default(false)
+  order       Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  job         Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  answers     ApplicationAnswer[]
+
+  @@index([jobId])
+}
+
+model Candidate {
+  id                 String                     @id @default(uuid())
+  fullName           String
+  email              String                     @unique
+  mobile             String                     @unique
+  currentCity        String?
+  state              String?
+  address            String?
+  currentCompany     String?
+  currentDesignation String?
+  totalExperience    Float?
+  relevantExperience Float?
+  currentCtc         Decimal?                   @db.Decimal(12, 2)
+  expectedCtc        Decimal?                   @db.Decimal(12, 2)
+  noticePeriod       String?
+  employmentStatus   CandidateEmploymentStatus?
+  linkedInUrl        String?
+  portfolioUrl       String?
+  coverLetter        String?                    @db.Text
+  talentPoolCategory TalentPoolCategory?
+  inTalentPool       Boolean                    @default(false)
+  talentPoolNotes    String?                    @db.Text
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  applications       JobApplication[]
+  documents          CandidateDocument[]
+  notes              CandidateNote[]
+  ratings            CandidateRating[]
+  interviews         Interview[]
+  offers             Offer[]
+  activityLogs       RecruitmentActivityLog[]
+
+  @@index([email])
+  @@index([mobile])
+  @@index([inTalentPool])
+}
+
+model JobApplication {
+  id                  String                    @id @default(uuid())
+  applicationRef      String                    @unique
+  jobId               String
+  candidateId         String
+  currentStage        String                    @default("NEW")
+  terminalStatus      String?
+  assignedRecruiterId String?
+  overallRating       Float?
+  isDuplicateOverride Boolean                   @default(false)
+  appliedAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  job                 Job                       @relation(fields: [jobId], references: [id])
+  candidate           Candidate                 @relation(fields: [candidateId], references: [id])
+  assignedRecruiter   User?                     @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
+  answers             ApplicationAnswer[]
+  documents           CandidateDocument[]
+  stageHistory        ApplicationStageHistory[]
+  notes               CandidateNote[]
+  ratings             CandidateRating[]
+  interviews          Interview[]
+  offers              Offer[]
+  activityLogs        RecruitmentActivityLog[]
+
+  @@unique([jobId, candidateId])
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([currentStage])
+  @@index([appliedAt])
+}
+
+model ApplicationAnswer {
+  id            String            @id @default(uuid())
+  applicationId String
+  questionId    String
+  answerText    String?           @db.Text
+  answerJson    Json?
+  createdAt     DateTime          @default(now())
+
+  application   JobApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question      JobCustomQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([questionId])
+}
+
+model CandidateDocument {
+  id            String           @id @default(uuid())
+  candidateId   String
+  applicationId String?
+  category      DocumentCategory @default(RESUME)
+  fileName      String
+  fileUrl       String
+  fileSize      Int?
+  mimeType      String?
+  uploadedAt    DateTime         @default(now())
+
+  candidate     Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application   JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId])
+  @@index([applicationId])
+}
+
+model ApplicationStage {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  order       Int      @default(0)
+  color       String?  @default("blue")
+  isSystem    Boolean  @default(false)
+  isTerminal  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ApplicationStageHistory {
+  id                 String         @id @default(uuid())
+  applicationId      String
+  fromStage          String?
+  toStage            String
+  fromTerminalStatus String?
+  toTerminalStatus   String?
+  changedById        String?
+  notes              String?        @db.Text
+  createdAt          DateTime       @default(now())
+
+  application        JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  changedBy          User?          @relation("StageHistoryChanger", fields: [changedById], references: [id])
+
+  @@index([applicationId, createdAt])
+}
+
+model CandidateNote {
+  id            String          @id @default(uuid())
+  candidateId   String
+  applicationId String?
+  authorId      String
+  content       String          @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  candidate     Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author        User            @relation("CandidateNoteAuthor", fields: [authorId], references: [id])
+
+  @@index([candidateId])
+  @@index([applicationId])
+}
+
+model CandidateRating {
+  id                  String          @id @default(uuid())
+  candidateId         String
+  applicationId       String?
+  evaluatorId         String
+  overallRating       Int
+  communicationRating Int?
+  technicalRating     Int?
+  experienceRating    Int?
+  cultureFitRating    Int?
+  feedback            String?         @db.Text
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  candidate           Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application         JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  evaluator           User            @relation("CandidateRatingEvaluator", fields: [evaluatorId], references: [id])
+
+  @@index([candidateId])
+  @@index([applicationId])
+}
+
+model Interview {
+  id              String            @id @default(uuid())
+  applicationId   String
+  candidateId     String
+  jobId           String
+  scheduledAt     DateTime
+  durationMinutes Int               @default(30)
+  type            InterviewType     @default(VIDEO)
+  status          InterviewStatus   @default(SCHEDULED)
+  interviewerId   String?
+  meetingUrl      String?
+  location        String?
+  notes           String?           @db.Text
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  application     JobApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidate       Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job             Job               @relation(fields: [jobId], references: [id])
+  interviewer     User?             @relation("Interviewer", fields: [interviewerId], references: [id])
+  createdBy       User?             @relation("InterviewScheduler", fields: [createdById], references: [id])
+  feedback        InterviewFeedback[]
+
+  @@index([applicationId])
+  @@index([candidateId])
+  @@index([scheduledAt])
+}
+
+model InterviewFeedback {
+  id                  String                  @id @default(uuid())
+  interviewId         String
+  interviewerId       String
+  communicationRating Int?
+  technicalRating     Int?
+  experienceRating    Int?
+  overallRating       Int
+  strengths           String?                 @db.Text
+  weaknesses          String?                 @db.Text
+  notes               String?                 @db.Text
+  recommendation      InterviewRecommendation @default(HIRE)
+  submittedAt         DateTime                @default(now())
+
+  interview           Interview               @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interviewer         User                    @relation("InterviewFeedbackAuthor", fields: [interviewerId], references: [id])
+
+  @@index([interviewId])
+}
+
+model Offer {
+  id               String      @id @default(uuid())
+  applicationId    String
+  candidateId      String
+  jobId            String
+  designation      String
+  department       String
+  joiningLocation  String
+  ctc              Decimal     @db.Decimal(12, 2)
+  joiningDate      DateTime?
+  probationPeriod  String?
+  reportingManager String?
+  offerValidUntil  DateTime?
+  additionalTerms  String?     @db.Text
+  offerLetterUrl   String?
+  status           OfferStatus @default(DRAFT)
+  createdById      String?
+  sentAt           DateTime?
+  respondedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  application      JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidate        Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job              Job            @relation(fields: [jobId], references: [id])
+  createdBy        User?          @relation("OfferCreator", fields: [createdById], references: [id])
+
+  @@index([applicationId])
+  @@index([candidateId])
+  @@index([status])
+}
+
+model RecruitmentEmailTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  subject     String
+  bodyHtml    String   @db.Text
+  variables   String[]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RecruitmentActivityLog {
+  id            String          @id @default(uuid())
+  candidateId   String?
+  applicationId String?
+  actorId       String?
+  action        String
+  title         String
+  details       String?         @db.Text
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+
+  candidate     Candidate?      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actor         User?           @relation("RecruitmentActivityActor", fields: [actorId], references: [id])
+
+  @@index([applicationId, createdAt])
+  @@index([candidateId, createdAt])
 }

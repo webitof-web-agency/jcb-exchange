@@ -29,8 +29,12 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
+  Camera,
+  Play,
+  Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import {
   getAbsoluteFileUrl,
@@ -39,7 +43,7 @@ import {
   uploadListingMediaToServer,
   type UploadedFileResult,
 } from '@/lib/fileUpload';
-import { formatPortalCurrency, formatPortalDateTime, formatPortalLabel } from '@/lib/partnerPortal';
+import { formatPortalCurrency, formatPortalDate, formatPortalLabel } from '@/lib/partnerPortal';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
@@ -48,6 +52,16 @@ import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect'
 import { useHeaderStore } from '@/store/headerStore';
 import { resolveListingId } from '@/lib/routeResolvers';
 import { generateAdminListingDetailPath } from '@/lib/routePaths';
+import { YEAR_SELECT_OPTIONS } from '@/lib/listingDateOptions';
+import {
+  isValidDigitsOnlyValue,
+  isValidPinCodeValue,
+  isValidYearValue,
+  sanitizeListingFieldValue,
+  sanitizeListingFormData,
+} from '@/lib/listingFormSanitizers';
+import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 
 type ListingDetail = {
   id: string;
@@ -86,6 +100,7 @@ type ListingDetail = {
   fuelType?: string;
   transmission?: string;
   insuranceExpiry?: string;
+  address?: string;
   pinCode?: string;
   nearbyLandmark?: string;
   dealer?: string;
@@ -98,6 +113,13 @@ type ListingDetail = {
     soldPrice?: number | string;
     soldAt?: string;
   } | null;
+  rtoRecords?: Array<{
+    vehicleNumber?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: string; taxValidUntil?: string | null;
+    fitnessStatus: string; fitnessValidUntil?: string | null; insuranceStatus: string; insuranceValidUntil?: string | null;
+    pucStatus: string; pucValidUntil?: string | null; hsrpStatus: string; rtoOffice?: string | null; rtoAgentName?: string | null;
+    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+  }>;
   media: Array<{
     id: string;
     url: string;
@@ -116,6 +138,7 @@ type ParsedListingDetails = {
   previousOwners: string;
   fuelType: string;
   transmission: string;
+  address: string;
   district: string;
   pinCode: string;
   nearbyLandmark: string;
@@ -145,7 +168,7 @@ type ListingEditForm = {
   selectedStateId: string;
   locationCity: string;
   selectedCityId: string;
-  district: string;
+  address: string;
   pinCode: string;
   nearbyLandmark: string;
   condition: string;
@@ -159,6 +182,7 @@ type ListingEditForm = {
   registrationYear: string;
   insuranceExpiry: string;
   previousOwners: string;
+  rtoDetails: ListingRtoFormState;
 };
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
@@ -170,6 +194,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   previousOwners: '',
   fuelType: '',
   transmission: '',
+  address: '',
   district: '',
   pinCode: '',
   nearbyLandmark: '',
@@ -201,6 +226,7 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'owners': parsed.previousOwners = value; break;
       case 'fuel': parsed.fuelType = value; break;
       case 'transmission': parsed.transmission = value; break;
+      case 'address': parsed.address = value; break;
       case 'district': parsed.district = value; break;
       case 'pin':
       case 'pin code': parsed.pinCode = value; break;
@@ -212,6 +238,43 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
   }
   parsed.rawDescription = rawLines.join('\n');
   return parsed;
+};
+
+const formatRegistrationNumber = (value?: string | null) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+
+  const compact = normalized.replace(/[\s-]+/g, '');
+  const standardMatch = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+  if (standardMatch) return [standardMatch[1], standardMatch[2], standardMatch[3], standardMatch[4]].join('-');
+
+  const stateAndNumberMatch = compact.match(/^([A-Z]{2})(\d{1,2})(\d{1,4})$/);
+  if (stateAndNumberMatch) return [stateAndNumberMatch[1], stateAndNumberMatch[2], stateAndNumberMatch[3]].join('-');
+
+  return normalized.replace(/[\s-]+/g, '-');
+};
+
+const formatAddressWithoutPinCode = (address?: string | null, pinCode?: string | null) => {
+  const normalizedAddress = String(address || '').trim();
+  const normalizedPinCode = String(pinCode || '').trim();
+  if (!normalizedAddress || !normalizedPinCode) return normalizedAddress;
+
+  const escapedPinCode = normalizedPinCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return normalizedAddress
+    .replace(new RegExp(`\\s*(?:,|-)\\s*${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(new RegExp(`\\s+${escapedPinCode}\\s*$`, 'i'), '')
+    .replace(/[\s,-]+$/, '')
+    .trim();
+};
+
+const formatLocationSummary = (address?: string | null, city?: string | null, state?: string | null, pinCode?: string | null) => {
+  const cleanAddress = formatAddressWithoutPinCode(address, pinCode);
+  const addressText = cleanAddress.toLowerCase();
+  const locationParts = [city, state]
+    .map((part) => String(part || '').trim())
+    .filter((part) => part && !addressText.includes(part.toLowerCase()));
+
+  return [cleanAddress, ...locationParts].filter(Boolean).join(', ');
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -266,7 +329,6 @@ const buildListingDescription = (form: ListingEditForm) => {
     ['Owners', form.previousOwners],
     ['Fuel', form.fuelType],
     ['Transmission', form.transmission],
-    ['District', form.district],
     ['Pin Code', form.pinCode],
     ['Landmark', form.nearbyLandmark],
     ['Insurance Expiry', form.insuranceExpiry],
@@ -295,6 +357,38 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback;
+};
+
+const getListingSectionValidationError = (section: DetailSection, form: ListingEditForm) => {
+  if (section === 'pricing') {
+    if (!isValidDigitsOnlyValue(form.price)) {
+      return 'Price must contain digits only.';
+    }
+
+    if (!isValidYearValue(form.manufacturingYear)) {
+      return 'Manufacturing year must be a 4-digit year.';
+    }
+  }
+
+  if (section === 'sellerLocation' && !isValidPinCodeValue(form.pinCode)) {
+    return 'Pin code must be exactly 6 digits.';
+  }
+
+  if (section === 'technical') {
+    if (!isValidDigitsOnlyValue(form.operatingHours)) {
+      return 'Operating hours must contain digits only.';
+    }
+
+    if (!isValidYearValue(form.registrationYear)) {
+      return 'Registration year must be a 4-digit year.';
+    }
+
+    if (!isValidDigitsOnlyValue(form.previousOwners)) {
+      return 'Previous owners must contain digits only.';
+    }
+  }
+
+  return '';
 };
 
 const listingStatusToAvailability = (value?: string | null) => {
@@ -335,8 +429,9 @@ const availabilityToListingStatus = (availability: string, currentStatus: string
 
 const createEditForm = (listing: ListingDetail): ListingEditForm => {
   const parsed = parseListingDescription(listing.description);
+  const linkedRto = listing.rtoRecords?.[0];
 
-  return {
+  return sanitizeListingFormData({
     title: listing.title || '',
     status: listing.status || 'DRAFT',
     availability: listingStatusToAvailability(listing.status),
@@ -353,7 +448,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     selectedStateId: '',
     locationCity: listing.locationCity || '',
     selectedCityId: '',
-    district: parsed.district || '',
+    address: formatAddressWithoutPinCode(listing.address || parsed.address || parsed.district, parsed.pinCode),
     pinCode: parsed.pinCode || '',
     nearbyLandmark: parsed.nearbyLandmark || '',
     condition: listing.condition || '',
@@ -361,13 +456,28 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     operatingHours: listing.operatingHours ? String(listing.operatingHours) : '',
     fuelType: parsed.fuelType || '',
     transmission: parsed.transmission || '',
-    grossPower: listing.grossPower || '',
+    grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
     chassisOrSerialNo: parsed.chassisOrSerialNo || '',
-    registrationNo: parsed.registrationNo || '',
+    registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
     registrationYear: parsed.registrationYear || '',
-    insuranceExpiry: parsed.insuranceExpiry || '',
+    insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsed.insuranceExpiry || '',
     previousOwners: parsed.previousOwners || '',
-  };
+    rtoDetails: {
+      hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+      taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+      fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+      insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
+      pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+      hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+      rtoOffice: linkedRto?.rtoOffice || '',
+      rtoAgentName: linkedRto?.rtoAgentName || '',
+      rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
+      vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
+    },
+  });
 };
 
 const toComparableValue = (value: unknown) => String(value ?? '').trim();
@@ -377,7 +487,7 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
     header: ['title', 'availability'],
     overview: ['overview', 'additionalDescription'],
     pricing: ['price', 'isNegotiable', 'categoryId', 'categoryName', 'brandName', 'modelName', 'manufacturingYear'],
-    sellerLocation: ['locationState', 'locationCity', 'district', 'pinCode', 'nearbyLandmark', 'condition'],
+    sellerLocation: ['locationState', 'locationCity', 'address', 'pinCode', 'nearbyLandmark', 'condition'],
     technical: [
       'variant',
       'operatingHours',
@@ -392,7 +502,8 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
     ],
   };
 
-  return fieldsBySection[section].some((field) => toComparableValue(current[field]) !== toComparableValue(base[field]));
+  return fieldsBySection[section].some((field) => toComparableValue(current[field]) !== toComparableValue(base[field]))
+    || (section === 'technical' && JSON.stringify(current.rtoDetails) !== JSON.stringify(base.rtoDetails));
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -418,6 +529,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [savingSection, setSavingSection] = useState<DetailSection | null>(null);
   const [categories, setCategories] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -427,6 +540,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const thumbnailStripRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollThumbnails = (direction: 'left' | 'right') => {
+    if (thumbnailStripRef.current) {
+      const scrollAmount = direction === 'left' ? -220 : 220;
+      thumbnailStripRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   const isSuperAdmin = currentUserRole === 'SUPER_ADMIN';
   const isEmployee = currentUserRole === 'EMPLOYEE';
@@ -436,6 +557,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     currentUserRole === 'SUPER_ADMIN' ||
     currentUserRole === 'ADMIN' ||
     hasPermission(user?.permissions, 'listings.update');
+  const canDelete =
+    currentUserRole === 'SUPER_ADMIN' ||
+    currentUserRole === 'PARTNER' ||
+    currentUserRole === 'CUSTOMER' ||
+    (currentUserRole === 'EMPLOYEE' && hasPermission(user?.permissions, 'listings.delete'));
   const backHref = isSuperAdmin ? '/superadmin/listings' : isEmployee ? '/employee/listings' : '/partner/listings';
   const effectiveSelectedStateId =
     form?.selectedStateId ||
@@ -624,7 +750,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   );
 
   const updateForm = useCallback(<K extends keyof ListingEditForm>(field: K, value: ListingEditForm[K]) => {
-    setForm((current) => (current ? { ...current, [field]: value } : current));
+    setForm((current) =>
+      current
+        ? {
+            ...current,
+            [field]: typeof value === 'string' ? sanitizeListingFieldValue(field, value) : value,
+          }
+        : current
+    );
   }, []);
 
   const markMediaUnavailable = useCallback((mediaId: string) => {
@@ -676,7 +809,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         next.selectedStateId = baseForm.selectedStateId;
         next.locationCity = baseForm.locationCity;
         next.selectedCityId = baseForm.selectedCityId;
-        next.district = baseForm.district;
+        next.address = baseForm.address;
         next.pinCode = baseForm.pinCode;
         next.nearbyLandmark = baseForm.nearbyLandmark;
         next.condition = baseForm.condition;
@@ -693,6 +826,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         next.registrationYear = baseForm.registrationYear;
         next.insuranceExpiry = baseForm.insuranceExpiry;
         next.previousOwners = baseForm.previousOwners;
+        next.rtoDetails = baseForm.rtoDetails;
       }
 
       return next;
@@ -714,38 +848,75 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       return;
     }
 
+    const sanitizedForm = sanitizeListingFormData(form);
+    const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    const shouldSyncRto = Boolean(listing.rtoRecords?.length) || hasListingRtoInput(sanitizedRto);
+    const rtoValidationError = section === 'technical' && shouldSyncRto
+      ? validateListingRtoForm(sanitizedRto, {
+          registrationNo: sanitizedForm.registrationNo,
+          vehicleType: sanitizedForm.categoryName,
+          vehicleModel: sanitizedForm.modelName,
+          operatingHours: sanitizedForm.operatingHours,
+          insuranceExpiry: sanitizedForm.insuranceExpiry,
+        })
+      : null;
+    if (rtoValidationError) {
+      setError(rtoValidationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
+    const validationError = getListingSectionValidationError(section, sanitizedForm);
+
+    if (validationError) {
+      setError(validationError);
+      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+      return;
+    }
+
+    setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+
     const payload: Record<string, unknown> = {};
 
     if (section === 'header') {
-      payload.title = form.title.trim();
-      payload.status = availabilityToListingStatus(form.availability, listing.status);
+      payload.title = sanitizedForm.title.trim();
+      payload.status = availabilityToListingStatus(sanitizedForm.availability, listing.status);
     }
 
     if (section === 'overview') {
-      payload.description = buildListingDescription(form);
-      payload.additionalDescription = form.additionalDescription.trim();
+      payload.description = buildListingDescription(sanitizedForm);
+      payload.additionalDescription = sanitizedForm.additionalDescription.trim();
     }
 
     if (section === 'pricing') {
-      payload.price = form.price.trim();
-      payload.isNegotiable = form.isNegotiable;
-      payload.categoryId = form.categoryId;
-      payload.brandName = form.brandName.trim();
-      payload.modelName = form.modelName.trim();
-      payload.manufacturingYear = form.manufacturingYear.trim();
+      payload.price = sanitizedForm.price.trim();
+      payload.isNegotiable = sanitizedForm.isNegotiable;
+      payload.categoryId = sanitizedForm.categoryId;
+      payload.brandName = sanitizedForm.brandName.trim();
+      payload.modelName = sanitizedForm.modelName.trim();
+      payload.manufacturingYear = sanitizedForm.manufacturingYear.trim();
     }
 
     if (section === 'sellerLocation') {
-      payload.locationState = form.locationState.trim();
-      payload.locationCity = form.locationCity.trim();
-      payload.condition = form.condition.trim();
-      payload.description = buildListingDescription(form);
+      payload.locationState = sanitizedForm.locationState.trim();
+      payload.locationCity = sanitizedForm.locationCity.trim();
+      payload.address = sanitizedForm.address.trim();
+      payload.condition = sanitizedForm.condition.trim();
+      payload.description = buildListingDescription(sanitizedForm);
     }
 
     if (section === 'technical') {
-      payload.operatingHours = form.operatingHours.trim();
-      payload.grossPower = form.grossPower.trim();
-      payload.description = buildListingDescription(form);
+      payload.operatingHours = sanitizedForm.operatingHours.trim();
+      payload.grossPower = sanitizedForm.grossPower.trim();
+      if (shouldSyncRto) {
+        payload.rtoDetails = buildListingRtoDetails(sanitizedRto, {
+          registrationNo: sanitizedForm.registrationNo,
+          vehicleType: sanitizedForm.categoryName,
+          vehicleModel: sanitizedForm.modelName,
+          operatingHours: sanitizedForm.operatingHours,
+          insuranceExpiry: sanitizedForm.insuranceExpiry,
+        });
+      }
+      payload.description = buildListingDescription(sanitizedForm);
     }
 
     try {
@@ -812,6 +983,21 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       setError(getErrorMessage(saveError, t('listingDetails.mediaUpdateFailed')));
     } finally {
       setSavingSection(null);
+    }
+  };
+
+  const handleDeleteListing = async () => {
+    if (!listing || isDeleting) return;
+
+    try {
+      setIsDeleting(true);
+      setError(null);
+      await api.delete(`/listings/${listing.id}`);
+      router.push(backHref);
+    } catch (deleteError: unknown) {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setError(getErrorMessage(deleteError, t('listingDetails.deleteFailed', 'Failed to delete listing.')));
     }
   };
 
@@ -923,14 +1109,27 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full bg-[#FFC107] px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
-                >
-                  <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  <span>{t('listingDetails.edit')}</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full bg-[#FFC107] px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
+                  >
+                    <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                    <span>{t('listingDetails.edit')}</span>
+                  </button>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      className="inline-flex h-7 sm:h-8 items-center justify-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold text-rose-700 shadow-sm transition hover:bg-rose-100"
+                      title={t('listingDetails.delete', 'Delete listing')}
+                    >
+                      <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      <span className="hidden sm:inline">{t('listingDetails.delete', 'Delete')}</span>
+                    </button>
+                  ) : null}
+                </>
               )}
             </div>
           ) : null}
@@ -938,14 +1137,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       );
     }
     return () => setCustomHeader(null);
-  }, [listing, form, isEditing, savingSection, uploadingMedia, backHref, canEdit, setCustomHeader, resetSection, updateForm, saveSection, clearPendingMediaUploads, t]);
+  }, [listing, form, isEditing, savingSection, uploadingMedia, backHref, canEdit, canDelete, setCustomHeader, resetSection, updateForm, saveSection, clearPendingMediaUploads, t]);
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center p-8 text-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent"></div>
-        <p className="mt-4 text-sm font-medium text-gray-500">{t('listingDetails.loadingVehicleDetails')}</p>
-      </div>
+      <BrandLoader variant="section" size="md" bg="light" text={t('listingDetails.loadingVehicleDetails')} />
     );
   }
 
@@ -1100,48 +1296,135 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       }
                     />
                   )}
+
+                  {availableMedia.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMediaIndex((prev) => (prev > 0 ? prev - 1 : availableMedia.length - 1));
+                        }}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
+                        aria-label="Previous media"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMediaIndex((prev) => (prev < availableMedia.length - 1 ? prev + 1 : 0));
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
+                        aria-label="Next media"
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </>
+                  )}
+
+                  {availableMedia.length > 0 && (
+                    <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm backdrop-blur-sm pointer-events-none z-10">
+                      <Camera className="h-3.5 w-3.5" />
+                      <span>{displayedActiveMediaIndex + 1} / {availableMedia.length}</span>
+                    </div>
+                  )}
+
                   {activeMedia?.isFeatured ? (
-                    <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow">{t('listingDetails.coverImage')}</div>
+                    <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow z-10">{t('listingDetails.coverImage')}</div>
                   ) : null}
+
+                  {availableMedia.some((m) => m.type === 'VIDEO') && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const firstVideoIndex = availableMedia.findIndex((m) => m.type === 'VIDEO');
+                        if (firstVideoIndex !== -1) {
+                          setActiveMediaIndex(firstVideoIndex);
+                        }
+                      }}
+                      className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/85 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-md shadow-lg transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
+                      title={t('listingDetails.watchVideo', 'Watch Video')}
+                    >
+                      <div className="relative flex h-5 w-5 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs">
+                        <Play className="h-3 w-3 fill-white text-white ml-0.5" />
+                      </div>
+                      <span className="font-semibold text-white tracking-wide">
+                        {t('listingDetails.watchVideo', 'Watch Video')}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
-                <div 
-                  className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden w-full"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                >
-                  {availableMedia.map((mediaItem, index) => (
+                <div className="relative border-t border-gray-100 p-2 sm:p-3">
+                  {availableMedia.length > 3 && (
                     <button
-                      key={mediaItem.id}
                       type="button"
-                      onClick={() => setActiveMediaIndex(index)}
-                      className={`relative h-20 w-28 shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
-                        index === displayedActiveMediaIndex ? 'border-[#FFC107] ring-2 ring-[#FFC107]/20' : 'border-transparent hover:border-gray-300'
-                      }`}
+                      onClick={() => scrollThumbnails('left')}
+                      className="absolute left-1 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
+                      aria-label="Scroll thumbnails left"
                     >
-                      {mediaItem.type === 'VIDEO' ? (
-                        <div className="relative flex h-full w-full items-center justify-center bg-gray-900 text-white">
-                          <video
-                            src={getAbsoluteFileUrl(mediaItem.url)}
-                            className="absolute inset-0 h-full w-full object-cover opacity-50"
-                            onError={() => markMediaUnavailable(mediaItem.id)}
-                          />
-                          <AlertCircle className="relative z-10 h-6 w-6" />
-                        </div>
-                      ) : (
-                        <SafeRemoteImage
-                          src={getAbsoluteFileUrl(mediaItem.url)}
-                          alt={t('listingDetails.thumbnailAlt')}
-                          className="h-full w-full object-cover"
-                          onError={() => markMediaUnavailable(mediaItem.id)}
-                          fallback={
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
-                              <ImageIcon className="h-5 w-5" />
-                            </div>
-                          }
-                        />
-                      )}
+                      <ChevronLeft className="h-4 w-4" />
                     </button>
-                  ))}
+                  )}
+
+                  <div 
+                    ref={thumbnailStripRef}
+                    className="flex overflow-x-auto gap-2 sm:gap-3 snap-x [&::-webkit-scrollbar]:hidden w-full scroll-smooth px-7"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {availableMedia.map((mediaItem, index) => (
+                      <button
+                        key={mediaItem.id}
+                        type="button"
+                        onClick={() => setActiveMediaIndex(index)}
+                        className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-center ${
+                          index === displayedActiveMediaIndex
+                            ? 'border-[#FFC107] ring-2 ring-[#FFC107]/20 scale-[0.98]'
+                            : 'border-transparent hover:border-gray-300 opacity-90 hover:opacity-100'
+                        }`}
+                      >
+                        {mediaItem.type === 'VIDEO' ? (
+                          <div className="relative flex h-full w-full items-center justify-center bg-gray-900 text-white group">
+                            <video
+                              src={getAbsoluteFileUrl(mediaItem.url)}
+                              className="absolute inset-0 h-full w-full object-cover opacity-60"
+                              onError={() => markMediaUnavailable(mediaItem.id)}
+                            />
+                            <div className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-white shadow-md">
+                              <Play className="h-3.5 w-3.5 fill-white ml-0.5" />
+                            </div>
+                          </div>
+                        ) : (
+                          <SafeRemoteImage
+                            src={getAbsoluteFileUrl(mediaItem.url)}
+                            alt={t('listingDetails.thumbnailAlt')}
+                            className="h-full w-full object-cover"
+                            onError={() => markMediaUnavailable(mediaItem.id)}
+                            fallback={
+                              <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                                <ImageIcon className="h-5 w-5" />
+                              </div>
+                            }
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {availableMedia.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => scrollThumbnails('right')}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
+                      aria-label="Scroll thumbnails right"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1249,7 +1532,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   <div className="rounded-xl border border-rose-200/70 bg-white p-3.5 space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sale Date</p>
                     <p className="text-sm font-bold text-gray-900">
-                      {listing.saleRecord.soldAt ? new Date(listing.saleRecord.soldAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                      {listing.saleRecord.soldAt ? new Date(listing.saleRecord.soldAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}
                     </p>
                   </div>
 
@@ -1365,7 +1648,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
               <Field label={t('listingDetails.year')}>
                 {isEditing ? (
-                  <input value={form.manufacturingYear} onChange={(event) => updateForm('manufacturingYear', event.target.value)} className={inputClassName} />
+                  <SearchableSelect
+                    options={YEAR_SELECT_OPTIONS}
+                    value={form.manufacturingYear}
+                    displayValue={form.manufacturingYear}
+                    onChange={(option) => updateForm('manufacturingYear', String(option.id))}
+                    placeholder={t('listingDetails.selectManufacturingYear', 'Select year')}
+                    searchable={false}
+                  />
                 ) : (
                   <div className="font-semibold text-gray-900">{listing.manufacturingYear || t('listingDetails.na')}</div>
                 )}
@@ -1443,8 +1733,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                             disabled={!effectiveSelectedStateId}
                           />
                         </Field>
-                        <Field label={t('listingDetails.district')}>
-                          <input value={form.district} onChange={(event) => updateForm('district', event.target.value)} className={inputClassName} />
+                        <Field label={t('listingDetails.address', 'Address')}>
+                          <input value={form.address} onChange={(event) => updateForm('address', event.target.value)} className={inputClassName} />
                         </Field>
                         <Field label={t('listingDetails.pinCode')}>
                           <input value={form.pinCode} onChange={(event) => updateForm('pinCode', event.target.value)} className={inputClassName} />
@@ -1456,9 +1746,16 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     ) : (
                       <>
                         <p className="text-sm font-semibold text-gray-900">
-                          {[listing.locationCity, parsedDetails.district, listing.locationState].filter(Boolean).join(', ')}
-                          {parsedDetails.pinCode ? ` - ${parsedDetails.pinCode}` : ''}
+                          {formatLocationSummary(
+                            listing.address || parsedDetails.address || parsedDetails.district,
+                            listing.locationCity,
+                            listing.locationState,
+                            parsedDetails.pinCode,
+                          )}
                         </p>
+                        {parsedDetails.pinCode ? (
+                          <p className="mt-1 text-xs font-medium text-gray-500">{t('listingDetails.pinCode')}: {parsedDetails.pinCode}</p>
+                        ) : null}
                         {parsedDetails.nearbyLandmark ? (
                           <p className="mt-0.5 text-xs text-gray-500">{t('listingDetails.nearLabel', { landmark: parsedDetails.nearbyLandmark })}</p>
                         ) : null}
@@ -1473,6 +1770,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <div>
                   <p className="text-xs font-medium text-gray-500">{t('listingDetails.totalViews')}</p>
                   <p className="text-sm font-semibold text-gray-900">{t('listingDetails.totalViewsValue', { count: listing.views || 0 })}</p>
+                </div>
+              </li>
+
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 text-gray-400" />
+                <div>
+                  <p className="text-xs font-medium text-gray-500">{t('listingDetails.availability', 'Availability')}</p>
+                  <p className="text-sm font-semibold text-gray-900">{formatPortalLabel(listingStatusToAvailability(listing.status))}</p>
                 </div>
               </li>
 
@@ -1551,23 +1856,49 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   />
                 </Field>
                 <Field label={t('listingDetails.grossPower')}>
-                  <input value={form.grossPower} onChange={(event) => updateForm('grossPower', event.target.value)} className={inputClassName} />
+                  <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={form.grossPower}
+                      onChange={(event) => updateForm('grossPower', event.target.value.replace(/[^0-9]/g, ''))}
+                      onKeyDown={(event) => { if (!/[0-9]|Backspace|Delete|ArrowLeft|ArrowRight|Tab|Home|End/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault(); }}
+                      className="flex-1 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none"
+                      placeholder="e.g. 170"
+                    />
+                    <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-500 select-none">HP</span>
+                  </div>
                 </Field>
                 <Field label={t('listingDetails.chassisSerialNo')}>
                   <input value={form.chassisOrSerialNo} onChange={(event) => updateForm('chassisOrSerialNo', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationNo')}>
+                <Field label={t('listingDetails.vehicleNumber', 'Vehicle Number')}>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
                 <Field label={t('listingDetails.registrationYear')}>
-                  <input value={form.registrationYear} onChange={(event) => updateForm('registrationYear', event.target.value)} className={inputClassName} />
+                  <SearchableSelect
+                    options={YEAR_SELECT_OPTIONS}
+                    value={form.registrationYear}
+                    displayValue={form.registrationYear}
+                    onChange={(option) => updateForm('registrationYear', String(option.id))}
+                    placeholder={t('listingDetails.selectRegistrationYear', 'Select registration year')}
+                    searchable={false}
+                  />
                 </Field>
                 <Field label={t('listingDetails.insuranceExpiry')}>
-                  <input value={form.insuranceExpiry} onChange={(event) => updateForm('insuranceExpiry', event.target.value)} className={inputClassName} />
+                  <input type="date" value={form.insuranceExpiry} onChange={(event) => updateForm('insuranceExpiry', event.target.value)} className={inputClassName} />
                 </Field>
                 <Field label={t('listingDetails.numberOfOwners')}>
                   <input value={form.previousOwners} onChange={(event) => updateForm('previousOwners', event.target.value)} className={inputClassName} />
                 </Field>
+                <ListingRtoFields
+                  value={form.rtoDetails}
+                  onChange={(key, value) => updateForm('rtoDetails', { ...form.rtoDetails, [key]: value })}
+                  insuranceExpiry={form.insuranceExpiry}
+                  onInsuranceExpiryChange={(value) => updateForm('insuranceExpiry', value)}
+                  required={Boolean(listing.rtoRecords?.length) || hasListingRtoInput(form.rtoDetails)}
+                />
               </div>
             ) : (
               <div className="space-y-3 h-[320px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -1589,15 +1920,15 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Wrench className="h-4 w-4 text-gray-400" /> {t('listingDetails.grossPower')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{listing.grossPower || t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{listing.grossPower ? `${listing.grossPower.replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim()} HP` : t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.chassisSerialNo')}</span>
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.chassisOrSerialNo || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationNo')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.registrationNo || t('listingDetails.na')}</span>
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.vehicleNumber', 'Vehicle Number')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{formatRegistrationNumber(listing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo) || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationYear')}</span>
@@ -1605,17 +1936,98 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><ShieldCheck className="h-4 w-4 text-gray-400" /> {t('listingDetails.insuranceExpiry')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.insuranceExpiry ? formatPortalDateTime(parsedDetails.insuranceExpiry).split(',')[0] : t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.insuranceExpiry ? formatPortalDate(parsedDetails.insuranceExpiry) : t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Info className="h-4 w-4 text-gray-400" /> {t('listingDetails.numberOfOwners')}</span>
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.previousOwners || '1'}</span>
                 </div>
+                {listing.rtoRecords?.[0] && (() => {
+                  const rto = listing.rtoRecords![0];
+                  const statusBadge = (val: string | null | undefined, type: 'validity' | 'hp' | 'hsrp') => {
+                    const v = (val || '').toUpperCase();
+                    let cls = 'bg-gray-100 text-gray-500';
+                    let label = val || '—';
+                    if (type === 'validity') {
+                      if (v === 'VALID') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Valid'; }
+                      else if (v === 'EXPIRED') { cls = 'bg-red-100 text-red-700'; label = 'Expired'; }
+                      else if (v === 'NOT_AVAILABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                    } else if (type === 'hp') {
+                      if (v === 'TERMINATED') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Terminated'; }
+                      else if (v === 'ACTIVE') { cls = 'bg-red-100 text-red-700'; label = 'Active'; }
+                      else if (v === 'NOT_APPLICABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                      else { cls = 'bg-yellow-100 text-yellow-700'; label = 'Pending'; }
+                    } else if (type === 'hsrp') {
+                      if (v === 'YES') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Yes'; }
+                      else if (v === 'NO') { cls = 'bg-red-100 text-red-700'; label = 'No'; }
+                      else if (v === 'NOT_APPLICABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
+                      else { cls = 'bg-yellow-100 text-yellow-700'; label = 'Pending'; }
+                    }
+                    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${cls}`}>{label}</span>;
+                  };
+                  return (
+                    <>
+                      <div className="mt-2 border-t border-amber-100 pt-3">
+                        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-600">RTO &amp; Compliance</p>
+                      </div>
+                      {([
+                        ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
+                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
+                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
+                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],
+                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],
+                        ['HSRP', statusBadge(rto.hsrpStatus, 'hsrp')],
+                        rto.rtoOffice ? ['RTO Office', <span key="ro" className="text-sm font-semibold text-gray-900">{rto.rtoOffice}</span>] : null,
+                        rto.rtoAgentName ? ['RTO Agent Name', <span key="ra" className="text-sm font-semibold text-gray-900">{rto.rtoAgentName}</span>] : null,
+                        rto.rtoExpenses != null ? ['RTO Expenses', <span key="re" className="text-sm font-semibold text-gray-900">{formatPortalCurrency(Number(rto.rtoExpenses))}</span>] : null,
+                        rto.vehicleMaintenanceCost != null ? ['Maintenance Cost', <span key="mc" className="text-sm font-semibold text-gray-900">{formatPortalCurrency(Number(rto.vehicleMaintenanceCost))}</span>] : null,
+                      ] as ([string, React.ReactNode] | null)[]).filter((item): item is [string, React.ReactNode] => item !== null).map((item) => (
+                        <div key={String(item[0])} className="flex items-center justify-between border-b border-gray-50 py-2">
+                          <span className="text-sm text-gray-500">{item[0]}</span>
+                          {item[1]}
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {isDeleteDialogOpen && listing ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <h3 className="mt-4 text-lg font-bold text-gray-900">{t('listingDetails.deleteListing', 'Delete listing')}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-600">
+              {t('listingDetails.deleteListingConfirmation', 'This action cannot be undone. The listing and its uploaded media will be removed.')}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                disabled={isDeleting}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+              >
+                {t('listingDetails.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteListing()}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? t('listingDetails.deleting', 'Deleting...') : t('listingDetails.delete', 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isLightboxOpen && activeMedia && activeMedia.type !== 'VIDEO' && (
         <div 

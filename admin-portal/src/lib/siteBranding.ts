@@ -1,5 +1,8 @@
+import { cache } from 'react';
+
 export type SiteBranding = {
   logoUrl: string | null;
+  darkLogoUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
   pwaBackgroundColor: string | null;
@@ -32,10 +35,17 @@ const appendVersionToUrl = (value: string | null, version?: string | null) => {
   return `${value}${separator}v=${encodeURIComponent(version)}`;
 };
 
-export const getPortalBranding = async (): Promise<SiteBranding> => {
+// Branding is used by both generateMetadata and the root layout. React's
+// request cache prevents those two consumers from issuing duplicate requests
+// during the same render, while Next's short revalidation window keeps normal
+// navigations from waiting on the API every time.
+export const getPortalBranding = cache(async (): Promise<SiteBranding> => {
   try {
     const response = await fetch(`${API_BASE_URL}/master/site-logo`, {
-      cache: 'no-store',
+      next: {
+        revalidate: 60,
+        tags: ['portal-branding'],
+      },
     });
 
     if (!response.ok) {
@@ -45,6 +55,7 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
     const payload = (await response.json()) as {
       data?: {
         imageUrl?: string | null;
+        darkLogoUrl?: string | null;
         faviconUrl?: string | null;
         manifestIconUrl?: string | null;
         pwaBackgroundColor?: string | null;
@@ -57,6 +68,7 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
 
     return {
       logoUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.imageUrl), updatedAt),
+      darkLogoUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.darkLogoUrl), updatedAt),
       faviconUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.faviconUrl), updatedAt),
       manifestIconUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.manifestIconUrl), updatedAt),
       pwaBackgroundColor: payload.data?.pwaBackgroundColor || null,
@@ -66,6 +78,7 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
   } catch {
     return {
       logoUrl: null,
+      darkLogoUrl: null,
       faviconUrl: null,
       manifestIconUrl: null,
       pwaBackgroundColor: null,
@@ -73,4 +86,4 @@ export const getPortalBranding = async (): Promise<SiteBranding> => {
       updatedAt: null,
     };
   }
-};
+});

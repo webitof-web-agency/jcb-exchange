@@ -87,9 +87,9 @@ export const normalizeCustomerPrimeSettings = (
   validityValue: normalizeValidityValue(settings?.validityValue),
   validityUnit: normalizePrimeValidityUnit(settings?.validityUnit),
   applyToCustomerRoleOnly: true,
-  requireForCall: true,
-  requireForWhatsapp: true,
-  requireForSellListing: true,
+  requireForCall: settings?.requireForCall !== false,
+  requireForWhatsapp: settings?.requireForWhatsapp !== false,
+  requireForSellListing: settings?.requireForSellListing !== false,
   updatedAt: settings?.updatedAt || null,
   updatedByUserId: settings?.updatedByUserId || null,
 });

@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Pencil, Search, Trash2, X, Phone, MoreVertical } from 'lucide-react';
+import { ChevronDown, Pencil, Search, Trash2, X, Phone, MoreVertical, Crown, ChevronLeft, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'next/navigation';
 import { generateAdminVisitorDetailPath } from '@/lib/routePaths';
+import { buildPaginationItems } from '@/lib/paginationUtils';
 
 type VisitorRecord = {
   id: string;
@@ -96,6 +98,9 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [activeTypeFilter, setActiveTypeFilter] = useState<string>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [openPageSizeDropdown, setOpenPageSizeDropdown] = useState(false);
   
   const router = useRouter();
 
@@ -110,11 +115,12 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement;
-      if (target?.closest?.('.action-dropdown-container') || target?.closest?.('.filter-dropdown-container')) {
+      if (target?.closest?.('.action-dropdown-container') || target?.closest?.('.filter-dropdown-container') || target?.closest?.('.rows-per-page-dropdown-container')) {
         return;
       }
       setOpenActionDropdownId(null);
       setOpenFilterDropdown(null);
+      setOpenPageSizeDropdown(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('touchstart', handleClickOutside, { passive: true });
@@ -132,7 +138,7 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
     }
 
     try {
-      const response = await api.get<VisitorsResponse>('/superadmin/visitors');
+      const response = await api.get<VisitorsResponse>('/superadmin/visitors?compact=true');
       setData(response.data);
       setError('');
     } catch (loadError) {
@@ -205,6 +211,20 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
       return matchesStatus && matchesType && matchesSearch;
     });
   }, [activeFilter, activeTypeFilter, data.visitors, search]);
+
+  const totalVisitors = filteredVisitors.length;
+  const totalPages = Math.ceil(totalVisitors / pageSize) || 1;
+  const currentPageForView = Math.min(currentPage, totalPages);
+  const paginatedVisitors = useMemo(() => {
+    const startIndex = (currentPageForView - 1) * pageSize;
+    return filteredVisitors.slice(startIndex, startIndex + pageSize);
+  }, [filteredVisitors, currentPageForView, pageSize]);
+  const paginationItems = useMemo(
+    () => buildPaginationItems(currentPageForView, totalPages),
+    [currentPageForView, totalPages]
+  );
+  const startItemIndex = totalVisitors === 0 ? 0 : (currentPageForView - 1) * pageSize + 1;
+  const endItemIndex = Math.min(currentPageForView * pageSize, totalVisitors);
 
   const openEditModal = (visitor: VisitorRecord) => {
     if (!canUpdateVisitors) {
@@ -559,7 +579,7 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
         </div>
 
         {loading ? (
-          <div className="p-8 text-sm text-gray-500">Loading visitor directory...</div>
+          <BrandLoader variant="section" size="sm" bg="light" text="Loading visitor directory..." />
         ) : error ? (
           <div className="p-8">
             <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">{error}</div>
@@ -571,139 +591,255 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto min-h-[300px] pb-16">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500">
-                  <th className="p-4 font-semibold">Visitor</th>
-                  <th className="p-4 font-semibold">Email</th>
-                  <th className="p-4 font-semibold">Type</th>
-                  <th className="p-4 font-semibold">Source</th>
-                  <th className="p-4 font-semibold">Applied On</th>
-                  <th className="p-4 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredVisitors.map((visitor) => {
-                  const isActive = visitor.status === 'ACTIVE';
+          <>
+            <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[620px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <table className="w-full min-w-[980px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500">
+                    <th className="p-4 font-semibold">Visitor</th>
+                    <th className="p-4 font-semibold">Email</th>
+                    <th className="p-4 font-semibold">Type</th>
+                    <th className="p-4 font-semibold">Source</th>
+                    <th className="p-4 font-semibold">Applied On</th>
+                    <th className="p-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedVisitors.map((visitor) => {
+                    const isActive = visitor.status === 'ACTIVE';
 
-                  return (
-                    <tr 
-                      key={visitor.id} 
-                      onClick={() => openVisitorDetails(visitor)}
-                      className="align-top transition-colors hover:bg-gray-50 cursor-pointer"
-                    >
-                      <td className="p-4">
-                        <div className="font-medium text-gray-900">{getVisitorName(visitor)}</div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {visitor.mobile ? (
-                            <a href={`tel:${visitor.mobile}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2 py-1 text-green-700 transition-colors hover:bg-green-100 hover:text-green-800">
-                              <Phone className="h-3 w-3" />
-                              <span className="font-semibold">{visitor.mobile}</span>
-                            </a>
-                          ) : (
-                            'No mobile'
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4 text-sm text-gray-700">{visitor.email || 'No email'}</td>
-                      <td className="p-4">
-                        <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                            {formatLabel(visitor.role)}
-                          </span>
-                          {visitor.isPrimeCustomer ? (
-                            <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                              Prime Customer
+                    return (
+                      <tr
+                        key={visitor.id}
+                        onClick={() => openVisitorDetails(visitor)}
+                        className="cursor-pointer align-top transition-colors hover:bg-gray-50"
+                      >
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-gray-900">{getVisitorName(visitor)}</div>
+                              {visitor.isPrimeCustomer ? (
+                                <span
+                                  title="Prime Customer"
+                                  className="inline-flex items-center justify-center rounded-full bg-amber-100/90 p-0.5 text-amber-800 border border-amber-300 shadow-2xs shrink-0"
+                                >
+                                  <Crown className="h-2.5 w-2.5 fill-amber-500 text-amber-600" />
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500">
+                              {visitor.mobile ? (
+                                <a
+                                  href={`tel:${visitor.mobile}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2 py-1 text-green-700 transition-colors hover:bg-green-100 hover:text-green-800"
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  <span className="font-semibold">{visitor.mobile}</span>
+                                </a>
+                              ) : (
+                                'No mobile'
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 text-sm text-gray-700">{visitor.email || 'No email'}</td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-2">
+                            <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                              {formatLabel(visitor.role)}
                             </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="text-sm text-gray-700">{getSourceLabel(visitor)}</div>
-                        <div className="mt-1 text-xs text-gray-500">{formatLabel(visitor.authProvider)}</div>
-                      </td>
-                      <td className="p-4 text-sm text-gray-700">{formatDate(visitor.createdAt)}</td>
-                      <td className="p-4 text-right">
-                        <div className="relative inline-block text-left action-dropdown-container">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setOpenActionDropdownId(openActionDropdownId === visitor.id ? null : visitor.id);
-                              setOpenFilterDropdown(null);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2 transition-colors"
-                          >
-                            <MoreVertical className="h-5 w-5 text-gray-500" />
-                          </button>
-                          
-                          {openActionDropdownId === visitor.id && (
-                            <div className="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl border border-gray-100 bg-white p-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                              {canUpdateVisitors && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    openEditModal(visitor);
-                                  }}
-                                  disabled={updatingId === visitor.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                  Edit Visitor
-                                </button>
-                              )}
-                              
-                              {canChangeVisitorStatus && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    void handleStatusToggle(visitor);
-                                  }}
-                                  disabled={updatingId === visitor.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
-                                >
-                                  {isActive ? <X className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-green-500 transform rotate-180" />}
-                                  {isActive ? 'Mark Inactive' : 'Mark Active'}
-                                </button>
-                              )}
-                              
-                              {canDeleteVisitors && (
-                                <>
-                                  <div className="my-1 h-px bg-gray-100" />
+                            {visitor.isPrimeCustomer ? (
+                              <span
+                                title="Prime Customer"
+                                className="inline-flex items-center justify-center rounded-full bg-amber-100/90 px-2 py-1 text-[10px] font-semibold text-amber-800 border border-amber-300 shadow-2xs"
+                              >
+                                <Crown className="mr-1 h-2.5 w-2.5 fill-amber-500 text-amber-600" />
+                                Prime Customer
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm text-gray-700">{getSourceLabel(visitor)}</div>
+                          <div className="mt-1 text-xs text-gray-500">{formatLabel(visitor.authProvider)}</div>
+                        </td>
+                        <td className="p-4 text-sm text-gray-700">{formatDate(visitor.createdAt)}</td>
+                        <td className="p-4 text-right">
+                          <div className="relative inline-block text-left action-dropdown-container">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOpenActionDropdownId(openActionDropdownId === visitor.id ? null : visitor.id);
+                                setOpenFilterDropdown(null);
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2"
+                            >
+                              <MoreVertical className="h-5 w-5 text-gray-500" />
+                            </button>
+
+                            {openActionDropdownId === visitor.id ? (
+                              <div className="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl border border-gray-100 bg-white p-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                                {canUpdateVisitors ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       setOpenActionDropdownId(null);
-                                      setDeleteVisitorTarget(visitor);
+                                      openEditModal(visitor);
                                     }}
                                     disabled={updatingId === visitor.id}
-                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
                                   >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete Visitor
+                                    <Pencil className="h-4 w-4" />
+                                    Edit Visitor
                                   </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                                ) : null}
+
+                                {canChangeVisitorStatus ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setOpenActionDropdownId(null);
+                                      void handleStatusToggle(visitor);
+                                    }}
+                                    disabled={updatingId === visitor.id}
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                                  >
+                                    {isActive ? <X className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 rotate-180 text-green-500" />}
+                                    {isActive ? 'Mark Inactive' : 'Mark Active'}
+                                  </button>
+                                ) : null}
+
+                                {canDeleteVisitors ? (
+                                  <>
+                                    <div className="my-1 h-px bg-gray-100" />
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setOpenActionDropdownId(null);
+                                        setDeleteVisitorTarget(visitor);
+                                      }}
+                                      disabled={updatingId === visitor.id}
+                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      Delete Visitor
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-gray-100 bg-white px-6 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-medium text-gray-500 sm:justify-start">
+                <div>
+                  Showing <span className="font-bold text-gray-900">{startItemIndex}</span> to{' '}
+                  <span className="font-bold text-gray-900">{endItemIndex}</span> of{' '}
+                  <span className="font-bold text-gray-900">{totalVisitors}</span> visitors
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span>Rows per page:</span>
+                  <div className="relative rows-per-page-dropdown-container">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOpenPageSizeDropdown((prev) => !prev);
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-800 shadow-2xs transition hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    >
+                      <span>{pageSize}</span>
+                      <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+                    </button>
+
+                    {openPageSizeDropdown ? (
+                      <div className="absolute bottom-full left-0 z-50 mb-1.5 w-20 origin-bottom-left rounded-xl border border-gray-100 bg-white p-1 shadow-lg">
+                        {[5, 10, 25, 50].map((size) => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setPageSize(size);
+                              setCurrentPage(1);
+                              setOpenPageSizeDropdown(false);
+                            }}
+                            className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-gray-100 ${
+                              pageSize === size ? 'bg-[#FFC107]/20 font-extrabold text-gray-900' : 'font-medium text-gray-700'
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-1 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPageForView === 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </button>
+
+                <div className="flex items-center gap-1 px-1">
+                  {paginationItems.map((item, index) =>
+                    typeof item === 'number' ? (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setCurrentPage(item)}
+                        className={`h-8 w-8 rounded-lg text-xs font-bold transition ${
+                          currentPageForView === item ? 'bg-[#FFC107] text-black shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ) : (
+                      <span key={`ellipsis-${index}`} className="px-1 text-xs font-bold text-gray-400">
+                        ...
+                      </span>
+                    )
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPageForView === totalPages || totalPages === 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

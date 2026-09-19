@@ -13,6 +13,7 @@ import { useToastStore } from '@/store/toastStore';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
+import BrandLoader from '@/components/ui/BrandLoader';
 
 interface DealerDetail {
   id: string;
@@ -173,31 +174,25 @@ export default function DealerDetailPageClient({
       return;
     }
 
-    try {
-      if (user.role === 'CUSTOMER') {
-        await createPublicContactEnquiry({
-          partnerProfileId: dealer.id,
-          enquiryType: 'WHATSAPP',
-        });
-      }
-      const text = encodeURIComponent(t('dealerDetails.whatsappIntro'));
-      window.open('https://wa.me/' + wpNumber.replace('+', '') + '?text=' + text, '_blank');
-    } catch (error) {
-      console.error('Failed to register whatsapp', error);
-      showToast({
-        variant: 'error',
-        title: t('dealers.enquiryNotCreated'),
-        description: t('dealers.enquiryNotCreatedDescription'),
+    const text = encodeURIComponent(t('dealerDetails.whatsappIntro'));
+    const targetUrl = 'https://wa.me/' + wpNumber.replace('+', '') + '?text=' + text;
+
+    const popupWindow = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+
+    if (user.role === 'CUSTOMER') {
+      void createPublicContactEnquiry({
+        partnerProfileId: dealer.id,
+        enquiryType: 'WHATSAPP',
+      }).catch((error) => {
+        console.error('Failed to register whatsapp enquiry', error);
       });
-      const text = encodeURIComponent(t('dealerDetails.whatsappIntro'));
-      window.open('https://wa.me/' + wpNumber.replace('+', '') + '?text=' + text, '_blank');
     }
   };
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-jcb-yellow"></div>
+        <BrandLoader size="lg" variant="section" bg="light" />
       </div>
     );
   }
@@ -296,9 +291,49 @@ export default function DealerDetailPageClient({
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 -mt-16 lg:-mt-24 relative z-10">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-8">
-            <div className="lg:hidden flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="space-y-8">
+          {/* Dealer Information Stats Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {dealer.createdAt && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:border-gray-200">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-yellow-50 text-jcb-yellow">
+                  <Calendar className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{t('dealerDetails.memberSince')}</p>
+                  <p className="font-extrabold text-gray-900 text-sm sm:text-base">{new Date(dealer.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</p>
+                </div>
+              </div>
+            )}
+
+            {dealer.workingHours && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:border-gray-200">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-yellow-50 text-jcb-yellow">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{t('dealerDetails.businessHours')}</p>
+                  <p className="font-extrabold text-gray-900 text-sm sm:text-base line-clamp-1" title={dealer.workingHours}>{dealer.workingHours}</p>
+                </div>
+              </div>
+            )}
+
+            {dealer.websiteUrl && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:border-gray-200 overflow-hidden">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-yellow-50 text-jcb-yellow">
+                  <Building2 className="h-6 w-6" />
+                </div>
+                <div className="overflow-hidden min-w-0 flex-1">
+                  <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">{t('dealerDetails.website')}</p>
+                  <a href={dealer.websiteUrl.startsWith('http') ? dealer.websiteUrl : 'https://' + dealer.websiteUrl} target="_blank" rel="noreferrer" className="font-extrabold text-blue-600 hover:underline text-sm sm:text-base truncate block">
+                    {dealer.websiteUrl.replace(/^https?:\/\//, '')}
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="lg:hidden flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
               <button
                 onClick={handleCall}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 font-bold text-gray-900 shadow-sm transition-all hover:bg-gray-50 active:bg-gray-100"
@@ -342,7 +377,7 @@ export default function DealerDetailPageClient({
 
               {loadingListings ? (
                 <div className="flex h-40 items-center justify-center rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-jcb-yellow"></div>
+                  <BrandLoader size="sm" variant="section" bg="light" />
                 </div>
               ) : listings.length === 0 ? (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 py-16 text-center text-gray-500">
@@ -351,7 +386,7 @@ export default function DealerDetailPageClient({
                   <p className="mt-1">{t('dealerDetails.noActiveListingsDescription')}</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {listings.map((listing) => (
                     <Link
                       href={generateMachineSlugPath(listing)}
@@ -377,9 +412,9 @@ export default function DealerDetailPageClient({
                         </div>
                       </div>
                       <div className="flex flex-grow flex-col p-4">
-                        <div className="mb-1 flex items-center justify-between">
+                        <div className="mb-2 flex items-center justify-between">
                           <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{listing.brandName}</span>
-                          <span className="text-xs font-semibold text-jcb-yellow">{listing.manufacturingYear}</span>
+                          <span className="text-[10px] font-bold text-white bg-gray-900 px-2 py-0.5 rounded shadow-sm tracking-wider">{listing.manufacturingYear}</span>
                         </div>
                         <h4 className="mb-2 line-clamp-1 font-bold text-gray-900">{listing.title}</h4>
                         <div className="mb-4 text-xl font-bold text-gray-900">
@@ -404,60 +439,7 @@ export default function DealerDetailPageClient({
               )}
             </div>
           </div>
-
-          <div className="lg:col-span-1 hidden lg:block">
-            <div className="sticky top-24 space-y-6">
-              <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-                <h3 className="mb-4 text-lg font-bold text-gray-900">{t('dealerDetails.information')}</h3>
-
-                {dealer.createdAt && (
-                  <div className="mb-4">
-                    <h4 className="mb-2 flex items-center text-sm font-semibold text-gray-900">
-                      <Calendar className="mr-2 h-4 w-4 text-jcb-yellow" />
-                      {t('dealerDetails.memberSince')}
-                    </h4>
-                    <p className="text-sm text-gray-600 pl-6">
-                      {new Date(dealer.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </p>
-                  </div>
-                )}
-
-                {dealer.workingHours && (
-                  <div className="mb-4 pt-4 border-t border-gray-100">
-                    <h4 className="mb-2 flex items-center text-sm font-semibold text-gray-900">
-                      <Clock className="mr-2 h-4 w-4 text-jcb-yellow" />
-                      {t('dealerDetails.businessHours')}
-                    </h4>
-                    <p className="text-sm text-gray-600 pl-6">{dealer.workingHours}</p>
-                  </div>
-                )}
-
-                {dealer.contactPreference && (
-                  <div className="mb-4 pt-4 border-t border-gray-100">
-                    <h4 className="mb-2 flex items-center text-sm font-semibold text-gray-900">
-                      <MessageCircle className="mr-2 h-4 w-4 text-jcb-yellow" />
-                      {t('dealerDetails.contactPreference')}
-                    </h4>
-                    <p className="text-sm text-gray-600 pl-6 capitalize">{dealer.contactPreference.replace(/_/g, ' ').toLowerCase()}</p>
-                  </div>
-                )}
-
-                {dealer.websiteUrl && (
-                  <div className="pt-4 border-t border-gray-100">
-                    <h4 className="mb-2 flex items-center text-sm font-semibold text-gray-900">
-                      <Building2 className="mr-2 h-4 w-4 text-jcb-yellow" />
-                      {t('dealerDetails.website')}
-                    </h4>
-                    <a href={dealer.websiteUrl.startsWith('http') ? dealer.websiteUrl : 'https://' + dealer.websiteUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline pl-6 break-all">
-                      {dealer.websiteUrl}
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
-    </div>
   );
 }

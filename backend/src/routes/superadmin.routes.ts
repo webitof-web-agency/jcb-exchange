@@ -8,6 +8,7 @@ import {
   deletePartnerUser,
   getAdminListings,
   getFinanceSupportContent,
+  getFooterContent,
   getHeroImageContent,
   getInspectionSectionContent,
   getSiteLogoContent,
@@ -19,6 +20,8 @@ import {
   getPendingVerifications,
   getVerificationDetail,
   getCustomerPrimePayments,
+  getListingPaymentSubmissionById,
+  getListingPaymentSubmissions,
   updatePlatformSettings,
   saveAdminPartnerOnboarding,
   submitAdminPartnerOnboarding,
@@ -28,10 +31,12 @@ import {
   updateAdminListingStatus,
   updateAdminUserStatus,
   updateFinanceSupportContent,
+  updateFooterContent,
   updateHeroImageContent,
   updateInspectionSectionContent,
   updateSiteLogoContent,
   updateCustomerPrimePaymentStatus,
+  updateListingPaymentSubmissionStatus,
   updateVerificationStatus,
 } from '../controllers/admin.controller';
 import {
@@ -49,6 +54,7 @@ router.use(requireAuth);
 const canViewDashboard = requireSuperAdminOrEmployeePermissions(['dashboard.view']);
 const canManageSettings = requireSuperAdminOrEmployeePermissions(['settings.manage']);
 const canManageTranslations = requireSuperAdminOrEmployeePermissions(['translations.manage']);
+const canManageFooter = requireSuperAdminOrEmployeePermissions(['footer.manage']);
 const canManageRecurrence = requireSuperAdminOrEmployeePermissions(['recurrence.manage']);
 const canViewUsers = requireSuperAdminOrEmployeePermissions(['users.read']);
 const canCreateUsers = requireSuperAdminOrEmployeePermissions(['users.create']);
@@ -73,6 +79,8 @@ router.get('/dashboard', canViewDashboard, getDashboardSummary);
 router.get('/badges', canViewDashboard, getModuleBadges);
 router.get('/finance-support', canManageSettings, getFinanceSupportContent);
 router.put('/finance-support', canManageSettings, updateFinanceSupportContent);
+router.get('/footer', canManageFooter, getFooterContent);
+router.put('/footer', canManageFooter, updateFooterContent);
 router.get('/hero-image', canManageSettings, getHeroImageContent);
 router.put('/hero-image', canManageSettings, updateHeroImageContent);
 router.get('/inspection-section', canManageSettings, getInspectionSectionContent);
@@ -85,6 +93,11 @@ router.get('/translations/catalog', canManageTranslations, getTranslationCatalog
 router.put('/translations/catalog', canManageTranslations, saveTranslationCatalog);
 router.get('/customer-prime-payments', canManageRecurrence, getCustomerPrimePayments);
 router.patch('/customer-prime-payments/:id/status', canManageRecurrence, updateCustomerPrimePaymentStatus);
+const canVerifyListingPayment = requireSuperAdminOrEmployeePermissions(['listings.verify_payment', 'listings.approve', 'settings.manage']);
+
+router.get('/listing-payments', canVerifyListingPayment, getListingPaymentSubmissions);
+router.get('/listing-payments/:id', canVerifyListingPayment, getListingPaymentSubmissionById);
+router.patch('/listing-payments/:id/status', canVerifyListingPayment, updateListingPaymentSubmissionStatus);
 router.get('/users', canViewUsers, getAdminUsers);
 router.get('/partners', canViewPartners, getAdminPartners);
 router.get('/visitors', canViewVisitors, getCustomerVisitors);

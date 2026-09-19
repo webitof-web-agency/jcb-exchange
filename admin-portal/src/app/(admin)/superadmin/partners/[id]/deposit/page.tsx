@@ -38,8 +38,10 @@ export default function SuperadminPartnerDepositPage() {
 
       try {
         const resolvedPartnerId = (await resolvePartnerId(params.id)) || params.id;
-        const response = await api.get<{ partners: RedirectPartnerRecord[] }>('/superadmin/partners');
-        const partner = response.data.partners.find((item) => item.id === resolvedPartnerId);
+        const response = await api.get<{ partners: RedirectPartnerRecord[] }>('/superadmin/partners', {
+          params: { id: resolvedPartnerId },
+        });
+        const partner = response.data.partners?.[0];
 
         if (cancelled) {
           return;

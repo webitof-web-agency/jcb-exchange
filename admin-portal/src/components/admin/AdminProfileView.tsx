@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import {
   BadgeCheck,
   CalendarDays,
+  Download,
   KeyRound,
   Mail,
   Phone,
+  Printer,
   Save,
   Shield,
   UserCircle2,
@@ -53,7 +55,7 @@ const formatDate = (value?: string) => {
 
   return parsedDate.toLocaleDateString('en-IN', {
     day: '2-digit',
-    month: 'short',
+    month: '2-digit',
     year: 'numeric',
   });
 };
@@ -93,6 +95,12 @@ export default function AdminProfileView() {
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const handlePrint = () => {
+    if (typeof window !== 'undefined') {
+      window.print();
+    }
+  };
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -159,7 +167,7 @@ export default function AdminProfileView() {
   };
 
   return (
-    <div className="w-full mx-auto max-w-6xl space-y-6">
+    <div className="profile-print-target w-full mx-auto max-w-6xl space-y-6">
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gray-900 px-6 py-8 sm:px-8">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
@@ -186,11 +194,66 @@ export default function AdminProfileView() {
               </span>
             </div>
           </div>
+
+          <div className="mt-6 flex flex-wrap gap-2 profile-no-print">
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#E5AD06]"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="profile-print-only rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Profile Summary</p>
+        <h3 className="mt-1 text-2xl font-bold text-gray-900">{user?.name || 'Portal User'}</h3>
+        <p className="mt-1 text-sm text-gray-500">{user?.email || 'No email available'}</p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Role</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatLabel(user?.role)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Access</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{user?.isRootAdmin ? 'Root access' : 'Managed access'}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Joined</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatDate(user?.createdAt)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatLabel(user?.status)}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Mobile</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{user?.mobile || '-'}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">WhatsApp</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{user?.whatsappNumber || '-'}</p>
+          </div>
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-        <section className="space-y-6">
+        <section className="space-y-6 profile-no-print">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center justify-between gap-4">
               <div>
@@ -316,7 +379,7 @@ export default function AdminProfileView() {
           </div>
         </section>
 
-        <aside className="space-y-6">
+        <aside className="space-y-6 profile-no-print">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Account Overview</p>
             <h3 className="mt-1 text-xl font-bold text-gray-900">Access summary</h3>

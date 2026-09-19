@@ -23,12 +23,23 @@ const getNestedValue = (dictionary: unknown, key: string): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
-const interpolate = (template: string, params?: TranslationParams) => {
+const interpolate = (template: string, params?: TranslationParams, defaultText?: string) => {
   if (!params) {
-    return template;
+    if (defaultText?.trim() && template.includes('{')) {
+      return defaultText;
+    }
+    return template.replace(/\{(\w+)\}\s*/g, '').trim();
   }
 
-  return template.replace(/\{(\w+)\}/g, (_, token: string) => String(params[token] ?? `{${token}}`));
+  return template.replace(/\{(\w+)\}/g, (_, token: string) => {
+    if (params[token] !== undefined && params[token] !== null) {
+      return String(params[token]);
+    }
+    if (defaultText?.trim()) {
+      return defaultText;
+    }
+    return '';
+  });
 };
 
 const buildRegistryFallbackText = (key: string, defaultText?: string) => {
@@ -83,17 +94,17 @@ export const useTranslation = () => {
       const localizedValue = getNestedValue(dictionaries[locale], key);
       const fallbackValue = getNestedValue(dictionaries[DEFAULT_LOCALE], key);
 
-      if (!overrideValue && !localizedValue && !fallbackValue) {
+      if (!overrideValue && !localizedValue) {
         queueMissingTranslationRegistration(
           'frontend',
           key,
-          buildRegistryFallbackText(key, defaultText),
+          buildRegistryFallbackText(key, defaultText ?? fallbackValue ?? undefined),
         );
       }
 
       const resolved = overrideValue ?? localizedValue ?? fallbackValue ?? defaultText ?? key;
 
-      return interpolate(resolved, params);
+      return interpolate(resolved, params, defaultText);
     }, [locale, translationOverrides]) as TranslationFunction;
 
   return {

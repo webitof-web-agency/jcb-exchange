@@ -32,4 +32,24 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const requestUrl = String(error?.config?.url || '');
+    const requestHeaders = error?.config?.headers;
+    const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
+
+    if (axios.isAxiosError(error) && error.response?.status === 401 && sentAuthHeader) {
+      const authStore = useAuthStore.getState();
+      authStore.logout();
+
+      if (!requestUrl.includes('/auth/login') && !requestUrl.includes('/auth/register')) {
+        authStore.setAuthModalOpen(true);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 export default api;

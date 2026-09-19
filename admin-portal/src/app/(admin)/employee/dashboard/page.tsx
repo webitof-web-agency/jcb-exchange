@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import api from '@/lib/api';
-import { Users, ClipboardList, Package, CheckCircle2, MessageSquare } from 'lucide-react';
+import { getDashboardCards } from '@/lib/dashboardCardLinks';
+import { useAuthStore } from '@/store/authStore';
+import { Users, ClipboardList, Package, CheckCircle2, MessageSquare, Heart } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 
 interface DashboardStats {
@@ -52,13 +54,58 @@ const defaultStats: DashboardStats = {
   totalEnquiries: 0,
 };
 
+const dashboardCardMeta = {
+  totalPartners: {
+    title: 'Total Partners',
+    description: 'Registered users',
+    valueClassName: 'text-gray-900',
+    icon: Users,
+    iconWrapperClassName: 'bg-gradient-to-br from-blue-50 to-blue-100',
+    iconClassName: 'text-blue-600',
+  },
+  approvedPartners: {
+    title: 'Approved Partners',
+    description: 'Fully verified',
+    valueClassName: 'text-gray-900',
+    icon: CheckCircle2,
+    iconWrapperClassName: 'bg-gradient-to-br from-yellow-50 to-[#FFC107]/20',
+    iconClassName: 'text-yellow-600',
+  },
+  pendingKyc: {
+    title: 'Pending KYC',
+    description: 'Awaiting review',
+    valueClassName: 'text-orange-500',
+    icon: ClipboardList,
+    iconWrapperClassName: 'bg-gradient-to-br from-orange-50 to-orange-100',
+    iconClassName: 'text-orange-600',
+  },
+  activeListings: {
+    title: 'Active Listings',
+    description: 'Live on platform',
+    valueClassName: 'text-green-600',
+    icon: Package,
+    iconWrapperClassName: 'bg-gradient-to-br from-green-50 to-green-100',
+    iconClassName: 'text-green-600',
+  },
+  totalEnquiries: {
+    title: 'Total Enquiries',
+    description: 'Leads generated',
+    valueClassName: 'text-purple-600',
+    icon: MessageSquare,
+    iconWrapperClassName: 'bg-gradient-to-br from-purple-50 to-purple-100',
+    iconClassName: 'text-purple-600',
+  },
+} as const;
+
 export default function EmployeeDashboardPage() {
+  const userPermissions = useAuthStore((state) => state.user?.permissions || []);
   const [data, setData] = useState<DashboardResponse>({
     stats: defaultStats,
     graphData: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const dashboardCards = getDashboardCards({ portal: 'employee', userPermissions });
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -105,75 +152,41 @@ export default function EmployeeDashboardPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {/* Card 1 */}
-        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Partners</h3>
-            <div className="p-2.5 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl">
-              <Users className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
-          <div>
-            <p className="text-3xl font-black tracking-tight text-gray-900">{loading ? '...' : data.stats.totalPartners}</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">Registered users</p>
-          </div>
-        </div>
+        {dashboardCards.map((card) => {
+          const meta = dashboardCardMeta[card.key];
+          const Icon = meta.icon;
+          const value = data.stats[card.key];
+          const cardClassName = `bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all duration-300 ${card.isClickable ? 'hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFC107] cursor-pointer' : 'opacity-80'} ${card.key === 'totalEnquiries' ? 'sm:col-span-2 lg:col-span-1 xl:col-span-1' : ''}`;
 
-        {/* Card 2 */}
-        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Approved Partners</h3>
-            <div className="p-2.5 bg-gradient-to-br from-yellow-50 to-[#FFC107]/20 rounded-xl">
-              <CheckCircle2 className="w-5 h-5 text-yellow-600" />
-            </div>
-          </div>
-          <div>
-            <p className="text-3xl font-black tracking-tight text-gray-900">{loading ? '...' : data.stats.approvedPartners}</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">Fully verified</p>
-          </div>
-        </div>
+          const content = (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-gray-500 text-sm font-medium">{meta.title}</h3>
+                <div className={`p-2.5 rounded-xl ${meta.iconWrapperClassName}`}>
+                  <Icon className={`w-5 h-5 ${meta.iconClassName}`} />
+                </div>
+              </div>
+              <div>
+                <p className={`text-3xl font-black tracking-tight ${meta.valueClassName}`}>{loading ? '...' : value}</p>
+                <p className="mt-1 text-xs font-medium text-gray-400">{meta.description}</p>
+              </div>
+            </>
+          );
 
-        {/* Card 3 */}
-        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Pending KYC</h3>
-            <div className="p-2.5 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl">
-              <ClipboardList className="w-5 h-5 text-orange-600" />
-            </div>
-          </div>
-          <div>
-            <p className="text-3xl font-black tracking-tight text-orange-500">{loading ? '...' : data.stats.pendingKyc}</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">Awaiting review</p>
-          </div>
-        </div>
+          if (!card.href) {
+            return (
+              <div key={card.key} className={cardClassName} aria-disabled="true">
+                {content}
+              </div>
+            );
+          }
 
-        {/* Card 4 */}
-        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Active Listings</h3>
-            <div className="p-2.5 bg-gradient-to-br from-green-50 to-green-100 rounded-xl">
-              <Package className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-          <div>
-            <p className="text-3xl font-black tracking-tight text-green-600">{loading ? '...' : data.stats.activeListings}</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">Live on platform</p>
-          </div>
-        </div>
-
-        {/* Card 5 */}
-        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-sm border border-gray-100/80 flex flex-col justify-between transition-all hover:-translate-y-1.5 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:bg-white duration-300 sm:col-span-2 lg:col-span-1 xl:col-span-1">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Enquiries</h3>
-            <div className="p-2.5 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl">
-              <MessageSquare className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-          <div>
-            <p className="text-3xl font-black tracking-tight text-purple-600">{loading ? '...' : data.stats.totalEnquiries}</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">Leads generated</p>
-          </div>
-        </div>
+          return (
+            <Link key={card.key} href={card.href} className={cardClassName}>
+              {content}
+            </Link>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -305,9 +318,18 @@ export default function EmployeeDashboardPage() {
 
       </div>
 
-      <div className="text-center pt-8 pb-4">
-        <p className="text-xs font-medium text-gray-400">© 2024–2025 JCB Exchange. All rights reserved.</p>
+      <div className="border-t border-gray-100 pt-8 pb-4">
+        <div className="flex flex-col items-center gap-2 text-center text-xs font-medium text-gray-400">
+          <span>© 2026-2027 JCB Exchange. All rights reserved.</span>
+          <span className="inline-flex items-center justify-center">
+            Crafted with <Heart className="mx-1 h-3.5 w-3.5 inline-block shrink-0 fill-red-500 text-red-500" /> by{' '}
+            <a href="https://webitof.com/" target="_blank" rel="noopener noreferrer" className="ml-1 font-semibold text-gray-600 underline transition-colors hover:text-gray-900">
+              Webitof
+            </a>
+          </span>
+        </div>
       </div>
     </div>
   );
 }
+

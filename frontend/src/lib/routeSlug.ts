@@ -87,7 +87,13 @@ export const buildSlugWithShortSuffix = (slug: string, id: string): string => {
 };
 
 export const parseRouteParam = (rawValue: string): RouteParamParseResult => {
-  const raw = rawValue.trim();
+  let decoded = rawValue.trim();
+  try {
+    decoded = decodeURIComponent(rawValue).trim();
+  } catch {
+    decoded = rawValue.trim();
+  }
+  const raw = decoded.replace(/\s+/g, '-');
 
   if (!raw) {
     return {

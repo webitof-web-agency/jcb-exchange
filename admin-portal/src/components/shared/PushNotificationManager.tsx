@@ -85,11 +85,19 @@ export default function PushNotificationManager() {
       }
     }
 
+    let startupTimer: number | null = null;
     if (isSupported) {
-      void checkSubscription();
+      startupTimer = window.setTimeout(() => {
+        if (!isCancelled) {
+          void checkSubscription();
+        }
+      }, 2000);
     }
     return () => {
       isCancelled = true;
+      if (startupTimer !== null) {
+        window.clearTimeout(startupTimer);
+      }
       if (promptTimer !== null) {
         window.clearTimeout(promptTimer);
       }

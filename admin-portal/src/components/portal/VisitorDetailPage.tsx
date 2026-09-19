@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -150,7 +151,9 @@ export default function VisitorDetailPage({
 
     try {
       setLoadingListings(true);
-      const response = await api.get<{ listings: PartnerListing[] }>(`/superadmin/listings?partnerId=${resolvedVisitorId}`);
+      const response = await api.get<{ listings: PartnerListing[] }>('/superadmin/listings', {
+        params: { partnerId: resolvedVisitorId, compact: 'true' },
+      });
       setListings(response.data.listings || []);
     } catch (err) {
       console.error('Failed to load listings', err);
@@ -164,9 +167,10 @@ export default function VisitorDetailPage({
       setLoading(true);
       const nextResolvedVisitorId = (await resolveVisitorId(visitorId)) || visitorId;
       setResolvedVisitorId(nextResolvedVisitorId);
-      const response = await api.get<{ visitors: VisitorRecord[] }>('/superadmin/visitors');
-      const allVisitors = response.data.visitors || [];
-      const foundVisitor = allVisitors.find((item) => String(item.id) === String(nextResolvedVisitorId));
+      const response = await api.get<{ visitors: VisitorRecord[] }>('/superadmin/visitors', {
+        params: { id: nextResolvedVisitorId },
+      });
+      const foundVisitor = response.data.visitors?.[0];
 
       if (!foundVisitor) {
         setError(t('visitorDetails.visitorNotFound'));
@@ -244,9 +248,7 @@ export default function VisitorDetailPage({
 
   if (loading) {
     return (
-      <div className="flex h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#FFC107]"></div>
-      </div>
+      <BrandLoader variant="section" size="md" bg="light" />
     );
   }
 
@@ -360,9 +362,7 @@ export default function VisitorDetailPage({
           </div>
 
           {loadingListings ? (
-            <div className="flex h-32 items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-[#FFC107]"></div>
-            </div>
+            <BrandLoader variant="section" size="sm" bg="light" />
           ) : listings.length === 0 ? (
             <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
               <Package className="mb-2 h-8 w-8 text-gray-400" />

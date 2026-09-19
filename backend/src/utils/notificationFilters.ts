@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-export const vehicleNotificationTypes = new Set(['NEW_LISTING', 'LISTING_UPDATE']);
+export const vehicleNotificationTypes = new Set(['NEW_LISTING', 'LISTING_UPDATE', 'PAYMENT_VERIFIED', 'PAYMENT_REJECTED', 'PAYMENT_SUBMITTED']);
 
 export type NotificationScope = 'all' | 'vehicle';
 export type NotificationStatus = 'all' | 'unread';

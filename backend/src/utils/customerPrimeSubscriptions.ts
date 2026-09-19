@@ -185,7 +185,13 @@ export const assertCustomerPrimeEligibility = async ({
   feature: 'CALL' | 'WHATSAPP' | 'SELL_LISTING';
 }) => {
   const accessPayload = await getCustomerPrimeAccessPayload({ userId, role });
-  const requiresPrime = accessPayload.gatingEnabled;
+  const requiresPrime = accessPayload.gatingEnabled && (
+    feature === 'CALL'
+      ? accessPayload.settings.requireForCall
+      : feature === 'WHATSAPP'
+        ? accessPayload.settings.requireForWhatsapp
+        : accessPayload.settings.requireForSellListing
+  );
 
   return {
     ...accessPayload,
@@ -377,6 +383,34 @@ export const listCustomerPrimeSubscriptions = async ({
 
   const records = ((await prismaAny.customerPrimeSubscription.findMany({
     where: status ? { status } : undefined,
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          mobile: true,
+        },
+      },
+    },
+    orderBy: [{ submittedAt: 'desc' }, { createdAt: 'desc' }],
+    take,
+  })) || []) as PrimeDbRecord[];
+
+  return records.map(mapSubscriptionRecord);
+};
+
+export const listCustomerPrimeSubscriptionsForUser = async ({
+  userId,
+  take = 25,
+}: {
+  userId: string;
+  take?: number;
+}) => {
+  await syncExpiredCustomerPrimeSubscriptions(userId);
+
+  const records = ((await prismaAny.customerPrimeSubscription.findMany({
+    where: { userId },
     include: {
       user: {
         select: {

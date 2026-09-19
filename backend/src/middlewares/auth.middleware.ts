@@ -174,3 +174,38 @@ export const requirePortalOperator = (req: Request, res: Response, next: NextFun
 
   next();
 };
+
+export const requireAnalyticsAccess =
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role === 'PARTNER' || req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN') {
+      return next();
+    }
+
+    if (req.user.role !== 'EMPLOYEE') {
+      return res.status(403).json({ error: 'Analytics access required.' });
+    }
+
+    prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        customRole: { select: { permissions: true } },
+        adminPermissions: { select: { permission: true } },
+      },
+    })
+      .then((employee) => {
+        const permissions = Array.isArray(employee?.customRole?.permissions)
+          ? employee.customRole.permissions
+          : (employee?.adminPermissions || []).map((item) => item.permission);
+
+        if (!permissions.includes('ALL_ACCESS') && !permissions.includes('analytics.read')) {
+          return res.status(403).json({ error: 'You do not have permission to access analytics.' });
+        }
+
+        next();
+      })
+      .catch((error) => next(error));
+  };

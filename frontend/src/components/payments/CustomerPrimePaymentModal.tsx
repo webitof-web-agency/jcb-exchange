@@ -3,13 +3,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Loader2, QrCode, Receipt, Upload, X } from 'lucide-react';
+import { X, CheckCircle2, ShieldCheck, Clock, Smartphone, Receipt, QrCode, Loader2, Upload } from 'lucide-react';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl, uploadCustomerPrimeReceiptToServer } from '@/lib/fileUpload';
 import { useAuthStore, type AuthUser } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 
-type CustomerPrimeFeature = 'CALL' | 'WHATSAPP' | 'SELL_LISTING';
+type CustomerPrimeFeature = 'CALL' | 'WHATSAPP' | 'SELL_LISTING' | 'BUY_NOW';
 
 type PrimeAccessPayload = {
   settings: {
@@ -79,11 +80,13 @@ export default function CustomerPrimePaymentModal({
   feature,
   onClose,
   onAccessGranted,
+  mode = 'feature',
 }: {
   isOpen: boolean;
   feature: CustomerPrimeFeature;
   onClose: () => void;
   onAccessGranted: () => void;
+  mode?: 'feature' | 'renewal';
 }) {
   const { t } = useTranslation();
   const { user, token, setAuth } = useAuthStore();
@@ -165,7 +168,18 @@ export default function CustomerPrimePaymentModal({
       title: t('primeModal.features.sellListing.title'),
       helper: t('primeModal.features.sellListing.helper'),
     },
+    BUY_NOW: {
+      title: 'Prime Membership Required to Buy Now',
+      helper: 'Upgrade to Prime Customer Membership to purchase equipment directly on JCB Exchange.',
+    },
   }[feature];
+  const isRenewalMode = mode === 'renewal';
+  const heroTitle = isRenewalMode
+    ? t('primeModal.renewalTitle', 'Renew Prime Membership')
+    : featureDetails.title;
+  const heroHelper = isRenewalMode
+    ? t('primeModal.renewalHelper', 'Extend your Prime benefits by submitting the payment receipt again.')
+    : featureDetails.helper;
   const featureRequiresPrime = useMemo(() => access?.gatingEnabled ?? false, [access]);
 
   useEffect(() => {
@@ -262,8 +276,7 @@ export default function CustomerPrimePaymentModal({
     return (
       <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(8,10,15,0.72)] backdrop-blur-xs px-4 py-6">
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-[#141414] p-6 border border-white/10 text-white shadow-2xl">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-[#FFC107]"></div>
-          <p className="text-xs font-semibold text-gray-300">Checking access...</p>
+          <BrandLoader size="md" variant="section" bg="dark" text="Checking access..." />
         </div>
       </div>
     );
@@ -284,9 +297,12 @@ export default function CustomerPrimePaymentModal({
           <div className="relative overflow-hidden bg-[#141414] px-5 py-6 sm:px-7 sm:py-8 text-white flex-shrink-0">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,193,7,0.24),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]" />
             <div className="relative">
-              <h2 className="max-w-md text-2xl sm:text-3xl font-black leading-tight">{featureDetails.title}</h2>
+              <h2 className="max-w-md text-2xl sm:text-3xl font-black leading-tight">{heroTitle}</h2>
               <div className="mt-3 sm:mt-4 max-w-md text-xs sm:text-sm leading-relaxed text-gray-300">
-                <p className="mb-1 font-semibold text-white">{t('primeModal.featuresUnlocked')}</p>
+                <p className="mb-1 font-semibold text-white">
+                  {isRenewalMode ? t('primeModal.renewalBenefits', 'Prime benefits you keep') : t('primeModal.featuresUnlocked')}
+                </p>
+                <p className="mb-3 text-gray-300">{heroHelper}</p>
                 <ul className="list-inside list-disc space-y-0.5">
                   <li>{t('primeModal.unlocks.call')}</li>
                   <li>{t('primeModal.unlocks.whatsapp')}</li>
@@ -313,7 +329,7 @@ export default function CustomerPrimePaymentModal({
           <div className="min-h-0 overflow-y-auto bg-[#FBFBFA] px-7 py-8">
             {loading ? (
               <div className="flex min-h-[520px] items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#FFC107] border-t-transparent" />
+                <BrandLoader size="md" variant="section" bg="light" />
               </div>
             ) : !access ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{error}</div>

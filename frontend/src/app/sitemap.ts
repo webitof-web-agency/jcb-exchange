@@ -50,6 +50,12 @@ const staticRoutes = (): MetadataRoute.Sitemap => [
     priority: 0.7,
     lastModified: new Date(),
   },
+  {
+    url: `${SITE_URL}/jobs`,
+    changeFrequency: "daily",
+    priority: 0.8,
+    lastModified: new Date(),
+  },
 ];
 
 async function fetchJson<T>(path: string): Promise<T | null> {
@@ -69,13 +75,15 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [listingPayload, dealerPayload] = await Promise.all([
+  const [listingPayload, dealerPayload, jobPayload] = await Promise.all([
     fetchJson<{ success: boolean; data?: PublicListing[] }>("/master/public-listings"),
     fetchJson<{ success: boolean; data?: PublicDealer[] }>("/master/dealers"),
+    fetchJson<{ success: boolean; jobs?: { slug: string; postedAt?: string }[] }>("/recruitment/public/jobs"),
   ]);
 
   const listings = listingPayload?.success ? listingPayload.data || [] : [];
   const dealers = dealerPayload?.success ? dealerPayload.data || [] : [];
+  const jobs = jobPayload?.success ? jobPayload.jobs || [] : [];
 
   const listingRoutes: MetadataRoute.Sitemap = listings.map((listing) => ({
     url: `${SITE_URL}${generateMachineSlugPath(listing)}`,
@@ -95,5 +103,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: new Date(),
   }));
 
-  return [...staticRoutes(), ...listingRoutes, ...dealerRoutes];
+  const jobRoutes: MetadataRoute.Sitemap = jobs.map((job) => ({
+    url: `${SITE_URL}/jobs/${job.slug}`,
+    changeFrequency: "daily",
+    priority: 0.8,
+    lastModified: job.postedAt ? new Date(job.postedAt) : new Date(),
+  }));
+
+  return [...staticRoutes(), ...listingRoutes, ...dealerRoutes, ...jobRoutes];
 }

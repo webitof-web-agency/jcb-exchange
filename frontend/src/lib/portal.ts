@@ -26,9 +26,9 @@ export const getPublicRoleLabel = ({
     case 'EMPLOYEE':
       return 'Employee';
     case 'CUSTOMER':
-      return isPrimeCustomer ? 'Prime Customer' : 'Customer';
+      return isPrimeCustomer ? 'Prime Customer' : '';
     default:
-      return 'Customer';
+      return '';
   }
 };
 

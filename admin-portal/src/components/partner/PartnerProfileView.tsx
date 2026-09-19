@@ -6,15 +6,18 @@ import {
   BadgeCheck,
   Building2,
   CheckCircle2,
+  Download,
   KeyRound,
   Mail,
   MapPin,
   Phone,
+  Printer,
   Save,
   Shield,
   Store,
 } from 'lucide-react';
 import api from '@/lib/api';
+import BrandLoader from '@/components/ui/BrandLoader';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useAuthStore } from '@/store/authStore';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -173,6 +176,12 @@ export default function PartnerProfileView() {
   const [selectedStateId, setSelectedStateId] = useState('');
   const [selectedCityId, setSelectedCityId] = useState('');
 
+  const handlePrint = () => {
+    if (typeof window !== 'undefined') {
+      window.print();
+    }
+  };
+
   const loadCities = useCallback(async (stateId: string, cityName?: string) => {
     if (!stateId) {
       setCities([]);
@@ -282,9 +291,7 @@ export default function PartnerProfileView() {
 
   if (loading) {
     return (
-      <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.25)]">
-        Loading partner profile...
-      </div>
+      <BrandLoader variant="section" size="md" bg="light" text="Loading partner profile..." className="rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_-38px_rgba(15,23,42,0.25)]" />
     );
   }
 
@@ -368,7 +375,7 @@ export default function PartnerProfileView() {
   };
 
   return (
-    <div className="w-full mx-auto max-w-6xl space-y-6">
+    <div className="profile-print-target w-full mx-auto max-w-6xl space-y-6">
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gray-900 px-6 py-8 sm:px-8">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
@@ -395,11 +402,85 @@ export default function PartnerProfileView() {
               </span>
             </div>
           </div>
+
+          <div className="mt-6 flex flex-wrap gap-2 profile-no-print">
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#E5AD06]"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="profile-print-only rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Profile Summary</p>
+        <h3 className="mt-1 text-2xl font-bold text-gray-900">{profileForm.businessName || user?.name || 'Partner Account'}</h3>
+        <p className="mt-1 text-sm text-gray-500">{profileForm.ownerName || user?.ownerName || '-'}</p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Partner type</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatPartnerTypeLabel(user?.partnerType, '-')}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Account status</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatLabel(user?.accountStatus)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">KYC status</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{formatLabel(user?.kycStatus)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Contact</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{profileForm.mobile || profileForm.whatsappNumber || '-'}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Location</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{[profileForm.city, profileForm.district, profileForm.state].filter(Boolean).join(', ') || '-'}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Business address</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{profileForm.businessAddress || '-'}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">KYC documents</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{partnerData?.kycDocuments?.length || 0}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Agreements</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">{partnerData?.agreements?.length || 0}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Website</p>
+            <p className="mt-1 break-words text-sm font-semibold text-gray-900">{profileForm.websiteUrl || '-'}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Google Maps</p>
+            <p className="mt-1 break-words text-sm font-semibold text-gray-900">{profileForm.googleMapsLocation || '-'}</p>
+          </div>
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-        <section className="space-y-6">
+        <section className="space-y-6 profile-no-print">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Profile</p>
@@ -632,7 +713,7 @@ export default function PartnerProfileView() {
           </div>
         </section>
 
-        <aside className="space-y-6">
+        <aside className="space-y-6 profile-no-print">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Account Overview</p>
             <h3 className="mt-1 text-xl font-bold text-gray-900">Verification snapshot</h3>

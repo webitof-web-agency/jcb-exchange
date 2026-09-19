@@ -1,6 +1,20 @@
-export default function Loading() {
+import BrandLoader from '@/components/ui/BrandLoader';
+import { getSiteBranding } from '@/lib/siteBranding';
+
+export default async function Loading() {
+  const branding = await getSiteBranding();
+
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-20">
+    <div className="relative min-h-screen bg-[#F8F9FA] pb-20">
+      {/* Full-page brand loader overlay */}
+      <BrandLoader
+        variant="fullscreen"
+        size="lg"
+        bg="light"
+        initialLogoUrl={branding.darkLogoUrl || branding.logoUrl}
+      />
+
+      {/* Skeleton structure visible behind the overlay */}
       <div className="w-full border-b border-gray-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
         <div className="mx-auto h-4 max-w-7xl animate-pulse rounded bg-gray-200" />
       </div>

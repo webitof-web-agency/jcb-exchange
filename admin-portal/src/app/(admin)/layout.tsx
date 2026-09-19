@@ -2,21 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
 import PortalBrand from '@/components/layout/PortalBrand';
+import BrandLoader from '@/components/ui/BrandLoader';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
+import { accountsNavItems } from '@/lib/accountsPermissions';
+import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet } from 'lucide-react';
+import { MessageCircle, Smartphone } from 'lucide-react';
 import {
   employeeBrandsPermissions,
+  employeeFooterPermissions,
   employeeRolesPermissions,
   employeeUsersPermissions,
+  employeeWhatsAppPermissions,
+  employeeSmsPermissions,
   getEmployeeLandingPath,
   resolveEmployeeRouteRedirect,
 } from '@/lib/portalRoutes';
@@ -25,33 +32,52 @@ import PushNotificationManager from '@/components/shared/PushNotificationManager
 
 const navItems = [
   { href: '/superadmin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
+  { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/superadmin/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare },
   { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
   { href: '/superadmin/partners', labelKey: 'admin.partners', icon: List },
   { href: '/superadmin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
+  { href: '/superadmin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
+  { href: '/superadmin/sms', labelKey: 'admin.smsNotifications', icon: Smartphone },
   { href: '/superadmin/categories', labelKey: 'admin.categories', icon: Tags },
   { href: '/superadmin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
-  { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
+  { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
   { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
 ];
 
 const adminNavItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
+  { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
 ];
 
 const employeeModuleNavItems = [
   { href: '/employee/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard, permissions: ['dashboard.view'] },
+  { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage'] },
   { href: '/employee/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare, permissions: ['enquiries.manage'] },
   { href: '/employee/listings', labelKey: 'admin.listings', icon: Truck, permissions: ['listings.read'] },
   { href: '/employee/partners', labelKey: 'admin.partners', icon: List, permissions: ['partners.read'] },
   { href: '/employee/visitors', labelKey: 'admin.visitors', icon: UsersRound, permissions: ['visitors.read'] },
+  { href: '/employee/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle, permissions: employeeWhatsAppPermissions },
+  { href: '/employee/sms', labelKey: 'admin.smsNotifications', icon: Smartphone, permissions: employeeSmsPermissions },
   { href: '/employee/categories', labelKey: 'admin.categories', icon: Tags, permissions: ['categories.read'] },
   { href: '/employee/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee, permissions: ['brands.read'] },
-  { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
+  { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
+  { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
   { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage'] },
+];
+
+const recruitmentNavItems = [
+  { key: 'dashboard', labelKey: 'admin.recruitmentDashboard', defaultLabel: 'Dashboard', permissions: ['recruitment.dashboard.read'] },
+  { key: 'jobs', labelKey: 'admin.recruitmentJobs', defaultLabel: 'Jobs', permissions: ['recruitment.jobs.read'] },
+  { key: 'applications', labelKey: 'admin.recruitmentApplications', defaultLabel: 'Applications', permissions: ['recruitment.applications.read'] },
+  { key: 'departments', labelKey: 'admin.recruitmentDepartments', defaultLabel: 'Departments', permissions: ['recruitment.departments.read'] },
+  { key: 'interviews', labelKey: 'admin.recruitmentInterviews', defaultLabel: 'Interviews', permissions: ['recruitment.interviews.read'] },
+  { key: 'offers', labelKey: 'admin.recruitmentOffers', defaultLabel: 'Offers', permissions: ['recruitment.offers.read'] },
+  { key: 'pipeline', labelKey: 'admin.recruitmentPipeline', defaultLabel: 'Pipeline Stages', permissions: ['recruitment.pipeline.read'] },
 ];
 
 const getRequiredPermissionsForPath = (pathname: string) => {
@@ -67,6 +93,16 @@ const getRequiredPermissionsForPath = (pathname: string) => {
     return employeeBrandsPermissions;
   }
 
+  const matchedAccount = accountsNavItems.find((item) =>
+    pathname === `/employee/accounts/${item.key}` ||
+    pathname.startsWith(`/employee/accounts/${item.key}/`) ||
+    pathname === `/superadmin/accounts/${item.key}` ||
+    pathname.startsWith(`/superadmin/accounts/${item.key}/`)
+  );
+  if (matchedAccount) {
+    return matchedAccount.permissions;
+  }
+
   const matchedModule = employeeModuleNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   return matchedModule?.permissions || null;
 };
@@ -74,10 +110,10 @@ const getRequiredPermissionsForPath = (pathname: string) => {
 const formatPortalLabel = (value?: string | null) =>
   value
     ? value
-        .toLowerCase()
-        .split('_')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
+      .toLowerCase()
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
     : null;
 
 export default function AdminLayout({
@@ -92,10 +128,12 @@ export default function AdminLayout({
   const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isUsersMenuExpanded, setIsUsersMenuExpanded] = useState(false);
+  const [usersMenuExpansion, setUsersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
-  const [isSessionChecking, setIsSessionChecking] = useState(true);
   const [badges, setBadges] = useState<{
     enquiries: number;
     verifications: number;
@@ -115,7 +153,6 @@ export default function AdminLayout({
     clearedVisitors: 0,
     clearedRecurrence: 0,
   });
-  const hasCompletedInitialSessionCheck = useRef(false);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
   const isEmployee = user?.role === 'EMPLOYEE';
@@ -132,6 +169,37 @@ export default function AdminLayout({
   const employeeCanSeeUsers = hasAnyPermission(userPermissions, employeeUsersPermissions);
   const employeeCanSeeRoles = hasAnyPermission(userPermissions, employeeRolesPermissions);
   const employeeHasAnyVisibleRoute = employeeNavItems.length > 0 || employeeCanSeeUsers || employeeCanSeeRoles;
+  const visibleRecruitmentNavItems = useMemo(
+    () => (isSuperAdmin
+      ? recruitmentNavItems
+      : recruitmentNavItems.filter((item) => hasAnyPermission(userPermissions, item.permissions))),
+    [isSuperAdmin, userPermissions]
+  );
+  const isRecruitmentSectionActive = pathname.startsWith('/superadmin/recruitment') || pathname.startsWith('/employee/recruitment');
+  const [recruitmentMenuExpansion, setRecruitmentMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const isRecruitmentMenuExpanded = recruitmentMenuExpansion.pathname === pathname
+    ? recruitmentMenuExpansion.value
+    : null;
+  const isRecruitmentDropdownExpanded = isRecruitmentMenuExpanded ?? isRecruitmentSectionActive;
+
+  const visibleAccountsNavItems = useMemo(
+    () => (isSuperAdmin
+      ? accountsNavItems
+      : accountsNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions))),
+    [isSuperAdmin, userPermissions]
+  );
+  const isAccountsSectionActive = pathname.startsWith('/superadmin/accounts') || pathname.startsWith('/employee/accounts') || pathname.startsWith('/admin/accounts');
+  const [accountsMenuExpansion, setAccountsMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const isAccountsMenuExpanded = accountsMenuExpansion.pathname === pathname
+    ? accountsMenuExpansion.value
+    : null;
+  const isAccountsDropdownExpanded = isAccountsMenuExpanded ?? isAccountsSectionActive;
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -221,10 +289,6 @@ export default function AdminLayout({
     let isMounted = true;
 
     const verifySession = async () => {
-      if (!hasCompletedInitialSessionCheck.current) {
-        setIsSessionChecking(true);
-      }
-
       try {
         const response = await api.get('/auth/profile');
 
@@ -263,11 +327,6 @@ export default function AdminLayout({
 
         logout();
         router.replace('/login');
-      } finally {
-        if (isMounted && !hasCompletedInitialSessionCheck.current) {
-          setIsSessionChecking(false);
-          hasCompletedInitialSessionCheck.current = true;
-        }
       }
     };
 
@@ -292,7 +351,7 @@ export default function AdminLayout({
           const backendEnquiries = backendBadges.enquiries || 0;
           const backendVisitors = backendBadges.visitors || 0;
           const backendRecurrence = backendBadges.recurrence || 0;
-          
+
           let currentClearedEnquiries = parseInt(localStorage.getItem(`cleared_enquiries_${user?.id}`) || '0');
           let currentClearedVisitors = parseInt(localStorage.getItem(`cleared_visitors_${user?.id}`) || '0');
           let currentClearedRecurrence = parseInt(localStorage.getItem(`cleared_recurrence_${user?.id}`) || '0');
@@ -358,13 +417,7 @@ export default function AdminLayout({
   };
 
   if (!hasHydrated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-5 text-sm text-gray-600 shadow-sm">
-          {t('admin.loadingPortalSession')}
-        </div>
-      </div>
-    );
+    return <BrandLoader variant="fullscreen" size="lg" bg="light" />;
   }
 
   if (isAccessRevoked) {
@@ -395,17 +448,20 @@ export default function AdminLayout({
     );
   }
 
-  if (isSessionChecking) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-5 text-sm text-gray-600 shadow-sm">
-          {t('admin.verifyingPortalSession')}
-        </div>
-      </div>
-    );
-  }
-
-  const visibleNavItems = isSuperAdmin ? navItems : isEmployee ? employeeNavItems : adminNavItems;
+  const baseVisibleNavItems = isSuperAdmin ? navItems : isEmployee ? employeeNavItems : adminNavItems;
+  const uniqueBaseVisibleNavItems = baseVisibleNavItems.filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
+  );
+  const accountsMenuItem = {
+    href: `${isSuperAdmin ? '/superadmin' : isEmployee ? '/employee' : '/admin'}/accounts`,
+    labelKey: 'admin.accounts',
+    defaultLabel: 'Accounts',
+    icon: Wallet,
+    kind: 'accounts' as const,
+  };
+  const visibleNavItems = visibleAccountsNavItems.length > 0
+    ? insertAccountsNavItem(uniqueBaseVisibleNavItems, accountsMenuItem)
+    : uniqueBaseVisibleNavItems;
   const portalTitle = isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle');
   const displayName = user.name || (isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle'));
   const translatedRoleLabel =
@@ -418,10 +474,19 @@ export default function AdminLayout({
           : formatPortalLabel(user?.role) || t('common.notAvailable');
   const pageTitleMap: Record<string, string> = {
     '/superadmin/dashboard': t('admin.superAdminDashboard'),
+    '/superadmin/analytics': t('admin.analytics'),
+    '/superadmin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/superadmin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/admin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/admin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/employee/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
+    '/employee/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
     '/superadmin/enquiries': t('admin.enquiryManagement'),
+    '/superadmin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
+    '/superadmin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/superadmin/visitors': t('admin.visitors'),
     '/superadmin/recurrence': t('admin.recurrence'),
     '/superadmin/categories': t('admin.categoryManagement'),
@@ -432,10 +497,24 @@ export default function AdminLayout({
     '/superadmin/profile': t('admin.myProfilePage'),
     '/superadmin/settings': t('admin.platformSettings'),
     '/superadmin/translations': t('admin.translationManager'),
+    '/superadmin/footer': t('admin.footerContent'),
+    '/superadmin/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
+    '/superadmin/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
+    '/superadmin/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
+    '/superadmin/recruitment/candidates': t('admin.recruitmentCandidates', 'Candidates'),
+    '/superadmin/recruitment/departments': t('admin.recruitmentDepartments', 'Departments'),
+    '/superadmin/recruitment/interviews': t('admin.recruitmentInterviews', 'Interviews'),
+    '/superadmin/recruitment/offers': t('admin.recruitmentOffers', 'Offers'),
+    '/superadmin/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
+    '/superadmin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
     '/admin/dashboard': isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard'),
+    '/admin/analytics': t('admin.analytics'),
     '/admin/profile': t('admin.myProfilePage'),
     '/employee/dashboard': t('admin.employeeDashboard'),
+    '/employee/analytics': t('admin.analytics'),
     '/employee/enquiries': t('admin.enquiryManagement'),
+    '/employee/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
+    '/employee/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/employee/verifications': t('admin.partnerVerifications'),
     '/employee/partners': t('admin.partnerDirectory'),
     '/employee/visitors': t('admin.visitors'),
@@ -448,9 +527,22 @@ export default function AdminLayout({
     '/employee/profile': t('admin.myProfilePage'),
     '/employee/settings': t('admin.platformSettings'),
     '/employee/translations': t('admin.translationManager'),
+    '/employee/footer': t('admin.footerContent'),
+    '/employee/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
+    '/employee/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
+    '/employee/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
+    '/employee/recruitment/candidates': t('admin.recruitmentCandidates', 'Candidates'),
+    '/employee/recruitment/departments': t('admin.recruitmentDepartments', 'Departments'),
+    '/employee/recruitment/interviews': t('admin.recruitmentInterviews', 'Interviews'),
+    '/employee/recruitment/offers': t('admin.recruitmentOffers', 'Offers'),
+    '/employee/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
+    '/employee/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
   };
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
+    if (pathname.startsWith('/superadmin/analytics/') || pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
+      return t('admin.analyticsDetail', 'Listing Analytics');
+    }
     if (pathname.startsWith('/superadmin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
     if (pathname.startsWith('/superadmin/partners/') || pathname.startsWith('/employee/partners/')) {
       if (pathname.endsWith('/edit')) return t('admin.editPartnerProfile');
@@ -458,13 +550,22 @@ export default function AdminLayout({
       return t('admin.partnerDetails');
     }
     if (pathname.startsWith('/superadmin/verifications/') || pathname.startsWith('/employee/verifications/')) return t('admin.verificationDetails');
+    if (pathname.startsWith('/superadmin/recruitment/applications/') || pathname.startsWith('/employee/recruitment/applications/')) {
+      return t('admin.recruitmentApplicationDetails', 'Application Details');
+    }
+    if (pathname.startsWith('/superadmin/recruitment/jobs/') || pathname.startsWith('/employee/recruitment/jobs/')) {
+      return t('admin.recruitmentJobDetails', 'Job Details');
+    }
     return isSuperAdmin ? t('admin.superAdminDashboard') : isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard');
   };
   const pageTitle = getPageTitle();
   const profileHref = isSuperAdmin ? '/superadmin/profile' : isEmployee ? '/employee/profile' : '/admin/profile';
   const settingsHref = isSuperAdmin ? '/superadmin/settings' : isEmployee ? '/employee/settings' : '/admin/profile';
   const isUsersSectionActive = pathname.startsWith('/superadmin/users') || pathname.startsWith('/employee/users');
-  const isUsersDropdownExpanded = isUsersSectionActive || isUsersMenuExpanded;
+  const isUsersMenuExpanded = usersMenuExpansion.pathname === pathname
+    ? usersMenuExpansion.value
+    : null;
+  const isUsersDropdownExpanded = isUsersMenuExpanded ?? isUsersSectionActive;
   const usersListHref = isEmployee ? '/employee/users' : '/superadmin/users';
   const rolesListHref = isEmployee ? '/employee/users/roles' : '/superadmin/users/roles';
 
@@ -472,18 +573,18 @@ export default function AdminLayout({
     <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity" 
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-5 sm:p-6 border-b border-white/10">
           <div>
             <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} subtitle={portalTitle} />
           </div>
-          <button 
+          <button
             onClick={() => setIsMobileMenuOpen(false)}
             className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-colors z-10"
           >
@@ -491,69 +592,222 @@ export default function AdminLayout({
           </button>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {visibleNavItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
+          {visibleNavItems
+            .filter((item) => !item.href.endsWith('/footer') && !item.href.endsWith('/translations') && !item.href.endsWith('/settings'))
+            .map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
+              const isAccountsMenu = item.kind === 'accounts';
 
-            let badgeCount = 0;
-            if (item.href.includes('enquiries')) {
-              badgeCount = Math.max(0, (badges.enquiries || 0) - (badges.clearedEnquiries || 0));
-            }
-            else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
-            else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
-            else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
-            else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
+              let badgeCount = 0;
+              if (item.href.includes('enquiries')) {
+                badgeCount = Math.max(0, (badges.enquiries || 0) - (badges.clearedEnquiries || 0));
+              }
+              else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
+              else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
+              else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
+              else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
-                    ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              return (
+                <div key={item.href} className="space-y-2">
+                  {isAccountsMenu ? (
+                    <div className="space-y-1 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setAccountsMenuExpansion({
+                          pathname,
+                          value: !isAccountsDropdownExpanded,
+                        })}
+                        className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isAccountsSectionActive
+                            ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                            : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+                          }`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <Wallet className={`h-5 w-5 ${isAccountsSectionActive ? 'text-[#FFC107]' : ''}`} />
+                          <span>{t('admin.accounts', 'Accounts')}</span>
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${isAccountsDropdownExpanded ? 'rotate-180' : ''} ${isAccountsSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
+                            }`}
+                        />
+                      </button>
+
+                      {isAccountsDropdownExpanded ? (
+                        <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                          {visibleAccountsNavItems.map((subItem) => {
+                            const prefix = isEmployee ? '/employee' : isAdmin ? '/admin' : '/superadmin';
+                            const href = `${prefix}/accounts/${subItem.key}`;
+                            const isSubActive = pathname === href || pathname.startsWith(`${href}/`);
+
+                            return (
+                              <Link
+                                key={subItem.key}
+                                href={href}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isSubActive
+                                    ? 'bg-[#FFC107]/10 font-semibold text-white'
+                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                                  }`}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full ${isSubActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
+                                <span>{t(subItem.labelKey, subItem.defaultLabel)}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {!isAccountsMenu ? (
+                    <Link
+                      href={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
+                        ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+                          {badgeCount > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                        <span>{t(item.labelKey)}</span>
+                      </div>
+                      {badgeCount > 0 && (
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                          {badgeCount > 99 ? '99+' : badgeCount}
+                        </span>
+                      )}
+                    </Link>
+                  ) : null}
+                </div>
+              );
+            })}
+
+          {visibleRecruitmentNavItems.length > 0 ? (
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setRecruitmentMenuExpansion({
+                  pathname,
+                  value: !isRecruitmentDropdownExpanded,
+                })}
+                className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isRecruitmentSectionActive
+                    ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                    : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
-                    {badgeCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                      </span>
-                    )}
-                  </div>
-                  <span>{t(item.labelKey)}</span>
+                <span className="flex items-center gap-3">
+                  <Briefcase className={`h-5 w-5 ${isRecruitmentSectionActive ? 'text-[#FFC107]' : ''}`} />
+                  <span>{t('admin.recruitment', 'Recruitment')}</span>
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform duration-200 ${isRecruitmentDropdownExpanded ? 'rotate-180' : ''} ${isRecruitmentSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
+                    }`}
+                />
+              </button>
+
+              {isRecruitmentDropdownExpanded ? (
+                <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                  {visibleRecruitmentNavItems.map((item) => {
+                    const prefix = isEmployee ? '/employee' : '/superadmin';
+                    const href = `${prefix}/recruitment/${item.key}`;
+                    const isActive = pathname === href || pathname.startsWith(`${href}/`);
+
+                    return (
+                      <Link
+                        key={item.key}
+                        href={href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isActive
+                            ? 'bg-[#FFC107]/10 font-semibold text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                          }`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
+                        <span>{t(item.labelKey, item.defaultLabel)}</span>
+                      </Link>
+                    );
+                  })}
                 </div>
-                {badgeCount > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                    {badgeCount > 99 ? '99+' : badgeCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+              ) : null}
+            </div>
+          ) : null}
+
+          {visibleNavItems
+            .filter((item) => item.href.endsWith('/footer') || item.href.endsWith('/translations') || item.href.endsWith('/settings'))
+            .map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
+
+              let badgeCount = 0;
+              if (item.href.includes('enquiries')) {
+                badgeCount = Math.max(0, (badges.enquiries || 0) - (badges.clearedEnquiries || 0));
+              }
+              else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
+              else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
+              else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
+              else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
+                    ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+                      {badgeCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                      )}
+                    </div>
+                    <span>{t(item.labelKey)}</span>
+                  </div>
+                  {badgeCount > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                      {badgeCount > 99 ? '99+' : badgeCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
 
           {isSuperAdmin || (isEmployee && (employeeCanSeeUsers || employeeCanSeeRoles)) ? (
             <div className="space-y-1">
               <button
                 type="button"
-                onClick={() => setIsUsersMenuExpanded((current) => !current)}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${
-                  isUsersSectionActive
+                onClick={() => setUsersMenuExpansion({
+                  pathname,
+                  value: !isUsersDropdownExpanded,
+                })}
+                className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isUsersSectionActive
                     ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
                     : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-3">
                   <Users className={`h-5 w-5 ${isUsersSectionActive ? 'text-[#FFC107]' : ''}`} />
                   <span>{t('admin.users')}</span>
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${
-                    isUsersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
-                  }`}
+                  className={`h-4 w-4 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
+                    }`}
                 />
               </button>
 
@@ -563,11 +817,10 @@ export default function AdminLayout({
                     <Link
                       href={usersListHref}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${
-                        pathname === usersListHref
+                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === usersListHref
                           ? 'bg-[#FFC107]/10 font-semibold text-white'
                           : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                      }`}
+                        }`}
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-current" />
                       <span>{t('common.allUsers')}</span>
@@ -577,11 +830,10 @@ export default function AdminLayout({
                     <Link
                       href={rolesListHref}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${
-                        pathname === rolesListHref
+                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === rolesListHref
                           ? 'bg-[#FFC107]/10 font-semibold text-white'
                           : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                      }`}
+                        }`}
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-current" />
                       <span>{t('common.usersRole')}</span>
@@ -606,7 +858,7 @@ export default function AdminLayout({
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-gray-200 p-3 sm:p-4 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg shrink-0"
             >
@@ -685,7 +937,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-100 overscroll-contain pb-12 sm:pb-16 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

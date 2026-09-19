@@ -21,6 +21,10 @@ type LeadsResponse = {
   leads?: IdRecord[];
 };
 
+type ListingPaymentsResponse = {
+  payments?: IdRecord[];
+};
+
 const findUniqueIdByPrefix = (items: IdRecord[], shortSuffix: string): string | null => {
   const normalizedSuffix = shortSuffix.trim().toLowerCase();
   const matches = items.filter((item) => item.id?.toLowerCase().startsWith(normalizedSuffix));
@@ -51,19 +55,28 @@ const resolveFromList = async (
 
 export const resolveListingId = async (rawParam: string): Promise<string | null> =>
   resolveFromList(rawParam, async () => {
-    const response = await api.get<ListingsResponse>('/listings');
+    const parsed = parseRouteParam(rawParam);
+    const response = await api.get<ListingsResponse>('/listings', {
+      params: { prefix: parsed.shortSuffix, compact: 'true' },
+    });
     return response.data.listings || [];
   });
 
 export const resolvePartnerId = async (rawParam: string): Promise<string | null> =>
   resolveFromList(rawParam, async () => {
-    const response = await api.get<PartnersResponse>('/superadmin/partners');
+    const parsed = parseRouteParam(rawParam);
+    const response = await api.get<PartnersResponse>('/superadmin/partners', {
+      params: { prefix: parsed.shortSuffix, compact: 'true' },
+    });
     return response.data.partners || [];
   });
 
 export const resolveVisitorId = async (rawParam: string): Promise<string | null> =>
   resolveFromList(rawParam, async () => {
-    const response = await api.get<VisitorsResponse>('/superadmin/visitors');
+    const parsed = parseRouteParam(rawParam);
+    const response = await api.get<VisitorsResponse>('/superadmin/visitors', {
+      params: { prefix: parsed.shortSuffix, compact: 'true' },
+    });
     return response.data.visitors || [];
   });
 
@@ -71,4 +84,13 @@ export const resolveLeadId = async (rawParam: string): Promise<string | null> =>
   resolveFromList(rawParam, async () => {
     const response = await api.get<LeadsResponse>('/leads/my-leads');
     return response.data.leads || [];
+  });
+
+export const resolveListingPaymentId = async (rawParam: string): Promise<string | null> =>
+  resolveFromList(rawParam, async () => {
+    const parsed = parseRouteParam(rawParam);
+    const response = await api.get<ListingPaymentsResponse>('/superadmin/listing-payments', {
+      params: { prefix: parsed.shortSuffix },
+    });
+    return response.data.payments || [];
   });

@@ -451,3 +451,21 @@ export const uploadCustomerPrimeReceiptToServer = async (file: File) => {
 
   return response.data.file;
 };
+
+export const uploadListingPaymentReceiptToServer = async (file: File) => {
+  const preparedFile = await prepareFileForUpload(file);
+  const formData = new FormData();
+  formData.append('file', preparedFile);
+
+  const response = await api.post<{ file: UploadedFileResult }>(
+    '/documents/upload/public/listing-payment-receipt',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+
+  return response.data.file;
+};

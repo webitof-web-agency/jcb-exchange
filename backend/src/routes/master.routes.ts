@@ -13,6 +13,7 @@ import {
   createIcon,
   getApprovedDealers,
   getFinanceSupportItems,
+  getFooterSettings,
   getHeroImage,
   getInspectionSection,
   getSiteLogo,
@@ -25,6 +26,7 @@ import {
   incrementListingView,
   getDealerById,
   getDealerListings,
+  getPublicInvoiceSettings,
 } from '../controllers/master.controller';
 import {
   getTranslationOverrides,
@@ -83,6 +85,7 @@ router.get('/dealers', getApprovedDealers);
 router.get('/dealers/:id', getDealerById);
 router.get('/dealers/:id/listings', getDealerListings);
 router.get('/finance-support', getFinanceSupportItems);
+router.get('/footer', getFooterSettings);
 router.get('/hero-image', getHeroImage);
 router.get('/inspection-section', getInspectionSection);
 router.get('/site-logo', getSiteLogo);
@@ -95,5 +98,6 @@ router.post('/public-listings/:id/view', incrementListingView);
 router.get('/public-categories', getPublicCategories);
 router.get('/public-search-filters', getPublicSearchFilters);
 router.get('/recent-listings', getRecentListings);
+router.get('/invoice-settings', getPublicInvoiceSettings);
 
 export default router;

@@ -2,6 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import apiRoutes from './routes';
+import whatsappWebhookRoutes from './routes/whatsappWebhook.routes';
 import { ensureUploadDirectories, publicUploadDir } from './utils/documentUpload';
 
 dotenv.config();
@@ -11,6 +12,8 @@ ensureUploadDirectories();
 
 // Middleware
 app.use(cors());
+// Meta signs the unparsed webhook payload. This route must remain before express.json().
+app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads/public', express.static(publicUploadDir));

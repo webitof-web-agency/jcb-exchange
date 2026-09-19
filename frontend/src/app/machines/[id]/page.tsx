@@ -4,6 +4,7 @@ import { extractIdFromSlug, generateMachineSlugPath } from '@/lib/seoUtils';
 import { resolvePublicMachineListingId } from '@/lib/publicRouteResolvers';
 import MachineDetailClient from './MachineDetailClient';
 import { getAbsoluteMediaUrl, getMachineListing } from './data';
+import { formatListingLocation } from '@/lib/listingLocation';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,15 +26,15 @@ export async function generateMetadata({
     };
   }
 
-  const location = [listing.locationCity, listing.locationState].filter(Boolean).join(', ');
+  const locationSummary = formatListingLocation(listing, { includeAddress: true });
   const titleSegments = [
     listing.title,
     listing.manufacturingYear ? String(listing.manufacturingYear) : null,
-    location || null,
+    locationSummary || null,
   ].filter(Boolean);
   const description =
     listing.description ||
-    `${listing.title} available on JCB Exchange${location ? ` in ${location}` : ''}. Explore price, seller details, machine specifications, and availability.`;
+    `${listing.title} available on JCB Exchange${locationSummary ? ` in ${locationSummary}` : ''}. Explore price, seller details, machine specifications, and availability.`;
   const canonicalUrl = generateMachineSlugPath(listing);
   const primaryImage = listing.featuredImage || listing.media.find((media) => media.type === 'IMAGE')?.url || '';
   const imageUrl = primaryImage ? getAbsoluteMediaUrl(primaryImage) : undefined;
@@ -86,7 +87,7 @@ export default async function MachineDetailPage({
     redirect(canonicalPath);
   }
 
-  const location = [listing.locationCity, listing.locationState].filter(Boolean).join(', ');
+  const locationSummary = formatListingLocation(listing, { includeAddress: true });
   const primaryImage = listing.featuredImage || listing.media.find((media) => media.type === 'IMAGE')?.url || '';
   const imageUrls = listing.media
     .filter((media) => media.type === 'IMAGE')
@@ -108,7 +109,7 @@ export default async function MachineDetailPage({
     name: listing.title,
     description:
       listing.description ||
-      `${listing.title} available on JCB Exchange${location ? ` in ${location}` : ''}.`,
+      `${listing.title} available on JCB Exchange${locationSummary ? ` in ${locationSummary}` : ''}.`,
     mainEntityOfPage: `https://jcbexchange.com${generateMachineSlugPath(listing)}`,
     image: structuredImages,
     brand: listing.brand?.name
@@ -136,6 +137,12 @@ export default async function MachineDetailPage({
         ? {
             '@type': 'Organization',
             name: listing.partner.name,
+          }
+        : undefined,
+      availableAtOrFrom: locationSummary
+        ? {
+            '@type': 'Place',
+            name: locationSummary,
           }
         : undefined,
     },

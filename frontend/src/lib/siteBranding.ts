@@ -1,7 +1,8 @@
-import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/site';
+import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME } from '@/lib/site';
 
 export type SiteBranding = {
   logoUrl: string | null;
+  darkLogoUrl: string | null;
   faviconUrl: string | null;
   manifestIconUrl: string | null;
   pwaBackgroundColor: string | null;
@@ -47,6 +48,7 @@ export const getSiteBranding = async (): Promise<SiteBranding> => {
     const payload = (await response.json()) as {
       data?: {
         imageUrl?: string | null;
+        darkLogoUrl?: string | null;
         faviconUrl?: string | null;
         manifestIconUrl?: string | null;
         pwaBackgroundColor?: string | null;
@@ -59,6 +61,7 @@ export const getSiteBranding = async (): Promise<SiteBranding> => {
 
     return {
       logoUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.imageUrl), updatedAt),
+      darkLogoUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.darkLogoUrl), updatedAt),
       faviconUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.faviconUrl), updatedAt),
       manifestIconUrl: appendVersionToUrl(toAbsoluteUrl(payload.data?.manifestIconUrl), updatedAt),
       pwaBackgroundColor: payload.data?.pwaBackgroundColor || null,
@@ -68,6 +71,7 @@ export const getSiteBranding = async (): Promise<SiteBranding> => {
   } catch {
     return {
       logoUrl: null,
+      darkLogoUrl: null,
       faviconUrl: null,
       manifestIconUrl: null,
       pwaBackgroundColor: null,
@@ -83,6 +87,7 @@ export const getDefaultSiteMetadata = () => ({
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
+  keywords: SITE_KEYWORDS,
   applicationName: SITE_NAME,
   alternates: {
     canonical: '/',

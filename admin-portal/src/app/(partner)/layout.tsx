@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu } from 'lucide-react';
+import { CreditCard, FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu, BarChart3 } from 'lucide-react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
 import PortalBrand from '@/components/layout/PortalBrand';
+import BrandLoader from '@/components/ui/BrandLoader';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
@@ -54,8 +55,6 @@ export default function PartnerLayout({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
-  const [isSessionChecking, setIsSessionChecking] = useState(true);
-  const hasCompletedInitialSessionCheck = useRef(false);
   const isApproved = partnerIsApproved(user);
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -140,8 +139,10 @@ export default function PartnerLayout({
 
     const syncNotifications = async () => {
       try {
-        await fetchNotifications();
-        const badgeRes = await api.get('/leads/badges');
+        const [, badgeRes] = await Promise.all([
+          fetchNotifications(),
+          api.get('/leads/badges'),
+        ]);
         if (badgeRes.data?.badges) {
           const backendEnquiries = badgeRes.data.badges.enquiries || 0;
           let currentCleared = parseInt(localStorage.getItem(`cleared_enquiries_${user.id}`) || '0');
@@ -168,7 +169,7 @@ export default function PartnerLayout({
     };
 
     void syncNotifications();
-    const interval = window.setInterval(syncNotifications, 5000);
+    const interval = window.setInterval(syncNotifications, 30000);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -261,10 +262,6 @@ export default function PartnerLayout({
     let isMounted = true;
 
     const verifySession = async () => {
-      if (!hasCompletedInitialSessionCheck.current) {
-        setIsSessionChecking(true);
-      }
-
       try {
         const response = await api.get('/auth/profile');
 
@@ -307,11 +304,6 @@ export default function PartnerLayout({
 
         logout();
         router.replace('/login');
-      } finally {
-        if (isMounted && !hasCompletedInitialSessionCheck.current) {
-          setIsSessionChecking(false);
-          hasCompletedInitialSessionCheck.current = true;
-        }
       }
     };
 
@@ -330,13 +322,7 @@ export default function PartnerLayout({
   };
 
   if (!hasHydrated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-5 text-sm text-gray-600 shadow-sm">
-          {t('partner.loadingSession')}
-        </div>
-      </div>
-    );
+    return <BrandLoader variant="fullscreen" size="lg" bg="light" />;
   }
 
   if (isAccessRevoked) {
@@ -369,31 +355,25 @@ export default function PartnerLayout({
 
   const navItems = [
     { href: '/partner/dashboard', label: t('partner.dashboard'), icon: LayoutDashboard, disabled: !isApproved },
+    { href: '/partner/analytics', label: 'Analytics', icon: BarChart3, disabled: !isApproved },
     { href: '/partner/listings', label: t('partner.listings'), icon: Truck, disabled: !isApproved },
     { href: '/partner/leads', label: t('partner.enquiries'), icon: MessagesSquare, disabled: !isApproved },
+    { href: '/partner/payments', label: 'Payments', icon: CreditCard, disabled: !isApproved },
     { href: '/partner/kyc', label: t('partner.onboarding'), icon: FileCheck2 }
   ];
 
   const displayName = user.name || user.email || t('partner.partnerAccount');
   const pageTitleMap: Record<string, string> = {
     '/partner/dashboard': t('partner.partnerDashboard'),
+    '/partner/analytics': 'Performance Analytics',
     '/partner/listings': t('partner.myListings'),
     '/partner/leads': t('partner.enquiryManagement'),
+    '/partner/payments': 'Listing Payments',
     '/partner/profile': t('partner.myProfilePage'),
     '/partner/kyc': t('partner.partnerOnboarding'),
   };
   const pageTitle = pageTitleMap[pathname] || t('partner.partnerDashboard');
   const profileHref = '/partner/profile';
-
-  if (isSessionChecking) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-5 text-sm text-gray-600 shadow-sm">
-          {t('partner.verifyingSession')}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
@@ -662,7 +642,7 @@ export default function PartnerLayout({
             </div>
           </div>
         </header>
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">{children}</div>
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

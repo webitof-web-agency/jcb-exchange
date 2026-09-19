@@ -2,9 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import api from '@/lib/api';
-import { getAbsoluteFileUrl } from '@/lib/fileUpload';
+import { useSiteLogo } from '@/hooks/useSiteLogo';
 
 type PortalBrandProps = {
   href: string;
@@ -21,32 +19,8 @@ export default function PortalBrand({
   className = '',
   showSubtitle = true,
 }: PortalBrandProps) {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLogo = async () => {
-      try {
-        const response = await api.get<{ data?: { imageUrl?: string | null } }>('/master/site-logo');
-        if (!isMounted) {
-          return;
-        }
-
-        setLogoUrl(getAbsoluteFileUrl(response.data?.data?.imageUrl || null) || null);
-      } catch {
-        if (isMounted) {
-          setLogoUrl(null);
-        }
-      }
-    };
-
-    void loadLogo();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { logoUrl, darkLogoUrl } = useSiteLogo();
+  const activeLogoUrl = logoUrl || darkLogoUrl;
 
   const wrapperClass = size === 'footer'
     ? 'max-w-[240px] sm:max-w-[360px]'
@@ -56,10 +30,10 @@ export default function PortalBrand({
   return (
     <div className={`flex flex-col items-center justify-center text-center ${className}`}>
       <Link href={href} className={`inline-flex items-center justify-center ${wrapperClass}`}>
-        {logoUrl ? (
+        {activeLogoUrl ? (
           <div className={`relative flex items-center justify-center ${wrapperClass}`}>
             <Image
-              src={logoUrl}
+              src={activeLogoUrl}
               alt="JCB Exchange"
               width={300}
               height={80}

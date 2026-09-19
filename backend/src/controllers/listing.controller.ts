@@ -1,12 +1,21 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import prisma from '../lib/prisma';
 import { detachLeadsFromListing, getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
 import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibility';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
+import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
+import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
+import { syncListingRtoForListing } from '../services/listingRto.service';
 
 const prismaAny = prisma as any;
+const latestListingRtoRecords = {
+  orderBy: { updatedAt: 'desc' },
+  take: 1,
+};
 const REVIEW_PENDING_STATUSES = ['PENDING_APPROVAL', 'CHANGES_REQUESTED'] as const;
 const PUBLIC_LISTING_STATUSES = ['PUBLISHED', 'PAUSED', 'RESERVED', 'SOLD'] as const;
 
@@ -15,6 +24,162 @@ const isReviewPendingStatus = (status?: string | null) =>
 
 const isPublicListingStatus = (status?: string | null) =>
   PUBLIC_LISTING_STATUSES.includes(String(status || '').toUpperCase() as (typeof PUBLIC_LISTING_STATUSES)[number]);
+
+const sanitizeListingPaymentSettings = (settings: Awaited<ReturnType<typeof getAppSettings>>['listingPayment']) => ({
+  rtgs: {
+    ...settings.rtgs,
+    enabled: Boolean(
+      settings.rtgs.enabled &&
+      settings.rtgs.beneficiaryName &&
+      settings.rtgs.bankName &&
+      settings.rtgs.accountNumber &&
+      settings.rtgs.ifscCode,
+    ),
+  },
+  razorpay: {
+    enabled: Boolean(
+      settings.razorpay.enabled &&
+      detectRazorpayModeFromKeyId(settings.razorpay.keyId) &&
+      settings.razorpay.keySecret,
+    ),
+    keyId: settings.razorpay.keyId,
+    mode: detectRazorpayModeFromKeyId(settings.razorpay.keyId) || settings.razorpay.mode,
+  },
+  phonepe: {
+    enabled: Boolean(
+      settings.phonepe.enabled &&
+      settings.phonepe.clientId &&
+      settings.phonepe.clientSecret &&
+      settings.phonepe.clientVersion,
+    ),
+    mode: settings.phonepe.mode,
+  },
+});
+
+const getPhonePeApiBaseUrl = (mode: 'TEST' | 'LIVE') =>
+  mode === 'LIVE'
+    ? 'https://api.phonepe.com/apis/pg'
+    : 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+
+class PhonePeGatewayError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PhonePeGatewayError';
+  }
+}
+
+const getPhonePeAuthToken = async (settings: Awaited<ReturnType<typeof getAppSettings>>['listingPayment']['phonepe']) => {
+  try {
+    const tokenResponse = await fetch(
+      settings.mode === 'LIVE'
+        ? 'https://api.phonepe.com/apis/identity-manager/v1/oauth/token'
+        : 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: settings.clientId || '',
+          client_version: settings.clientVersion || '1',
+          client_secret: settings.clientSecret || '',
+          grant_type: 'client_credentials',
+        }),
+      },
+    );
+
+    const tokenPayload = await tokenResponse.json() as { access_token?: string; token_type?: string; message?: string };
+    if (!tokenResponse.ok || !tokenPayload.access_token) {
+      throw new PhonePeGatewayError(tokenPayload.message || 'PhonePe authorization failed. Check Client ID, Client Secret, and Client Version.');
+    }
+
+    return `${tokenPayload.token_type || 'O-Bearer'} ${tokenPayload.access_token}`;
+  } catch (error) {
+    if (error instanceof PhonePeGatewayError) {
+      throw error;
+    }
+
+    throw new PhonePeGatewayError('Unable to reach PhonePe payment gateway.');
+  }
+};
+
+const getRequestOrigin = (req: Request) => {
+  const origin = req.get('origin') || req.get('referer');
+  if (!origin) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(origin);
+    return `${parsedUrl.protocol}//${parsedUrl.host}`;
+  } catch {
+    return null;
+  }
+};
+
+const getPaymentReadyListing = async (listingId: string) =>
+  prismaAny.listing.findUnique({
+    where: { id: listingId },
+    select: {
+      id: true,
+      title: true,
+      price: true,
+      status: true,
+      partnerId: true,
+      partner: {
+        select: {
+          mobile: true,
+          whatsappNumber: true,
+          role: true,
+          status: true,
+          partnerProfile: {
+            select: {
+              onboardingStatus: true,
+              accountStatus: true,
+              kycStatus: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+const findBlockingListingPayment = async (listingId: string, buyerId?: string) =>
+  prismaAny.listingPaymentSubmission.findFirst({
+    where: {
+      listingId,
+      OR: [
+        { status: { in: ['PAID', 'APPROVED'] } },
+        {
+          status: 'PENDING_VERIFICATION',
+          method: { not: 'PHONEPE' },
+        },
+      ],
+      ...(buyerId ? { buyerId: { not: buyerId } } : {}),
+    },
+    orderBy: { submittedAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      method: true,
+    },
+  });
+
+const assertListingCanAcceptPayment = (listing: Awaited<ReturnType<typeof getPaymentReadyListing>>) => {
+  if (!listing) {
+    return 'Listing not found.';
+  }
+
+  if (!isPublicMarketplaceListingVisible(listing as any)) {
+    return 'Listing is not available for purchase.';
+  }
+
+  if (listing.status === 'SOLD') {
+    return 'This listing is already sold.';
+  }
+
+  return null;
+};
 
 const isOwnedListingPubliclyVisible = (listing: {
   status?: string | null;
@@ -365,6 +530,7 @@ const getOwnedListingForUser = async (listingId: string, userId: string) => {
         select: { id: true, name: true },
       },
       saleRecord: true,
+      rtoRecords: latestListingRtoRecords,
     },
   });
 
@@ -456,6 +622,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Authentication required.' });
     }
+    const authenticatedUserId = req.user.id;
 
     const isCustomer = req.user.role === 'CUSTOMER';
     if (!isCustomer && req.user.role !== 'PARTNER') {
@@ -503,12 +670,14 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       operatingHours,
       locationState,
       locationCity,
+      address,
       condition,
       description,
       additionalDescription,
       grossPower,
       media,
     } = req.body || {};
+    const rtoDetails = req.body?.rtoDetails;
 
     const normalizedCategoryId = normalizeText(categoryId);
     const normalizedBrandName = normalizeText(brandName) || 'Not specified';
@@ -518,6 +687,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const initialListingStatus = isCustomer || req.user.role === 'PARTNER' ? 'PENDING_APPROVAL' : normalizedStatus;
     const normalizedState = normalizeText(locationState) || 'Not specified';
     const normalizedCity = normalizeText(locationCity) || 'Not specified';
+    const normalizedAddress = normalizeText(address);
     const normalizedCondition = normalizeText(condition);
     const normalizedDescription = normalizeText(description);
     const normalizedAdditionalDescription = normalizeText(additionalDescription);
@@ -575,42 +745,45 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    const listing = await prismaAny.listing.create({
-      data: {
-        partnerId: req.user.id,
-        categoryId: category.id,
-        brandId: brand.id,
-        modelId: model.id,
-        title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
-        price: parsedPrice,
-        isNegotiable: Boolean(isNegotiable),
-        manufacturingYear: parsedYear,
-        operatingHours: parsedOperatingHours,
-        locationState: normalizedState,
-        locationCity: normalizedCity,
-        condition: normalizedCondition || null,
-        description: normalizedDescription || null,
-        additionalDescription: normalizedAdditionalDescription || null,
-        grossPower: normalizedGrossPower || null,
-        status: initialListingStatus,
-        media: normalizedMedia.length
-          ? {
-              create: normalizedMedia,
-            }
-          : undefined,
-      },
-      include: {
-        media: true,
-        category: {
-          select: { id: true, name: true },
+    const listing = await prismaAny.$transaction(async (tx: any) => {
+      const createdListing = await tx.listing.create({
+        data: {
+          partnerId: authenticatedUserId,
+          categoryId: category.id,
+          brandId: brand.id,
+          modelId: model.id,
+          title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
+          price: parsedPrice,
+          isNegotiable: Boolean(isNegotiable),
+          manufacturingYear: parsedYear,
+          operatingHours: parsedOperatingHours,
+          locationState: normalizedState,
+          locationCity: normalizedCity,
+          address: normalizedAddress || null,
+          condition: normalizedCondition || null,
+          description: normalizedDescription || null,
+          additionalDescription: normalizedAdditionalDescription || null,
+          grossPower: normalizedGrossPower || null,
+          status: initialListingStatus,
+          media: normalizedMedia.length
+            ? {
+                create: normalizedMedia,
+              }
+            : undefined,
         },
-        brand: {
-          select: { id: true, name: true },
+        include: {
+          media: true,
+          category: { select: { id: true, name: true } },
+          brand: { select: { id: true, name: true } },
+          model: { select: { id: true, name: true } },
         },
-        model: {
-          select: { id: true, name: true },
-        },
-      },
+      });
+
+      if (rtoDetails && typeof rtoDetails === 'object') {
+        await syncListingRtoForListing(tx, createdListing.id, rtoDetails);
+      }
+
+      return createdListing;
     });
 
     await setListingSoldAt(listing.id, soldAt);
@@ -640,12 +813,22 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
       }
     }
 
+    const requestedId = req.query.id ? String(req.query.id).trim() : '';
+    const requestedPrefix = req.query.prefix ? String(req.query.prefix).trim() : '';
     const where =
       ['PARTNER', 'CUSTOMER'].includes(req.user.role)
-        ? { partnerId: req.user.id }
+        ? {
+            partnerId: req.user.id,
+            ...(requestedId ? { id: requestedId } : {}),
+            ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
+          }
         : ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)
-          ? {}
+          ? {
+              ...(requestedId ? { id: requestedId } : {}),
+              ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
+            }
           : null;
+    const compact = String(req.query.compact || '').toLowerCase() === 'true';
 
     if (!where) {
       return res.status(403).json({ error: 'Listing access is not available for this account.' });
@@ -687,6 +870,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
           },
         },
         media: {
+          ...(compact ? { where: { type: 'IMAGE' }, take: 1 } : {}),
           orderBy: {
             createdAt: 'asc',
           },
@@ -701,6 +885,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
           select: { id: true, name: true },
         },
         saleRecord: true,
+        rtoRecords: latestListingRtoRecords,
       },
     });
 
@@ -761,6 +946,7 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
           select: { id: true, name: true },
         },
         saleRecord: true,
+        rtoRecords: latestListingRtoRecords,
       },
     });
 
@@ -861,6 +1047,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
     const requestBody = req.body || {};
     const hasOwnField = (field: string) => Object.prototype.hasOwnProperty.call(requestBody, field);
+    const rtoDetails = requestBody.rtoDetails;
 
     const {
       categoryId,
@@ -874,6 +1061,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       operatingHours,
       locationState,
       locationCity,
+      address,
       condition,
       description,
       additionalDescription,
@@ -893,6 +1081,9 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         : (existingListing.status || 'PENDING_APPROVAL');
     const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
     const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
+    const normalizedAddress = hasOwnField('address')
+      ? normalizeText(address)
+      : (existingListing.address || '');
     const normalizedCondition = hasOwnField('condition') ? normalizeText(condition) : existingListing.condition;
     const normalizedDescription = hasOwnField('description') ? normalizeText(description) : existingListing.description;
     const normalizedAdditionalDescription = hasOwnField('additionalDescription')
@@ -973,13 +1164,12 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    if (hasMediaField) {
-      await prismaAny.media.deleteMany({
-        where: { listingId },
-      });
-    }
+    const updatedListing = await prismaAny.$transaction(async (tx: any) => {
+      if (hasMediaField) {
+        await tx.media.deleteMany({ where: { listingId } });
+      }
 
-    const updatedListing = await prismaAny.listing.update({
+      const nextListing = await tx.listing.update({
       where: { id: listingId },
       data: {
         categoryId: category.id,
@@ -992,6 +1182,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         operatingHours: parsedOperatingHours,
         locationState: normalizedState,
         locationCity: normalizedCity,
+        address: normalizedAddress || null,
         condition: normalizedCondition || null,
         description: normalizedDescription || null,
         additionalDescription: normalizedAdditionalDescription || null,
@@ -1015,6 +1206,13 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           select: { id: true, name: true },
         },
       },
+      });
+
+      if (rtoDetails && typeof rtoDetails === 'object') {
+        await syncListingRtoForListing(tx, nextListing.id, rtoDetails);
+      }
+
+      return nextListing;
     });
 
     await setListingSoldAt(updatedListing.id, soldAt);
@@ -1291,6 +1489,689 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
     return res.json({
       message: 'Availability updated successfully.',
       listing: responseListing || updatedListing,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getListingPaymentSettings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const listingId = String(req.params.id || '').trim();
+    const listing = await getPaymentReadyListing(listingId);
+    const listingError = assertListingCanAcceptPayment(listing);
+
+    if (listingError) {
+      return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
+    }
+
+    const settings = (await getAppSettings()).listingPayment;
+    const publicSettings = sanitizeListingPaymentSettings(settings);
+
+    const existingSubmission = req.user?.id
+      ? await prismaAny.listingPaymentSubmission.findFirst({
+          where: {
+            listingId: listing!.id,
+            buyerId: req.user.id,
+            OR: [
+              { status: { in: ['PAID', 'APPROVED'] } },
+              {
+                status: 'PENDING_VERIFICATION',
+                method: { not: 'PHONEPE' },
+              },
+            ],
+          },
+          orderBy: { submittedAt: 'desc' },
+          select: {
+            id: true,
+            method: true,
+            status: true,
+            amount: true,
+            transactionRef: true,
+            receiptUrl: true,
+            paymentNote: true,
+            submittedAt: true,
+          },
+        })
+      : null;
+
+    res.json({
+      success: true,
+      listing: {
+        id: listing!.id,
+        title: listing!.title,
+        amount: Number(listing!.price || 0),
+      },
+      paymentSettings: publicSettings,
+      existingSubmission: existingSubmission
+        ? {
+            ...existingSubmission,
+            amount: Number(existingSubmission.amount || 0),
+          }
+        : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const mapPartnerListingPaymentSubmission = (payment: any) => ({
+  ...payment,
+  amount: Number(payment.amount || 0),
+  listing: payment.listing
+    ? {
+      ...payment.listing,
+      price: Number(payment.listing.price || 0),
+    }
+    : null,
+});
+
+export const getPartnerListingPaymentSubmissions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'PARTNER') {
+      return res.status(403).json({ error: 'Partner account is required.' });
+    }
+
+    const payments = await prismaAny.listingPaymentSubmission.findMany({
+      where: {
+        partnerId: req.user.id,
+      },
+      orderBy: {
+        submittedAt: 'desc',
+      },
+      take: 100,
+      select: {
+        id: true,
+        method: true,
+        status: true,
+        amount: true,
+        transactionRef: true,
+        receiptUrl: true,
+        paymentNote: true,
+        razorpayPaymentId: true,
+        submittedAt: true,
+        reviewedAt: true,
+        rejectionReason: true,
+        buyer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mobile: true,
+          },
+        },
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      payments: payments.map(mapPartnerListingPaymentSubmission),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerListingPaymentSubmissions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Customer account is required.' });
+    }
+
+    const payments = await prismaAny.listingPaymentSubmission.findMany({
+      where: {
+        buyerId: req.user.id,
+      },
+      orderBy: {
+        submittedAt: 'desc',
+      },
+      take: 100,
+      select: {
+        id: true,
+        method: true,
+        status: true,
+        amount: true,
+        transactionRef: true,
+        receiptUrl: true,
+        paymentNote: true,
+        submittedAt: true,
+        reviewedAt: true,
+        rejectionReason: true,
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      payments: payments.map(mapPartnerListingPaymentSubmission),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createListingRazorpayOrder = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
+    }
+
+    const listingId = String(req.params.id || '').trim();
+    const listing = await getPaymentReadyListing(listingId);
+    const listingError = assertListingCanAcceptPayment(listing);
+
+    if (listingError) {
+      return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
+    }
+
+    if (listing!.partnerId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    }
+
+    const blockingPayment = await findBlockingListingPayment(listing!.id);
+    if (blockingPayment) {
+      return res.status(409).json({ error: 'This listing already has a payment in progress or completed.' });
+    }
+
+    const settings = (await getAppSettings()).listingPayment;
+    if (!settings.razorpay.enabled || !settings.razorpay.keyId || !settings.razorpay.keySecret) {
+      return res.status(400).json({ error: 'Razorpay is not configured for listing payments.' });
+    }
+
+    const amountInPaise = Math.round(Number(listing!.price || 0) * 100);
+    if (!amountInPaise || amountInPaise <= 0) {
+      return res.status(400).json({ error: 'Listing amount is invalid.' });
+    }
+
+    const credentials = Buffer.from(`${settings.razorpay.keyId}:${settings.razorpay.keySecret}`).toString('base64');
+    const orderResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: `listing_${listing!.id.slice(0, 24)}`,
+        notes: {
+          listingId: listing!.id,
+          buyerId: req.user.id,
+        },
+      }),
+    });
+
+    const orderPayload = await orderResponse.json() as { id?: string; error?: { description?: string } };
+    if (!orderResponse.ok || !orderPayload.id) {
+      return res.status(502).json({ error: orderPayload.error?.description || 'Unable to create Razorpay order.' });
+    }
+
+    res.json({
+      success: true,
+      order: {
+        id: orderPayload.id,
+        amount: amountInPaise,
+        currency: 'INR',
+        keyId: settings.razorpay.keyId,
+        listingTitle: listing!.title,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createListingPhonePeOrder = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
+    }
+
+    const listingId = String(req.params.id || '').trim();
+    const listing = await getPaymentReadyListing(listingId);
+    const listingError = assertListingCanAcceptPayment(listing);
+
+    if (listingError) {
+      return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
+    }
+
+    if (listing!.partnerId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    }
+
+    const blockingPayment = await findBlockingListingPayment(listing!.id);
+    if (blockingPayment) {
+      return res.status(409).json({ error: 'This listing already has a payment in progress or completed.' });
+    }
+
+    const settings = (await getAppSettings()).listingPayment;
+    if (!settings.phonepe.enabled || !settings.phonepe.clientId || !settings.phonepe.clientSecret || !settings.phonepe.clientVersion) {
+      return res.status(400).json({ error: 'PhonePe is not configured for listing payments.' });
+    }
+
+    const amountInPaise = Math.round(Number(listing!.price || 0) * 100);
+    if (!amountInPaise || amountInPaise < 100) {
+      return res.status(400).json({ error: 'Listing amount is invalid.' });
+    }
+
+    const requestOrigin = getRequestOrigin(req);
+    if (!requestOrigin) {
+      return res.status(400).json({ error: 'Unable to resolve checkout return URL.' });
+    }
+
+    const merchantOrderId = `listing_${listing!.id.slice(0, 18)}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const redirectUrl = `${requestOrigin}/payments/phonepe-return?listingId=${encodeURIComponent(listing!.id)}&merchantOrderId=${encodeURIComponent(merchantOrderId)}`;
+    const authorization = await getPhonePeAuthToken(settings.phonepe);
+    const orderResponse = await fetch(`${getPhonePeApiBaseUrl(settings.phonepe.mode)}/checkout/v2/pay`, {
+      method: 'POST',
+      headers: {
+        Authorization: authorization,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        merchantOrderId,
+        amount: amountInPaise,
+        expireAfter: 1200,
+        paymentFlow: {
+          type: 'PG_CHECKOUT',
+          message: `JCB Exchange listing payment: ${listing!.title}`,
+          merchantUrls: {
+            redirectUrl,
+          },
+        },
+        metaInfo: {
+          udf1: listing!.id,
+          udf2: req.user.id,
+        },
+      }),
+    });
+
+    const orderPayload = await orderResponse.json() as { orderId?: string; state?: string; redirectUrl?: string; message?: string };
+    if (!orderResponse.ok || !orderPayload.redirectUrl) {
+      return res.status(502).json({ error: orderPayload.message || 'Unable to create PhonePe payment.' });
+    }
+
+    await prismaAny.listingPaymentSubmission.updateMany({
+      where: {
+        listingId: listing!.id,
+        buyerId: req.user.id,
+        method: 'PHONEPE',
+        status: 'PENDING_VERIFICATION',
+      },
+      data: {
+        status: 'FAILED',
+        rejectionReason: 'Customer restarted PhonePe checkout before completion.',
+      },
+    });
+
+    await prismaAny.listingPaymentSubmission.create({
+      data: {
+        listingId: listing!.id,
+        buyerId: req.user.id,
+        partnerId: listing!.partnerId,
+        method: 'PHONEPE',
+        status: 'PENDING_VERIFICATION',
+        amount: listing!.price,
+        transactionRef: merchantOrderId,
+        phonepeMerchantOrderId: merchantOrderId,
+        phonepeOrderId: orderPayload.orderId || null,
+        settingsSnapshot: sanitizeListingPaymentSettings(settings),
+      },
+    });
+
+    res.json({
+      success: true,
+      order: {
+        merchantOrderId,
+        orderId: orderPayload.orderId || null,
+        amount: amountInPaise,
+        currency: 'INR',
+        redirectUrl: orderPayload.redirectUrl,
+        listingTitle: listing!.title,
+      },
+    });
+  } catch (error) {
+    if (error instanceof PhonePeGatewayError) {
+      return res.status(502).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const verifyListingPhonePeOrder = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
+    }
+
+    const listingId = String(req.params.id || '').trim();
+    const merchantOrderId = String(req.body?.merchantOrderId || '').trim();
+
+    if (!merchantOrderId) {
+      return res.status(400).json({ error: 'PhonePe merchant order ID is required.' });
+    }
+
+    const existingPayment = await prismaAny.listingPaymentSubmission.findFirst({
+      where: {
+        listingId,
+        buyerId: req.user.id,
+        phonepeMerchantOrderId: merchantOrderId,
+        method: 'PHONEPE',
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    if (!existingPayment) {
+      return res.status(404).json({ error: 'PhonePe payment record was not found.' });
+    }
+
+    const settings = (await getAppSettings()).listingPayment;
+    if (!settings.phonepe.enabled || !settings.phonepe.clientId || !settings.phonepe.clientSecret || !settings.phonepe.clientVersion) {
+      return res.status(400).json({ error: 'PhonePe is not configured for listing payments.' });
+    }
+
+    const authorization = await getPhonePeAuthToken(settings.phonepe);
+    const statusResponse = await fetch(
+      `${getPhonePeApiBaseUrl(settings.phonepe.mode)}/checkout/v2/order/${encodeURIComponent(merchantOrderId)}/status?details=true`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const statusPayload = await statusResponse.json() as {
+      orderId?: string;
+      state?: string;
+      amount?: number;
+      message?: string;
+      paymentDetails?: Array<{ transactionId?: string; state?: string }>;
+    };
+
+    if (!statusResponse.ok) {
+      return res.status(502).json({ error: statusPayload.message || 'Unable to verify PhonePe payment status.' });
+    }
+
+    const latestTransaction = statusPayload.paymentDetails?.find((detail) => detail.state === 'COMPLETED') || statusPayload.paymentDetails?.[0];
+    const nextStatus = statusPayload.state === 'COMPLETED'
+      ? 'PAID'
+      : statusPayload.state === 'FAILED'
+        ? 'FAILED'
+        : 'PENDING_VERIFICATION';
+
+    const payment = await prismaAny.listingPaymentSubmission.update({
+      where: { id: existingPayment.id },
+      data: {
+        status: nextStatus,
+        transactionRef: latestTransaction?.transactionId || merchantOrderId,
+        phonepeOrderId: statusPayload.orderId || existingPayment.phonepeOrderId || null,
+        phonepeTransactionId: latestTransaction?.transactionId || existingPayment.phonepeTransactionId || null,
+        settingsSnapshot: sanitizeListingPaymentSettings(settings),
+      },
+      select: {
+        id: true,
+        method: true,
+        status: true,
+        amount: true,
+        transactionRef: true,
+        submittedAt: true,
+      },
+    });
+
+    if (nextStatus === 'PAID') {
+      await finalizeListingPaymentSale(payment.id);
+    }
+
+    res.json({
+      success: true,
+      message: nextStatus === 'PAID'
+        ? 'Payment captured successfully.'
+        : nextStatus === 'FAILED'
+          ? 'PhonePe payment failed.'
+          : 'PhonePe payment is still pending.',
+      payment: {
+        ...payment,
+        amount: Number(payment.amount || 0),
+      },
+      phonepe: {
+        state: statusPayload.state || 'PENDING',
+        merchantOrderId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof PhonePeGatewayError) {
+      return res.status(502).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const submitListingPayment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (req.user.role !== 'CUSTOMER') {
+      return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
+    }
+
+    const listingId = String(req.params.id || '').trim();
+    const method = String(req.body?.method || '').trim().toUpperCase();
+    const transactionRef = String(req.body?.transactionRef || '').trim();
+    const receiptUrl = String(req.body?.receiptUrl || '').trim();
+    const paymentNote = String(req.body?.paymentNote || '').trim();
+    const razorpayOrderId = String(req.body?.razorpayOrderId || '').trim();
+    const razorpayPaymentId = String(req.body?.razorpayPaymentId || '').trim();
+    const razorpaySignature = String(req.body?.razorpaySignature || '').trim();
+
+    if (!['RTGS', 'RAZORPAY'].includes(method)) {
+      return res.status(400).json({ error: 'Valid payment method is required.' });
+    }
+
+    const listing = await getPaymentReadyListing(listingId);
+    const listingError = assertListingCanAcceptPayment(listing);
+
+    if (listingError) {
+      return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
+    }
+
+    if (listing!.partnerId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    }
+
+    const existingPending = await prismaAny.listingPaymentSubmission.findFirst({
+      where: {
+        listingId: listing!.id,
+        buyerId: req.user.id,
+        OR: [
+          { status: { in: ['PAID', 'APPROVED'] } },
+          {
+            status: 'PENDING_VERIFICATION',
+            method: { not: 'PHONEPE' },
+          },
+        ],
+      },
+    });
+
+    const blockingPayment = await findBlockingListingPayment(listing!.id, req.user.id);
+
+    if (existingPending) {
+      return res.status(400).json({
+        error: ['PAID', 'APPROVED'].includes(existingPending.status)
+          ? 'You have already purchased this machine.'
+          : 'Payment verification is already pending for this machine. Duplicate submissions are not allowed.',
+      });
+    }
+
+    if (blockingPayment) {
+      return res.status(409).json({ error: 'This listing already has a payment in progress or completed.' });
+    }
+
+    const settings = (await getAppSettings()).listingPayment;
+    if (method === 'RTGS' && !settings.rtgs.enabled) {
+      return res.status(400).json({ error: 'RTGS payment is not enabled.' });
+    }
+
+    if (method === 'RAZORPAY' && !settings.razorpay.enabled) {
+      return res.status(400).json({ error: 'Razorpay payment is not enabled.' });
+    }
+
+    if (method === 'RTGS' && (!transactionRef || !receiptUrl.startsWith('/uploads/public/'))) {
+      return res.status(400).json({ error: 'UTR/reference number and receipt upload are required.' });
+    }
+
+    if (method === 'RAZORPAY') {
+      if (!settings.razorpay.keySecret || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ error: 'Valid Razorpay payment proof is required.' });
+      }
+
+      const expectedSignature = crypto
+        .createHmac('sha256', settings.razorpay.keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+        .digest('hex');
+
+      if (expectedSignature !== razorpaySignature) {
+        return res.status(400).json({ error: 'Razorpay signature verification failed.' });
+      }
+    }
+
+    const payment = await prismaAny.listingPaymentSubmission.create({
+      data: {
+        listingId: listing!.id,
+        buyerId: req.user.id,
+        partnerId: listing!.partnerId,
+        method,
+        status: method === 'RAZORPAY' ? 'PAID' : 'PENDING_VERIFICATION',
+        amount: listing!.price,
+        transactionRef: transactionRef || razorpayPaymentId || null,
+        paymentNote: paymentNote || null,
+        receiptUrl: method === 'RTGS' ? receiptUrl : null,
+        razorpayOrderId: razorpayOrderId || null,
+        razorpayPaymentId: razorpayPaymentId || null,
+        razorpaySignature: method === 'RAZORPAY' ? razorpaySignature : null,
+        settingsSnapshot: sanitizeListingPaymentSettings(settings),
+      },
+      select: {
+        id: true,
+        method: true,
+        status: true,
+        amount: true,
+        transactionRef: true,
+        receiptUrl: true,
+        submittedAt: true,
+      },
+    });
+
+    if (method === 'RAZORPAY') {
+      await finalizeListingPaymentSale(payment.id);
+    }
+
+    try {
+      const listingTitle = listing?.title || 'Vehicle Listing';
+      const formattedAmount = payment.amount ? `₹${Number(payment.amount).toLocaleString('en-IN')}` : '';
+
+      await prismaAny.notification.create({
+        data: {
+          userId: req.user.id,
+          title: 'Payment Receipt Submitted',
+          message: `Your payment receipt ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" has been submitted and is under verification.`,
+          link: '/profile',
+          type: 'PAYMENT_SUBMITTED',
+        },
+      });
+
+      PushNotificationService.sendToUser(req.user.id, {
+        title: 'Payment Receipt Submitted',
+        body: `Your payment receipt ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" has been submitted and is under verification.`,
+        icon: '/icon.png',
+        url: '/profile',
+        path: '/profile',
+        data: { path: '/profile', url: '/profile' },
+      }).catch((e) => console.error('Push notification failed:', e));
+
+      const buyer = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { mobile: true, whatsappNumber: true },
+      });
+      void dispatchMarketplaceWhatsApp({
+        eventCode: 'LISTING_PAYMENT_SUBMITTED',
+        relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+        relatedEntityId: payment.id,
+        recipientType: 'CUSTOMER',
+        recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+        payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+      });
+      if (method === 'RAZORPAY') {
+        void dispatchMarketplaceWhatsApp({
+          eventCode: 'LISTING_PAYMENT_APPROVED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'CUSTOMER',
+          recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID' },
+        });
+        void dispatchMarketplaceWhatsApp({
+          eventCode: 'LISTING_PAYMENT_APPROVED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'PARTNER',
+          recipientPhone: listing!.partner?.whatsappNumber || listing!.partner?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID', recipientRole: 'PARTNER' },
+        });
+      }
+    } catch (notifErr) {
+      console.error('Failed to create payment submission notification:', notifErr);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: method === 'RAZORPAY'
+        ? 'Payment captured successfully.'
+        : 'Payment receipt submitted successfully. Verification is pending.',
+      payment: {
+        ...payment,
+        amount: Number(payment.amount || 0),
+      },
     });
   } catch (error) {
     next(error);

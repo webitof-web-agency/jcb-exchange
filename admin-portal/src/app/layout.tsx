@@ -9,6 +9,7 @@ import {
   DEFAULT_PWA_THEME_COLOR,
   getPortalBranding,
 } from '@/lib/siteBranding';
+import { SiteLogoProvider } from '@/hooks/useSiteLogo';
 
 const getIconType = (url: string) => {
   const lowerUrl = url.toLowerCase();
@@ -54,6 +55,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
+  const branding = await getPortalBranding();
 
   return (
     <html
@@ -62,10 +64,23 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <LocaleSync />
-        <ToastProvider>
-          {children}
-        </ToastProvider>
+        {(branding.darkLogoUrl || branding.logoUrl) && (
+          <link rel="preload" as="image" href={branding.darkLogoUrl || branding.logoUrl || undefined} />
+        )}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__JCB_PORTAL_LOGO__=${JSON.stringify({
+              logoUrl: branding.logoUrl,
+              darkLogoUrl: branding.darkLogoUrl,
+            }).replace(/</g, '\\u003c')};`,
+          }}
+        />
+        <SiteLogoProvider value={{ logoUrl: branding.logoUrl, darkLogoUrl: branding.darkLogoUrl }}>
+          <LocaleSync />
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </SiteLogoProvider>
       </body>
     </html>
   );
