@@ -38,7 +38,7 @@ jobs:
 
       # 2. Java setup (Android ke liye zaroori)
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -75,12 +75,6 @@ jobs:
           echo "Generated .env contents:"
           cat .env
 
-      # 6. Keystore file decode karke rakhna (Base64 se)
-      - name: Decode Keystore
-        if: ${{ github.event.inputs.build_type == 'release' }}
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/jcbexchange.keystore
-
       # 7. Gradle permissions
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -98,13 +92,11 @@ jobs:
       # 9. Release APK build
       - name: Build Release APK
         if: ${{ github.event.inputs.build_type == 'release' }}
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
         run: |
           cd android
-          ./gradlew assembleRelease \
-            -PMYAPP_UPLOAD_STORE_FILE=jcbexchange.keystore \
-            -PMYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }} \
-            -PMYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }} \
-            -PMYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
+          ./gradlew assembleRelease
 
       # 10. Debug APK build
       - name: Build Debug APK
