@@ -220,20 +220,6 @@ export default function CategoriesPageClient() {
           )}
         </section>
 
-        <section className="hidden md:block mt-8 rounded-[28px] border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="max-w-4xl space-y-4 text-sm leading-7 text-gray-600">
-            <h2 className="text-2xl font-extrabold text-gray-900">Explore equipment categories with real market demand</h2>
-            <p>
-              Browse machine categories to quickly narrow down verified listings for backhoe loaders, excavators, telehandlers,
-              compact equipment, and other heavy machinery commonly searched across India. Each category page helps buyers move
-              faster from discovery to comparison without losing track of active listings.
-            </p>
-            <p>
-              If you already know the type of machine you need, continue to the <Link href="/machines" className="font-bold text-jcb-yellow hover:text-yellow-600">full machines marketplace</Link>.
-              If you want help from businesses operating in your region, explore <Link href="/dealers" className="font-bold text-jcb-yellow hover:text-yellow-600">verified dealers</Link> before making contact.
-            </p>
-          </div>
-        </section>
       </div>
     </div>
   );
