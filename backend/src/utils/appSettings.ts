@@ -3,6 +3,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma';
 import { uploadRootDir } from './documentUpload';
+import { normalizeRemoteMediaUrl } from './mediaUrl';
 import {
   type CustomerPrimeSettings,
   normalizeCustomerPrimeSettings,
@@ -456,7 +457,7 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     items: normalizeFinanceSupportItems(parsed?.financeSupport?.items),
   },
   heroImage: {
-    imageUrl: parsed?.heroImage?.imageUrl?.trim() || null,
+    imageUrl: normalizeRemoteMediaUrl(parsed?.heroImage?.imageUrl),
     headline: parsed?.heroImage?.headline?.trim() || null,
     updatedAt: parsed?.heroImage?.updatedAt || null,
     updatedByUserId: parsed?.heroImage?.updatedByUserId || null,
@@ -464,15 +465,15 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
   inspectionSection: {
     title: parsed?.inspectionSection?.title?.trim() || null,
     description: parsed?.inspectionSection?.description?.trim() || null,
-    imageUrl: parsed?.inspectionSection?.imageUrl?.trim() || null,
+    imageUrl: normalizeRemoteMediaUrl(parsed?.inspectionSection?.imageUrl),
     updatedAt: parsed?.inspectionSection?.updatedAt || null,
     updatedByUserId: parsed?.inspectionSection?.updatedByUserId || null,
   },
   siteLogo: {
-    imageUrl: parsed?.siteLogo?.imageUrl?.trim() || null,
-    darkLogoUrl: parsed?.siteLogo?.darkLogoUrl?.trim() || null,
-    faviconUrl: parsed?.siteLogo?.faviconUrl?.trim() || null,
-    manifestIconUrl: parsed?.siteLogo?.manifestIconUrl?.trim() || null,
+    imageUrl: normalizeRemoteMediaUrl(parsed?.siteLogo?.imageUrl),
+    darkLogoUrl: normalizeRemoteMediaUrl(parsed?.siteLogo?.darkLogoUrl),
+    faviconUrl: normalizeRemoteMediaUrl(parsed?.siteLogo?.faviconUrl),
+    manifestIconUrl: normalizeRemoteMediaUrl(parsed?.siteLogo?.manifestIconUrl),
     updatedAt: parsed?.siteLogo?.updatedAt || null,
     updatedByUserId: parsed?.siteLogo?.updatedByUserId || null,
   },
@@ -605,7 +606,7 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
 
   for (const [index, item] of (items || []).entries()) {
     const name = item.name?.trim();
-    const imageUrl = item.imageUrl?.trim();
+    const imageUrl = normalizeRemoteMediaUrl(item.imageUrl);
 
     if (!name || !imageUrl) {
       continue;
@@ -1067,7 +1068,7 @@ export const updateHeroImageSettings = async ({
   const nextSettings: AppSettings = {
     ...currentSettings,
     heroImage: {
-      imageUrl: imageUrl?.trim() || null,
+      imageUrl: normalizeRemoteMediaUrl(imageUrl),
       headline: headline?.trim() || null,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
@@ -1097,7 +1098,7 @@ export const updateInspectionSectionSettings = async ({
     inspectionSection: {
       title: title?.trim() || null,
       description: description?.trim() || null,
-      imageUrl: imageUrl?.trim() || null,
+      imageUrl: normalizeRemoteMediaUrl(imageUrl),
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },
@@ -1135,10 +1136,10 @@ export const updateSiteLogoSettings = async ({
   const nextSettings: AppSettings = {
     ...currentSettings,
     siteLogo: {
-      imageUrl: normalizedImageUrl,
-      darkLogoUrl: normalizedDarkLogoUrl,
-      faviconUrl: normalizedFaviconUrl,
-      manifestIconUrl: normalizedManifestIconUrl,
+      imageUrl: normalizeRemoteMediaUrl(normalizedImageUrl),
+      darkLogoUrl: normalizeRemoteMediaUrl(normalizedDarkLogoUrl),
+      faviconUrl: normalizeRemoteMediaUrl(normalizedFaviconUrl),
+      manifestIconUrl: normalizeRemoteMediaUrl(normalizedManifestIconUrl),
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },

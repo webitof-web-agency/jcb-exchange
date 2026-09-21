@@ -1,4 +1,5 @@
 import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME } from '@/lib/site';
+import { getRemoteMediaUrl } from '@/lib/api';
 
 export type SiteBranding = {
   logoUrl: string | null;
@@ -15,15 +16,7 @@ export const DEFAULT_PWA_BACKGROUND_COLOR = '#1f1f1f';
 export const DEFAULT_PWA_THEME_COLOR = '#1f1f1f';
 
 const toAbsoluteUrl = (value?: string | null) => {
-  if (!value) {
-    return null;
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    return value;
-  }
-
-  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${value}`;
+  return getRemoteMediaUrl(value);
 };
 
 const appendVersionToUrl = (value: string | null, version?: string | null) => {

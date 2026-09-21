@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, MapPin, ChevronDown, ArrowRight, Package, Truck, Coins, FileText, Handshake, Briefcase, Sparkles } from 'lucide-react';
 import { useNotificationStore } from '@/store/notificationStore';
-import api, { API_ORIGIN } from '@/lib/api';
+import api, { getRemoteMediaUrl } from '@/lib/api';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
 import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
@@ -99,15 +99,11 @@ const getListingStatusLabel = (
   return labels.available;
 };
 
-const getMediaUrl = (url: string | null) => {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_ORIGIN}${url.startsWith('/') ? url : `/${url}`}`;
-};
+const getMediaUrl = (url: string | null) => getRemoteMediaUrl(url);
 
 export default function Home() {
   const { t } = useTranslation();
-  const { recentListings } = useNotificationStore();
+  const { recentListings, recentListingsLoading } = useNotificationStore();
   const [financeSupportItems, setFinanceSupportItems] = React.useState<FinanceSupportItem[]>([]);
   const [heroImageUrl, setHeroImageUrl] = React.useState<string | null>(null);
   const [heroHeadline, setHeroHeadline] = React.useState('');
@@ -118,6 +114,7 @@ export default function Home() {
   const [searchLocations, setSearchLocations] = React.useState<PublicSearchLocation[]>([]);
   const [playStoreLink, setPlayStoreLink] = React.useState<string | null>(null);
   const [appStoreLink, setAppStoreLink] = React.useState<string | null>(null);
+  const [isHomepageDataLoading, setIsHomepageDataLoading] = React.useState(true);
 
   // Hero Search States
   const router = useRouter();
@@ -173,7 +170,7 @@ export default function Home() {
   const uniqueFinanceSupportItems = React.useMemo(() => {
     const seen = new Set<string>();
     return financeSupportItems.filter((item) => {
-      if (!item.imageUrl) return false;
+      if (!getMediaUrl(item.imageUrl)) return false;
 
       const key = `${item.id}:${item.name.trim().toLowerCase()}:${item.imageUrl}`;
       if (seen.has(key)) return false;
@@ -278,6 +275,10 @@ export default function Home() {
           setPlayStoreLink(null);
           setAppStoreLink(null);
         }
+      } finally {
+        if (!cancelled) {
+          setIsHomepageDataLoading(false);
+        }
       }
     };
 
@@ -290,49 +291,53 @@ export default function Home() {
 
   const categoryOptions = searchCategories.length > 0 ? searchCategories : browseCategories;
 
-  const renderFinanceCard = (item: FinanceSupportItem, key: string) => (
-    <div
-      key={key}
-      className="relative flex flex-col md:flex-row w-[90px] md:h-[80px] md:w-[240px] shrink-0 snap-center md:overflow-hidden md:rounded-lg md:bg-gray-900 md:shadow-md transition-transform active:scale-95 hover:scale-105 md:border-none"
-    >
-      {/* Desktop Full Card Image */}
-      <div className="hidden md:block relative w-full h-full">
-        {item.imageUrl && (
-          <Image
-            src={getMediaUrl(item.imageUrl) || item.imageUrl}
-            alt={`${item.name} finance support partner on JCB Exchange`}
-            fill
-            sizes="(max-width: 640px) 220px, 240px"
-            className="object-cover opacity-80 transition-opacity hover:opacity-100"
-          />
-        )}
-        {/* Brand Name Overlaid */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center pointer-events-none">
-          <p className="truncate text-[15px] font-extrabold uppercase tracking-widest text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-            {item.name}
-          </p>
-        </div>
-      </div>
+  const renderFinanceCard = (item: FinanceSupportItem, key: string) => {
+    const imageUrl = getMediaUrl(item.imageUrl);
 
-      {/* Mobile Custom Card Layout */}
-      <div className="flex md:hidden flex-col items-center w-full">
-        <div className="relative h-[65px] w-full bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center p-2 mb-1.5 overflow-hidden">
-          {item.imageUrl && (
+    return (
+      <div
+        key={key}
+        className="relative flex flex-col md:flex-row w-[90px] md:h-[80px] md:w-[240px] shrink-0 snap-center md:overflow-hidden md:rounded-lg md:bg-gray-900 md:shadow-md transition-transform active:scale-95 hover:scale-105 md:border-none"
+      >
+        {/* Desktop Full Card Image */}
+        <div className="hidden md:block relative w-full h-full">
+          {imageUrl && (
             <Image
-              src={getMediaUrl(item.imageUrl) || item.imageUrl}
+              src={imageUrl}
               alt={`${item.name} finance support partner on JCB Exchange`}
               fill
-              sizes="90px"
-              className="object-contain p-2"
+              sizes="(max-width: 640px) 220px, 240px"
+              className="object-cover opacity-80 transition-opacity hover:opacity-100"
             />
           )}
+          {/* Brand Name Overlaid */}
+          <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center pointer-events-none">
+            <p className="truncate text-[15px] font-extrabold uppercase tracking-widest text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+              {item.name}
+            </p>
+          </div>
         </div>
-        <span className="text-[9px] font-extrabold text-gray-800 text-center uppercase tracking-wide truncate w-full px-1">
-          {item.name}
-        </span>
+
+        {/* Mobile Custom Card Layout */}
+        <div className="flex md:hidden flex-col items-center w-full">
+          <div className="relative h-[65px] w-full bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center p-2 mb-1.5 overflow-hidden">
+            {imageUrl && (
+              <Image
+                src={imageUrl}
+                alt={`${item.name} finance support partner on JCB Exchange`}
+                fill
+                sizes="90px"
+                className="object-contain p-2"
+              />
+            )}
+          </div>
+          <span className="text-[9px] font-extrabold text-gray-800 text-center uppercase tracking-wide truncate w-full px-1">
+            {item.name}
+          </span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -342,7 +347,7 @@ export default function Home() {
         {/* Background Image with Overlay */}
         <div className="absolute inset-0 z-0 bg-[#1C1C1C]">
           <Image
-            src={heroImageUrl ? (getMediaUrl(heroImageUrl) || heroImageUrl) : "/images/jcbhero.png"}
+            src={getMediaUrl(heroImageUrl) || "/images/jcbhero.png"}
             alt="Heavy machinery marketplace hero banner"
             fill
             priority
@@ -524,7 +529,7 @@ export default function Home() {
           </div>
 
           <div className="flex flex-col md:border-t md:border-gray-200">
-            {browseCategories.length === 0 ? (
+            {isHomepageDataLoading ? (
               <div className="animate-pulse">
                 {/* Desktop skeleton: match the loaded four-column category rows. */}
                 <div className="hidden md:flex md:flex-col">
@@ -554,7 +559,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-            ) : (
+            ) : browseCategories.length > 0 ? (
               <>
                 {/* Desktop View (Rows of 4) */}
                 <div className="hidden md:flex flex-col">
@@ -608,6 +613,16 @@ export default function Home() {
                   })}
                 </div>
               </>
+            ) : (
+              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white px-6 py-8 text-center">
+                <Package className="mb-3 h-10 w-10 text-gray-300" />
+                <p className="text-sm font-semibold text-gray-700">
+                  {t('categories.noCategoriesFound', 'No categories available yet.')}
+                </p>
+                <p className="mt-1 max-w-md text-xs text-gray-500">
+                  {t('categories.noCategoriesDescription', 'Categories will appear here after approved listings are added.')}
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -681,10 +696,17 @@ export default function Home() {
             className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:gap-4 pb-2 md:pb-4 hide-scrollbar md:grid md:grid-cols-2 lg:grid-cols-4 md:pb-0 md:overflow-visible"
             onScroll={handleNewSectionScroll}
           >
-            {recentListings.length === 0 ? (
+            {recentListingsLoading ? (
               <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[300px] flex flex-col items-center justify-center text-gray-400 bg-[#333] rounded-lg border border-[#444] border-dashed">
                 <Package className="w-12 h-12 mb-4 opacity-30" />
                 <p className="text-base font-medium">{t('home.loadingLatestMachines')}</p>
+              </div>
+            ) : recentListings.length === 0 ? (
+              <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[220px] flex flex-col items-center justify-center text-gray-400 bg-[#333] rounded-lg border border-[#444] border-dashed px-6 text-center">
+                <Package className="w-12 h-12 mb-4 opacity-30" />
+                <p className="text-base font-medium">
+                  {t('home.noLatestMachines', 'No machines available yet.')}
+                </p>
               </div>
             ) : (
               recentListings.slice(0, 4).map((listing) => {
@@ -887,7 +909,7 @@ export default function Home() {
              {/* Full Image on Right */}
              <div className="relative w-[40%] h-auto">
                <Image 
-                 src={inspectionContent?.imageUrl ? (getMediaUrl(inspectionContent.imageUrl) || inspectionContent.imageUrl) : "/images/inspection.png"} 
+                 src={getMediaUrl(inspectionContent?.imageUrl || null) || "/images/inspection.png"}
                  alt="Verified dealers" 
                  fill 
                  sizes="(max-width: 768px) 40vw"
@@ -922,7 +944,7 @@ export default function Home() {
             <div className="lg:w-[45%] relative mt-8 lg:mt-0">
               <div className="relative rounded-2xl overflow-hidden shadow-xl border-4 border-white">
                 <Image
-                  src={inspectionContent?.imageUrl ? (getMediaUrl(inspectionContent.imageUrl) || inspectionContent.imageUrl) : "/images/inspection.png"}
+                  src={getMediaUrl(inspectionContent?.imageUrl || null) || "/images/inspection.png"}
                   alt={inspectionContent?.title || 'Heavy equipment inspection support'}
                   width={1200}
                   height={800}

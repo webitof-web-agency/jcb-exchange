@@ -11,6 +11,28 @@ export const getAbsoluteMediaUrl = (url?: string | null) => {
   return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
+/**
+ * Public uploaded media is Drive-backed. Legacy relative /uploads URLs point
+ * to files that are not part of a database backup, so do not request them.
+ */
+export const getRemoteMediaUrl = (url?: string | null) => {
+  const normalizedUrl = url?.trim();
+  if (!normalizedUrl || !/^https?:\/\//i.test(normalizedUrl)) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(normalizedUrl);
+    if (!parsedUrl.hostname || /^\/uploads(?:\/|$)/i.test(parsedUrl.pathname)) {
+      return null;
+    }
+
+    return normalizedUrl;
+  } catch {
+    return null;
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { API_BASE_URL, getAbsoluteMediaUrl } from '@/lib/api';
+import { API_BASE_URL, getRemoteMediaUrl } from '@/lib/api';
 
 // ── Cached result type ─────────────────────────────────────────────────────
 type LogoData = {
@@ -31,8 +31,8 @@ async function fetchLogos(): Promise<LogoData> {
       };
     };
     return {
-      logoUrl:     json?.data?.imageUrl    ? getAbsoluteMediaUrl(json.data.imageUrl)    : null,
-      darkLogoUrl: json?.data?.darkLogoUrl ? getAbsoluteMediaUrl(json.data.darkLogoUrl) : null,
+      logoUrl:     json?.data?.imageUrl    ? getRemoteMediaUrl(json.data.imageUrl)    : null,
+      darkLogoUrl: json?.data?.darkLogoUrl ? getRemoteMediaUrl(json.data.darkLogoUrl) : null,
     };
   } catch {
     return { logoUrl: null, darkLogoUrl: null };

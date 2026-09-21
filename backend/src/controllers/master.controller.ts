@@ -9,8 +9,33 @@ import {
   isPublicMarketplaceListingVisible,
 } from '../utils/publicListingVisibility';
 import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.service';
+import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 
 const prismaAny = prisma as any;
+
+const getFirstRemoteImageUrl = (media: unknown) => {
+  if (!Array.isArray(media)) {
+    return null;
+  }
+
+  const image = media.find((item: any) => item?.type === 'IMAGE' && item?.isFeatured)
+    || media.find((item: any) => item?.type === 'IMAGE');
+
+  return normalizeRemoteMediaUrl(image?.url);
+};
+
+const getRemotePublicMedia = (media: unknown) => {
+  if (!Array.isArray(media)) {
+    return [];
+  }
+
+  return media
+    .map((item: any) => {
+      const url = normalizeRemoteMediaUrl(item?.url);
+      return url ? { ...item, url } : null;
+    })
+    .filter(Boolean);
+};
 
 type PublicListingFormDetails = {
   variant: string | null;
@@ -1057,11 +1082,8 @@ export const getPublicListings = async (req: Request, res: Response, next: NextF
             'Verified Partner',
           type: listing.partner?.partnerProfile?.partnerType || 'Partner',
         },
-        featuredImage:
-          listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-          listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
-          null,
-        mediaCount: listing.media.length,
+        featuredImage: getFirstRemoteImageUrl(listing.media),
+        mediaCount: getRemotePublicMedia(listing.media).length,
         createdAt: listing.createdAt,
         updatedAt: listing.updatedAt,
       })),
@@ -1133,10 +1155,7 @@ export const getRecentListings = async (req: Request, res: Response, next: NextF
           listing.partner?.partnerProfile?.businessName ||
           listing.partner?.name ||
           'Verified Partner',
-        featuredImage:
-          listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-          listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
-          null,
+        featuredImage: getFirstRemoteImageUrl(listing.media),
         createdAt: listing.createdAt,
         updatedAt: listing.updatedAt,
       })),
@@ -1203,10 +1222,7 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
       }
 
       const existing = categoryMap.get(listing.category.id);
-      const featuredImage =
-        listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-        listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
-        null;
+      const featuredImage = getFirstRemoteImageUrl(listing.media);
 
       if (!existing) {
         categoryMap.set(listing.category.id, {
@@ -1514,12 +1530,9 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       },
       publicContact,
       buyNowPaymentAvailable: listing.status !== 'SOLD' && isBuyNowPaymentConfigured(settings.listingPayment),
-      media: listing.media,
-      featuredImage:
-        listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-        listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
-        null,
-      mediaCount: listing.media.length,
+      media: getRemotePublicMedia(listing.media),
+      featuredImage: getFirstRemoteImageUrl(listing.media),
+      mediaCount: getRemotePublicMedia(listing.media).length,
       createdAt: listing.createdAt,
       updatedAt: listing.updatedAt,
       saleRecord: listing.status === 'SOLD' && listing.saleRecord ? {

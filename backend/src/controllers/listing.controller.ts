@@ -14,6 +14,7 @@ import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../servi
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { syncListingRtoForListing } from '../services/listingRto.service';
+import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 
 const prismaAny = prisma as any;
 const latestListingRtoRecords = {
@@ -391,7 +392,7 @@ const normalizeMedia = (media: unknown) => {
         return null;
       }
 
-      const fileUrl = normalizeText((item as any).fileUrl);
+      const fileUrl = normalizeRemoteMediaUrl((item as any).fileUrl);
       const type = normalizeText((item as any).type).toUpperCase();
       const slot = normalizeText((item as any).slot).toLowerCase();
       const isFeatured = Boolean((item as any).isFeatured) || slot === 'front-view';

@@ -28,6 +28,8 @@ export interface UserNotification {
 
 interface NotificationState {
   recentListings: PublicNotification[];
+  recentListingsLoading: boolean;
+  recentListingsLoaded: boolean;
   notifications: UserNotification[];
   lastSeenTimestamp: number;
   unreadCount: number;
@@ -41,6 +43,8 @@ interface NotificationState {
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   recentListings: [],
+  recentListingsLoading: true,
+  recentListingsLoaded: false,
   notifications: [],
   lastSeenTimestamp: 0,
   unreadCount: 0,
@@ -61,17 +65,42 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   fetchRecentListings: async () => {
+    const hasLoadedListings = get().recentListingsLoaded;
+    if (!hasLoadedListings) {
+      set({ recentListingsLoading: true });
+    }
+
     try {
       const res = await api.get('/master/recent-listings');
       if (res.data?.success) {
-        const listings = res.data.data;
+        const listings = Array.isArray(res.data.data) ? res.data.data : [];
         set({
           recentListings: listings,
+          recentListingsLoaded: true,
+          recentListingsLoading: false,
+        });
+      } else if (!hasLoadedListings) {
+        set({
+          recentListings: [],
+          recentListingsLoaded: true,
+          recentListingsLoading: false,
         });
       }
     } catch {
-      // Keep the last successful feed visible during a transient refresh/API failure.
-      // The next successful response remains the source of truth.
+      // Keep a loaded feed visible during a transient refresh/API failure.
+      // On the first request, finish the state as empty instead of showing a
+      // permanent loading placeholder when the database has no listings.
+      if (!hasLoadedListings) {
+        set({
+          recentListings: [],
+          recentListingsLoaded: true,
+          recentListingsLoading: false,
+        });
+      }
+    } finally {
+      if (hasLoadedListings) {
+        set({ recentListingsLoading: false });
+      }
     }
   },
 
