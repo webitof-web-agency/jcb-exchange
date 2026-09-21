@@ -12,11 +12,24 @@ on:
         options:
           - release
           - debug
+      web_url:
+        description: 'Web App URL'
+        required: false
+        default: 'https://jcbexchange.com'
+        type: string
+      api_url:
+        description: 'API Base URL'
+        required: false
+        default: 'https://api.jcbexchange.com'
+        type: string
 
 jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: JCB-Exchange
 
     steps:
       # 1. Code checkout
@@ -36,19 +49,31 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: JCB-Exchange/package-lock.json
 
       # 4. npm dependencies install
       - name: Install dependencies
         run: npm ci
 
-      # 5. .env file banana (secrets se)
+      # 5. .env file banana (inputs se, ya secrets/default fallback)
       - name: Create .env file
         run: |
-          echo "WEB_APP_URL=${{ secrets.WEB_APP_URL }}" >> .env
-          echo "API_BASE_URL=${{ secrets.API_BASE_URL }}" >> .env
-          echo "SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}" >> .env
-          echo "BUSINESS_EMAIL=${{ secrets.BUSINESS_EMAIL }}" >> .env
-          echo "WHATSAPP_SUPPORT_NUMBER=${{ secrets.WHATSAPP_SUPPORT_NUMBER }}" >> .env
+          WEB_URL="${{ inputs.web_url }}"
+          API_URL="${{ inputs.api_url }}"
+          
+          if [ -z "$WEB_URL" ]; then WEB_URL="${{ secrets.WEB_APP_URL }}"; fi
+          if [ -z "$API_URL" ]; then API_URL="${{ secrets.API_BASE_URL }}"; fi
+          if [ -z "$WEB_URL" ]; then WEB_URL="https://jcbexchange.com"; fi
+          if [ -z "$API_URL" ]; then API_URL="https://api.jcbexchange.com"; fi
+          
+          echo "WEB_APP_URL=$WEB_URL" > .env
+          echo "API_BASE_URL=$API_URL" >> .env
+          echo "SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL || 'support@jcbexchange.com' }}" >> .env
+          echo "BUSINESS_EMAIL=${{ secrets.BUSINESS_EMAIL || 'business@jcbexchange.com' }}" >> .env
+          echo "WHATSAPP_SUPPORT_NUMBER=${{ secrets.WHATSAPP_SUPPORT_NUMBER || '917451965755' }}" >> .env
+          
+          echo "Generated .env contents:"
+          cat .env
 
       # 6. Keystore file decode karke rakhna (Base64 se)
       - name: Decode Keystore
@@ -67,7 +92,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('JCB-Exchange/android/**/*.gradle*', 'JCB-Exchange/android/**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
       # 9. Release APK build
@@ -94,6 +119,6 @@ jobs:
         with:
           name: JCB-Exchange-${{ github.event.inputs.build_type }}-${{ github.run_number }}
           path: |
-            android/app/build/outputs/apk/release/JCB-Exchange.apk
-            android/app/build/outputs/apk/debug/JCB-Exchange.apk
+            JCB-Exchange/android/app/build/outputs/apk/release/JCB-Exchange.apk
+            JCB-Exchange/android/app/build/outputs/apk/debug/JCB-Exchange.apk
           retention-days: 30
