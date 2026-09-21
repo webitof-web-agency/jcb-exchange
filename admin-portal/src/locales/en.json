@@ -25,6 +25,10 @@
     "pending": "Pending",
     "rejected": "Rejected",
     "changesRequested": "Changes Requested",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "saveChanges": "Save Changes",
+    "saving": "Saving...",
     "adminEmailFallback": "admin@jcbexchange.com",
     "partnerEmailFallback": "partner@jcbexchange.com"
   },

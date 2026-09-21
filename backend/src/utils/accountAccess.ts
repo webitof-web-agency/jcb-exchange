@@ -28,6 +28,8 @@ export const authenticatedUserSelect = {
   whatsappNumber: true,
   city: true,
   state: true,
+  createdAt: true,
+  updatedAt: true,
   customRoleId: true,
   adminProfile: {
     select: {

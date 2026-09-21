@@ -1497,7 +1497,7 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
       data: {
         name: normalizedName,
         email: normalizedEmail,
-        mobile: normalizedMobile,
+        mobile: normalizedMobile || targetUser.mobile || null,
         city: normalizedCity,
         state: normalizedState,
       },

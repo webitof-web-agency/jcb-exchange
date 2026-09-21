@@ -1752,16 +1752,16 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
           ? {
               name: normalizedOwnerName || currentUser.name,
               email: normalizedEmail,
-              mobile: normalizedMobile || null,
-              whatsappNumber: normalizedWhatsapp || null,
+              mobile: normalizedMobile || currentUser.mobile || null,
+              whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
               city: normalizedCity || null,
               state: normalizedState || null,
             }
           : {
               name: normalizedName || currentUser.name || null,
               email: normalizedEmail,
-              mobile: normalizedMobile || null,
-              whatsappNumber: normalizedWhatsapp || null,
+              mobile: normalizedMobile || currentUser.mobile || null,
+              whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
             },
         include: {
           adminProfile: true,

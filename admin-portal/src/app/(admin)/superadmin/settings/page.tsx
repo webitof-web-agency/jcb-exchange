@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, FileText, HardDrive, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
+import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -267,6 +267,8 @@ export default function SuperAdminSettingsPage() {
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
   const [googleDriveSaving, setGoogleDriveSaving] = useState(false);
+  const [showGoogleDriveClientSecret, setShowGoogleDriveClientSecret] = useState(false);
+  const [showGoogleDriveRefreshToken, setShowGoogleDriveRefreshToken] = useState(false);
   const [mobileAppSaving, setMobileAppSaving] = useState(false);
 
   const [googleDriveSettings, setGoogleDriveSettings] = useState({
@@ -461,11 +463,12 @@ export default function SuperAdminSettingsPage() {
       // Fetch Google Drive settings
       try {
         const driveRes = await api.get('/superadmin/google-drive');
+        const driveSettings = driveRes.data.googleDrive || {};
         setGoogleDriveSettings({
-          clientId: driveRes.data.clientId || '',
-          clientSecret: driveRes.data.clientSecret || '',
-          refreshToken: driveRes.data.refreshToken || '',
-          backupFolderId: driveRes.data.backupFolderId || '',
+          clientId: driveSettings.clientId || '',
+          clientSecret: driveSettings.clientSecret || '',
+          refreshToken: driveSettings.refreshToken || '',
+          backupFolderId: driveSettings.backupFolderId || '',
         });
       } catch (err) {
         console.warn('Failed to load Google Drive settings:', err);
@@ -757,6 +760,13 @@ export default function SuperAdminSettingsPage() {
         clientSecret: googleDriveSettings.clientSecret,
         refreshToken: googleDriveSettings.refreshToken,
         backupFolderId: googleDriveSettings.backupFolderId,
+      });
+      const driveSettings = response.data.googleDrive || {};
+      setGoogleDriveSettings({
+        clientId: driveSettings.clientId || '',
+        clientSecret: driveSettings.clientSecret || '',
+        refreshToken: driveSettings.refreshToken || '',
+        backupFolderId: driveSettings.backupFolderId || '',
       });
       toast.success(response.data.message || 'Google Drive settings updated successfully.');
     } catch (error: unknown) {
@@ -2121,26 +2131,46 @@ export default function SuperAdminSettingsPage() {
                         className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                       />
                     </label>
-                    <label className="block">
+                    <div className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Client Secret</span>
-                      <input
-                        type="password"
-                        value={googleDriveSettings.clientSecret}
-                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientSecret: e.target.value })}
-                        placeholder="Client Secret"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
-                    <label className="block md:col-span-2">
+                      <div className="relative">
+                        <input
+                          type={showGoogleDriveClientSecret ? 'text' : 'password'}
+                          value={googleDriveSettings.clientSecret}
+                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientSecret: e.target.value })}
+                          placeholder="Client Secret"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGoogleDriveClientSecret((current) => !current)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                          aria-label={showGoogleDriveClientSecret ? 'Hide Google client secret' : 'Show Google client secret'}
+                        >
+                          {showGoogleDriveClientSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="block md:col-span-2">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Refresh Token</span>
-                      <input
-                        type="password"
-                        value={googleDriveSettings.refreshToken}
-                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, refreshToken: e.target.value })}
-                        placeholder="Refresh Token (from OAuth2 Playground)"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
+                      <div className="relative">
+                        <input
+                          type={showGoogleDriveRefreshToken ? 'text' : 'password'}
+                          value={googleDriveSettings.refreshToken}
+                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, refreshToken: e.target.value })}
+                          placeholder="Refresh Token (from OAuth2 Playground)"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGoogleDriveRefreshToken((current) => !current)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                          aria-label={showGoogleDriveRefreshToken ? 'Hide refresh token' : 'Show refresh token'}
+                        >
+                          {showGoogleDriveRefreshToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
                     <label className="block md:col-span-2">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Database Backup Folder ID (Optional)</span>
                       <input
