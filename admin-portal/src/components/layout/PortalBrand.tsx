@@ -43,7 +43,18 @@ export default function PortalBrand({
               className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
             />
           </div>
-        ) : null}
+        ) : (
+          <div className={`relative flex items-center justify-center ${wrapperClass}`}>
+            <Image
+              src="/mainlogo.png"
+              alt="JCB Exchange"
+              width={300}
+              height={80}
+              priority={size === 'header'}
+              className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
+            />
+          </div>
+        )}
       </Link>
       {showSubtitle && subtitle ? (
         <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-gray-400 text-center">{subtitle}</p>

@@ -20,6 +20,10 @@ const toAbsoluteUrl = (value?: string | null) => {
     return null;
   }
 
+  if (/^\/uploads\/public\//i.test(normalizedValue)) {
+    return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedValue}`;
+  }
+
   if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedValue)) {
     return null;
   }
@@ -27,13 +31,13 @@ const toAbsoluteUrl = (value?: string | null) => {
   if (/^https?:\/\//i.test(normalizedValue)) {
     try {
       const parsed = new URL(normalizedValue);
-      return /^\/uploads(?:\/|$)/i.test(parsed.pathname) ? null : normalizedValue;
+      return /^\/uploads(?:\/|$)/i.test(parsed.pathname) && !/^\/uploads\/public\//i.test(parsed.pathname) ? null : normalizedValue;
     } catch {
       return null;
     }
   }
 
-  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedValue}`;
+  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedValue.startsWith('/') ? '' : '/'}${normalizedValue}`;
 };
 
 const appendVersionToUrl = (value: string | null, version?: string | null) => {
