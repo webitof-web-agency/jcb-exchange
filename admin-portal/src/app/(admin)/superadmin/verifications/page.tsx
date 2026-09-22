@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 
 interface VerificationItem {
   id: string;
@@ -311,64 +312,37 @@ export default function SuperAdminVerificationsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 sm:px-6 sm:py-4">
-                      <div className="relative flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setOpenActionMenuId(openActionMenuId === partner.id ? null : partner.id)}
-                          className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-                          title="Actions"
-                        >
-                          <MoreVertical className="h-5 w-5" />
-                        </button>
-
-                        {openActionMenuId === partner.id && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-[100]" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenActionMenuId(null);
-                              }}
-                            />
-                            <div className="absolute right-4 top-10 z-[110] min-w-max overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
-                              <button
-                                type="button"
-                                onClick={() => { setOpenActionMenuId(null); void openDetail(partner.id); }}
-                                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 hover:text-blue-600"
-                              >
-                                <Eye className="h-4 w-4" />
-                                {t('verifications.review')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setOpenActionMenuId(null); void handleStatusUpdate(partner.id, 'CHANGES_REQUESTED'); }}
-                                disabled={updatingId === partner.id}
-                                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
-                              >
-                                <AlertCircle className="h-4 w-4" />
-                                {t('verifications.requestChanges')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setOpenActionMenuId(null); void handleStatusUpdate(partner.id, 'APPROVED'); }}
-                                disabled={updatingId === partner.id}
-                                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-green-50 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                                {t('verifications.approve')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setOpenActionMenuId(null); void handleStatusUpdate(partner.id, 'REJECTED'); }}
-                                disabled={updatingId === partner.id}
-                                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                              >
-                                <XCircle className="h-4 w-4" />
-                                {t('verifications.reject')}
-                              </button>
-                            </div>
-                          </>
-                        )}
+                      <div className="flex justify-end">
+                        <PortalActionDropdown
+                          items={[
+                            {
+                              label: t('verifications.review'),
+                              icon: <Eye className="h-4 w-4" />,
+                              onClick: () => { void openDetail(partner.id); },
+                            },
+                            {
+                              label: t('verifications.requestChanges'),
+                              icon: <AlertCircle className="h-4 w-4" />,
+                              variant: 'warning',
+                              disabled: updatingId === partner.id,
+                              onClick: () => { void handleStatusUpdate(partner.id, 'CHANGES_REQUESTED'); },
+                            },
+                            {
+                              label: t('verifications.approve'),
+                              icon: <CheckCircle2 className="h-4 w-4" />,
+                              variant: 'success',
+                              disabled: updatingId === partner.id,
+                              onClick: () => { void handleStatusUpdate(partner.id, 'APPROVED'); },
+                            },
+                            {
+                              label: t('verifications.reject'),
+                              icon: <XCircle className="h-4 w-4" />,
+                              variant: 'danger',
+                              disabled: updatingId === partner.id,
+                              onClick: () => { void handleStatusUpdate(partner.id, 'REJECTED'); },
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

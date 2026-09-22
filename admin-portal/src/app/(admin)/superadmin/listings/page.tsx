@@ -3,7 +3,9 @@
 import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import axios from 'axios';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -820,7 +822,7 @@ function TableAvailabilityDropdown({
   onChange,
   options,
   disabled,
-  openUpwards,
+  openUpwards: _openUpwards,
   optionLabels,
 }: {
   value: string;
@@ -831,28 +833,58 @@ function TableAvailabilityDropdown({
   optionLabels?: Record<string, string>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const calculatePosition = () => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuHeight = Math.min(options.length * 36 + 12, 200);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+    const top = openUp ? rect.top - menuHeight - 4 : rect.bottom + 4;
+    const left = Math.min(rect.left, window.innerWidth - 160);
+    setCoords({ top, left });
+  };
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+    if (!isOpen) return;
+    const handleScrollOrResize = () => calculatePosition();
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
       }
-    }
+    };
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    return () => {
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const badgeClass = availabilityBadgeClassName[value] || 'border-gray-200 bg-white text-gray-700';
 
   return (
-    <div ref={containerRef} className="relative inline-block text-left">
+    <>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          if (!isOpen) {
+            calculatePosition();
+            setIsOpen(true);
+          } else {
+            setIsOpen(false);
+          }
         }}
         className={`flex items-center justify-between gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold shadow-xs outline-none transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${badgeClass}`}
       >
@@ -860,32 +892,40 @@ function TableAvailabilityDropdown({
         <ChevronDown size={11} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {isOpen && (
-        <div className={`absolute left-0 z-50 min-w-[120px] max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${openUpwards ? 'bottom-full mb-1 origin-bottom-left' : 'top-full mt-1 origin-top-left'
-          }`}>
-          {options.map((opt) => {
-            const isSelected = opt === value;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange(opt);
-                  setIsOpen(false);
-                }}
-                className={`w-full text-left rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer ${isSelected
-                    ? 'bg-gray-100 text-gray-950 font-extrabold'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+      {isOpen && coords && typeof window !== 'undefined' &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: `${coords.top}px`, left: `${coords.left}px` }}
+            className="z-[99999] min-w-[130px] max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-2xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {options.map((opt) => {
+              const isSelected = opt === value;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange(opt);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer ${
+                    isSelected
+                      ? 'bg-gray-100 text-gray-950 font-extrabold'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
-              >
-                {optionLabels?.[opt] || opt}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                >
+                  {optionLabels?.[opt] || opt}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      }
+    </>
   );
 }
 
@@ -2320,85 +2360,44 @@ export default function PartnerListingsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right sm:px-6 sm:py-4">
-                          <div className="relative inline-block text-left action-dropdown-container">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                setOpenActionDropdownId((prev) => prev === listing.id ? null : listing.id);
-                              }}
-                              className="inline-flex items-center justify-center rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                            >
-                              <MoreVertical size={18} />
-                            </button>
-
-                            {openActionDropdownId === listing.id ? (
-                              <div className={`absolute right-0 z-[100] w-44 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 focus:outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
-                                }`}>
-                                {canApprove && isPendingListing ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.preventDefault();
-                                        void handleListingModeration(listing.id, 'PUBLISHED');
-                                        setOpenActionDropdownId(null);
-                                      }}
-                                      disabled={isModeratingListing}
-                                      className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition cursor-pointer disabled:opacity-60"
-                                    >
-                                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                      Approve
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        void handleListingModeration(listing.id, 'CHANGES_REQUESTED');
-                                        setOpenActionDropdownId(null);
-                                      }}
-                                      disabled={isModeratingListing}
-                                      className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition cursor-pointer disabled:opacity-60"
-                                    >
-                                      <X className="h-3.5 w-3.5 text-amber-600" />
-                                      Reject
-                                    </button>
-                                  </>
-                                ) : null}
-                                {canEdit ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      openEditModal(listing);
-                                      setOpenActionDropdownId(null);
-                                    }}
-                                    className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-950 transition cursor-pointer"
-                                  >
-                                    <Pencil size={14} className="text-gray-500" />
-                                    Edit Listing
-                                  </button>
-                                ) : null}
-                                {canDelete && !isProtectedListing(listing) ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      setDeleteListingRecord(listing);
-                                      setOpenActionDropdownId(null);
-                                    }}
-                                    className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition cursor-pointer"
-                                  >
-                                    <Trash2 size={14} className="text-red-500" />
-                                    Delete Listing
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : null}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <PortalActionDropdown
+                              align="right"
+                              items={[
+                                ...(canApprove && isPendingListing ? [
+                                  {
+                                    label: 'Approve',
+                                    icon: <Check className="h-3.5 w-3.5" />,
+                                    variant: 'success' as const,
+                                    disabled: isModeratingListing,
+                                    onClick: () => void handleListingModeration(listing.id, 'PUBLISHED'),
+                                  },
+                                  {
+                                    label: 'Reject',
+                                    icon: <X className="h-3.5 w-3.5" />,
+                                    variant: 'warning' as const,
+                                    disabled: isModeratingListing,
+                                    onClick: () => void handleListingModeration(listing.id, 'CHANGES_REQUESTED'),
+                                  },
+                                ] : []),
+                                ...(canEdit ? [
+                                  {
+                                    label: 'Edit Listing',
+                                    icon: <Pencil size={14} />,
+                                    variant: 'default' as const,
+                                    onClick: () => openEditModal(listing),
+                                  },
+                                ] : []),
+                                ...(canDelete && !isProtectedListing(listing) ? [
+                                  {
+                                    label: 'Delete Listing',
+                                    icon: <Trash2 size={14} />,
+                                    variant: 'danger' as const,
+                                    onClick: () => setDeleteListingRecord(listing),
+                                  },
+                                ] : []),
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>

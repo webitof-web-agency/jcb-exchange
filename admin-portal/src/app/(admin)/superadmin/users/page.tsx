@@ -6,6 +6,7 @@ import axios from 'axios';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import PortalActionDropdown, { type DropdownItem } from '@/components/ui/PortalActionDropdown';
 
 interface ManagedUser {
   id: string;
@@ -628,101 +629,49 @@ export default function SuperAdminUsersPage() {
                     <td className="px-4 py-3 sm:px-6 sm:py-4 text-gray-700">{formatDate(user.createdAt)}</td>
                     <td className="px-4 py-3 sm:px-6 sm:py-4 text-right">
                       {user.role !== 'SUPER_ADMIN' || isCurrentSuperAdmin ? (
-                        <div className="relative inline-block text-left action-dropdown-container">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setOpenActionDropdownId(openActionDropdownId === user.id ? null : user.id);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2 transition-colors ml-auto"
-                          >
-                            <MoreVertical className="h-5 w-5 text-gray-500" />
-                          </button>
+                        <div className="flex justify-end">
+                          <PortalActionDropdown
+                            items={(() => {
+                              const dropdownItems: DropdownItem[] = [];
 
-                          {openActionDropdownId === user.id && (
-                            <div className="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl border border-gray-100 bg-white p-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none text-left">
-                              {canUpdateUsers && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    openEditModal(user);
-                                  }}
-                                  disabled={updatingId === user.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60"
-                                >
-                                  <Pencil className="h-4 w-4 text-gray-400" />
-                                  {t('userManagement.editEmployee')}
-                                </button>
-                              )}
+                              if (canUpdateUsers) {
+                                dropdownItems.push({
+                                  label: t('userManagement.editEmployee'),
+                                  icon: <Pencil className="h-4 w-4 text-gray-400" />,
+                                  disabled: updatingId === user.id,
+                                  onClick: () => openEditModal(user),
+                                });
 
-                              {canUpdateUsers && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    openPasswordModal(user);
-                                  }}
-                                  disabled={updatingId === user.id || user.isRootAdmin}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60"
-                                >
-                                  <KeyRound className="h-4 w-4 text-gray-400" />
-                                  {t('userManagement.resetPassword')}
-                                </button>
-                              )}
+                                dropdownItems.push({
+                                  label: t('userManagement.resetPassword'),
+                                  icon: <KeyRound className="h-4 w-4 text-gray-400" />,
+                                  disabled: updatingId === user.id || user.isRootAdmin,
+                                  onClick: () => openPasswordModal(user),
+                                });
+                              }
 
-                              {canUpdateUsers && user.role !== 'SUPER_ADMIN' && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setOpenActionDropdownId(null);
-                                    void handleStatusUpdate(user.id, user.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE');
-                                  }}
-                                  disabled={updatingId === user.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60"
-                                >
-                                  {user.status === 'ACTIVE' ? (
-                                    <>
-                                      <Ban className="h-4 w-4 text-red-500" />
-                                      <span className="text-red-600 font-medium">{t('userManagement.deactivateUser')}</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Check className="h-4 w-4 text-emerald-500" />
-                                      <span className="text-emerald-600 font-medium">{t('userManagement.activateUser')}</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
+                              if (canUpdateUsers && user.role !== 'SUPER_ADMIN') {
+                                dropdownItems.push({
+                                  label: user.status === 'ACTIVE' ? t('userManagement.deactivateUser') : t('userManagement.activateUser'),
+                                  icon: user.status === 'ACTIVE' ? <Ban className="h-4 w-4 text-red-500" /> : <Check className="h-4 w-4 text-emerald-500" />,
+                                  variant: user.status === 'ACTIVE' ? 'danger' : 'success',
+                                  disabled: updatingId === user.id,
+                                  onClick: () => { void handleStatusUpdate(user.id, user.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE'); },
+                                });
+                              }
 
-                              {canDeleteUsers && !isProtectedUser(user) && (
-                                <>
-                                  <div className="my-1 h-px bg-gray-100" />
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setOpenActionDropdownId(null);
-                                      setDeleteUserTarget(user);
-                                    }}
-                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                    {t('userManagement.deleteEmployee')}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
+                              if (canDeleteUsers && !isProtectedUser(user)) {
+                                dropdownItems.push({
+                                  label: t('userManagement.deleteEmployee'),
+                                  icon: <Trash2 className="h-4 w-4 text-red-500" />,
+                                  variant: 'danger',
+                                  onClick: () => setDeleteUserTarget(user),
+                                });
+                              }
+
+                              return dropdownItems;
+                            })()}
+                          />
                         </div>
                       ) : null}
                     </td>
