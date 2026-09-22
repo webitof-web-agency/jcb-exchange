@@ -1,3 +1,5 @@
+import { normalizePublicUploadUrl } from './publicUploadUrl';
+
 const LOCAL_UPLOAD_PATH = /^\/uploads(?:\/|$)/i;
 
 /**
@@ -14,7 +16,7 @@ const LOCAL_UPLOAD_PATH = /^\/uploads(?:\/|$)/i;
  * rejected to avoid accidental persistence of stale paths.
  */
 export const normalizeRemoteMediaUrl = (value?: string | null): string | null => {
-  const normalizedValue = value?.trim();
+  const normalizedValue = normalizePublicUploadUrl(value);
 
   if (!normalizedValue) {
     return null;

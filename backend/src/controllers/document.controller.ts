@@ -17,8 +17,9 @@ import {
   secureUploadDir,
   publicUploadDir,
 } from '../utils/documentUpload';
-import { uploadFileToDrive } from '../services/googleDrive.service';
+import { uploadFileToDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
 import { randomUUID } from 'crypto';
+import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
 
 /**
  * Save a branding image buffer to the server's public upload directory.
@@ -43,7 +44,11 @@ const saveBrandingImageToDisk = async (
 
 const prismaAny = prisma as any;
 
-const getApiOrigin = (req: Request) => `${req.protocol}://${req.get('host')}`;
+const getApiOrigin = (req: Request) => {
+  const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const protocol = forwardedProtocol || req.protocol;
+  return `${protocol}://${req.get('host')}`;
+};
 
 const getUploadedFile = (req: Request) => req.file;
 
@@ -123,10 +128,18 @@ const enforceStoredFileSizePolicy = async (
 
 const getSafeFileName = (fileName: string) => path.basename(fileName);
 
+const getDocumentUrlCandidates = (fileUrl: string) => {
+  const driveFileId = extractDriveFileId(fileUrl);
+  return [
+    fileUrl,
+    driveFileId ? `https://drive.google.com/uc?id=${encodeURIComponent(driveFileId)}` : null,
+  ].filter((value): value is string => Boolean(value));
+};
+
 const isSecureDocumentOwner = async (userId: string, fileUrl: string) => {
   const matchingDocument = await prismaAny.kycDocument.findFirst({
     where: {
-      fileUrl,
+      fileUrl: { in: getDocumentUrlCandidates(fileUrl) },
       partnerProfile: {
         userId,
       },
@@ -142,13 +155,14 @@ const isSecureDocumentOwner = async (userId: string, fileUrl: string) => {
 };
 
 const secureDocumentExists = async (fileUrl: string) => {
+  const fileUrlCandidates = getDocumentUrlCandidates(fileUrl);
   const [kycDocument, candidateDocument] = await Promise.all([
     prismaAny.kycDocument.findFirst({
-      where: { fileUrl },
+      where: { fileUrl: { in: fileUrlCandidates } },
       select: { id: true },
     }),
     prismaAny.candidateDocument.findFirst({
-      where: { fileUrl },
+      where: { fileUrl: { in: fileUrlCandidates } },
       select: { id: true },
     }),
   ]);
@@ -163,6 +177,10 @@ const buildUploadResponse = (
   fileUrl: string,
   fileName: string
 ) => {
+  const absoluteUrl = /^https?:\/\//i.test(fileUrl)
+    ? fileUrl
+    : `${getApiOrigin(req)}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+
   return {
     message: 'File uploaded successfully.',
     file: {
@@ -172,7 +190,7 @@ const buildUploadResponse = (
       mimeType: file.mimetype,
       size: file.size,
       fileUrl,
-      absoluteUrl: fileUrl, // Drive URL is already absolute
+      absoluteUrl,
     },
   };
 };
@@ -188,9 +206,16 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
     await enforceStoredFileSizePolicy(file, 'document');
     
     // Upload to Google Drive (Resumes/Secure)
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    const { fileId } = await uploadFileToDrive(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      undefined,
+      { access: 'private' },
+    );
+    const secureUrl = getSecureDocumentUrl(fileId);
     
-    res.status(201).json(buildUploadResponse(req, file, 'secure', viewLink, fileId));
+    res.status(201).json(buildUploadResponse(req, file, 'secure', secureUrl, file.originalname));
   } catch (error) {
     next(error);
   }
@@ -405,7 +430,9 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'Invalid filename.' });
     }
 
-    const fileUrl = getSecureDocumentUrl(fileName);
+    const fileUrl = fileName.startsWith('drive-')
+      ? getSecureDocumentUrlFromToken(fileName)
+      : getSecureDocumentUrl(fileName);
     const fileExistsInRecords = await secureDocumentExists(fileUrl);
 
     if (!fileExistsInRecords) {
@@ -419,11 +446,20 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
       return res.status(403).json({ error: 'You do not have access to this document.' });
     }
 
-    const absolutePath = path.join(secureUploadDir, fileName);
-    await fs.access(absolutePath);
     res.setHeader('Cache-Control', 'private, no-store, max-age=0');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const driveFileId = extractDriveFileId(fileUrl);
+    if (driveFileId) {
+      const stream = await streamFileFromDrive(driveFileId);
+      stream.on('error', next);
+      stream.pipe(res);
+      return;
+    }
+
+    const absolutePath = path.join(secureUploadDir, fileName);
+    await fs.access(absolutePath);
     res.sendFile(absolutePath);
   } catch (error) {
     next(error);

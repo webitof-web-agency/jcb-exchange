@@ -1,6 +1,7 @@
 'use client';
 
 import api from '@/lib/api';
+import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
@@ -91,11 +92,12 @@ export const getUploadValidationError = (file: File) => {
 };
 
 export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
-  if (!fileUrl) {
+  const normalizedFileUrl = normalizePublicUploadUrl(fileUrl);
+  if (!normalizedFileUrl) {
     return '';
   }
 
-  const trimmed = fileUrl.trim();
+  const trimmed = normalizedFileUrl;
   if (!trimmed) {
     return '';
   }

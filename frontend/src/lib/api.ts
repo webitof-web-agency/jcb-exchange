@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
+import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
 export const isLegacyLocalUploadUrl = (url?: string | null) => {
-  const normalizedUrl = url?.trim();
+  const normalizedUrl = normalizePublicUploadUrl(url);
   if (!normalizedUrl) return false;
 
   // /uploads/public/ is now actively used for branding images — not legacy.
@@ -33,7 +34,7 @@ export const isLegacyLocalUploadUrl = (url?: string | null) => {
 };
 
 export const getAbsoluteMediaUrl = (url?: string | null) => {
-  const normalizedUrl = url?.trim();
+  const normalizedUrl = normalizePublicUploadUrl(url);
   if (!normalizedUrl || isLegacyLocalUploadUrl(normalizedUrl)) return '';
   if (/^https?:\/\//i.test(normalizedUrl)) return normalizedUrl;
   // Convert server-local /uploads/public/ paths to full API origin URL
@@ -50,7 +51,7 @@ export const getAbsoluteMediaUrl = (url?: string | null) => {
  * Returns null for null/empty values, legacy blocked paths, or invalid URLs.
  */
 export const getRemoteMediaUrl = (url?: string | null) => {
-  const normalizedUrl = url?.trim();
+  const normalizedUrl = normalizePublicUploadUrl(url);
   if (!normalizedUrl) return null;
 
   // Server-local branding image — convert to absolute URL using API origin

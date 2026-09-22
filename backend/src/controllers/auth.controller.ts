@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
-import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
+import { deleteFileFromDrive } from '../services/googleDrive.service';
 import { ensureBootstrapSuperAdmin } from '../utils/bootstrapSuperAdmin';
 import {
   ACCOUNT_INACTIVE_CODE,
@@ -69,6 +69,7 @@ import {
   getCustomerPrimeAccessPayload,
   listCustomerPrimeSubscriptionsForUser,
 } from '../utils/customerPrimeSubscriptions';
+import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 const prismaAny = prisma as any;
@@ -835,16 +836,10 @@ export const saveOnboardingData = async ({
     select: { fileUrl: true },
   });
 
-  for (const doc of existingKycDocs) {
-    if (doc.fileUrl) {
-      const fileId = extractDriveFileId(doc.fileUrl);
-      if (fileId) {
-        await deleteFileFromDrive(fileId).catch(err => {
-          console.warn(`Failed to delete KYC document ${fileId} from Drive:`, err);
-        });
-      }
-    }
-  }
+  const driveFileIdsToDelete = getDriveFileIdsToDelete(
+    existingKycDocs.map((document: { fileUrl: string | null }) => document.fileUrl),
+    normalizedDocs.map((document) => document.fileUrl),
+  );
 
   await prismaAny.kycDocument.deleteMany({
     where: { partnerProfileId: partnerProfile.id },
@@ -866,6 +861,8 @@ export const saveOnboardingData = async ({
       })),
     });
   }
+
+  await Promise.all(driveFileIdsToDelete.map((fileId) => deleteFileFromDrive(fileId)));
 
   await prismaAny.partnerAgreement.deleteMany({
     where: { partnerProfileId: partnerProfile.id },
