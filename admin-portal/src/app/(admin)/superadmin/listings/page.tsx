@@ -34,6 +34,7 @@ import {
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { getModerationStatus, getPendingModerationOptions } from '@/lib/listingModeration.mjs';
 
 type ListingFormState = {
   category: string;
@@ -820,12 +821,14 @@ function TableAvailabilityDropdown({
   options,
   disabled,
   openUpwards,
+  optionLabels,
 }: {
   value: string;
   onChange: (val: string) => void;
   options: string[];
   disabled?: boolean;
   openUpwards?: boolean;
+  optionLabels?: Record<string, string>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -876,7 +879,7 @@ function TableAvailabilityDropdown({
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
               >
-                {opt}
+                {optionLabels?.[opt] || opt}
               </button>
             );
           })}
@@ -2294,10 +2297,21 @@ export default function PartnerListingsPage() {
                         <td className="px-4 py-3 text-center">
                           <div className="flex flex-col items-center gap-1">
                             <TableAvailabilityDropdown
-                              value={availability}
-                              onChange={(val) => void handleUpdateAvailability(listing.id, val)}
-                              options={availabilityTypes}
-                              disabled={isUpdatingAvailability || !canEdit || isPendingListing}
+                              value={isPendingListing ? 'PENDING' : availability}
+                              onChange={(val) => {
+                                if (isPendingListing) {
+                                  const nextStatus = getModerationStatus(val);
+                                  if (nextStatus) {
+                                    void handleListingModeration(listing.id, nextStatus);
+                                  }
+                                  return;
+                                }
+
+                                void handleUpdateAvailability(listing.id, val);
+                              }}
+                              options={isPendingListing ? getPendingModerationOptions() : availabilityTypes}
+                              optionLabels={isPendingListing ? { APPROVE: 'Approve', REJECT: 'Reject' } : undefined}
+                              disabled={isPendingListing ? isModeratingListing || !canApprove : isUpdatingAvailability || !canEdit}
                               openUpwards={isNearBottom}
                             />
                             <span className="min-h-[14px] text-[10px] text-gray-400">
