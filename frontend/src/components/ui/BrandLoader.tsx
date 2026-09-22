@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
+import { getLoaderLogoUrl, getLogoLoadErrorFallback } from '@/lib/brandLoaderLogo';
 
 export type BrandLoaderSize    = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type BrandLoaderVariant = 'inline' | 'section' | 'overlay' | 'fullscreen';
@@ -59,7 +60,7 @@ function ArcRing({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
 }
 
 function LoaderLogo({ ring, logo, logoUrl, darkLogoUrl, initialLogoUrl }: { ring: number; logo: number; logoUrl: string | null; darkLogoUrl: string | null; initialLogoUrl?: string | null }) {
-  const activeLogoUrl = initialLogoUrl || darkLogoUrl || logoUrl;
+  const activeLogoUrl = getLoaderLogoUrl({ initialLogoUrl, darkLogoUrl, logoUrl });
   const [remoteLogoUrl, setRemoteLogoUrl] = React.useState(activeLogoUrl);
 
   return (
@@ -86,12 +87,7 @@ function LoaderLogo({ ring, logo, logoUrl, darkLogoUrl, initialLogoUrl }: { ring
           fetchPriority="high"
           decoding="async"
           onError={() => {
-            if (darkLogoUrl && logoUrl && remoteLogoUrl === darkLogoUrl) {
-              setRemoteLogoUrl(logoUrl);
-              return;
-            }
-
-            setRemoteLogoUrl(null);
+            setRemoteLogoUrl(getLogoLoadErrorFallback(remoteLogoUrl, { darkLogoUrl, logoUrl }));
           }}
           style={{
             position: 'absolute',
