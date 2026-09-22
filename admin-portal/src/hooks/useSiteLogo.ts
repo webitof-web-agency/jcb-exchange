@@ -5,11 +5,20 @@ import { API_BASE_URL } from '@/lib/api';
 
 const getAbsoluteMediaUrl = (url?: string | null) => {
   const normalizedUrl = url?.trim();
-  if (!normalizedUrl || /^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedUrl)) return '';
+  if (!normalizedUrl) return '';
+
+  if (/^\/uploads\/public\//i.test(normalizedUrl)) {
+    return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedUrl}`;
+  }
+
+  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedUrl)) {
+    return '';
+  }
 
   if (/^https?:\/\//i.test(normalizedUrl)) {
     try {
-      return /^\/uploads(?:\/|$)/i.test(new URL(normalizedUrl).pathname) ? '' : normalizedUrl;
+      const pathname = new URL(normalizedUrl).pathname;
+      return /^\/uploads(?:\/|$)/i.test(pathname) && !/^\/uploads\/public\//i.test(pathname) ? '' : normalizedUrl;
     } catch {
       return '';
     }
