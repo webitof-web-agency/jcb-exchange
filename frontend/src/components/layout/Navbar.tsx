@@ -305,13 +305,13 @@ export default function Navbar() {
               >
                 {isMobileMenuOpen ? <X size={20} className="sm:h-6 sm:w-6" /> : <Menu size={20} className="sm:h-6 sm:w-6" />}
               </button>
-              <div className="hidden xl:block">
+              <div className="hidden md:block">
                 <SiteBrand />
               </div>
             </div>
 
             {/* Mobile Centered Logo */}
-            <div className="xl:hidden absolute left-1/2 top-1/2 w-[70px] -translate-x-1/2 -translate-y-1/2">
+            <div className="md:hidden absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 flex justify-center">
               <SiteBrand align="center" />
             </div>
 

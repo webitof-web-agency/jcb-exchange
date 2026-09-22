@@ -316,7 +316,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [activeVideoIndex, setActiveVideoIndex] = useState(0);
 
-  const [expandedSections, setExpandedSections] = useState<string[]>(['machine', 'seller', 'rto']);
+  const [activeTab, setActiveTab] = useState<'machine' | 'seller' | 'rto'>('machine');
   const [views, setViews] = useState<number>(listing.views || 0);
   const [pendingFeature, setPendingFeature] = useState<CustomerPrimeFeature | null>(null);
   const [isBuyNowOpen, setIsBuyNowOpen] = useState(false);
@@ -439,13 +439,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     : null;
   const dealerProfileHref = listing.partner?.id ? `/dealers/${listing.partner.id}` : null;
 
-  const toggleSection = (section: string) => {
-    setExpandedSections((current) =>
-      current.includes(section)
-        ? current.filter((item) => item !== section)
-        : [...current, section]
-    );
-  };
+
 
   const handleShare = async () => {
     if (typeof window === 'undefined') return;
@@ -986,78 +980,101 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
             <section className="mb-10">
               <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
+              
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <SpecAccordion
-                  icon={<Truck className="h-5 w-5 text-amber-600" />}
-                  title={t('machineDetails.vehicleDetails')}
-                  isOpen={expandedSections.includes('machine')}
-                  onToggle={() => toggleSection('machine')}
-                >
-                  <SpecsGrid
-                    items={[
-                      { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
-                      { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
-                      { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
-                      { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
-                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
-                      { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
-                      { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
-                      { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
-                      { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
-                      { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
-                      { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
-                      { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
-                    ]}
-                  />
-                </SpecAccordion>
-
-                <SpecAccordion
-                  icon={<MapPin className="h-5 w-5 text-amber-600" />}
-                  title={t('machineDetails.registrationLocation')}
-                  isOpen={expandedSections.includes('seller')}
-                  onToggle={() => toggleSection('seller')}
-                >
-                  <SpecsGrid
-                    items={[
-                      { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
-                      { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
-                      { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
-                      { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
-                      { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
-                      { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
-                      { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: detailAddress || t('machineDetails.na') },
-                      { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
-                      { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
-                    ]}
-                  />
-                </SpecAccordion>
-              </div>
-            </section>
-
-            {listing.vehicleCompliance && (
-              <section className="mb-10">
-                <h2 className="mb-5 text-2xl font-bold text-gray-900">RTO &amp; Vehicle Compliance</h2>
-                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <SpecAccordion
-                    icon={<Car className="h-5 w-5 text-amber-600" />}
-                    title="Vehicle Registration &amp; Compliance"
-                    isOpen={expandedSections.includes('rto')}
-                    onToggle={() => toggleSection('rto')}
+                <div className="flex overflow-x-auto border-b border-gray-200 no-scrollbar">
+                  <button
+                    onClick={() => setActiveTab('machine')}
+                    className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
+                      activeTab === 'machine'
+                        ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                    }`}
                   >
-                    <div className="mb-4">
+                    <Truck className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'machine' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                    {t('machineDetails.vehicleDetails')}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('seller')}
+                    className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
+                      activeTab === 'seller'
+                        ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                    }`}
+                  >
+                    <MapPin className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'seller' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                    {t('machineDetails.registrationLocation')}
+                  </button>
+                  {listing.vehicleCompliance && (
+                    <button
+                      onClick={() => setActiveTab('rto')}
+                      className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
+                        activeTab === 'rto'
+                          ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                      }`}
+                    >
+                      <Car className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'rto' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                      Vehicle Compliance
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-4 sm:p-6 bg-white min-h-[300px]">
+                  {activeTab === 'machine' && (
+                    <div className="animate-in fade-in duration-300">
+                      <SpecsGrid
+                        items={[
+                          { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
+                          { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
+                          { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
+                          { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
+                          { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
+                          { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
+                          { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
+                          { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
+                          { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
+                          { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
+                          { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
+                          { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
+                        ]}
+                      />
+                    </div>
+                  )}
+
+                  {activeTab === 'seller' && (
+                    <div className="animate-in fade-in duration-300">
+                      <SpecsGrid
+                        items={[
+                          { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
+                          { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
+                          { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
+                          { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
+                          { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
+                          { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
+                          { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: detailAddress || t('machineDetails.na') },
+                          { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
+                          { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
+                        ]}
+                      />
+                    </div>
+                  )}
+
+                  {activeTab === 'rto' && listing.vehicleCompliance && (
+                    <div className="animate-in fade-in duration-300">
                       {listing.vehicleCompliance.vehicleNumber && (
-                        <div className="mb-5 flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                        <div className="mb-6 flex items-center gap-4 rounded-xl bg-amber-50 border border-amber-100 px-5 py-4">
+                          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm">
                             <Car className="h-5 w-5" />
                           </div>
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">Vehicle Number</p>
-                            <p className="text-lg font-extrabold tracking-widest text-gray-900">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-0.5">Vehicle Number</p>
+                            <p className="text-xl font-extrabold tracking-widest text-gray-900">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
                           </div>
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                         {([
                           { label: 'Hire Purchase', value: listing.vehicleCompliance.hirePurchaseStatus, type: 'hp' },
                           { label: 'Tax Validity', value: listing.vehicleCompliance.taxStatus, date: listing.vehicleCompliance.taxValidUntil, type: 'validity' },
@@ -1067,7 +1084,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           { label: 'HSRP', value: listing.vehicleCompliance.hsrpStatus, type: 'hsrp' },
                         ] as { label: string; value: string | null; date?: string | null; type: string }[]).map(({ label, value, date, type }) => {
                           const normalizedValue = (value || '').toUpperCase();
-                          let badgeClass = 'bg-gray-100 text-gray-500';
+                          let badgeClass = 'bg-gray-100 text-gray-500 border border-gray-200';
                           let dotClass = 'bg-gray-400';
                           let displayLabel = value || 'N/A';
 
@@ -1089,14 +1106,15 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           }
 
                           return (
-                            <div key={label} className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
-                              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</span>
-                              <span className={`mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeClass}`}>
+                            <div key={label} className="flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3.5 hover:shadow-sm transition-shadow">
+                              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
+                              <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold shadow-xs ${badgeClass}`}>
                                 <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
                                 {displayLabel}
                               </span>
                               {date && (
-                                <span className="text-[11px] text-gray-400 mt-0.5">
+                                <span className="text-[11px] font-medium text-gray-500 mt-1 flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
                                   Until: {formatDateOnly(date) || t('machineDetails.na')}
                                 </span>
                               )}
@@ -1106,30 +1124,30 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       </div>
 
                       {(listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                           {[
                             ['RTO Office', listing.vehicleCompliance.rtoOffice],
                             ['RTO Agent Name', listing.vehicleCompliance.rtoAgentName],
                             ['RTO Expenses', listing.vehicleCompliance.rtoExpenses != null ? formatCurrency(listing.vehicleCompliance.rtoExpenses) : null],
                             ['Vehicle Maintenance Cost', listing.vehicleCompliance.vehicleMaintenanceCost != null ? formatCurrency(listing.vehicleCompliance.vehicleMaintenanceCost) : null],
                           ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
-                            <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
-                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                                <FileText className="h-4 w-4" />
+                            <div key={label} className="flex items-center gap-3.5 rounded-xl border border-gray-100 bg-gray-50/80 px-5 py-4 hover:shadow-sm transition-shadow">
+                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 shadow-sm">
+                                <FileText className="h-5 w-5" />
                               </div>
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-                                <p className="text-sm font-bold text-gray-900">{value}</p>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-0.5">{label}</p>
+                                <p className="text-[15px] font-bold text-gray-900">{value}</p>
                               </div>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
-                  </SpecAccordion>
+                  )}
                 </div>
-              </section>
-            )}
+              </div>
+            </section>
         </div>
       </div>
       {pendingFeature ? (
