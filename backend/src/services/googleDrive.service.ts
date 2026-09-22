@@ -36,8 +36,22 @@ export const uploadFileToDrive = async (
       name: filename,
     };
     
-    const targetFolderId = folderId || settings.googleDrive.backupFolderId;
+    const targetFolderId = folderId?.trim() || settings.googleDrive.backupFolderId?.trim();
     if (targetFolderId) {
+      const targetFolder = await drive.files.get({
+        fileId: targetFolderId,
+        fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+        supportsAllDrives: true,
+      });
+
+      if (
+        targetFolder.data.mimeType !== 'application/vnd.google-apps.folder' ||
+        targetFolder.data.trashed ||
+        targetFolder.data.capabilities?.canAddChildren !== true
+      ) {
+        throw new Error('Configured Google Drive upload folder is invalid or is not writable.');
+      }
+
       fileMetadata.parents = [targetFolderId];
     }
 
@@ -49,13 +63,17 @@ export const uploadFileToDrive = async (
     const response = await drive.files.create({
       requestBody: fileMetadata,
       media: media,
-      fields: 'id, webViewLink, webContentLink',
+      fields: 'id, parents, webViewLink, webContentLink',
       supportsAllDrives: true,
     });
 
     const fileId = response.data.id;
     if (!fileId) {
       throw new Error('Google Drive did not return a file id.');
+    }
+
+    if (targetFolderId && !response.data.parents?.includes(targetFolderId)) {
+      throw new Error('Google Drive uploaded the file without the configured parent folder.');
     }
     
     // Public assets are intentionally link-readable so they can be rendered by
@@ -77,8 +95,8 @@ export const uploadFileToDrive = async (
       viewLink: `https://drive.google.com/uc?id=${fileId}`,
     };
   } catch (error) {
-    console.error('Error uploading file to Google Drive:', error);
-    throw new Error('Failed to upload file to Google Drive');
+    console.error('Error uploading file to Google Drive:', error instanceof Error ? error.message : error);
+    throw new Error(error instanceof Error ? error.message : 'Failed to upload file to Google Drive');
   }
 };
 

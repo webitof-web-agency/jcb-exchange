@@ -5,10 +5,10 @@ export const employeeFooterPermissions = ['footer.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
 export const employeeSmsPermissions = ['sms.read', 'sms.manage'];
 
-import { accountAnyPermissions } from '@/lib/accountsPermissions';
+import { accountAnyPermissions } from './accountsPermissions';
 import {
   recruitmentAnyPermissions,
-} from '@/lib/recruitmentPermissions';
+} from './recruitmentPermissions';
 
 export type EmployeeRoutePermission = {
   superadminPath: string;
@@ -154,6 +154,18 @@ export const resolveEmployeeRouteRedirect = (pathname: string, userPermissions: 
 
   if (hasAnyPermission(userPermissions, matchedRoute.permissions)) {
     return replaceRoutePrefix(pathname, matchedRoute.superadminPath, matchedRoute.employeePath) || matchedRoute.employeePath;
+  }
+
+  return getEmployeeLandingPath(userPermissions);
+};
+
+export const resolveEmployeePortalRoute = (pathname: string, userPermissions: string[] | undefined) => {
+  const matchedRoute = [...employeeRoutePermissions]
+    .sort((a, b) => b.employeePath.length - a.employeePath.length)
+    .find((route) => pathname === route.employeePath || pathname.startsWith(`${route.employeePath}/`));
+
+  if (matchedRoute && hasAnyPermission(userPermissions, matchedRoute.permissions)) {
+    return pathname;
   }
 
   return getEmployeeLandingPath(userPermissions);

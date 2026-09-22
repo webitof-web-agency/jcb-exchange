@@ -18,6 +18,7 @@ import {
   publicUploadDir,
 } from '../utils/documentUpload';
 import { uploadFileToDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
+import { getAppSettings } from '../utils/appSettings';
 import { randomUUID } from 'crypto';
 import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
 
@@ -298,7 +299,18 @@ export const uploadPublicListingMedia = async (req: Request, res: Response, next
 
     await enforceStoredFileSizePolicy(file, 'listing-media');
 
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
+    const settings = await getAppSettings();
+    const listingMediaFolderId = settings.googleDrive.backupFolderId?.trim();
+    if (!listingMediaFolderId) {
+      throw new Error('Google Drive listing media folder is not configured.');
+    }
+
+    const { fileId, viewLink } = await uploadFileToDrive(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      listingMediaFolderId,
+    );
     res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
 
   } catch (error) {

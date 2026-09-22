@@ -294,6 +294,18 @@ const determineDraftOnboardingStatus = ({
 
 export const buildAuthUserPayload = async (user: any) => {
   const resolvedRole = resolveEffectiveUserRole(user);
+  const portalHomeRoute =
+    resolvedRole === 'SUPER_ADMIN'
+      ? '/superadmin/dashboard'
+      : resolvedRole === 'ADMIN'
+        ? '/admin/dashboard'
+        : resolvedRole === 'EMPLOYEE'
+          ? '/employee/dashboard'
+          : resolvedRole === 'PARTNER'
+            ? '/partner/dashboard'
+            : resolvedRole === 'CUSTOMER'
+              ? '/profile'
+              : null;
   const primeAccessPayload =
     resolvedRole === 'CUSTOMER'
       ? await getCustomerPrimeAccessPayload({
@@ -315,6 +327,7 @@ export const buildAuthUserPayload = async (user: any) => {
     isPrimeCustomer: primeAccessPayload?.isPrimeCustomer ?? false,
     customerCategory: primeAccessPayload?.customerCategory ?? 'STANDARD_CUSTOMER',
     primeSubscriptionExpiresAt: primeAccessPayload?.activeSubscription?.expiresAt ?? null,
+    portalHomeRoute,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -404,12 +417,6 @@ export const buildAuthUserPayload = async (user: any) => {
       mobile: user.mobile ?? null,
       whatsappNumber: user.whatsappNumber ?? null,
       isVerifiedPartner: resolvedRole === 'PARTNER',
-      portalHomeRoute:
-        resolvedRole === 'PARTNER'
-          ? '/partner/dashboard'
-          : resolvedRole === 'CUSTOMER'
-            ? '/profile'
-            : null,
     };
   }
 

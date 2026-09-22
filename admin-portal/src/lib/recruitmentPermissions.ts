@@ -1,4 +1,4 @@
-import { hasAnyPermission, hasPermission } from '@/lib/permissionUtils';
+import { hasAnyPermission, hasPermission } from './permissionUtils';
 
 export const recruitmentPermissions = {
   dashboardRead: 'recruitment.dashboard.read',

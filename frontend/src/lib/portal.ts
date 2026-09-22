@@ -7,6 +7,42 @@ const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, '');
 
 export const PORTAL_ROLES = ['PARTNER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'];
 
+const PORTAL_HOME_ROUTES: Record<string, string> = {
+  PARTNER: '/partner/dashboard',
+  SUPER_ADMIN: '/superadmin/dashboard',
+  ADMIN: '/admin/dashboard',
+  EMPLOYEE: '/employee/dashboard',
+};
+
+const PORTAL_ROUTE_PREFIXES: Record<string, string> = {
+  PARTNER: '/partner',
+  SUPER_ADMIN: '/superadmin',
+  ADMIN: '/admin',
+  EMPLOYEE: '/employee',
+};
+
+const isSafeRelativePath = (value?: string | null) =>
+  Boolean(value && value.startsWith('/') && !value.startsWith('//'));
+
+export const getPortalHomeRoute = (role?: string | null, requestedPath?: string | null) => {
+  if (!role || !PORTAL_ROLES.includes(role)) {
+    return requestedPath && isSafeRelativePath(requestedPath) ? requestedPath : '/profile';
+  }
+
+  const defaultPath = PORTAL_HOME_ROUTES[role];
+  const routePrefix = PORTAL_ROUTE_PREFIXES[role];
+
+  if (
+    requestedPath &&
+    isSafeRelativePath(requestedPath) &&
+    (requestedPath === routePrefix || requestedPath.startsWith(`${routePrefix}/`))
+  ) {
+    return requestedPath;
+  }
+
+  return defaultPath;
+};
+
 export const getPublicRoleLabel = ({
   role,
   partnerType,
@@ -47,14 +83,13 @@ export const getPortalTarget = ({
   if (role && PORTAL_ROLES.includes(role)) {
     const baseUrl = normalizeBaseUrl(PARTNER_PORTAL_ORIGIN);
     const loginUrl = new URL('/login', `${baseUrl}/`);
+    const portalPath = getPortalHomeRoute(role, fallbackPath);
 
     if (token) {
       loginUrl.searchParams.set('token', token);
     }
 
-    if (fallbackPath) {
-      loginUrl.searchParams.set('next', fallbackPath);
-    }
+    loginUrl.searchParams.set('next', portalPath);
 
     return loginUrl.toString();
   }
