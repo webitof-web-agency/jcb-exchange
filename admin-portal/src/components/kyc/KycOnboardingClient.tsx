@@ -10,6 +10,7 @@ import { generateAdminPartnerEditPath } from '@/lib/routePaths';
 import { FileUploadField } from '@/components/upload/FileUploadField';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useAuthStore } from '@/store/authStore';
+import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 
 const toTitleCase = (str: string) => {
   if (!str) return str;
@@ -287,6 +288,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
+  const [locationStates, setLocationStates] = useState<Option[]>([]);
+  const [locationCities, setLocationCities] = useState<Option[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
+  const [locationsError, setLocationsError] = useState('');
 
   const currentStatus = currentUser?.kycStatus || 'NOT_STARTED';
   const isApproved = currentUser?.accountStatus === 'ACTIVE' && currentUser?.onboardingStatus === 'APPROVED' && currentUser?.kycStatus === 'APPROVED';
@@ -504,6 +509,98 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
   const isBusinessPartner = businessPartnerTypes.has(profile.partnerType);
   const partnerTypeMeta = useMemo(() => getPartnerTypeMeta(profile.partnerType), [profile.partnerType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStates = async () => {
+      setLocationsLoading(true);
+      setLocationsError('');
+
+      try {
+        const countriesResponse = await api.get<Option[]>('/locations/countries');
+        const india = (countriesResponse.data || []).find(
+          (option) => option.name.trim().toLowerCase() === 'india',
+        );
+
+        if (!india) {
+          throw new Error('India location data is not available.');
+        }
+
+        const statesResponse = await api.get<Option[]>(`/locations/states/${india.id}`);
+        if (!cancelled) {
+          setLocationStates(statesResponse.data || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setLocationStates([]);
+          setLocationsError('Unable to load states from the database.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLocationsLoading(false);
+        }
+      }
+    };
+
+    void loadStates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedStateId = useMemo(() => {
+    const matchedState = locationStates.find(
+      (option) => option.name.trim().toLowerCase() === profile.state.trim().toLowerCase(),
+    );
+    return matchedState ? String(matchedState.id) : '';
+  }, [locationStates, profile.state]);
+
+  const selectedCityId = useMemo(() => {
+    const matchedCity = locationCities.find(
+      (option) => option.name.trim().toLowerCase() === profile.city.trim().toLowerCase(),
+    );
+    return matchedCity ? String(matchedCity.id) : '';
+  }, [locationCities, profile.city]);
+
+  useEffect(() => {
+    if (!selectedStateId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCities = async () => {
+      try {
+        const response = await api.get<Option[]>(`/locations/cities/${selectedStateId}`);
+        if (!cancelled) {
+          setLocationCities(response.data || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setLocationCities([]);
+          setLocationsError('Unable to load cities for the selected state.');
+        }
+      }
+    };
+
+    void loadCities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStateId]);
+
+  const handleStateChange = (option: Option) => {
+    setLocationCities([]);
+    setLocationsError('');
+    setProfile((current) => ({ ...current, state: option.name, city: '' }));
+  };
+
+  const handleCityChange = (option: Option) => {
+    setProfile((current) => ({ ...current, city: option.name }));
+  };
 
   const refreshWithResponse = (data: { user: Parameters<typeof updateUser>[0]; onboarding?: OnboardingResponse }) => {
     if (isAdminMode) {
@@ -772,12 +869,15 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               />
             </Field>
             <Field label="State">
-              <input
-                value={profile.state}
-                onChange={(event) => setProfile((current) => ({ ...current, state: toTitleCase(event.target.value) }))}
+              <SearchableSelect
+                options={locationStates}
+                value={selectedStateId || profile.state}
+                displayValue={profile.state}
+                onChange={handleStateChange}
+                placeholder={locationsLoading ? 'Loading states...' : 'Select state'}
                 disabled={!canEdit}
-                className={inputClassName}
               />
+              {locationsError ? <p className="mt-1 text-xs text-red-600">{locationsError}</p> : null}
             </Field>
             <Field label="District">
               <input
@@ -788,11 +888,13 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               />
             </Field>
             <Field label="City">
-              <input
-                value={profile.city}
-                onChange={(event) => setProfile((current) => ({ ...current, city: toTitleCase(event.target.value) }))}
+              <SearchableSelect
+                options={selectedStateId ? locationCities : []}
+                value={selectedCityId || profile.city}
+                displayValue={profile.city}
+                onChange={handleCityChange}
+                placeholder={selectedStateId ? 'Select city' : 'Select state first'}
                 disabled={!canEdit}
-                className={inputClassName}
               />
             </Field>
             <Field label="PIN code">
