@@ -30,12 +30,15 @@ export const uploadFileToDrive = async (
 ): Promise<{ fileId: string; viewLink: string }> => {
   try {
     const drive = await getDriveClient();
+    const settings = await getAppSettings();
 
     const fileMetadata: any = {
       name: filename,
     };
-    if (folderId) {
-      fileMetadata.parents = [folderId];
+    
+    const targetFolderId = folderId || settings.googleDrive.backupFolderId;
+    if (targetFolderId) {
+      fileMetadata.parents = [targetFolderId];
     }
 
     const media = {
