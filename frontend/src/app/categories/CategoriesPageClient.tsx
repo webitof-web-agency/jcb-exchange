@@ -6,10 +6,12 @@ import Link from 'next/link';
 import { ArrowRight, Search, Shapes, Truck, ChevronRight, LayoutGrid, ChevronDown, ArrowUpDown } from 'lucide-react';
 import api, { API_ORIGIN } from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
+import { generateCategoryMachinesPath } from '@/lib/seoUtils';
 
 type PublicCategory = {
   id: string;
   name: string;
+  slug?: string;
   count: number;
   featuredImage: string | null;
   icon?: {
@@ -178,7 +180,7 @@ export default function CategoriesPageClient() {
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
               {filteredCategories.map((category) => (
                 <Link
-                  href={`/machines?category=${category.id}`}
+                  href={generateCategoryMachinesPath(category)}
                   key={category.id}
                   className="group flex flex-col overflow-hidden rounded-[16px] sm:rounded-[20px] border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-1 hover:border-gray-300"
                 >

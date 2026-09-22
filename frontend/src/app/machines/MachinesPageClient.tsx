@@ -18,7 +18,7 @@ import {
   ArrowUpDown,
 } from 'lucide-react';
 import DualRangeSlider from '@/components/ui/DualRangeSlider';
-import { generateMachineSlugPath } from '@/lib/seoUtils';
+import { generateMachineSlugPath, parseMachineRouteParam, slugify } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatListingLocation } from '@/lib/listingLocation';
 import { trackPublicAnalyticsEvent } from '@/lib/analytics';
@@ -95,15 +95,17 @@ const getAvailabilityBadge = (
 
 export default function MachinesPageClient() {
   const searchParams = useSearchParams();
-  const urlCategoryId = searchParams.get('category') || '';
+  const urlCategoryIdOrSlug = searchParams.get('category') || '';
   const urlQuery = searchParams.get('q') || '';
   const urlLocation = searchParams.get('location') || '';
-  const routeStateKey = `${urlCategoryId}::${urlQuery}::${urlLocation}`;
+  const parsedCategory = parseMachineRouteParam(urlCategoryIdOrSlug);
+  const initialCategoryId = parsedCategory.id || parsedCategory.slug || urlCategoryIdOrSlug;
+  const routeStateKey = `${initialCategoryId}::${urlQuery}::${urlLocation}`;
 
   return (
     <MachinesPageContent
       key={routeStateKey}
-      initialCategoryId={urlCategoryId}
+      initialCategoryId={initialCategoryId}
       initialQuery={urlQuery}
       initialLocation={urlLocation}
     />
@@ -169,6 +171,20 @@ function MachinesPageContent({
 
           setMachines(nextMachines);
           setParsedMaxPrice(nextMaxPrice);
+
+          if (initialCategoryId) {
+            const normalizedCategorySlug = slugify(initialCategoryId);
+            const matchedCategory = nextMachines.find((machine) => (
+              machine.category && (
+                machine.category.id === initialCategoryId ||
+                machine.category.id.startsWith(initialCategoryId) ||
+                slugify(machine.category.name) === normalizedCategorySlug
+              )
+            ))?.category;
+            if (matchedCategory) {
+              setSelectedCategories([matchedCategory.id]);
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to fetch public listings:', error);
@@ -178,7 +194,7 @@ function MachinesPageContent({
     };
 
     fetchMachines();
-  }, []);
+  }, [initialCategoryId]);
 
   const brands = useMemo(() => {
     const all = getUniqueValues(machines, (item) => item.brand?.name || '');
@@ -501,7 +517,7 @@ function MachinesPageContent({
 
   return (
     <div className="flex min-h-[calc(100dvh-53px)] flex-1 flex-col overflow-x-hidden bg-[#f3f4f6] pt-4 pb-24 lg:pb-16">
-      <div className="mx-auto max-w-7xl px-4 lg:px-8">
+      <div className="mx-auto max-w-[1600px] w-full px-4 lg:px-6 xl:px-8">
         <div className="mb-6 flex flex-col justify-between gap-4 border-b border-gray-200 pb-4 lg:flex-row lg:items-end">
           <div>
             <h1 className="mb-1 break-words text-2xl font-bold leading-tight tracking-tight text-gray-900 capitalize lg:text-3xl">
@@ -629,11 +645,11 @@ function MachinesPageContent({
 
           <div className="flex-1 min-w-0">
             {loading ? (
-              <div className="grid grid-cols-2 gap-3 lg:gap-6 xl:grid-cols-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <div key={index} className="h-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-                    <div className="h-32 animate-pulse bg-gray-100 lg:h-48" />
-                    <div className="space-y-3 p-3 lg:p-5">
+                    <div className="h-44 animate-pulse bg-gray-100 lg:h-56" />
+                    <div className="space-y-3 p-4 lg:p-5">
                       <div className="h-4 w-3/4 animate-pulse rounded-md bg-gray-100 lg:h-5" />
                       <div className="h-5 w-1/2 animate-pulse rounded-md bg-gray-100 lg:h-6" />
                       <div className="h-3 w-2/3 animate-pulse rounded-md bg-gray-100 lg:h-4" />
@@ -654,7 +670,7 @@ function MachinesPageContent({
               </div>
             ) : (
               <>
-                <div className="grid w-full min-w-0 grid-cols-2 gap-3 lg:gap-6 xl:grid-cols-3">
+                <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
                   {paginatedMachines.map((machine) => {
                     const imageUrl = getMediaUrl(machine.featuredImage);
                     const locationLabel = formatListingLocation(machine, {
@@ -664,14 +680,14 @@ function MachinesPageContent({
 
                     return (
                       <Link key={machine.id} href={generateMachineSlugPath(machine)} className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-gray-200 hover:shadow-md">
-                        <div className="relative h-32 shrink-0 overflow-hidden bg-gray-50 lg:h-48">
+                        <div className="relative h-44 shrink-0 overflow-hidden bg-gray-50 lg:h-56">
                           <div className="absolute top-3 right-3 z-10">{getAvailabilityBadge(machine.status, availabilityLabels)}</div>
                           {imageUrl ? (
                             <Image
                               src={imageUrl}
                               alt={`${machine.title} machine listing${locationLabel ? ` in ${locationLabel}` : ''}`}
                               fill
-                              sizes="(max-width: 1024px) 50vw, 33vw"
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                               className="object-cover transition-transform duration-500 group-hover:scale-105"
                             />
                           ) : (
@@ -682,12 +698,12 @@ function MachinesPageContent({
                           )}
                         </div>
 
-                        <div className="flex flex-1 flex-col p-3 lg:p-5">
-                          <h3 className="line-clamp-3 break-words text-[12px] font-bold leading-snug text-gray-900 transition-colors group-hover:text-yellow-600 lg:line-clamp-2 lg:text-sm">{machine.title}</h3>
-                          <p className="mt-2 text-sm font-extrabold text-[#b48900] lg:text-base">{formatPrice(machine.price)}</p>
+                        <div className="flex flex-1 flex-col p-4 lg:p-5">
+                          <h3 className="line-clamp-2 break-words text-sm font-bold leading-snug text-gray-900 transition-colors group-hover:text-yellow-600 lg:text-[15px]">{machine.title}</h3>
+                          <p className="mt-2 text-base font-extrabold text-[#b48900] lg:text-lg">{formatPrice(machine.price)}</p>
 
-                          <div className="mt-auto flex items-center gap-1 border-t border-gray-50 pt-3 text-[10px] text-gray-500 lg:gap-1.5 lg:pt-4 lg:text-xs">
-                            <MapPin className="h-3 w-3 shrink-0 text-gray-400 lg:h-3.5 lg:w-3.5" />
+                          <div className="mt-auto flex items-center gap-1.5 border-t border-gray-100 pt-3 text-xs text-gray-500 lg:pt-4">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                             <span className="truncate">{locationLabel}</span>
                           </div>
                         </div>

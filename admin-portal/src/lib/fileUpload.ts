@@ -103,29 +103,15 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      // Allow /uploads/public/ — it's a valid server-stored branding image path
-      if (/^\/uploads(?:\/|$)/i.test(parsed.pathname) && !/^\/uploads\/public\//i.test(parsed.pathname)) {
-        return '';
-      }
-    } catch {
-      return '';
-    }
-
     return trimmed;
   }
 
-  // Allow server-local /uploads/public/ paths — convert to absolute URL
-  if (/^\/uploads\/public\//i.test(trimmed)) {
+  // All /uploads/ paths (listings, public, etc.) — convert to absolute URL
+  if (/^\/uploads(?:\/|$)/i.test(trimmed)) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');
     const origin = apiUrl.replace(/\/api\/?$/, '');
     return `${origin}${trimmed}`;
-  }
-
-  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(trimmed)) {
-    return '';
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;

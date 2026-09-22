@@ -1073,7 +1073,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
                           if (type === 'hp') {
                             if (normalizedValue === 'TERMINATED') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Terminated (Clear)'; }
-                            else if (normalizedValue === 'ACTIVE') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Active (Pending)'; }
+                            else if (normalizedValue === 'ACTIVE') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Active'; }
                             else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
                             else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
                           } else if (type === 'validity') {

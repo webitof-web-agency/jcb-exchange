@@ -9,6 +9,7 @@ import { useNotificationStore } from '@/store/notificationStore';
 import api, { getRemoteMediaUrl } from '@/lib/api';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
+import { generateCategoryMachinesPath } from '@/lib/seoUtils';
 import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
 
 
@@ -40,6 +41,7 @@ type InspectionSectionContent = {
 type PublicCategory = {
   id: string;
   name: string;
+  slug?: string | null;
   count: number;
   featuredImage: string | null;
   icon?: {
@@ -569,7 +571,7 @@ export default function Home() {
                       <div key={`desktop-row-${rowIndex}`} className="grid grid-cols-4 gap-4 py-8 border-b border-gray-200 last:border-b-0">
                         {row.map((category) => (
                           <Link
-                            href={`/machines?category=${category.id}`}
+                            href={generateCategoryMachinesPath(category)}
                             key={category.id}
                             className="flex flex-col items-center justify-center cursor-pointer group hover:-translate-y-1 transition-transform duration-300"
                           >
@@ -595,7 +597,7 @@ export default function Home() {
                       <div key={`mobile-row-${rowIndex}`} className="grid grid-cols-3 gap-2 py-1">
                         {row.map((category) => (
                           <Link
-                            href={`/machines?category=${category.id}`}
+                            href={generateCategoryMachinesPath(category)}
                             key={category.id}
                             className="flex flex-col items-center justify-center p-2 bg-white border border-gray-100 rounded-xl cursor-pointer group active:scale-95 transition-transform duration-200 shadow-sm h-full"
                           >

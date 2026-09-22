@@ -21,6 +21,17 @@ export interface DealerSlugData {
   district?: string | null;
 }
 
+export interface CategorySlugData {
+  id: string;
+  name: string;
+  slug?: string | null;
+}
+
+export const generateCategoryMachinesPath = (category: CategorySlugData): string => {
+  const categorySlug = slugify(category.slug || category.name);
+  return `/machines?category=${encodeURIComponent(categorySlug)}`;
+};
+
 export const generateMachineSlugPath = (machine: MachineListingSlugData): string => {
   const slug = buildSlugSegments(machine.title, machine.manufacturingYear, machine.locationCity);
   return `/machines/${buildSlugWithShortSuffix(slug || 'machine', machine.id)}`;

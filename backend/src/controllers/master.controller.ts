@@ -1204,6 +1204,7 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
       {
         id: string;
         name: string;
+        slug: string;
         count: number;
         featuredImage: string | null;
         icon: { id: string; name: string; svgData: string } | null;
@@ -1224,9 +1225,18 @@ export const getPublicCategories = async (req: Request, res: Response, next: Nex
       const featuredImage = getFirstRemoteImageUrl(listing.media);
 
       if (!existing) {
+        const categorySlug = listing.category.name
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/[^\w-]+/g, '')
+          .replace(/--+/g, '-')
+          .replace(/^-+/, '')
+          .replace(/-+$/, '');
         categoryMap.set(listing.category.id, {
           id: listing.category.id,
           name: listing.category.name,
+          slug: categorySlug,
           count: 1,
           featuredImage,
           latestListingCreatedAt: new Date(listing.createdAt).getTime(),
