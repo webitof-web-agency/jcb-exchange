@@ -4,8 +4,8 @@ const DEV_WEB_PORT = 3000;
 const DEV_API_PORT = 5000;
 const DEV_LAN_HOST = '10.0.2.2';
 
-export const RELEASE_WEB_URL = 'https://jcb-exchange-frontend.vercel.app';
-export const RELEASE_API_URL = 'https://api.pucindia.com';
+export const RELEASE_WEB_URL = 'https://jcbexchange.com';
+export const RELEASE_API_URL = 'https://api.jcbexchange.com';
 
 function parseHost(scriptUrl) {
   if (!scriptUrl) {

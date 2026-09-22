@@ -1,7 +1,5 @@
 import multer from 'multer';
 import path from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import crypto from 'crypto';
 
 export type UploadVisibility = 'public' | 'secure';
 export type UploadPurpose =
@@ -90,68 +88,6 @@ export const uploadRootDir = path.join(storageBaseDir, 'uploads');
 export const publicUploadDir = path.join(uploadRootDir, 'public');
 export const secureUploadDir = path.join(uploadRootDir, 'secure');
 export const publicListingMediaUploadDir = path.join(publicUploadDir, 'listings');
-export const publicFinanceSupportUploadDir = path.join(publicUploadDir, 'finance-support');
-export const publicHeroImageUploadDir = path.join(publicUploadDir, 'hero-image');
-export const publicInspectionSectionUploadDir = path.join(publicUploadDir, 'inspection-section');
-export const publicSiteLogoUploadDir = path.join(publicUploadDir, 'site-logo');
-export const publicSiteDarkLogoUploadDir = path.join(publicUploadDir, 'site-dark-logo');
-export const publicSiteFaviconUploadDir = path.join(publicUploadDir, 'site-favicon');
-export const publicSiteManifestIconUploadDir = path.join(publicUploadDir, 'site-manifest-icon');
-
-const ensureDirectory = (directoryPath: string) => {
-  if (!existsSync(directoryPath)) {
-    mkdirSync(directoryPath, { recursive: true });
-  }
-};
-
-export const ensureUploadDirectories = () => {
-  ensureDirectory(publicUploadDir);
-  ensureDirectory(secureUploadDir);
-  ensureDirectory(publicListingMediaUploadDir);
-  ensureDirectory(publicFinanceSupportUploadDir);
-  ensureDirectory(publicHeroImageUploadDir);
-  ensureDirectory(publicInspectionSectionUploadDir);
-  ensureDirectory(publicSiteLogoUploadDir);
-  ensureDirectory(publicSiteDarkLogoUploadDir);
-  ensureDirectory(publicSiteFaviconUploadDir);
-  ensureDirectory(publicSiteManifestIconUploadDir);
-};
-
-const getUploadDirectory = (visibility: UploadVisibility, purpose: UploadPurpose) => {
-  if (visibility === 'public' && purpose === 'finance-support') {
-    return publicFinanceSupportUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'hero-image') {
-    return publicHeroImageUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'inspection-section') {
-    return publicInspectionSectionUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'site-logo') {
-    return publicSiteLogoUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'site-dark-logo') {
-    return publicSiteDarkLogoUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'site-favicon') {
-    return publicSiteFaviconUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'site-manifest-icon') {
-    return publicSiteManifestIconUploadDir;
-  }
-
-  if (visibility === 'public' && purpose === 'listing-media') {
-    return publicListingMediaUploadDir;
-  }
-
-  return visibility === 'public' ? publicUploadDir : secureUploadDir;
-};
 
 const getExtensionFromOriginalName = (fileName: string) => path.extname(fileName || '').toLowerCase();
 
@@ -255,13 +191,4 @@ export const isPdfMimeType = (mimeType?: string | null) => mimeType === 'applica
 export const isVideoMimeType = (mimeType?: string | null) =>
   mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'video/quicktime';
 
-export const getSecureDocumentUrl = (fileName: string) => `/api/documents/secure/${fileName}`;
-export const getPublicDocumentUrl = (fileName: string) => `/uploads/public/${fileName}`;
-export const getPublicListingMediaUrl = (fileName: string) => `/uploads/public/listings/${fileName}`;
-export const getPublicFinanceSupportImageUrl = (fileName: string) => `/uploads/public/finance-support/${fileName}`;
-export const getPublicHeroImageUrl = (fileName: string) => `/uploads/public/hero-image/${fileName}`;
-export const getPublicInspectionSectionImageUrl = (fileName: string) => `/uploads/public/inspection-section/${fileName}`;
-export const getPublicSiteLogoUrl = (fileName: string) => `/uploads/public/site-logo/${fileName}`;
-export const getPublicSiteDarkLogoUrl = (fileName: string) => `/uploads/public/site-dark-logo/${fileName}`;
-export const getPublicSiteFaviconUrl = (fileName: string) => `/uploads/public/site-favicon/${fileName}`;
-export const getPublicSiteManifestIconUrl = (fileName: string) => `/uploads/public/site-manifest-icon/${fileName}`;
+export { getSecureDocumentUrl } from './secureDocumentUrl';

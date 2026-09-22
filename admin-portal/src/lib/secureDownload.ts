@@ -1,20 +1,5 @@
 import api from '@/lib/api';
-
-const normalizeSecureDocumentPath = (fileUrl: string) => {
-  const trimmed = fileUrl.trim();
-
-  if (!trimmed) {
-    throw new Error('File URL is required.');
-  }
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    const parsed = new URL(trimmed);
-    return parsed.pathname.replace(/^\/api(?=\/|$)/i, '');
-  }
-
-  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return normalizedPath.replace(/^\/api(?=\/|$)/i, '');
-};
+import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 
 export const downloadSecureDocument = async (fileUrl: string, fileName: string) => {
   const response = await api.get(normalizeSecureDocumentPath(fileUrl), {

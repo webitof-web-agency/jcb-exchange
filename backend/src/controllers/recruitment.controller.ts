@@ -2,8 +2,15 @@ import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs/promises';
 import prisma from '../lib/prisma';
-import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
+import {
+  deleteFileFromDrive,
+  extractDriveFileId,
+  makeDriveFilePrivate,
+  streamFileFromDrive,
+  uploadFileToDrive,
+} from '../services/googleDrive.service';
 import { secureUploadDir } from '../utils/documentUpload';
+import { getSecureDocumentUrl } from '../utils/secureDocumentUrl';
 import {
   ensureDefaultRecruitmentData,
   generateApplicationRef,
@@ -420,6 +427,8 @@ export const getPublicJobBySlug = async (req: Request, res: Response, next: Next
 };
 
 export const applyForJob = async (req: Request, res: Response, next: NextFunction) => {
+  let uploadedResumeFileId: string | null = null;
+
   try {
     const slug = getParamString(req.params.slug);
     const body = req.body;
@@ -449,7 +458,7 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    if (job.resumeRequired && !body.resumeUrl && !req.file) {
+    if (job.resumeRequired && !req.file) {
       return res.status(400).json({
         success: false,
         error: 'Resume document is required to apply for this job.',
@@ -546,6 +555,26 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
+    let resumeFileUrl: string | null = null;
+    let resumeFileName: string = 'Resume.pdf';
+    let resumeFileSize: number | null = null;
+    let resumeMimeType: string = 'application/pdf';
+
+    if (req.file) {
+      const { fileId } = await uploadFileToDrive(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname,
+        undefined,
+        { access: 'private' },
+      );
+      uploadedResumeFileId = fileId;
+      resumeFileUrl = getSecureDocumentUrl(fileId);
+      resumeFileName = req.file.originalname;
+      resumeFileSize = req.file.size;
+      resumeMimeType = req.file.mimetype;
+    }
+
     const applicationRef = await generateApplicationRef();
 
     const application = await prisma.jobApplication.create({
@@ -573,18 +602,6 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
           });
         }
       }
-    }
-
-    let resumeFileUrl: string | null = body.resumeUrl || null;
-    let resumeFileName: string = body.resumeFileName || 'Resume.pdf';
-    let resumeFileSize: number | null = body.resumeFileSize ? parseInt(body.resumeFileSize, 10) : null;
-    let resumeMimeType: string = body.resumeMimeType || 'application/pdf';
-
-    if (req.file) {
-      resumeFileUrl = `/api/documents/secure/${req.file.filename}`;
-      resumeFileName = req.file.originalname;
-      resumeFileSize = req.file.size;
-      resumeMimeType = req.file.mimetype;
     }
 
     if (resumeFileUrl) {
@@ -640,6 +657,9 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       appliedAt: application.appliedAt,
     });
   } catch (error) {
+    if (uploadedResumeFileId) {
+      await deleteFileFromDrive(uploadedResumeFileId);
+    }
     next(error);
   }
 };
@@ -1030,11 +1050,24 @@ export const downloadMyApplicationDocument = async (req: Request, res: Response,
     if (!document) return res.status(404).json({ success: false, error: 'Document not found.' });
 
     const fileName = path.basename(document.fileName || document.fileUrl);
-    const absolutePath = path.join(secureUploadDir, fileName);
-    await fs.access(absolutePath);
     res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/"/g, '')}"`);
     res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+
+    const driveFileId = extractDriveFileId(document.fileUrl);
+    if (driveFileId) {
+      if (!document.fileUrl.includes('/api/documents/secure/drive-')) {
+        await makeDriveFilePrivate(driveFileId);
+      }
+
+      const stream = await streamFileFromDrive(driveFileId);
+      stream.on('error', next);
+      stream.pipe(res);
+      return;
+    }
+
+    const absolutePath = path.join(secureUploadDir, fileName);
+    await fs.access(absolutePath);
     res.sendFile(absolutePath);
   } catch (error) {
     next(error);

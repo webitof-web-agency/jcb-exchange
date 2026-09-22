@@ -1,9 +1,7 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma';
-import { uploadRootDir } from './documentUpload';
 import { normalizeRemoteMediaUrl } from './mediaUrl';
+import { mergeSiteBrandingMedia } from './siteBrandingSettings';
 import {
   type CustomerPrimeSettings,
   normalizeCustomerPrimeSettings,
@@ -258,35 +256,6 @@ type AppSettings = {
 
 const platformRuntimeSettingsKey = 'platform';
 const prismaAny = prisma as any;
-
-const resolveRuntimeStorageBaseDir = () => {
-  const configuredDirectory =
-    process.env.APP_RUNTIME_STORAGE_DIR?.trim() ||
-    process.env.APP_STORAGE_DIR?.trim();
-
-  if (!configuredDirectory) {
-    return process.cwd();
-  }
-
-  return path.isAbsolute(configuredDirectory)
-    ? configuredDirectory
-    : path.resolve(process.cwd(), configuredDirectory);
-};
-
-const runtimeStorageBaseDir = resolveRuntimeStorageBaseDir();
-const settingsDirectory = path.resolve(runtimeStorageBaseDir, 'runtime');
-const legacySettingsDirectory = path.resolve(__dirname, '..', '..', 'runtime');
-const repoRootLegacySettingsDirectory = path.resolve(__dirname, '..', '..', '..', 'runtime');
-const settingsFilePath = path.join(settingsDirectory, 'app-settings.json');
-const legacySettingsFilePath = path.join(legacySettingsDirectory, 'app-settings.json');
-const repoRootLegacySettingsFilePath = path.join(repoRootLegacySettingsDirectory, 'app-settings.json');
-const settingsFileCandidates = Array.from(
-  new Set([settingsFilePath, legacySettingsFilePath, repoRootLegacySettingsFilePath]),
-);
-const siteLogoPublicUrlPrefix = '/uploads/public/site-logo/';
-const siteDarkLogoPublicUrlPrefix = '/uploads/public/site-dark-logo/';
-const siteFaviconPublicUrlPrefix = '/uploads/public/site-favicon/';
-const siteManifestIconPublicUrlPrefix = '/uploads/public/site-manifest-icon/';
 const supportedFooterSocialPlatforms = new Set(['FACEBOOK', 'INSTAGRAM', 'TWITTER']);
 
 const defaultSettings: AppSettings = {
@@ -402,37 +371,6 @@ const defaultSettings: AppSettings = {
   },
 };
 
-const parseTimestamp = (value?: string | null) => {
-  if (!value) {
-    return 0;
-  }
-
-  const parsedValue = Date.parse(value);
-  return Number.isFinite(parsedValue) ? parsedValue : 0;
-};
-
-const getSettingsFreshnessScore = (settings?: AppSettings | null) => {
-  if (!settings) {
-    return 0;
-  }
-
-  return Math.max(
-    parseTimestamp(settings.googleAuth.updatedAt),
-    parseTimestamp(settings.mobileOtp.updatedAt),
-    parseTimestamp(settings.publicLeadRouting.updatedAt),
-    parseTimestamp(settings.customerPrime.updatedAt),
-    parseTimestamp(settings.listingPayment?.updatedAt),
-    parseTimestamp(settings.heroImage.updatedAt),
-    parseTimestamp(settings.inspectionSection.updatedAt),
-    parseTimestamp(settings.siteLogo.updatedAt),
-    parseTimestamp(settings.companyInvoice.updatedAt),
-    parseTimestamp(settings.footer.contact.updatedAt),
-    parseTimestamp(settings.footer.legalPages.updatedAt),
-    ...settings.financeSupport.items.map((item) => parseTimestamp(item.updatedAt)),
-    ...settings.footer.socialLinks.map((item) => parseTimestamp(item.updatedAt)),
-  );
-};
-
 const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): AppSettings => ({
   googleAuth: {
     enabled: parsed?.googleAuth?.enabled === true,
@@ -497,38 +435,6 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     },
   },
 });
-
-const isMeaningfulSettings = (settings: AppSettings) =>
-  Boolean(
-    settings.googleAuth.enabled ||
-    settings.googleAuth.clientId ||
-    settings.mobileOtp.enabled ||
-    settings.mobileOtp.apiKey ||
-    settings.mobileOtp.otpId ||
-    settings.mobileOtp.variablesValues ||
-    settings.publicLeadRouting.useSellerContact ||
-    settings.publicLeadRouting.adminCallNumber ||
-    settings.publicLeadRouting.adminWhatsappNumber ||
-    settings.customerPrime.enabled ||
-    settings.customerPrime.upiId ||
-    settings.customerPrime.amount !== null ||
-    settings.customerPrime.validityValue !== null ||
-    settings.financeSupport.items.length > 0 ||
-    settings.heroImage.imageUrl ||
-    settings.heroImage.headline ||
-    settings.inspectionSection.title ||
-    settings.inspectionSection.description ||
-    settings.inspectionSection.imageUrl ||
-    settings.siteLogo.imageUrl ||
-    settings.siteLogo.faviconUrl ||
-    settings.siteLogo.manifestIconUrl ||
-    settings.footer.socialLinks.length > 0 ||
-    settings.footer.contact.phoneNumber ||
-    settings.footer.contact.phoneLabel ||
-    settings.footer.contact.emailAddress ||
-    settings.footer.contact.emailLabel ||
-    settings.footer.contact.address,
-  );
 
 const normalizeClientId = (value?: string | null) => {
   const trimmedValue = value?.trim();
@@ -664,77 +570,6 @@ const normalizeFooterSocialLinks = (items?: Partial<FooterSocialLink>[]): Footer
     }));
 };
 
-const resolveManagedBrandingFilePath = (fileUrl?: string | null) => {
-  const normalizedUrl = fileUrl?.trim();
-  if (!normalizedUrl) {
-    return null;
-  }
-
-  if (normalizedUrl.startsWith(siteLogoPublicUrlPrefix)) {
-    return path.join(uploadRootDir, normalizedUrl.replace(siteLogoPublicUrlPrefix, `public${path.sep}site-logo${path.sep}`));
-  }
-
-  if (normalizedUrl.startsWith(siteDarkLogoPublicUrlPrefix)) {
-    return path.join(uploadRootDir, normalizedUrl.replace(siteDarkLogoPublicUrlPrefix, `public${path.sep}site-dark-logo${path.sep}`));
-  }
-
-  if (normalizedUrl.startsWith(siteFaviconPublicUrlPrefix)) {
-    return path.join(uploadRootDir, normalizedUrl.replace(siteFaviconPublicUrlPrefix, `public${path.sep}site-favicon${path.sep}`));
-  }
-
-  if (normalizedUrl.startsWith(siteManifestIconPublicUrlPrefix)) {
-    return path.join(uploadRootDir, normalizedUrl.replace(siteManifestIconPublicUrlPrefix, `public${path.sep}site-manifest-icon${path.sep}`));
-  }
-
-  return null;
-};
-
-const removeManagedBrandingFile = async (fileUrl?: string | null) => {
-  const absolutePath = resolveManagedBrandingFilePath(fileUrl);
-  if (!absolutePath) {
-    return;
-  }
-
-  try {
-    await fs.unlink(absolutePath);
-  } catch (error) {
-    const nodeError = error as NodeJS.ErrnoException;
-    if (nodeError.code !== 'ENOENT') {
-      throw error;
-    }
-  }
-};
-
-const ensureSettingsFile = async () => {
-  await fs.mkdir(settingsDirectory, { recursive: true });
-
-  const [currentExists, legacyExists, repoRootLegacyExists] = await Promise.all(
-    settingsFileCandidates.map(async (candidatePath) => {
-      try {
-        await fs.access(candidatePath);
-        return true;
-      } catch {
-        return false;
-      }
-    }),
-  );
-
-  if (currentExists) {
-    return;
-  }
-
-  if (legacyExists || repoRootLegacyExists) {
-    return;
-  }
-
-  await fs.writeFile(settingsFilePath, JSON.stringify(defaultSettings, null, 2), 'utf8');
-};
-
-const writeSettingsFileSnapshot = async (settings: AppSettings) => {
-  await ensureSettingsFile();
-  await fs.writeFile(settingsFilePath, JSON.stringify(settings, null, 2), 'utf8');
-};
-
 const readDatabaseSettings = async (): Promise<AppSettings | null> => {
   try {
     const record = await prismaAny.platformRuntimeSettings.findUnique({
@@ -753,94 +588,22 @@ const readDatabaseSettings = async (): Promise<AppSettings | null> => {
 };
 
 const persistDatabaseSettings = async (settings: AppSettings) => {
-  try {
-    await prismaAny.platformRuntimeSettings.upsert({
-      where: { key: platformRuntimeSettingsKey },
-      update: {
-        payload: settings,
-      },
-      create: {
-        key: platformRuntimeSettingsKey,
-        payload: settings,
-      },
-    });
-  } catch {
-    // File fallback remains available when the database record cannot be written.
-  }
-};
-
-const readFileSettings = async (): Promise<AppSettings> => {
-  const candidateSnapshots = await Promise.all(
-    settingsFileCandidates.map(async (candidatePath) => {
-      try {
-        const content = await fs.readFile(candidatePath, 'utf8');
-        const parsed = JSON.parse(content) as Partial<AppSettings>;
-        const snapshot = normalizeAppSettingsSnapshot(parsed);
-
-        return {
-          candidatePath,
-          snapshot,
-          meaningful: isMeaningfulSettings(snapshot),
-        };
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const preferredSnapshot =
-    candidateSnapshots.find((entry) => entry?.meaningful)?.snapshot ||
-    candidateSnapshots.find((entry) => entry?.snapshot)?.snapshot ||
-    defaultSettings;
-
-  if (!candidateSnapshots.some((entry) => entry?.candidatePath === settingsFilePath && entry.snapshot)) {
-    await writeSettingsFileSnapshot(preferredSnapshot);
-  }
-
-  return preferredSnapshot;
-};
-
-const persistSettings = async (settings: AppSettings) => {
-  await Promise.all([
-    persistDatabaseSettings(settings),
-    writeSettingsFileSnapshot(settings),
-  ]);
+  await prismaAny.platformRuntimeSettings.upsert({
+    where: { key: platformRuntimeSettingsKey },
+    update: {
+      payload: settings,
+    },
+    create: {
+      key: platformRuntimeSettingsKey,
+      payload: settings,
+    },
+  });
 };
 
 export const getAppSettings = async (): Promise<AppSettings> => {
-  await ensureSettingsFile();
-
   try {
     const databaseSettings = await readDatabaseSettings();
-    const fileSettings = await readFileSettings();
-    const databaseIsMeaningful = Boolean(databaseSettings && isMeaningfulSettings(databaseSettings));
-    const fileIsMeaningful = isMeaningfulSettings(fileSettings);
-
-    if (databaseIsMeaningful && fileIsMeaningful) {
-      const databaseFreshness = getSettingsFreshnessScore(databaseSettings);
-      const fileFreshness = getSettingsFreshnessScore(fileSettings);
-      const preferredSettings = fileFreshness > databaseFreshness ? fileSettings : (databaseSettings as AppSettings);
-
-      if (preferredSettings === fileSettings) {
-        await persistDatabaseSettings(fileSettings);
-      } else {
-        await writeSettingsFileSnapshot(databaseSettings as AppSettings);
-      }
-
-      return preferredSettings;
-    }
-
-    if (databaseIsMeaningful) {
-      await writeSettingsFileSnapshot(databaseSettings as AppSettings);
-      return databaseSettings as AppSettings;
-    }
-
-    if (fileIsMeaningful) {
-      await persistDatabaseSettings(fileSettings);
-      return fileSettings;
-    }
-
-    return databaseSettings || fileSettings;
+    return databaseSettings || defaultSettings;
   } catch {
     return defaultSettings;
   }
@@ -867,7 +630,7 @@ export const updateGoogleAuthSettings = async ({
     },
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1023,7 +786,7 @@ export const updatePlatformRuntimeSettings = async ({
       : currentSettings.mobileApp,
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1036,7 +799,9 @@ export const updateFinanceSupportSettings = async ({
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
-  const normalizedItems = normalizeFinanceSupportItems(items).map((item) => ({
+  const normalizedItems = items === undefined
+    ? currentSettings.financeSupport.items
+    : normalizeFinanceSupportItems(items).map((item) => ({
     ...item,
     updatedAt: new Date().toISOString(),
     updatedByUserId: updatedByUserId || null,
@@ -1049,7 +814,7 @@ export const updateFinanceSupportSettings = async ({
     },
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1068,14 +833,18 @@ export const updateHeroImageSettings = async ({
   const nextSettings: AppSettings = {
     ...currentSettings,
     heroImage: {
-      imageUrl: normalizeRemoteMediaUrl(imageUrl),
-      headline: headline?.trim() || null,
+      imageUrl: imageUrl === undefined
+        ? currentSettings.heroImage.imageUrl
+        : normalizeRemoteMediaUrl(imageUrl),
+      headline: headline === undefined
+        ? currentSettings.heroImage.headline
+        : headline?.trim() || null,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1096,15 +865,17 @@ export const updateInspectionSectionSettings = async ({
   const nextSettings: AppSettings = {
     ...currentSettings,
     inspectionSection: {
-      title: title?.trim() || null,
-      description: description?.trim() || null,
-      imageUrl: normalizeRemoteMediaUrl(imageUrl),
+      title: title === undefined ? currentSettings.inspectionSection.title : title?.trim() || null,
+      description: description === undefined ? currentSettings.inspectionSection.description : description?.trim() || null,
+      imageUrl: imageUrl === undefined
+        ? currentSettings.inspectionSection.imageUrl
+        : normalizeRemoteMediaUrl(imageUrl),
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1123,45 +894,23 @@ export const updateSiteLogoSettings = async ({
   updatedByUserId?: string | null;
 }) => {
   const currentSettings = await getAppSettings();
-  const normalizedImageUrl = imageUrl?.trim() || null;
-  const normalizedDarkLogoUrl = darkLogoUrl === undefined ? currentSettings.siteLogo.darkLogoUrl : darkLogoUrl?.trim() || null;
-  const normalizedFaviconUrl = faviconUrl?.trim() || null;
-  const normalizedManifestIconUrl = manifestIconUrl?.trim() || null;
-
-  const previousImageUrl = currentSettings.siteLogo.imageUrl;
-  const previousDarkLogoUrl = currentSettings.siteLogo.darkLogoUrl;
-  const previousFaviconUrl = currentSettings.siteLogo.faviconUrl;
-  const previousManifestIconUrl = currentSettings.siteLogo.manifestIconUrl;
+  const media = mergeSiteBrandingMedia(currentSettings.siteLogo, {
+    imageUrl,
+    darkLogoUrl,
+    faviconUrl,
+    manifestIconUrl,
+  });
 
   const nextSettings: AppSettings = {
     ...currentSettings,
     siteLogo: {
-      imageUrl: normalizeRemoteMediaUrl(normalizedImageUrl),
-      darkLogoUrl: normalizeRemoteMediaUrl(normalizedDarkLogoUrl),
-      faviconUrl: normalizeRemoteMediaUrl(normalizedFaviconUrl),
-      manifestIconUrl: normalizeRemoteMediaUrl(normalizedManifestIconUrl),
+      ...media,
       updatedAt: new Date().toISOString(),
       updatedByUserId: updatedByUserId || null,
     },
   };
 
-  await persistSettings(nextSettings);
-
-  const cleanupTargets: Array<string | null | undefined> = [];
-  if (previousImageUrl && previousImageUrl !== normalizedImageUrl) {
-    cleanupTargets.push(previousImageUrl);
-  }
-  if (previousDarkLogoUrl && previousDarkLogoUrl !== normalizedDarkLogoUrl) {
-    cleanupTargets.push(previousDarkLogoUrl);
-  }
-  if (previousFaviconUrl && previousFaviconUrl !== normalizedFaviconUrl) {
-    cleanupTargets.push(previousFaviconUrl);
-  }
-  if (previousManifestIconUrl && previousManifestIconUrl !== normalizedManifestIconUrl) {
-    cleanupTargets.push(previousManifestIconUrl);
-  }
-
-  await Promise.all(cleanupTargets.map((target) => removeManagedBrandingFile(target)));
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };
@@ -1208,7 +957,7 @@ export const updateFooterSettings = async ({
     },
   };
 
-  await persistSettings(nextSettings);
+  await persistDatabaseSettings(nextSettings);
 
   return nextSettings;
 };

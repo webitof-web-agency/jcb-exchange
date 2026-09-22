@@ -764,6 +764,7 @@ export const getApprovedDealers = async (req: Request, res: Response, next: Next
 
     const data = dealers.map((dealer: any) => ({
       ...dealer,
+      businessLogoUrl: normalizeRemoteMediaUrl(dealer.businessLogoUrl),
       publicContact: resolvePublicLeadContact({
         useSellerContact: settings.publicLeadRouting.useSellerContact,
         adminCallNumber: defaultSuperAdminContact.adminCallNumber,
@@ -820,6 +821,7 @@ export const getDealerById = async (req: Request, res: Response, next: NextFunct
 
     const data = {
       ...dealer,
+      businessLogoUrl: normalizeRemoteMediaUrl(dealer.businessLogoUrl),
       publicContact: resolvePublicLeadContact({
         useSellerContact: settings.publicLeadRouting.useSellerContact,
         adminCallNumber: defaultSuperAdminContact.adminCallNumber,
@@ -913,10 +915,7 @@ export const getDealerListings = async (req: Request, res: Response, next: NextF
         sellerName: listing.partner?.partnerProfile?.businessName || listing.partner?.name,
         sellerType: listing.partner?.customerPrimeSubscriptions?.length > 0 ? 'PRIME' : 'STANDARD',
         sellerId: listing.partner?.id,
-        thumbnailUrl:
-          listing.media?.find((m: any) => m.isFeatured && m.type === 'IMAGE')?.url ||
-          listing.media?.find((m: any) => m.type === 'IMAGE')?.url ||
-          null,
+        thumbnailUrl: getFirstRemoteImageUrl(listing.media),
       })),
     });
   } catch (error) {
@@ -1524,7 +1523,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         mobile: listing.partner?.mobile,
         whatsapp: listing.partner?.whatsappNumber || listing.partner?.mobile,
         alternateMobile: listing.partner?.partnerProfile?.alternateMobile,
-        logo: listing.partner?.partnerProfile?.businessLogoUrl,
+        logo: normalizeRemoteMediaUrl(listing.partner?.partnerProfile?.businessLogoUrl),
         description: listing.partner?.partnerProfile?.businessDescription,
         workingHours: listing.partner?.partnerProfile?.workingHours,
       },

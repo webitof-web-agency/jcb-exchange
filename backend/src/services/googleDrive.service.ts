@@ -1,8 +1,11 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { getAppSettings } from '../utils/appSettings';
+import { extractDriveFileIdFromSecureUrl } from '../utils/secureDocumentUrl';
 
 const REDIRECT_URI = 'https://developers.google.com/oauthplayground';
+
+export type DriveFileAccess = 'public' | 'private';
 
 const getDriveClient = async () => {
   const settings = await getAppSettings();
@@ -22,7 +25,8 @@ export const uploadFileToDrive = async (
   buffer: Buffer,
   mimeType: string,
   filename: string,
-  folderId?: string
+  folderId?: string,
+  options: { access?: DriveFileAccess } = {},
 ): Promise<{ fileId: string; viewLink: string }> => {
   try {
     const drive = await getDriveClient();
@@ -43,18 +47,25 @@ export const uploadFileToDrive = async (
       requestBody: fileMetadata,
       media: media,
       fields: 'id, webViewLink, webContentLink',
+      supportsAllDrives: true,
     });
 
     const fileId = response.data.id;
+    if (!fileId) {
+      throw new Error('Google Drive did not return a file id.');
+    }
     
-    // Set permission to anyone with link can view
-    if (fileId) {
+    // Public assets are intentionally link-readable so they can be rendered by
+    // browsers without exposing the backend. Secure documents never receive an
+    // anyone permission and are served through an authorized backend stream.
+    if (fileId && options.access !== 'private') {
       await drive.permissions.create({
         fileId: fileId,
         requestBody: {
           role: 'reader',
           type: 'anyone',
         },
+        supportsAllDrives: true,
       });
     }
 
@@ -72,7 +83,7 @@ export const deleteFileFromDrive = async (fileId: string): Promise<void> => {
   try {
     if (!fileId) return;
     const drive = await getDriveClient();
-    await drive.files.delete({ fileId: fileId });
+    await drive.files.delete({ fileId: fileId, supportsAllDrives: true });
     console.log(`Deleted file ${fileId} from Google Drive`);
   } catch (error) {
     console.error(`Error deleting file ${fileId} from Google Drive:`, error);
@@ -80,12 +91,37 @@ export const deleteFileFromDrive = async (fileId: string): Promise<void> => {
   }
 };
 
-export const extractDriveFileId = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  // Example URL: https://drive.google.com/uc?id=1xyz...
-  const match = url.match(/[?&]id=([^&]+)/);
-  if (match && match[1]) {
-    return match[1];
+export const streamFileFromDrive = async (fileId: string): Promise<Readable> => {
+  if (!fileId) {
+    throw new Error('A Drive file id is required.');
   }
-  return null;
+
+  const drive = await getDriveClient();
+  const response = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'stream' },
+  );
+
+  return response.data as unknown as Readable;
+};
+
+export const makeDriveFilePrivate = async (fileId: string): Promise<void> => {
+  if (!fileId) return;
+
+  const drive = await getDriveClient();
+  const permissions = await drive.permissions.list({
+    fileId,
+    fields: 'permissions(id,type)',
+    supportsAllDrives: true,
+  });
+
+  for (const permission of permissions.data.permissions || []) {
+    if (permission.type === 'anyone' && permission.id) {
+      await drive.permissions.delete({ fileId, permissionId: permission.id, supportsAllDrives: true });
+    }
+  }
+};
+
+export const extractDriveFileId = (url: string | null | undefined): string | null => {
+  return extractDriveFileIdFromSecureUrl(url);
 };

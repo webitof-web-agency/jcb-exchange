@@ -1,12 +1,21 @@
 'use client';
 
 import { createContext, createElement, type ReactNode, useContext, useEffect, useState } from 'react';
-import { API_BASE_URL, API_ORIGIN } from '@/lib/api';
+import { API_BASE_URL } from '@/lib/api';
 
 const getAbsoluteMediaUrl = (url?: string | null) => {
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+  const normalizedUrl = url?.trim();
+  if (!normalizedUrl || /^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedUrl)) return '';
+
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    try {
+      return /^\/uploads(?:\/|$)/i.test(new URL(normalizedUrl).pathname) ? '' : normalizedUrl;
+    } catch {
+      return '';
+    }
+  }
+
+  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedUrl.startsWith('/') ? '' : '/'}${normalizedUrl}`;
 };
 
 export type LogoData = {

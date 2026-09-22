@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
+import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getAppSettings } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
@@ -216,12 +217,19 @@ const formatDetailedLead = (lead: any) => {
   const base = formatLead(lead);
 
   const listingMedia = Array.isArray(lead.listing?.media)
-    ? lead.listing.media.map((m: any) => ({
-        id: m.id,
-        url: m.url,
-        type: m.type,
-        isFeatured: m.isFeatured,
-      }))
+    ? lead.listing.media
+      .map((m: any) => {
+        const url = normalizeRemoteMediaUrl(m?.url);
+        return url
+          ? {
+              id: m.id,
+              url,
+              type: m.type,
+              isFeatured: m.isFeatured,
+            }
+          : null;
+      })
+      .filter(Boolean)
     : [];
 
   const listingDetails = {

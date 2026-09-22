@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '../lib/prisma';
 import { publicListingMediaUploadDir } from './documentUpload';
+import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
 
 const prismaAny = prisma as any;
 
@@ -74,6 +75,12 @@ const resolveListingMediaPath = (url: string) => {
 const deleteListingMediaFiles = async (urls: string[]) => {
   const results = await Promise.all(
     urls.map(async (url) => {
+      const driveFileId = extractDriveFileId(url);
+      if (driveFileId) {
+        await deleteFileFromDrive(driveFileId);
+        return 1;
+      }
+
       const filePath = resolveListingMediaPath(url);
       if (!filePath) {
         return 0;

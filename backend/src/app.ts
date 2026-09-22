@@ -3,12 +3,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.routes';
-import { ensureUploadDirectories, publicUploadDir } from './utils/documentUpload';
+import { publicUploadDir } from './utils/documentUpload';
 
 dotenv.config();
 
 const app: Application = express();
-ensureUploadDirectories();
 
 // Middleware
 app.use(cors());
@@ -16,6 +15,9 @@ app.use(cors());
 app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+// Serve branding images (hero, logo, certification) stored on the server's
+// public upload directory. These are written to disk by the upload handlers
+// and fetched directly by the frontend — no Drive dependency needed.
 app.use('/uploads/public', express.static(publicUploadDir));
 
 // API Routes

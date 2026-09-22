@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
+import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { calculateConversionRate, calculateDemandPerStock, calculateDemandScore, calculatePercentageChange, getPreviousPeriod } from '../services/analyticsMetrics';
 import { ANALYTICS_EVENT_TYPES, recordAnalyticsEvent } from '../services/analytics.service';
 import { buildCsv } from '../services/csvExport';
@@ -162,8 +163,8 @@ export const getPartnerAnalyticsOverview = async (req: Request, res: Response, n
         leadCount: listing.leads.length,
         wonLeadCount: listing.leads.filter((lead: any) => lead.status === 'WON').length,
         featuredImage:
-          listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url ||
-          listing.media.find((media: any) => media.type === 'IMAGE')?.url ||
+          normalizeRemoteMediaUrl(listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url) ||
+          normalizeRemoteMediaUrl(listing.media.find((media: any) => media.type === 'IMAGE')?.url) ||
           '',
       }))
       .sort((first: any, second: any) => second.leadCount - first.leadCount || second.price - first.price)

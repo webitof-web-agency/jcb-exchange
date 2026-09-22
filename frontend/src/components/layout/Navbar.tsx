@@ -342,9 +342,6 @@ export default function Navbar() {
             </nav>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
-              <div className="hidden md:block">
-                <LanguageSwitcher />
-              </div>
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={handleToggleDropdown}
@@ -501,6 +498,9 @@ export default function Navbar() {
                   <span className="hidden md:inline">{t('common.loginSignup')}</span>
                 </button>
               )}
+              <div className="hidden md:block">
+                <LanguageSwitcher />
+              </div>
             </div>
           </div>
 

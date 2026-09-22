@@ -15,15 +15,25 @@ export const DEFAULT_PWA_BACKGROUND_COLOR = '#1f1f1f';
 export const DEFAULT_PWA_THEME_COLOR = '#1f1f1f';
 
 const toAbsoluteUrl = (value?: string | null) => {
-  if (!value) {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) {
     return null;
   }
 
-  if (/^https?:\/\//i.test(value)) {
-    return value;
+  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedValue)) {
+    return null;
   }
 
-  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${value}`;
+  if (/^https?:\/\//i.test(normalizedValue)) {
+    try {
+      const parsed = new URL(normalizedValue);
+      return /^\/uploads(?:\/|$)/i.test(parsed.pathname) ? null : normalizedValue;
+    } catch {
+      return null;
+    }
+  }
+
+  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${normalizedValue}`;
 };
 
 const appendVersionToUrl = (value: string | null, version?: string | null) => {

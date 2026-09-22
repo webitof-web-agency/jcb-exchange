@@ -39,7 +39,13 @@ export const startDatabaseBackupJob = () => {
         const filename = `db_backup_users_${new Date().toISOString().split('T')[0]}.csv`;
         
         try {
-          const { viewLink } = await uploadFileToDrive(buffer, 'text/csv', filename, backupFolderId);
+    const { viewLink } = await uploadFileToDrive(
+      buffer,
+      'text/csv',
+      filename,
+      backupFolderId,
+      { access: 'private' },
+    );
           console.log(`[cron] Successfully backed up database to: ${viewLink}`);
         } catch (uploadError) {
           console.error('[cron] Error uploading backup to Drive:', uploadError);

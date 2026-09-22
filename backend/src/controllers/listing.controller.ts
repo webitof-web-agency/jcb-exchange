@@ -414,6 +414,24 @@ const normalizeMedia = (media: unknown) => {
     );
 };
 
+const getRenderableListingMedia = (media: unknown) => {
+  if (!Array.isArray(media)) {
+    return [];
+  }
+
+  return media
+    .map((item: any) => {
+      const url = normalizeRemoteMediaUrl(item?.url);
+      return url ? { ...item, url } : null;
+    })
+    .filter(Boolean);
+};
+
+const serializeListingMediaForResponse = <T extends { media?: unknown }>(listing: T) => ({
+  ...listing,
+  media: getRenderableListingMedia(listing.media),
+});
+
 const validateListingPayload = ({
   categoryId,
   brandName,
@@ -798,7 +816,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     // The customer listing push notifications are fired inside createCustomerListingNotifications
     return res.status(201).json({
       message: 'Listing submitted successfully. It will go live after admin approval.',
-      listing: responseListing || listing,
+      listing: serializeListingMediaForResponse(responseListing || listing),
     });
   } catch (error) {
     next(error);
@@ -896,7 +914,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
 
     return res.json({
       listings: listings.map((listing: any) => ({
-        ...listing,
+        ...serializeListingMediaForResponse(listing),
         isPubliclyVisible: isOwnedListingPubliclyVisible(listing),
         dealer:
           listing.partner?.partnerProfile?.businessName ||
@@ -969,7 +987,7 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
 
     return res.json({
       listing: {
-        ...listing,
+        ...serializeListingMediaForResponse(listing),
         dealer:
           listing.partner?.partnerProfile?.businessName ||
           listing.partner?.name ||
@@ -1243,7 +1261,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         : isPublicListingStatus(existingListing.status)
           ? 'Listing updated successfully. Your approved listing remains live.'
           : 'Listing updated successfully. Approval status is unchanged.',
-      listing: responseListing || updatedListing,
+      listing: serializeListingMediaForResponse(responseListing || updatedListing),
     });
   } catch (error) {
     next(error);
@@ -1445,7 +1463,7 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
           ? 'Listing approved and published successfully.'
           : 'Listing marked as changes requested.',
       listing: {
-        ...updatedListing,
+        ...serializeListingMediaForResponse(updatedListing),
         dealer:
           updatedListing.partner?.partnerProfile?.businessName ||
           updatedListing.partner?.name ||
@@ -1545,7 +1563,7 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
 
     return res.json({
       message: 'Availability updated successfully.',
-      listing: responseListing || updatedListing,
+      listing: serializeListingMediaForResponse(responseListing || updatedListing),
     });
   } catch (error) {
     next(error);
@@ -2113,7 +2131,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       return res.status(400).json({ error: 'Razorpay payment is not enabled.' });
     }
 
-    if (method === 'RTGS' && (!transactionRef || !receiptUrl.startsWith('/uploads/public/'))) {
+    if (method === 'RTGS' && (!transactionRef || !normalizeRemoteMediaUrl(receiptUrl))) {
       return res.status(400).json({ error: 'UTR/reference number and receipt upload are required.' });
     }
 

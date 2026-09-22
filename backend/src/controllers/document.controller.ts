@@ -3,14 +3,6 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import prisma from '../lib/prisma';
 import {
-  getPublicDocumentUrl,
-  getPublicFinanceSupportImageUrl,
-  getPublicInspectionSectionImageUrl,
-  getPublicListingMediaUrl,
-  getPublicSiteManifestIconUrl,
-  getPublicSiteFaviconUrl,
-  getPublicSiteLogoUrl,
-  getPublicSiteDarkLogoUrl,
   getSecureDocumentUrl,
   MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE,
   MAX_HERO_IMAGE_UPLOAD_SIZE,
@@ -23,9 +15,31 @@ import {
   MAX_DOCUMENT_UPLOAD_SIZE,
   MAX_LISTING_VIDEO_UPLOAD_SIZE,
   secureUploadDir,
-  getPublicHeroImageUrl,
+  publicUploadDir,
 } from '../utils/documentUpload';
 import { uploadFileToDrive } from '../services/googleDrive.service';
+import { randomUUID } from 'crypto';
+
+/**
+ * Save a branding image buffer to the server's public upload directory.
+ * Returns the URL path that can be served by the /uploads/public static route.
+ */
+const saveBrandingImageToDisk = async (
+  file: Express.Multer.File,
+  subfolder: string
+): Promise<string> => {
+  const ext = path.extname(file.originalname).toLowerCase() || '.webp';
+  const timestamp = Date.now();
+  const uid = randomUUID();
+  const fileName = `${timestamp}-${uid}${ext}`;
+  const targetDir = path.join(publicUploadDir, subfolder);
+  const targetPath = path.join(targetDir, fileName);
+
+  await fs.mkdir(targetDir, { recursive: true });
+  await fs.writeFile(targetPath, file.buffer);
+
+  return `/uploads/public/${subfolder}/${fileName}`;
+};
 
 const prismaAny = prisma as any;
 
@@ -277,8 +291,8 @@ export const uploadPublicFinanceSupportImage = async (req: Request, res: Respons
     }
 
     await enforceStoredFileSizePolicy(file, 'finance-support');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'finance-support');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -293,8 +307,8 @@ export const uploadPublicHeroImage = async (req: Request, res: Response, next: N
     }
 
     await enforceStoredFileSizePolicy(file, 'hero-image');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'hero-image');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -309,8 +323,8 @@ export const uploadPublicInspectionSectionImage = async (req: Request, res: Resp
     }
 
     await enforceStoredFileSizePolicy(file, 'inspection-section');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'inspection-section');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -325,8 +339,8 @@ export const uploadPublicSiteLogoImage = async (req: Request, res: Response, nex
     }
 
     await enforceStoredFileSizePolicy(file, 'site-logo');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'site-logo');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -341,8 +355,8 @@ export const uploadPublicSiteDarkLogoImage = async (req: Request, res: Response,
     }
 
     await enforceStoredFileSizePolicy(file, 'site-dark-logo');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'site-dark-logo');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -357,8 +371,8 @@ export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, 
     }
 
     await enforceStoredFileSizePolicy(file, 'site-favicon');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'site-favicon');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }
@@ -373,8 +387,8 @@ export const uploadPublicSiteManifestIconImage = async (req: Request, res: Respo
     }
 
     await enforceStoredFileSizePolicy(file, 'site-manifest-icon');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const localPath = await saveBrandingImageToDisk(file, 'site-manifest-icon');
+    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
   } catch (error) {
     next(error);
   }

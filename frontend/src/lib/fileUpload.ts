@@ -67,8 +67,35 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
     return '';
   }
 
-  if (/^https?:\/\//i.test(fileUrl)) {
-    return fileUrl;
+  const trimmed = fileUrl.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      // Allow /uploads/public/ — it's a valid server-stored branding image path
+      if (/^\/uploads(?:\/|$)/i.test(parsed.pathname) && !/^\/uploads\/public\//i.test(parsed.pathname)) {
+        return '';
+      }
+    } catch {
+      return '';
+    }
+
+    return trimmed;
+  }
+
+  // Allow server-local /uploads/public/ paths — convert to absolute URL
+  if (/^\/uploads\/public\//i.test(trimmed)) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');
+    const origin = apiUrl.replace(/\/api\/?$/, '');
+    return `${origin}${trimmed}`;
+  }
+
+  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(trimmed)) {
+    return '';
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -77,7 +104,7 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   const origin = apiUrl.replace(/\/api\/?$/, '');
-  const normalizedPath = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
+  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   return `${origin}${normalizedPath}`;
 };
 

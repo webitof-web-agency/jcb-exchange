@@ -40,6 +40,7 @@ import {
 } from '../utils/customerPrimeSubscriptions';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
 import { allowedAdminPermissions } from '../utils/adminPermissions';
+import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -2090,7 +2091,14 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
       // Prisma's inferred relation type for this query is too narrow here, so we normalize it locally.
       // This keeps the API payload strongly shaped without leaking `any` into the response contract.
       listings: listings.map((listing) => {
-        const listingMedia = (listing as any).media || [];
+        const listingMedia = Array.isArray((listing as any).media)
+          ? (listing as any).media
+            .map((media: any) => {
+              const url = normalizeRemoteMediaUrl(media?.url);
+              return url ? { ...media, url } : null;
+            })
+            .filter(Boolean)
+          : [];
 
         return {
           id: listing.id,

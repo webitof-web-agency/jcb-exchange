@@ -110,9 +110,22 @@ export type MachineListingDetail = {
 };
 
 export const getAbsoluteMediaUrl = (url?: string | null) => {
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+  const normalizedUrl = url?.trim();
+  if (!normalizedUrl || /^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedUrl)) return '';
+
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    try {
+      if (/^\/uploads(?:\/|$)/i.test(new URL(normalizedUrl).pathname)) {
+        return '';
+      }
+    } catch {
+      return '';
+    }
+
+    return normalizedUrl;
+  }
+
+  return `${API_ORIGIN}${normalizedUrl.startsWith('/') ? '' : '/'}${normalizedUrl}`;
 };
 
 export const getMachineListing = cache(async (id: string): Promise<MachineListingDetail | null> => {

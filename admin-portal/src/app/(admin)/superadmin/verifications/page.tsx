@@ -7,6 +7,7 @@ import axios from 'axios';
 import api from '@/lib/api';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
+import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 
 interface VerificationItem {
   id: string;
@@ -96,18 +97,6 @@ const getReviewActionLabel = (action: string, partnerType?: string | null, partn
   };
 
   return labels[action] || formatStatus(action);
-};
-
-const getSecureDocumentPath = (fileUrl: string) => {
-  if (!fileUrl) {
-    return '';
-  }
-
-  if (/^https?:\/\//i.test(fileUrl)) {
-    return new URL(fileUrl).pathname.replace(/^\/api/, '');
-  }
-
-  return fileUrl.replace(/^\/api/, '');
 };
 
 const statusLabel: Record<string, string> = {
@@ -211,7 +200,7 @@ export default function SuperAdminVerificationsPage() {
         setPreviewAsset(null);
       }
 
-      const path = getSecureDocumentPath(fileUrl);
+      const path = normalizeSecureDocumentPath(fileUrl);
       const response = await api.get(path, { responseType: 'blob' });
       const blobUrl = window.URL.createObjectURL(response.data);
       setPreviewAsset({
