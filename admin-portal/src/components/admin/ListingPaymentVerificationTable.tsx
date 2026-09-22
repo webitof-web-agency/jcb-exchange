@@ -59,9 +59,8 @@ function CustomSelectPill({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 shadow-2xs outline-none transition hover:border-gray-400 hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] cursor-pointer ${
-          isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
-        }`}
+        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 shadow-2xs outline-none transition hover:border-gray-400 hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] cursor-pointer ${isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
+          }`}
       >
         <span className="truncate max-w-[140px]">{displayLabel}</span>
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
@@ -79,11 +78,10 @@ function CustomSelectPill({
                   onChange(opt.value);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${
-                  isSelected
+                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${isSelected
                     ? 'bg-gray-100 text-gray-950 font-bold'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-950'
-                }`}
+                  }`}
               >
                 <span className="truncate">{opt.label}</span>
                 {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-[#FFC107] shrink-0" />}
@@ -109,13 +107,13 @@ type ListingPaymentRecord = {
   rejectionReason: string | null;
   buyer: { name?: string | null; mobile?: string | null; email?: string | null } | null;
   partner:
-    | {
-        name?: string | null;
-        mobile?: string | null;
-        email?: string | null;
-        partnerProfile?: { partnerType?: string | null } | null;
-      }
-    | null;
+  | {
+    name?: string | null;
+    mobile?: string | null;
+    email?: string | null;
+    partnerProfile?: { partnerType?: string | null } | null;
+  }
+  | null;
   listing: { title: string; status: string; price: number } | null;
 };
 
@@ -362,44 +360,40 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${
-                statusFilter === 'ALL'
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${statusFilter === 'ALL'
                   ? 'bg-[#FFC107] text-black shadow-2xs font-bold'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               All ({metrics.total})
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('PENDING')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${
-                statusFilter === 'PENDING'
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${statusFilter === 'PENDING'
                   ? 'bg-amber-400 text-black shadow-2xs font-bold'
                   : 'text-gray-600 hover:text-amber-800'
-              }`}
+                }`}
             >
               Pending ({metrics.pending})
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('APPROVED')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${
-                statusFilter === 'APPROVED'
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${statusFilter === 'APPROVED'
                   ? 'bg-emerald-600 text-white shadow-2xs font-bold'
                   : 'text-gray-600 hover:text-emerald-800'
-              }`}
+                }`}
             >
               Approved ({metrics.approved})
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('REJECTED')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${
-                statusFilter === 'REJECTED'
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer ${statusFilter === 'REJECTED'
                   ? 'bg-red-600 text-white shadow-2xs font-bold'
                   : 'text-gray-600 hover:text-red-800'
-              }`}
+                }`}
             >
               Rejected ({metrics.rejected})
             </button>
@@ -649,9 +643,8 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
                           </button>
                           {openMenuId === payment.id ? (
                             <div
-                              className={`absolute right-0 z-50 w-48 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
-                                isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
-                              }`}
+                              className={`absolute right-0 z-50 w-48 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
+                                }`}
                             >
                               {receiptUrl ? (
                                 <button

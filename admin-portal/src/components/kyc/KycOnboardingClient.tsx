@@ -11,6 +11,7 @@ import { FileUploadField } from '@/components/upload/FileUploadField';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useAuthStore } from '@/store/authStore';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
+import { findLocationOptionId, normalizeLocationOptions } from '@/lib/locationSelection.mjs';
 
 const toTitleCase = (str: string) => {
   if (!str) return str;
@@ -291,6 +292,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const [locationStates, setLocationStates] = useState<Option[]>([]);
   const [locationCities, setLocationCities] = useState<Option[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(true);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   const [locationsError, setLocationsError] = useState('');
 
   const currentStatus = currentUser?.kycStatus || 'NOT_STARTED';
@@ -529,7 +531,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
         const statesResponse = await api.get<Option[]>(`/locations/states/${india.id}`);
         if (!cancelled) {
-          setLocationStates(statesResponse.data || []);
+          setLocationStates(normalizeLocationOptions(statesResponse.data));
         }
       } catch {
         if (!cancelled) {
@@ -551,17 +553,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   }, []);
 
   const selectedStateId = useMemo(() => {
-    const matchedState = locationStates.find(
-      (option) => option.name.trim().toLowerCase() === profile.state.trim().toLowerCase(),
-    );
-    return matchedState ? String(matchedState.id) : '';
+    return findLocationOptionId(locationStates, profile.state);
   }, [locationStates, profile.state]);
 
   const selectedCityId = useMemo(() => {
-    const matchedCity = locationCities.find(
-      (option) => option.name.trim().toLowerCase() === profile.city.trim().toLowerCase(),
-    );
-    return matchedCity ? String(matchedCity.id) : '';
+    return findLocationOptionId(locationCities, profile.city);
   }, [locationCities, profile.city]);
 
   useEffect(() => {
@@ -572,15 +568,21 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     let cancelled = false;
 
     const loadCities = async () => {
+      setCitiesLoading(true);
+      setLocationsError('');
       try {
         const response = await api.get<Option[]>(`/locations/cities/${selectedStateId}`);
         if (!cancelled) {
-          setLocationCities(response.data || []);
+          setLocationCities(normalizeLocationOptions(response.data));
         }
       } catch {
         if (!cancelled) {
           setLocationCities([]);
           setLocationsError('Unable to load cities for the selected state.');
+        }
+      } finally {
+        if (!cancelled) {
+          setCitiesLoading(false);
         }
       }
     };
@@ -893,8 +895,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 value={selectedCityId || profile.city}
                 displayValue={profile.city}
                 onChange={handleCityChange}
-                placeholder={selectedStateId ? 'Select city' : 'Select state first'}
-                disabled={!canEdit}
+                placeholder={citiesLoading ? 'Loading cities...' : selectedStateId ? 'Select city' : 'Select state first'}
+                disabled={!canEdit || !selectedStateId || citiesLoading}
               />
             </Field>
             <Field label="PIN code">

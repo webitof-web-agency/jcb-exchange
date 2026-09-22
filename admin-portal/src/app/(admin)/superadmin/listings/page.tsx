@@ -715,9 +715,8 @@ function CustomSelectPill({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 shadow-2xs outline-none transition hover:border-gray-400 hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${
-          isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
-        }`}
+        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 shadow-2xs outline-none transition hover:border-gray-400 hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
+          }`}
       >
         <span className="truncate max-w-[140px]">{displayLabel}</span>
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
@@ -735,11 +734,10 @@ function CustomSelectPill({
                   onChange(opt.value);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${
-                  isSelected
+                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${isSelected
                     ? 'bg-gray-100 text-gray-950 font-bold'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-950'
-                }`}
+                  }`}
               >
                 <span className="truncate">{opt.label}</span>
                 {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-[#FFC107] shrink-0" />}
@@ -781,9 +779,8 @@ function AvailabilityFilterDropdown({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 outline-none transition hover:border-gray-400 hover:bg-gray-50 shadow-2xs cursor-pointer ${
-          isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
-        }`}
+        className={`flex h-9 items-center justify-between gap-2 rounded-full border border-gray-300 bg-white px-3.5 text-xs font-semibold text-gray-700 outline-none transition hover:border-gray-400 hover:bg-gray-50 shadow-2xs cursor-pointer ${isOpen ? 'border-[#FFC107] ring-1 ring-[#FFC107]' : ''
+          }`}
       >
         <span className="truncate max-w-[140px]">{selectedOption?.label || 'All Availability'}</span>
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
@@ -801,11 +798,10 @@ function AvailabilityFilterDropdown({
                   onChange(opt.value);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${
-                  isSelected
+                className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${isSelected
                     ? 'bg-gray-100 text-gray-950 font-bold'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-950'
-                }`}
+                  }`}
               >
                 <span className="truncate">{opt.label}</span>
                 {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-[#FFC107] shrink-0" />}
@@ -862,9 +858,8 @@ function TableAvailabilityDropdown({
       </button>
 
       {isOpen && (
-        <div className={`absolute left-0 z-50 min-w-[120px] max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
-          openUpwards ? 'bottom-full mb-1 origin-bottom-left' : 'top-full mt-1 origin-top-left'
-        }`}>
+        <div className={`absolute left-0 z-50 min-w-[120px] max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${openUpwards ? 'bottom-full mb-1 origin-bottom-left' : 'top-full mt-1 origin-top-left'
+          }`}>
           {options.map((opt) => {
             const isSelected = opt === value;
             return (
@@ -876,11 +871,10 @@ function TableAvailabilityDropdown({
                   onChange(opt);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer ${
-                  isSelected
+                className={`w-full text-left rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer ${isSelected
                     ? 'bg-gray-100 text-gray-950 font-extrabold'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {opt}
               </button>
@@ -1884,11 +1878,10 @@ export default function PartnerListingsPage() {
                 setListingView('all');
                 setCurrentPage(1);
               }}
-              className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${
-                listingView === 'all'
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'all'
                   ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
                   : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
-              }`}
+                }`}
             >
               All Listings ({listings.filter((l) => !isPendingApprovalListing(l.status)).length})
             </button>
@@ -1904,11 +1897,10 @@ export default function PartnerListingsPage() {
                     window.dispatchEvent(new CustomEvent('badge_refresh'));
                   }
                 }}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${
-                  listingView === 'pending'
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'pending'
                     ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
                     : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <span className="inline-flex items-center gap-2">
                   <span>Pending Approval ({pendingApprovalCount})</span>
@@ -1933,11 +1925,10 @@ export default function PartnerListingsPage() {
                     window.dispatchEvent(new CustomEvent('badge_refresh'));
                   }
                 }}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${
-                  listingView === 'payments'
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'payments'
                     ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
                     : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <span className="inline-flex items-center gap-2">
                   <ReceiptText className="h-4 w-4" />
@@ -2027,39 +2018,39 @@ export default function PartnerListingsPage() {
             </div>
 
             {false && (
-            <div className="flex flex-wrap items-center gap-1.5 w-full lg:w-auto">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 shrink-0">Quick:</span>
-              {(['ALL', 'AVAILABLE', 'PENDING', 'RESERVED', 'SOLD'] as const).map((status) => {
-                const isActive = availabilityFilter === status;
-                const chipColors: Record<string, string> = {
-                  ALL: isActive ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-300 text-gray-600 hover:border-gray-400',
-                  AVAILABLE: isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-200 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50',
-                  PENDING: isActive ? 'bg-amber-500 text-white border-amber-500' : 'border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50',
-                  RESERVED: isActive ? 'bg-blue-600 text-white border-blue-600' : 'border-blue-200 text-blue-700 hover:border-blue-400 hover:bg-blue-50',
-                  SOLD: isActive ? 'bg-rose-600 text-white border-rose-600' : 'border-rose-200 text-rose-700 hover:border-rose-400 hover:bg-rose-50',
-                };
-                const label = status === 'ALL' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase();
-                return (
+              <div className="flex flex-wrap items-center gap-1.5 w-full lg:w-auto">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 shrink-0">Quick:</span>
+                {(['ALL', 'AVAILABLE', 'PENDING', 'RESERVED', 'SOLD'] as const).map((status) => {
+                  const isActive = availabilityFilter === status;
+                  const chipColors: Record<string, string> = {
+                    ALL: isActive ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-300 text-gray-600 hover:border-gray-400',
+                    AVAILABLE: isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-200 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50',
+                    PENDING: isActive ? 'bg-amber-500 text-white border-amber-500' : 'border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50',
+                    RESERVED: isActive ? 'bg-blue-600 text-white border-blue-600' : 'border-blue-200 text-blue-700 hover:border-blue-400 hover:bg-blue-50',
+                    SOLD: isActive ? 'bg-rose-600 text-white border-rose-600' : 'border-rose-200 text-rose-700 hover:border-rose-400 hover:bg-rose-50',
+                  };
+                  const label = status === 'ALL' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase();
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => { setAvailabilityFilter(status); setCurrentPage(1); }}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition cursor-pointer ${chipColors[status]}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+                {sortKey && (
                   <button
-                    key={status}
                     type="button"
-                    onClick={() => { setAvailabilityFilter(status); setCurrentPage(1); }}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition cursor-pointer ${chipColors[status]}`}
+                    onClick={() => { setSortKey(null); setSortDir('asc'); }}
+                    className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 cursor-pointer"
                   >
-                    {label}
+                    ✕ Sort
                   </button>
-                );
-              })}
-              {sortKey && (
-                <button
-                  type="button"
-                  onClick={() => { setSortKey(null); setSortDir('asc'); }}
-                  className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 cursor-pointer"
-                >
-                  ✕ Sort
-                </button>
-              )}
-            </div>
+                )}
+              </div>
 
             )}
 
@@ -2329,9 +2320,8 @@ export default function PartnerListingsPage() {
                             </button>
 
                             {openActionDropdownId === listing.id ? (
-                              <div className={`absolute right-0 z-[100] w-44 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 focus:outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
-                                isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
-                              }`}>
+                              <div className={`absolute right-0 z-[100] w-44 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 focus:outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
+                                }`}>
                                 {canApprove && isPendingListing ? (
                                   <>
                                     <button
@@ -2441,9 +2431,8 @@ export default function PartnerListingsPage() {
                               setCurrentPage(1);
                               setOpenPageSizeDropdown(false);
                             }}
-                            className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-gray-100 ${
-                              pageSize === size ? 'bg-[#FFC107]/20 font-extrabold text-gray-900' : 'font-medium text-gray-700'
-                            }`}
+                            className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-gray-100 ${pageSize === size ? 'bg-[#FFC107]/20 font-extrabold text-gray-900' : 'font-medium text-gray-700'
+                              }`}
                           >
                             {size}
                           </button>
@@ -2472,9 +2461,8 @@ export default function PartnerListingsPage() {
                         key={item}
                         type="button"
                         onClick={() => setCurrentPage(item)}
-                        className={`h-8 w-8 rounded-lg text-xs font-bold transition ${
-                          currentPageForView === item ? 'bg-[#FFC107] text-black shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
-                        }`}
+                        className={`h-8 w-8 rounded-lg text-xs font-bold transition ${currentPageForView === item ? 'bg-[#FFC107] text-black shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
+                          }`}
                       >
                         {item}
                       </button>
