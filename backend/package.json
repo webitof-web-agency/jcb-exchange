@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "media:migrate": "tsx scripts/migrate-local-uploads-to-drive.ts",
+    "branding:storage": "tsx scripts/check-branding-storage.ts",
     "seed:listings": "tsx scripts/seed-listings.ts"
   },
   "keywords": [],

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import multer from 'multer';
 import path from 'path';
 
