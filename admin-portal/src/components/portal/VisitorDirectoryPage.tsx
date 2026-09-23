@@ -454,7 +454,7 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
             <div className="border-b border-gray-200 px-6 py-4">
               <h3 className="text-lg font-bold text-gray-900">Remove Visitor</h3>
               <p className="mt-1 text-sm text-gray-500">
-                This will archive the visitor and hide it from the list while keeping related leads safe.
+                This permanently deletes the visitor only when no linked business records exist. Visitors with leads, listings, payments, or subscriptions must be deactivated instead.
               </p>
             </div>
 

@@ -15,32 +15,25 @@ import {
   MAX_DOCUMENT_UPLOAD_SIZE,
   MAX_LISTING_VIDEO_UPLOAD_SIZE,
   secureUploadDir,
-  publicUploadDir,
 } from '../utils/documentUpload';
 import { uploadFileToDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
-import { randomUUID } from 'crypto';
 import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
 
-/**
- * Save a branding image buffer to the server's public upload directory.
- * Returns the URL path that can be served by the /uploads/public static route.
- */
-const saveBrandingImageToDisk = async (
+const uploadPublicBrandingImageToDrive = async (
+  req: Request,
   file: Express.Multer.File,
-  subfolder: string
-): Promise<string> => {
-  const ext = path.extname(file.originalname).toLowerCase() || '.webp';
-  const timestamp = Date.now();
-  const uid = randomUUID();
-  const fileName = `${timestamp}-${uid}${ext}`;
-  const targetDir = path.join(publicUploadDir, subfolder);
-  const targetPath = path.join(targetDir, fileName);
+  purpose: 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon',
+) => {
+  await enforceStoredFileSizePolicy(file, purpose);
 
-  await fs.mkdir(targetDir, { recursive: true });
-  await fs.writeFile(targetPath, file.buffer);
+  const { fileId, viewLink } = await uploadFileToDrive(
+    file.buffer,
+    file.mimetype,
+    file.originalname,
+  );
 
-  return `/uploads/public/${subfolder}/${fileName}`;
+  return buildUploadResponse(req, file, 'public', viewLink, fileId);
 };
 
 const prismaAny = prisma as any;
@@ -327,9 +320,7 @@ export const uploadPublicFinanceSupportImage = async (req: Request, res: Respons
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'finance-support');
-    const localPath = await saveBrandingImageToDisk(file, 'finance-support');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'finance-support'));
   } catch (error) {
     next(error);
   }
@@ -343,9 +334,7 @@ export const uploadPublicHeroImage = async (req: Request, res: Response, next: N
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'hero-image');
-    const localPath = await saveBrandingImageToDisk(file, 'hero-image');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'hero-image'));
   } catch (error) {
     next(error);
   }
@@ -359,9 +348,7 @@ export const uploadPublicInspectionSectionImage = async (req: Request, res: Resp
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'inspection-section');
-    const localPath = await saveBrandingImageToDisk(file, 'inspection-section');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'inspection-section'));
   } catch (error) {
     next(error);
   }
@@ -375,9 +362,7 @@ export const uploadPublicSiteLogoImage = async (req: Request, res: Response, nex
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'site-logo');
-    const localPath = await saveBrandingImageToDisk(file, 'site-logo');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'site-logo'));
   } catch (error) {
     next(error);
   }
@@ -391,9 +376,7 @@ export const uploadPublicSiteDarkLogoImage = async (req: Request, res: Response,
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'site-dark-logo');
-    const localPath = await saveBrandingImageToDisk(file, 'site-dark-logo');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'site-dark-logo'));
   } catch (error) {
     next(error);
   }
@@ -407,9 +390,7 @@ export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, 
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'site-favicon');
-    const localPath = await saveBrandingImageToDisk(file, 'site-favicon');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'site-favicon'));
   } catch (error) {
     next(error);
   }
@@ -423,9 +404,7 @@ export const uploadPublicSiteManifestIconImage = async (req: Request, res: Respo
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'site-manifest-icon');
-    const localPath = await saveBrandingImageToDisk(file, 'site-manifest-icon');
-    res.status(201).json(buildUploadResponse(req, file, 'public', localPath, path.basename(localPath)));
+    res.status(201).json(await uploadPublicBrandingImageToDrive(req, file, 'site-manifest-icon'));
   } catch (error) {
     next(error);
   }

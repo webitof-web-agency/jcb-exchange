@@ -43,6 +43,7 @@ import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization'
 import { allowedAdminPermissions } from '../utils/adminPermissions';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretReveal';
+import { getCustomerDeletionBlockers, type CustomerDeletionCounts } from '../services/customerDeletion.service';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -1672,7 +1673,12 @@ export const deleteManagedUser = async (req: Request, res: Response, next: NextF
           select: {
             listings: true,
             assignedLeads: true,
+            leads: true,
             teamMemberships: true,
+            listingPaymentSubmissions: true,
+            customerPrimeSubscriptions: true,
+            createdUsers: true,
+            auditLogs: true,
           },
         },
       } as any,
@@ -1687,17 +1693,28 @@ export const deleteManagedUser = async (req: Request, res: Response, next: NextF
     }
 
     if (targetUser.role === 'CUSTOMER') {
-      await prisma.user.update({
-        where: { id },
-        data: {
-          status: 'CLOSED' as any,
-        },
-      });
+      const deletionCounts = (targetUser as any)._count as CustomerDeletionCounts;
+      const blockers = getCustomerDeletionBlockers(deletionCounts);
+
+      if (blockers.length > 0) {
+        return res.status(409).json({
+          error: `This visitor cannot be permanently deleted because related records exist: ${blockers.join(', ')}. Deactivate the account instead.`,
+          code: 'CUSTOMER_DELETE_BLOCKED',
+          blockers,
+        });
+      }
+
+      await prisma.$transaction([
+        prisma.mobileOtpChallenge.deleteMany({ where: { userId: id } }),
+        prisma.emailOtpChallenge.deleteMany({ where: { userId: id } }),
+        prisma.notification.deleteMany({ where: { userId: id } }),
+        prisma.user.delete({ where: { id } }),
+      ]);
 
       res.json({
-        message: 'Visitor removed successfully.',
+        message: 'Visitor deleted permanently.',
         id,
-        archived: true,
+        deleted: true,
       });
       return;
     }

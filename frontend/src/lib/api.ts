@@ -103,7 +103,11 @@ api.interceptors.response.use(
     const requestHeaders = error?.config?.headers;
     const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
 
-    if (axios.isAxiosError(error) && error.response?.status === 401 && sentAuthHeader) {
+    const responseCode = error?.response?.data?.code;
+    const revokedSession = responseCode === 'ACCOUNT_REVOKED' || responseCode === 'ACCOUNT_INACTIVE';
+    const isAuthenticationFailure = error?.response?.status === 401 || (error?.response?.status === 403 && revokedSession);
+
+    if (axios.isAxiosError(error) && isAuthenticationFailure && sentAuthHeader) {
       const authStore = useAuthStore.getState();
       authStore.logout();
 

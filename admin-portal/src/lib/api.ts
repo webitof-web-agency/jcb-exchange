@@ -19,6 +19,23 @@ const api = axios.create({
   },
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const requestHeaders = error?.config?.headers;
+    const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
+    const responseCode = error?.response?.data?.code;
+    const revokedSession = responseCode === 'ACCOUNT_REVOKED' || responseCode === 'ACCOUNT_INACTIVE';
+    const isAuthenticationFailure = error?.response?.status === 401 || (error?.response?.status === 403 && revokedSession);
+
+    if (axios.isAxiosError(error) && isAuthenticationFailure && sentAuthHeader) {
+      useAuthStore.getState().logout();
+    }
+
+    return Promise.reject(error);
+  },
+);
+
 // Request interceptor to attach JWT token
 api.interceptors.request.use(
   (config) => {
