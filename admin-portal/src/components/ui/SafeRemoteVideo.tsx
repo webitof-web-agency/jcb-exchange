@@ -2,25 +2,32 @@
 
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
 
-type SafeRemoteImageProps = {
+type SafeRemoteVideoProps = {
   src?: string | null;
   fallbackSrcs?: string[];
-  alt: string;
   className?: string;
-  fallback: ReactNode;
+  controls?: boolean;
+  muted?: boolean;
+  autoPlay?: boolean;
+  playsInline?: boolean;
+  preload?: 'none' | 'metadata' | 'auto';
+  fallback?: ReactNode;
   onError?: () => void;
 };
 
-export default function SafeRemoteImage({
+export default function SafeRemoteVideo({
   src,
   fallbackSrcs = [],
-  alt,
   className,
-  fallback,
+  controls,
+  muted,
+  autoPlay,
+  playsInline,
+  preload,
+  fallback = null,
   onError,
-}: SafeRemoteImageProps) {
+}: SafeRemoteVideoProps) {
   const sourceCandidates = useMemo(
     () => Array.from(new Set([src, ...fallbackSrcs].filter((candidate): candidate is string => Boolean(candidate)))),
     [src, fallbackSrcs]
@@ -30,18 +37,19 @@ export default function SafeRemoteImage({
   const sourceIndex = failureState.sourceKey === sourceKey ? failureState.index : 0;
 
   const currentSrc = sourceCandidates[sourceIndex] || '';
-  const hasError = !currentSrc;
-
-  if (hasError) {
+  if (!currentSrc) {
     return <>{fallback}</>;
   }
 
   return (
-    <Image
+    <video
+      key={currentSrc}
       src={currentSrc}
-      alt={alt}
-      fill
-      sizes="(max-width: 1024px) 100vw, 66vw"
+      controls={controls}
+      muted={muted}
+      autoPlay={autoPlay}
+      playsInline={playsInline}
+      preload={preload}
       className={className}
       onError={() => {
         if (sourceIndex < sourceCandidates.length - 1) {

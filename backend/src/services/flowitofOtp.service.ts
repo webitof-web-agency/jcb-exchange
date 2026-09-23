@@ -28,12 +28,13 @@ const readProviderMessage = (payload: unknown) => {
 const normalizeTemplateVariables = (value: string | null) => {
   const normalizedValue = value?.trim();
   if (!normalizedValue) {
-    return null;
+    return '{otp}';
   }
 
   // Keep existing advanced values compatible, but let the settings UI accept
-  // simple extra values such as "15" without requiring {otp} syntax.
-  return normalizedValue.includes('{otp}') ? normalizedValue : `{otp}|${normalizedValue}`;
+  // simple extra values such as "15" without requiring {otp} syntax. Flowitof
+  // expects configured DLT values first and the generated OTP value last.
+  return normalizedValue.includes('{otp}') ? normalizedValue : `${normalizedValue}|{otp}`;
 };
 
 const requestFlowitof = async ({
@@ -66,6 +67,7 @@ const requestFlowitof = async ({
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
+    const providerMessage = readProviderMessage(payload)?.replace(/\s+/g, ' ').slice(0, 200) || null;
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -77,7 +79,12 @@ const requestFlowitof = async ({
       }
 
       if (response.status === 400) {
-        throw new FlowitofOtpError(400, 'Flowitof OTP request was rejected.');
+        throw new FlowitofOtpError(
+          400,
+          providerMessage
+            ? `Flowitof OTP request was rejected: ${providerMessage}`
+            : 'Flowitof OTP request was rejected.',
+        );
       }
 
       throw new FlowitofOtpError(502, 'Flowitof OTP service is temporarily unavailable.');
@@ -112,9 +119,7 @@ export const sendFlowitofOtp = (
       otp_id: settings.otpId,
       otp_expiry: settings.otpExpiry,
       otp_length: settings.otpLength,
-      ...(normalizeTemplateVariables(settings.variablesValues)
-        ? { variables_values: normalizeTemplateVariables(settings.variablesValues) }
-        : {}),
+      variables_values: normalizeTemplateVariables(settings.variablesValues),
     },
   });
 

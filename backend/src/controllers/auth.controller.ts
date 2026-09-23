@@ -16,6 +16,7 @@ import {
 } from '../utils/accountAccess';
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import {
+  getLoginMobileCandidates,
   normalizeLoginMobileNumber,
   maskMobileNumber,
 } from '../utils/mobileOtp';
@@ -70,9 +71,41 @@ import {
   listCustomerPrimeSubscriptionsForUser,
 } from '../utils/customerPrimeSubscriptions';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
+import {
+  findOrCreateMobileOtpAccount,
+  getNewMobileOtpCustomerData,
+  type MobileOtpAccountUser,
+} from '../services/mobileOtpAccount.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 const prismaAny = prisma as any;
+
+const mobileOtpAccountSelect = {
+  id: true,
+  mobile: true,
+  email: true,
+  name: true,
+  role: true,
+  status: true,
+  isMobileVerified: true,
+} as const;
+
+const mobileOtpAccountRepository = {
+  findByMobile: async (mobile: string) => {
+    const user = await prisma.user.findFirst({
+      where: { mobile: { in: getLoginMobileCandidates(mobile) } },
+      select: mobileOtpAccountSelect,
+    });
+    return user as MobileOtpAccountUser | null;
+  },
+  createCustomer: async (mobile: string) => {
+    const user = await prisma.user.create({
+      data: getNewMobileOtpCustomerData(mobile) as any,
+      select: mobileOtpAccountSelect,
+    });
+    return user as MobileOtpAccountUser;
+  },
+};
 
 const businessPartnerTypes = new Set(['SHOWROOM']);
 
@@ -1036,24 +1069,13 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
     }
 
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { mobile: normalizedMobile },
-          { mobile: `91${normalizedMobile}` },
-          { mobile: `0${normalizedMobile}` },
-        ],
-      },
-      select: { id: true },
-    });
+    const account = await mobileOtpAccountRepository.findByMobile(normalizedMobile);
 
-    if (!user) {
-      return res.status(404).json({ error: 'No account found with this mobile number.' });
-    }
-
-    const currentUser = await fetchAuthenticatedUserById(user.id);
-    if (assertAccountAccessOrRespond(res, currentUser)) {
-      return;
+    if (account) {
+      const currentUser = await fetchAuthenticatedUserById(account.id);
+      if (assertAccountAccessOrRespond(res, currentUser)) {
+        return;
+      }
     }
 
     const cooldownSeconds = await getMobileOtpCooldownSeconds(normalizedMobile);
@@ -1067,7 +1089,7 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
 
     const challenge = await createMobileOtpChallenge({
       mobile: normalizedMobile,
-      userId: user.id,
+      userId: account?.id ?? null,
       expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
     });
 
@@ -1077,6 +1099,7 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
       otpLength: settings.mobileOtp.otpLength,
       maskedMobile: maskMobileNumber(normalizedMobile),
+      isNewAccount: !account,
     });
   } catch (error) {
     if (error instanceof FlowitofOtpError) {
@@ -1324,28 +1347,23 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       throw error;
     }
 
-    await markMobileOtpChallengeVerified(challenge.id);
-
-    const user = await prisma.user.findUnique({
-      where: { id: challenge.userId },
-      select: { id: true, isMobileVerified: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'No account found with this mobile number.' });
-    }
-
-    const currentUser = await fetchAuthenticatedUserById(user.id);
+    const account = await findOrCreateMobileOtpAccount(
+      normalizedMobile,
+      mobileOtpAccountRepository,
+    );
+    const currentUser = await fetchAuthenticatedUserById(account.user.id);
     if (assertAccountAccessOrRespond(res, currentUser)) {
       return;
     }
 
-    if (!user.isMobileVerified) {
+    if (!account.user.isMobileVerified) {
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: account.user.id },
         data: { isMobileVerified: true },
       });
     }
+
+    await markMobileOtpChallengeVerified(challenge.id, account.user.id);
 
     const authUser = await buildAuthUserPayload(currentUser as any);
     const token = signAuthToken(authUser);

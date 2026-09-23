@@ -75,6 +75,13 @@ export const normalizeLoginMobileNumber = (value?: string | null) => {
   return null;
 };
 
+export const getLoginMobileCandidates = (normalizedMobile: string) => [
+  normalizedMobile,
+  `91${normalizedMobile}`,
+  `+91${normalizedMobile}`,
+  `0${normalizedMobile}`,
+];
+
 export const maskMobileNumber = (mobile: string) =>
   mobile.length < 4 ? mobile : `${'*'.repeat(Math.max(0, mobile.length - 4))}${mobile.slice(-4)}`;
 

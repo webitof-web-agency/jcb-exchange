@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
-import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { calculateConversionRate, calculateDemandPerStock, calculateDemandScore, calculatePercentageChange, getPreviousPeriod } from '../services/analyticsMetrics';
 import { ANALYTICS_EVENT_TYPES, recordAnalyticsEvent } from '../services/analytics.service';
 import { buildCsv } from '../services/csvExport';
@@ -163,8 +163,8 @@ export const getPartnerAnalyticsOverview = async (req: Request, res: Response, n
         leadCount: listing.leads.length,
         wonLeadCount: listing.leads.filter((lead: any) => lead.status === 'WON').length,
         featuredImage:
-          normalizeRemoteMediaUrl(listing.media.find((media: any) => media.type === 'IMAGE' && media.isFeatured)?.url) ||
-          normalizeRemoteMediaUrl(listing.media.find((media: any) => media.type === 'IMAGE')?.url) ||
+          getRenderableMediaUrl(listing.media.find((media: any) => String(media.type || '').toUpperCase() === 'IMAGE' && media.isFeatured)) ||
+          getRenderableMediaUrl(listing.media.find((media: any) => String(media.type || '').toUpperCase() === 'IMAGE')) ||
           '',
       }))
       .sort((first: any, second: any) => second.leadCount - first.leadCount || second.price - first.price)
@@ -879,6 +879,7 @@ export const getAnalyticsListings = async (req: Request, res: Response, next: Ne
       total,
       items: listings.map((listing: any) => ({
         ...listing,
+        media: normalizeListingMedia(listing.media),
         price: Number(listing.price || 0),
         partner: listing.partner?.partnerProfile?.businessName || listing.partner?.name || 'Partner',
         leads: listing._count?.leads || 0,

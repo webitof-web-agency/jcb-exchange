@@ -14,7 +14,7 @@ import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../servi
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { syncListingRtoForListing } from '../services/listingRto.service';
-import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 
 const prismaAny = prisma as any;
@@ -393,7 +393,7 @@ const normalizeMedia = (media: unknown) => {
         return null;
       }
 
-      const fileUrl = normalizeRemoteMediaUrl((item as any).fileUrl);
+      const fileUrl = getRenderableMediaUrl(item);
       const type = normalizeText((item as any).type).toUpperCase();
       const slot = normalizeText((item as any).slot).toLowerCase();
       const isFeatured = Boolean((item as any).isFeatured) || slot === 'front-view';
@@ -415,22 +415,9 @@ const normalizeMedia = (media: unknown) => {
     );
 };
 
-const getRenderableListingMedia = (media: unknown) => {
-  if (!Array.isArray(media)) {
-    return [];
-  }
-
-  return media
-    .map((item: any) => {
-      const url = normalizeRemoteMediaUrl(item?.url);
-      return url ? { ...item, url } : null;
-    })
-    .filter(Boolean);
-};
-
 const serializeListingMediaForResponse = <T extends { media?: unknown }>(listing: T) => ({
   ...listing,
-  media: getRenderableListingMedia(listing.media),
+  media: normalizeListingMedia(listing.media),
 });
 
 const validateListingPayload = ({

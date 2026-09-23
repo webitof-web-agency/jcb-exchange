@@ -32,7 +32,8 @@ import {
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
-import { getAbsoluteFileUrl } from '@/lib/fileUpload';
+import SafeRemoteVideo from '@/components/ui/SafeRemoteVideo';
+import { getMediaSourceCandidates } from '@/lib/fileUpload';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import { resolveListingId } from '@/lib/routeResolvers';
 
@@ -219,15 +220,6 @@ function EmptyState({ title, detail, icon }: { title: string; detail: string; ic
   return <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center"><span className="text-slate-300">{icon}</span><p className="mt-3 text-sm font-bold text-slate-600">{title}</p><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{detail}</p></div>;
 }
 
-const resolveMediaUrl = (url?: string | null) => {
-  if (!url) return '';
-  try {
-    return getAbsoluteFileUrl(url);
-  } catch {
-    return url;
-  }
-};
-
 function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
@@ -334,9 +326,9 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
                     aria-label={`Open ${isVideo ? 'video' : 'image'} ${index + 1}`}
                   >
                     {isVideo ? (
-                      <video src={resolveMediaUrl(mediaItem.url)} muted playsInline preload="metadata" className="h-full w-full object-cover opacity-75 transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} />
+                      <SafeRemoteVideo src={getMediaSourceCandidates(mediaItem.url)[0]} fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)} muted playsInline preload="metadata" className="h-full w-full object-cover opacity-75 transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} />
                     ) : (
-                      <SafeRemoteImage src={resolveMediaUrl(mediaItem.url)} alt={mediaItem.slot || `Listing image ${index + 1}`} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} fallback={<div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-400">Unavailable</div>} />
+                      <SafeRemoteImage src={getMediaSourceCandidates(mediaItem.url)[0]} fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)} alt={mediaItem.slot || `Listing image ${index + 1}`} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} fallback={<div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-400">Unavailable</div>} />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-80 transition-opacity group-hover:opacity-90" />
                     <div className="absolute left-2 top-2 flex items-center gap-1">
@@ -368,11 +360,11 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
           <button type="button" onClick={() => setIsLightboxOpen(false)} className="absolute right-3 top-3 z-[110] flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:right-6 sm:top-6" aria-label="Close media viewer"><X className="h-6 w-6" /></button>
           <div className="relative flex h-full w-full max-w-7xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
             {activeIsVideo ? (
-              <video src={resolveMediaUrl(activeMedia.url)} controls muted autoPlay playsInline className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} />
+              <SafeRemoteVideo src={getMediaSourceCandidates(activeMedia.url)[0]} fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)} controls muted autoPlay playsInline className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} />
             ) : (
               <div className="flex h-full w-full items-center justify-center overflow-auto">
                 <div className="origin-center transition-transform duration-200" style={{ transform: `scale(${zoom})` }}>
-                  <SafeRemoteImage src={resolveMediaUrl(activeMedia.url)} alt={activeMedia.slot || 'Listing media'} className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} fallback={<div className="px-8 py-12 text-center text-sm font-semibold text-slate-300">Image unavailable</div>} />
+                  <SafeRemoteImage src={getMediaSourceCandidates(activeMedia.url)[0]} fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)} alt={activeMedia.slot || 'Listing media'} className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} fallback={<div className="px-8 py-12 text-center text-sm font-semibold text-slate-300">Image unavailable</div>} />
                 </div>
               </div>
             )}

@@ -36,13 +36,15 @@ import {
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
+import SafeRemoteVideo from '@/components/ui/SafeRemoteVideo';
 import {
-  getAbsoluteFileUrl,
+  getMediaSourceCandidates,
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_INPUT_SIZE,
   uploadListingMediaToServer,
   type UploadedFileResult,
 } from '@/lib/fileUpload';
+import { normalizeListingPayload } from '@/lib/listingMedia';
 import { formatPortalCurrency, formatPortalDate, formatPortalLabel } from '@/lib/partnerPortal';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -128,6 +130,9 @@ type ListingDetail = {
     isFeatured: boolean;
   }>;
 };
+
+const normalizeListingResponse = (payload: unknown) =>
+  normalizeListingPayload(payload) as unknown as ListingDetail;
 
 type ParsedListingDetails = {
   rawDescription: string;
@@ -574,9 +579,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         setLoading(true);
         setError(null);
         const resolvedListingId = (await resolveListingId(listingId)) || listingId;
-        const res = await api.get<{ listing: ListingDetail }>(`/listings/${resolvedListingId}`);
-        setListing(res.data.listing);
-        setForm(createEditForm(res.data.listing));
+        const res = await api.get<unknown>(`/listings/${resolvedListingId}`);
+        const normalizedListing = normalizeListingResponse(res.data);
+        setListing(normalizedListing);
+        setForm(createEditForm(normalizedListing));
         setUnavailableMediaIds([]);
         setActiveMediaIndex(0);
       } catch (err: unknown) {
@@ -925,8 +931,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       setMessage(null);
 
       const response = await api.put<{ listing: ListingDetail; message: string }>(`/listings/${listing.id}`, payload);
-      setListing(response.data.listing);
-      setForm(createEditForm(response.data.listing));
+      const normalizedListing = normalizeListingResponse(response.data);
+      setListing(normalizedListing);
+      setForm(createEditForm(normalizedListing));
       setMessage(response.data.message || t('listingDetails.updatedSuccessfully'));
     } catch (saveError: unknown) {
       console.error('Failed to update listing section:', saveError);
@@ -973,8 +980,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         media: payloadMedia,
       });
 
-      setListing(response.data.listing);
-      setForm(createEditForm(response.data.listing));
+      const normalizedListing = normalizeListingResponse(response.data);
+      setListing(normalizedListing);
+      setForm(createEditForm(normalizedListing));
       clearPendingMediaUploads();
       setActiveMediaIndex(0);
       setMessage(response.data.message || t('listingDetails.mediaUpdatedSuccessfully'));
@@ -1276,8 +1284,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   }}
                 >
                   {activeMedia?.type === 'VIDEO' ? (
-                    <video
-                      src={getAbsoluteFileUrl(activeMedia.url)}
+                    <SafeRemoteVideo
+                      src={getMediaSourceCandidates(activeMedia.url)[0]}
+                      fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)}
                       controls
                       muted
                       playsInline
@@ -1286,7 +1295,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     />
                   ) : (
                     <SafeRemoteImage
-                      src={getAbsoluteFileUrl(activeMedia?.url)}
+                      src={getMediaSourceCandidates(activeMedia?.url)[0]}
+                      fallbackSrcs={getMediaSourceCandidates(activeMedia?.url).slice(1)}
                       alt={t('listingDetails.listingMediaAlt')}
                       className="h-full w-full object-contain"
                       onError={() => activeMedia && markMediaUnavailable(activeMedia.id)}
@@ -1391,8 +1401,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       >
                         {mediaItem.type === 'VIDEO' ? (
                           <div className="relative flex h-full w-full items-center justify-center bg-gray-900 text-white group">
-                            <video
-                              src={getAbsoluteFileUrl(mediaItem.url)}
+                            <SafeRemoteVideo
+                              src={getMediaSourceCandidates(mediaItem.url)[0]}
+                              fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)}
                               muted
                               playsInline
                               className="absolute inset-0 h-full w-full object-cover opacity-60"
@@ -1404,7 +1415,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                           </div>
                         ) : (
                           <SafeRemoteImage
-                            src={getAbsoluteFileUrl(mediaItem.url)}
+                            src={getMediaSourceCandidates(mediaItem.url)[0]}
+                            fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)}
                             alt={t('listingDetails.thumbnailAlt')}
                             className="h-full w-full object-cover"
                             onError={() => markMediaUnavailable(mediaItem.id)}
@@ -2049,7 +2061,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
           <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
             <div className="relative h-full w-full">
               <SafeRemoteImage
-                src={getAbsoluteFileUrl(activeMedia.url)}
+                src={getMediaSourceCandidates(activeMedia.url)[0]}
+                fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)}
                 alt={t('listingDetails.listingMediaAlt')}
                 className="h-full w-full object-contain"
                 fallback={

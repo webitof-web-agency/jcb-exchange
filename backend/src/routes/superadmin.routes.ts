@@ -13,6 +13,7 @@ import {
   getInspectionSectionContent,
   getSiteLogoContent,
   getPlatformSettings,
+  revealPlatformSecret,
   getAdminUsers,
   getCustomerVisitors,
   getDashboardSummary,
@@ -45,7 +46,7 @@ import {
   getTranslationCatalog,
   saveTranslationCatalog,
 } from '../controllers/translationAdmin.controller';
-import { requireAuth, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
+import { requireAuth, requireSuperAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
 
@@ -92,6 +93,7 @@ router.put('/site-logo', canManageSettings, updateSiteLogoContent);
 router.get('/google-drive', canManageSettings, getGoogleDriveSettings);
 router.put('/google-drive', canManageSettings, updateGoogleDrive);
 router.get('/settings', canManageSettings, getPlatformSettings);
+router.get('/settings/secrets/:key', requireSuperAdmin, revealPlatformSecret);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
 router.get('/translations/catalog', canManageTranslations, getTranslationCatalog);
 router.put('/translations/catalog', canManageTranslations, saveTranslationCatalog);

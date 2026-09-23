@@ -9,6 +9,7 @@ import { X, Mail, Lock, User, Eye, EyeOff, Smartphone } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import SiteBrand from '@/components/layout/SiteBrand';
+import { getAuthDisplayName } from '@/lib/authDisplayName';
 
 declare global {
   interface Window {
@@ -33,6 +34,7 @@ type AuthResponseUser = {
   id: string;
   email?: string | null;
   name?: string | null;
+  mobile?: string | null;
   role?: string;
 };
 
@@ -112,8 +114,8 @@ export default function AuthModal() {
         ? 'emailOtp'
         : 'password';
 
-  const showLoginSuccessToast = useCallback((userName?: string | null, email?: string | null) => {
-    const displayName = userName?.trim() || email?.split('@')[0] || 'User';
+  const showLoginSuccessToast = useCallback((userName?: string | null, email?: string | null, mobile?: string | null) => {
+    const displayName = getAuthDisplayName({ name: userName, email, mobile });
     showToast({
       title: `Welcome back, ${displayName}! 👋`,
       description: `Logged in successfully. Explore active JCB and heavy equipment listings.`,
@@ -125,7 +127,7 @@ export default function AuthModal() {
     setAuth(token, user);
     setAuthModalOpen(false);
     if (shouldNotify) {
-      showLoginSuccessToast(user.name, user.email);
+      showLoginSuccessToast(user.name, user.email, user.mobile);
     }
   }, [setAuth, setAuthModalOpen, showLoginSuccessToast]);
 

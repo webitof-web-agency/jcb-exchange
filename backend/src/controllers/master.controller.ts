@@ -9,7 +9,7 @@ import {
   isPublicMarketplaceListingVisible,
 } from '../utils/publicListingVisibility';
 import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.service';
-import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 
 const prismaAny = prisma as any;
 
@@ -18,23 +18,14 @@ const getFirstRemoteImageUrl = (media: unknown) => {
     return null;
   }
 
-  const image = media.find((item: any) => item?.type === 'IMAGE' && item?.isFeatured)
-    || media.find((item: any) => item?.type === 'IMAGE');
+  const image = media.find((item: any) => String(item?.type || '').toUpperCase() === 'IMAGE' && item?.isFeatured)
+    || media.find((item: any) => String(item?.type || '').toUpperCase() === 'IMAGE');
 
-  return normalizeRemoteMediaUrl(image?.url);
+  return getRenderableMediaUrl(image);
 };
 
 const getRemotePublicMedia = (media: unknown) => {
-  if (!Array.isArray(media)) {
-    return [];
-  }
-
-  return media
-    .map((item: any) => {
-      const url = normalizeRemoteMediaUrl(item?.url);
-      return url ? { ...item, url } : null;
-    })
-    .filter(Boolean);
+  return normalizeListingMedia(media);
 };
 
 type PublicListingFormDetails = {

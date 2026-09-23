@@ -34,7 +34,7 @@ export const createMobileOtpChallenge = async ({
   expiresInSeconds,
 }: {
   mobile: string;
-  userId: string;
+  userId?: string | null;
   expiresInSeconds: number;
 }) => {
   const now = new Date();
@@ -47,7 +47,7 @@ export const createMobileOtpChallenge = async ({
   return prismaAny.mobileOtpChallenge.create({
     data: {
       mobile,
-      userId,
+      ...(userId ? { userId } : {}),
       createdAt: now,
       lastSentAt: now,
       expiresAt: new Date(now.getTime() + expiresInSeconds * 1000),
@@ -55,10 +55,14 @@ export const createMobileOtpChallenge = async ({
   });
 };
 
-export const markMobileOtpChallengeVerified = async (id: string) =>
+export const markMobileOtpChallengeVerified = async (id: string, userId?: string | null) =>
   prismaAny.mobileOtpChallenge.update({
     where: { id },
-    data: { status: 'VERIFIED', verifiedAt: new Date() },
+    data: {
+      status: 'VERIFIED',
+      verifiedAt: new Date(),
+      ...(userId ? { userId } : {}),
+    },
   });
 
 export const recordMobileOtpAttempt = async (id: string) =>

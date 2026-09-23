@@ -70,6 +70,58 @@ const normalizeUploadPath = (fileUrl: string) => {
   return normalizedPath.replace(/^\/api(?=\/uploads\/)/i, '');
 };
 
+const DRIVE_HOSTS = new Set(['drive.google.com', 'drive.usercontent.google.com', 'docs.google.com']);
+
+const isLikelyDriveFileId = (value: string) => /^[a-zA-Z0-9_-]{10,}$/.test(value);
+
+const getDriveFileId = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return isLikelyDriveFileId(trimmed) ? trimmed : null;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmed);
+    if (!DRIVE_HOSTS.has(parsedUrl.hostname.toLowerCase())) {
+      return null;
+    }
+
+    const queryId = parsedUrl.searchParams.get('id');
+    if (queryId && isLikelyDriveFileId(queryId)) {
+      return queryId;
+    }
+
+    const pathMatch = parsedUrl.pathname.match(/\/file\/d\/([^/]+)/i);
+    const pathId = pathMatch?.[1] ? decodeURIComponent(pathMatch[1]) : '';
+    return pathId && isLikelyDriveFileId(pathId) ? pathId : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeDriveMediaUrl = (value: string) => {
+  const driveFileId = getDriveFileId(value);
+  return driveFileId ? `https://drive.google.com/uc?id=${encodeURIComponent(driveFileId)}` : null;
+};
+
+export const getMediaSourceCandidates = (fileUrl?: string | null) => {
+  const absoluteUrl = getAbsoluteFileUrl(fileUrl);
+  const driveFileId = fileUrl ? getDriveFileId(fileUrl) : null;
+
+  if (!driveFileId) {
+    return absoluteUrl ? [absoluteUrl] : [];
+  }
+
+  const encodedDriveFileId = encodeURIComponent(driveFileId);
+  return [
+    `https://drive.google.com/uc?id=${encodedDriveFileId}`,
+    `https://drive.usercontent.google.com/download?id=${encodedDriveFileId}&export=view`,
+    `https://drive.google.com/thumbnail?id=${encodedDriveFileId}&sz=w2000`,
+  ];
+};
+
 const bytesToReadableLimit = (bytes: number) => `${Math.round(bytes / (1024 * 1024))}MB`;
 
 export const getUploadValidationError = (file: File) => {
@@ -103,7 +155,12 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
+    return normalizeDriveMediaUrl(trimmed) || trimmed;
+  }
+
+  const driveMediaUrl = normalizeDriveMediaUrl(trimmed);
+  if (driveMediaUrl) {
+    return driveMediaUrl;
   }
 
   // All /uploads/ paths (listings, public, etc.) — convert to absolute URL

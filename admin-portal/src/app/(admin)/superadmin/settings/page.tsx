@@ -135,6 +135,17 @@ type SettingsResponse = {
   };
 };
 
+type AdminSecretKey =
+  | 'mobileOtpApiKey'
+  | 'emailOtpAppPassword'
+  | 'razorpayKeySecret'
+  | 'razorpayWebhookSecret'
+  | 'phonepeClientSecret'
+  | 'googleDriveClientSecret'
+  | 'googleDriveRefreshToken';
+
+const isMaskedSecretValue = (value: string) => /^\*+$/.test(value.trim());
+
 type MobileAppFormState = {
   playStoreLink: string;
   appStoreLink: string;
@@ -267,8 +278,12 @@ export default function SuperAdminSettingsPage() {
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
   const [googleDriveSaving, setGoogleDriveSaving] = useState(false);
+  const [showGoogleClientId, setShowGoogleClientId] = useState(false);
+  const [showGoogleDriveClientId, setShowGoogleDriveClientId] = useState(false);
   const [showGoogleDriveClientSecret, setShowGoogleDriveClientSecret] = useState(false);
   const [showGoogleDriveRefreshToken, setShowGoogleDriveRefreshToken] = useState(false);
+  const [revealedSecrets, setRevealedSecrets] = useState<Partial<Record<AdminSecretKey, string>>>({});
+  const [revealingSecret, setRevealingSecret] = useState<AdminSecretKey | null>(null);
   const [mobileAppSaving, setMobileAppSaving] = useState(false);
 
   const [googleDriveSettings, setGoogleDriveSettings] = useState({
@@ -277,7 +292,7 @@ export default function SuperAdminSettingsPage() {
     refreshToken: '',
     backupFolderId: '',
   });
-  
+
   const [mobileAppForm, setMobileAppForm] = useState<MobileAppFormState>({
     playStoreLink: '',
     appStoreLink: '',
@@ -291,7 +306,7 @@ export default function SuperAdminSettingsPage() {
     validityUnit: 'DAYS',
   });
   const [listingPaymentForm, setListingPaymentForm] = useState<ListingPaymentFormState>(emptyListingPaymentForm);
-  
+
   const [dbStates, setDbStates] = useState<{ id: string | number; name: string }[]>([]);
   const [dbCities, setDbCities] = useState<{ id: string | number; name: string }[]>([]);
 
@@ -305,6 +320,31 @@ export default function SuperAdminSettingsPage() {
     termsAndConditions: 'This is a computer-generated tax invoice and does not require a physical signature.',
   });
   const [invoiceSaving, setInvoiceSaving] = useState(false);
+
+  const revealSecret = useCallback(async (key: AdminSecretKey) => {
+    const cachedValue = revealedSecrets[key];
+    if (cachedValue) {
+      return cachedValue;
+    }
+
+    setRevealingSecret(key);
+    try {
+      const response = await api.get<{ value?: string }>(`/superadmin/settings/secrets/${encodeURIComponent(key)}`);
+      const value = response.data.value || '';
+      if (!value) {
+        toast.info('This secret is not configured.');
+        return null;
+      }
+
+      setRevealedSecrets((current) => ({ ...current, [key]: value }));
+      return value;
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to reveal this secret.'));
+      return null;
+    } finally {
+      setRevealingSecret(null);
+    }
+  }, [revealedSecrets]);
 
   useEffect(() => {
     if (activeTab !== 'invoice') {
@@ -924,11 +964,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('security')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'security'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'security'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <ShieldCheck className="h-4 w-4" />
               Security
@@ -936,11 +975,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('leadRouting')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'leadRouting'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'leadRouting'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <Phone className="h-4 w-4" />
               Lead Routing
@@ -948,11 +986,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('homepage')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'homepage'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'homepage'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <ImagePlus className="h-4 w-4" />
               Homepage Content
@@ -960,11 +997,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('payments')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'payments'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'payments'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <CreditCard className="h-4 w-4" />
               Payments
@@ -972,11 +1008,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('invoice')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'invoice'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'invoice'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <FileText className="h-4 w-4" />
               Invoice & GST
@@ -984,11 +1019,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('mobileApp')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'mobileApp'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'mobileApp'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <Phone className="h-4 w-4" />
               Mobile App
@@ -996,11 +1030,10 @@ export default function SuperAdminSettingsPage() {
             <button
               type="button"
               onClick={() => setActiveTab('googleDrive')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                activeTab === 'googleDrive'
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'googleDrive'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
                   : 'border-transparent text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <HardDrive className="h-4 w-4" />
               Google Drive
@@ -1025,11 +1058,10 @@ export default function SuperAdminSettingsPage() {
                       <h2 className="text-3xl font-bold tracking-tight text-white">Google Login Control</h2>
                     </div>
                     <span
-                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                        googleAuthEnabled
+                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${googleAuthEnabled
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : 'border-amber-200 bg-amber-50 text-amber-700'
-                      }`}
+                        }`}
                     >
                       <ShieldCheck className="h-4 w-4" />
                       {googleAuthEnabled ? 'Google login enabled' : 'Google login disabled'}
@@ -1058,21 +1090,18 @@ export default function SuperAdminSettingsPage() {
                         aria-label="Toggle Google Login"
                         onClick={() => void handleGoogleToggle()}
                         disabled={googleToggleSaving}
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          googleAuthEnabled
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${googleAuthEnabled
                             ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                             : 'border-gray-300 bg-white text-gray-600'
-                        } ${googleToggleSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                          } ${googleToggleSaving ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            googleAuthEnabled ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${googleAuthEnabled ? 'bg-emerald-500' : 'bg-gray-300'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              googleAuthEnabled ? 'translate-x-7' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${googleAuthEnabled ? 'translate-x-7' : 'translate-x-1'
+                              }`}
                           />
                         </span>
                         <span className="sr-only">
@@ -1082,19 +1111,32 @@ export default function SuperAdminSettingsPage() {
                     </div>
                   </div>
 
-                  <label className="block">
+                  <div className="block">
                     <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google OAuth Client ID</span>
                     <div className="relative">
                       <KeyRound className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
                       <input
-                        type="text"
+                        type={showGoogleClientId ? 'text' : 'password'}
                         value={googleClientId}
                         onChange={(event) => setGoogleClientId(event.target.value)}
                         placeholder="Paste Google web client ID"
-                        className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        autoComplete="new-password"
+                        className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                       />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowGoogleClientId((current) => !current);
+                        }}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none transition"
+                        aria-label={showGoogleClientId ? 'Hide Google OAuth Client ID' : 'Show Google OAuth Client ID'}
+                      >
+                        {showGoogleClientId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
                     </div>
-                  </label>
+                  </div>
 
                   <div className="flex justify-end">
                     <button
@@ -1132,21 +1174,18 @@ export default function SuperAdminSettingsPage() {
                             enabled: !mobileOtpForm.enabled,
                           })
                         }
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          mobileOtpForm.enabled
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${mobileOtpForm.enabled
                             ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                             : 'border-gray-300 bg-white text-gray-600'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            mobileOtpForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${mobileOtpForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              mobileOtpForm.enabled ? 'translate-x-7' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${mobileOtpForm.enabled ? 'translate-x-7' : 'translate-x-1'
+                              }`}
                           />
                         </span>
                       </button>
@@ -1154,54 +1193,57 @@ export default function SuperAdminSettingsPage() {
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
-                    <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">SMS API Key</span>
-                        <input
-                          type="password"
-                          value={mobileOtpForm.apiKey}
-                          onChange={(event) => updateMobileOtpForm({ apiKey: event.target.value })}
-                          placeholder="Enter SMS API key"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                        />
-                      </label>
+                    <SettingsInput
+                      key={`mobile-otp-api-key-${isMaskedSecretValue(mobileOtpForm.apiKey) ? 'masked' : 'editable'}`}
+                      label="SMS API Key"
+                      type="password"
+                      value={mobileOtpForm.apiKey}
+                      onChange={(value) => updateMobileOtpForm({ apiKey: value })}
+                      placeholder="Enter SMS API key"
+                      onReveal={() => revealSecret('mobileOtpApiKey')}
+                      isRevealing={revealingSecret === 'mobileOtpApiKey'}
+                    />
 
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Template ID (otp_id)</span>
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Flowitof Smart OTP Template ID (otp_id)</span>
                         <input
                           type="text"
                           value={mobileOtpForm.otpId}
                           onChange={(event) => updateMobileOtpForm({ otpId: event.target.value })}
-                          placeholder="Enter your OTP template ID"
+                          placeholder="Enter Smart OTP template ID"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
+                        <span className="mt-1 block text-xs text-gray-500">
+                          Use the ID from Flowitof Smart OTP. A DLT SMS content/message ID (such as 13846) will return “Invalid OTP ID”.
+                        </span>
                       </label>
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Expiry (minutes)</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10080}
-                          value={mobileOtpForm.otpExpiry}
-                          onChange={(event) => updateMobileOtpForm({ otpExpiry: event.target.value })}
-                          placeholder="15"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                        />
-                      </label>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Expiry (minutes)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10080}
+                        value={mobileOtpForm.otpExpiry}
+                        onChange={(event) => updateMobileOtpForm({ otpExpiry: event.target.value })}
+                        placeholder="15"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
 
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Length</span>
-                        <input
-                          type="number"
-                          min={4}
-                          max={10}
-                          value={mobileOtpForm.otpLength}
-                          onChange={(event) => updateMobileOtpForm({ otpLength: event.target.value })}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                        />
-                      </label>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">OTP Length</span>
+                      <input
+                        type="number"
+                        min={4}
+                        max={10}
+                        value={mobileOtpForm.otpLength}
+                        onChange={(event) => updateMobileOtpForm({ otpLength: event.target.value })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
                   </div>
 
                   <label className="block">
@@ -1256,21 +1298,18 @@ export default function SuperAdminSettingsPage() {
                         aria-checked={emailOtpForm.enabled}
                         aria-label="Toggle Email OTP"
                         onClick={() => updateEmailOtpForm({ enabled: !emailOtpForm.enabled })}
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          emailOtpForm.enabled
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${emailOtpForm.enabled
                             ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                             : 'border-gray-300 bg-white text-gray-600'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            emailOtpForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${emailOtpForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              emailOtpForm.enabled ? 'translate-x-7' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${emailOtpForm.enabled ? 'translate-x-7' : 'translate-x-1'
+                              }`}
                           />
                         </span>
                       </button>
@@ -1304,20 +1343,21 @@ export default function SuperAdminSettingsPage() {
                     </label>
                   </div>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Gmail App Password</span>
-                    <input
+                  <div>
+                    <SettingsInput
+                      key={`email-otp-app-password-${isMaskedSecretValue(emailOtpForm.appPassword) ? 'masked' : 'editable'}`}
+                      label="Gmail App Password"
                       type="password"
                       value={emailOtpForm.appPassword}
-                      onChange={(event) => updateEmailOtpForm({ appPassword: event.target.value })}
+                      onChange={(value) => updateEmailOtpForm({ appPassword: value })}
                       placeholder="16-character Gmail App Password"
-                      autoComplete="new-password"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      onReveal={() => revealSecret('emailOtpAppPassword')}
+                      isRevealing={revealingSecret === 'emailOtpAppPassword'}
                     />
                     <span className="mt-1 block text-xs text-gray-500">
                       Create it in Google Account &gt; Security &gt; 2-Step Verification &gt; App passwords. Leave the masked value unchanged when editing.
                     </span>
-                  </label>
+                  </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <label className="block">
@@ -1371,11 +1411,10 @@ export default function SuperAdminSettingsPage() {
                       <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Lead Routing Control</h2>
                     </div>
                     <span
-                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                        leadRoutingForm.useSellerContact
+                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${leadRoutingForm.useSellerContact
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : 'border-amber-200 bg-amber-50 text-amber-700'
-                      }`}
+                        }`}
                     >
                       <Phone className="h-4 w-4" />
                       {leadRoutingForm.useSellerContact ? 'Seller contact mode enabled' : 'Super admin mode enabled'}
@@ -1407,21 +1446,18 @@ export default function SuperAdminSettingsPage() {
                             useSellerContact: !leadRoutingForm.useSellerContact,
                           })
                         }
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          leadRoutingForm.useSellerContact
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${leadRoutingForm.useSellerContact
                             ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                             : 'border-gray-300 bg-white text-gray-600'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            leadRoutingForm.useSellerContact ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${leadRoutingForm.useSellerContact ? 'bg-emerald-500' : 'bg-gray-300'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              leadRoutingForm.useSellerContact ? 'translate-x-7' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${leadRoutingForm.useSellerContact ? 'translate-x-7' : 'translate-x-1'
+                              }`}
                           />
                         </span>
                       </button>
@@ -1481,11 +1517,10 @@ export default function SuperAdminSettingsPage() {
                       <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Customer Prime Payment Settings</h2>
                     </div>
                     <span
-                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                        customerPrimeForm.enabled
+                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${customerPrimeForm.enabled
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : 'border-amber-200 bg-amber-50 text-amber-700'
-                      }`}
+                        }`}
                     >
                       <CreditCard className="h-4 w-4" />
                       {customerPrimeForm.enabled ? 'Prime payments enabled' : 'Prime payments disabled'}
@@ -1496,121 +1531,118 @@ export default function SuperAdminSettingsPage() {
               </section>
 
               {false && (
-              <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div className="mb-6">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Subscription Rules</p>
-                  <h3 className="mt-1 text-xl font-bold text-gray-900">Prime Customer Configuration</h3>
-                </div>
+                <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <div className="mb-6">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Subscription Rules</p>
+                    <h3 className="mt-1 text-xl font-bold text-gray-900">Prime Customer Configuration</h3>
+                  </div>
 
-                <form onSubmit={handlePaymentsSubmit} className="space-y-6">
-                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h4 className="text-sm font-semibold text-gray-900">Enable Prime payment gate for customers</h4>
-                        <p className="mt-1 text-sm text-gray-500">
-                          When enabled, customer Call, WhatsApp, and Sell Vehicle actions automatically require Prime access.
-                        </p>
-                      </div>
+                  <form onSubmit={handlePaymentsSubmit} className="space-y-6">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900">Enable Prime payment gate for customers</h4>
+                          <p className="mt-1 text-sm text-gray-500">
+                            When enabled, customer Call, WhatsApp, and Sell Vehicle actions automatically require Prime access.
+                          </p>
+                        </div>
 
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={customerPrimeForm.enabled}
-                        aria-label="Toggle customer Prime payments"
-                        onClick={() => updateCustomerPrimeForm({ enabled: !customerPrimeForm.enabled })}
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          customerPrimeForm.enabled
-                            ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
-                            : 'border-gray-300 bg-white text-gray-600'
-                        }`}
-                      >
-                        <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            customerPrimeForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={customerPrimeForm.enabled}
+                          aria-label="Toggle customer Prime payments"
+                          onClick={() => updateCustomerPrimeForm({ enabled: !customerPrimeForm.enabled })}
+                          className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${customerPrimeForm.enabled
+                              ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                              : 'border-gray-300 bg-white text-gray-600'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              customerPrimeForm.enabled ? 'translate-x-7' : 'translate-x-1'
-                            }`}
-                          />
-                        </span>
+                            className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${customerPrimeForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                              }`}
+                          >
+                            <span
+                              className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${customerPrimeForm.enabled ? 'translate-x-7' : 'translate-x-1'
+                                }`}
+                            />
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">UPI ID / Number</span>
+                        <input
+                          type="text"
+                          value={customerPrimeForm.upiId}
+                          onChange={(event) => updateCustomerPrimeForm({ upiId: event.target.value })}
+                          placeholder="e.g. 9876543210@upi"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Subscription Amount</span>
+                        <input
+                          type="number"
+                          value={customerPrimeForm.amount}
+                          onChange={(event) => updateCustomerPrimeForm({ amount: event.target.value })}
+                          placeholder="e.g. 500"
+                          min="0"
+                          step="0.01"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-[1fr_220px]">
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Validity Value</span>
+                        <input
+                          type="number"
+                          value={customerPrimeForm.validityValue}
+                          onChange={(event) => updateCustomerPrimeForm({ validityValue: event.target.value })}
+                          placeholder="e.g. 30"
+                          min="1"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Validity Unit</span>
+                        <select
+                          value={customerPrimeForm.validityUnit}
+                          onChange={(event) =>
+                            updateCustomerPrimeForm({
+                              validityUnit: event.target.value as CustomerPrimeFormState['validityUnit'],
+                            })
+                          }
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        >
+                          <option value="DAYS">Days</option>
+                          <option value="MONTHS">Months</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                      Prime payment is always customer-only and always includes Call, WhatsApp, and Sell Vehicle access together.
+                    </div>
+
+                    <div className="flex justify-end border-t border-gray-100 pt-2">
+                      <button
+                        type="submit"
+                        disabled={paymentsSaving}
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Save className="h-4 w-4" />
+                        {paymentsSaving ? 'Saving...' : 'Save Prime Settings'}
                       </button>
                     </div>
-                  </div>
-
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">UPI ID / Number</span>
-                      <input
-                        type="text"
-                        value={customerPrimeForm.upiId}
-                        onChange={(event) => updateCustomerPrimeForm({ upiId: event.target.value })}
-                        placeholder="e.g. 9876543210@upi"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Subscription Amount</span>
-                      <input
-                        type="number"
-                        value={customerPrimeForm.amount}
-                        onChange={(event) => updateCustomerPrimeForm({ amount: event.target.value })}
-                        placeholder="e.g. 500"
-                        min="0"
-                        step="0.01"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-5 md:grid-cols-[1fr_220px]">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Validity Value</span>
-                      <input
-                        type="number"
-                        value={customerPrimeForm.validityValue}
-                        onChange={(event) => updateCustomerPrimeForm({ validityValue: event.target.value })}
-                        placeholder="e.g. 30"
-                        min="1"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Validity Unit</span>
-                      <select
-                        value={customerPrimeForm.validityUnit}
-                        onChange={(event) =>
-                          updateCustomerPrimeForm({
-                            validityUnit: event.target.value as CustomerPrimeFormState['validityUnit'],
-                          })
-                        }
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      >
-                        <option value="DAYS">Days</option>
-                        <option value="MONTHS">Months</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                    Prime payment is always customer-only and always includes Call, WhatsApp, and Sell Vehicle access together.
-                  </div>
-
-                  <div className="flex justify-end border-t border-gray-100 pt-2">
-                    <button
-                      type="submit"
-                      disabled={paymentsSaving}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Save className="h-4 w-4" />
-                      {paymentsSaving ? 'Saving...' : 'Save Prime Settings'}
-                    </button>
-                  </div>
-                </form>
-              </section>
+                  </form>
+                </section>
               )}
 
               <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1736,7 +1768,7 @@ export default function SuperAdminSettingsPage() {
 
                   <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-xs leading-relaxed text-blue-900 space-y-1">
                     <p className="font-bold">Indian Standard GST Calculation Info:</p>
-                    <p>• <strong>Intra-State:</strong> If Customer State equals Supplier State, tax split is divided equally into <strong>CGST ({Number(companyInvoiceForm.defaultGstRate || 18)/2}%)</strong> and <strong>SGST ({Number(companyInvoiceForm.defaultGstRate || 18)/2}%)</strong>.</p>
+                    <p>• <strong>Intra-State:</strong> If Customer State equals Supplier State, tax split is divided equally into <strong>CGST ({Number(companyInvoiceForm.defaultGstRate || 18) / 2}%)</strong> and <strong>SGST ({Number(companyInvoiceForm.defaultGstRate || 18) / 2}%)</strong>.</p>
                     <p>• <strong>Inter-State:</strong> If Customer State is different, tax is applied as <strong>IGST ({companyInvoiceForm.defaultGstRate || 18}%)</strong>.</p>
                     <p>• Logo set in Site Logo Settings is automatically used as the invoice header logo.</p>
                   </div>
@@ -1767,11 +1799,10 @@ export default function SuperAdminSettingsPage() {
                       <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Customer Prime Payment Settings</h2>
                     </div>
                     <span
-                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                        customerPrimeForm.enabled
+                      className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${customerPrimeForm.enabled
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : 'border-amber-200 bg-amber-50 text-amber-700'
-                      }`}
+                        }`}
                     >
                       <CreditCard className="h-4 w-4" />
                       {customerPrimeForm.enabled ? 'Prime payments enabled' : 'Prime payments disabled'}
@@ -1802,21 +1833,18 @@ export default function SuperAdminSettingsPage() {
                         aria-checked={customerPrimeForm.enabled}
                         aria-label="Toggle customer Prime payments"
                         onClick={() => updateCustomerPrimeForm({ enabled: !customerPrimeForm.enabled })}
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
-                          customerPrimeForm.enabled
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${customerPrimeForm.enabled
                             ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                             : 'border-gray-300 bg-white text-gray-600'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                            customerPrimeForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
-                          }`}
+                          className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${customerPrimeForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                            }`}
                         >
                           <span
-                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
-                              customerPrimeForm.enabled ? 'translate-x-7' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${customerPrimeForm.enabled ? 'translate-x-7' : 'translate-x-1'
+                              }`}
                           />
                         </span>
                       </button>
@@ -1917,13 +1945,12 @@ export default function SuperAdminSettingsPage() {
                         <p className="mt-0.5 text-xs font-medium text-gray-500">Shown to customer after Buy Now click for manual bank transfer.</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold ${
-                          rtgsIsIncomplete
+                        <span className={`text-xs font-bold ${rtgsIsIncomplete
                             ? 'text-amber-700'
                             : listingPaymentForm.rtgs.enabled
                               ? 'text-emerald-700'
                               : 'text-gray-500'
-                        }`}>
+                          }`}>
                           {rtgsIsIncomplete ? 'INCOMPLETE' : listingPaymentForm.rtgs.enabled ? 'ENABLED' : 'DISABLED'}
                         </span>
                         <button
@@ -1991,13 +2018,12 @@ export default function SuperAdminSettingsPage() {
                     <div className="grid gap-5 md:grid-cols-2">
                       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
                         <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-700">Detected Mode</span>
-                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
-                          detectedRazorpayMode === 'LIVE'
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${detectedRazorpayMode === 'LIVE'
                             ? 'bg-emerald-50 text-emerald-700'
                             : detectedRazorpayMode === 'TEST'
                               ? 'bg-blue-50 text-blue-700'
                               : 'bg-gray-100 text-gray-500'
-                        }`}>
+                          }`}>
                           {razorpayFieldsDisabled ? 'Enable Razorpay first' : detectedRazorpayMode ? `${detectedRazorpayMode} Mode` : 'Not detected'}
                         </span>
                         {!razorpayFieldsDisabled && !detectedRazorpayMode ? (
@@ -2012,20 +2038,26 @@ export default function SuperAdminSettingsPage() {
                         placeholder={razorpayFieldsDisabled ? 'Enable Razorpay to add Key ID' : 'rzp_live_xxxxx or rzp_test_xxxxx'}
                       />
                       <SettingsInput
+                        key={`razorpay-key-secret-${isMaskedSecretValue(listingPaymentForm.razorpay.keySecret) ? 'masked' : 'editable'}`}
                         label="Key Secret"
                         type="password"
                         value={razorpayFieldsDisabled ? '' : listingPaymentForm.razorpay.keySecret}
                         onChange={(value) => updateListingPaymentForm({ razorpay: { keySecret: value } })}
                         disabled={razorpayFieldsDisabled}
                         placeholder={razorpayFieldsDisabled ? 'Enable Razorpay to add secret' : 'Leave masked value to keep existing secret'}
+                        onReveal={() => revealSecret('razorpayKeySecret')}
+                        isRevealing={revealingSecret === 'razorpayKeySecret'}
                       />
                       <SettingsInput
+                        key={`razorpay-webhook-secret-${isMaskedSecretValue(listingPaymentForm.razorpay.webhookSecret) ? 'masked' : 'editable'}`}
                         label="Webhook Secret"
                         type="password"
                         value={razorpayFieldsDisabled ? '' : listingPaymentForm.razorpay.webhookSecret}
                         onChange={(value) => updateListingPaymentForm({ razorpay: { webhookSecret: value } })}
                         disabled={razorpayFieldsDisabled}
                         placeholder={razorpayFieldsDisabled ? 'Enable Razorpay to add webhook secret' : 'Optional'}
+                        onReveal={() => revealSecret('razorpayWebhookSecret')}
+                        isRevealing={revealingSecret === 'razorpayWebhookSecret'}
                       />
                     </div>
                   </div>
@@ -2056,13 +2088,12 @@ export default function SuperAdminSettingsPage() {
                     <div className="grid gap-5 md:grid-cols-2">
                       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
                         <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-700">Detected Mode</span>
-                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
-                          phonePeFieldsDisabled
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${phonePeFieldsDisabled
                             ? 'bg-gray-100 text-gray-500'
                             : detectedPhonePeMode === 'LIVE'
                               ? 'bg-emerald-50 text-emerald-700'
                               : 'bg-blue-50 text-blue-700'
-                        }`}>
+                          }`}>
                           {phonePeFieldsDisabled ? 'Enable PhonePe first' : detectedPhonePeMode ? `${detectedPhonePeMode} Mode` : 'Not detected'}
                         </span>
                       </div>
@@ -2074,12 +2105,15 @@ export default function SuperAdminSettingsPage() {
                         placeholder={phonePeFieldsDisabled ? 'Enable PhonePe to add Client ID' : 'PhonePe Client ID'}
                       />
                       <SettingsInput
+                        key={`phonepe-client-secret-${isMaskedSecretValue(listingPaymentForm.phonepe.clientSecret) ? 'masked' : 'editable'}`}
                         label="Client Secret"
                         type="password"
                         value={phonePeFieldsDisabled ? '' : listingPaymentForm.phonepe.clientSecret}
                         onChange={(value) => updateListingPaymentForm({ phonepe: { clientSecret: value } })}
                         disabled={phonePeFieldsDisabled}
                         placeholder={phonePeFieldsDisabled ? 'Enable PhonePe to add secret' : 'Leave masked value to keep existing secret'}
+                        onReveal={() => revealSecret('phonepeClientSecret')}
+                        isRevealing={revealingSecret === 'phonepeClientSecret'}
                       />
                       <SettingsInput
                         label="Client Version"
@@ -2121,16 +2155,31 @@ export default function SuperAdminSettingsPage() {
               <div className="p-6 sm:p-8">
                 <form onSubmit={handleGoogleDriveSubmit} className="space-y-6">
                   <div className="grid gap-6 md:grid-cols-2">
-                    <label className="block">
+                    <div className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Client ID</span>
-                      <input
-                        type="text"
-                        value={googleDriveSettings.clientId}
-                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientId: e.target.value })}
-                        placeholder="Client ID"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                      />
-                    </label>
+                      <div className="relative">
+                        <input
+                          type={showGoogleDriveClientId ? 'text' : 'password'}
+                          value={googleDriveSettings.clientId}
+                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientId: e.target.value })}
+                          placeholder="Client ID"
+                          autoComplete="new-password"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowGoogleDriveClientId((current) => !current);
+                          }}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none transition"
+                          aria-label={showGoogleDriveClientId ? 'Hide Google client ID' : 'Show Google client ID'}
+                        >
+                          {showGoogleDriveClientId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
                     <div className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Google Client Secret</span>
                       <div className="relative">
@@ -2139,12 +2188,17 @@ export default function SuperAdminSettingsPage() {
                           value={googleDriveSettings.clientSecret}
                           onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientSecret: e.target.value })}
                           placeholder="Client Secret"
+                          autoComplete="new-password"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                         <button
                           type="button"
-                          onClick={() => setShowGoogleDriveClientSecret((current) => !current)}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowGoogleDriveClientSecret((current) => !current);
+                          }}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none transition"
                           aria-label={showGoogleDriveClientSecret ? 'Hide Google client secret' : 'Show Google client secret'}
                         >
                           {showGoogleDriveClientSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -2159,12 +2213,17 @@ export default function SuperAdminSettingsPage() {
                           value={googleDriveSettings.refreshToken}
                           onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, refreshToken: e.target.value })}
                           placeholder="Refresh Token (from OAuth2 Playground)"
+                          autoComplete="new-password"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                         />
                         <button
                           type="button"
-                          onClick={() => setShowGoogleDriveRefreshToken((current) => !current)}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowGoogleDriveRefreshToken((current) => !current);
+                          }}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 focus:outline-none transition"
                           aria-label={showGoogleDriveRefreshToken ? 'Hide refresh token' : 'Show refresh token'}
                         >
                           {showGoogleDriveRefreshToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -2255,6 +2314,8 @@ function SettingsInput({
   type = 'text',
   disabled = false,
   placeholder,
+  onReveal,
+  isRevealing = false,
 }: {
   label: string;
   value: string;
@@ -2262,18 +2323,54 @@ function SettingsInput({
   type?: 'text' | 'password';
   disabled?: boolean;
   placeholder?: string;
+  onReveal?: () => Promise<string | null>;
+  isRevealing?: boolean;
 }) {
+  const [show, setShow] = useState(false);
+  const [revealedValue, setRevealedValue] = useState<string | null>(null);
+  const isSecret = type === 'password';
+  const isMasked = isSecret && isMaskedSecretValue(value);
+
+  const handleVisibilityToggle = async () => {
+    if (!show && isMasked && onReveal && !revealedValue) {
+      const nextValue = await onReveal();
+      if (!nextValue) {
+        return;
+      }
+      setRevealedValue(nextValue);
+    }
+
+    setShow((current) => !current);
+  };
+
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold text-gray-700">{label}</span>
-      <input
-        type={type}
-        value={value}
-        disabled={disabled}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-      />
+      <div className="relative">
+        <input
+          type={isSecret && !show ? 'password' : 'text'}
+          value={show ? (revealedValue || value) : value}
+          disabled={disabled}
+          placeholder={placeholder}
+          autoComplete={isSecret ? 'new-password' : undefined}
+          onChange={(event) => {
+            setRevealedValue(null);
+            onChange(event.target.value);
+          }}
+          className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 ${isSecret ? 'pr-11' : ''}`}
+        />
+        {isSecret ? (
+          <button
+            type="button"
+            disabled={disabled || isRevealing}
+            onClick={() => void handleVisibilityToggle()}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 transition hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={isRevealing ? `Loading ${label}` : show ? `Hide ${label}` : `Show ${label}`}
+          >
+            {isRevealing ? <span className="text-[10px] font-bold">…</span> : show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        ) : null}
+      </div>
     </label>
   );
 }

@@ -15,6 +15,7 @@ import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
 import { isReactNativeWebView } from '@/lib/nativeApp';
+import { getAuthDisplayName } from '@/lib/authDisplayName';
 
 type ProfileResponse = {
   user: {
@@ -252,7 +253,7 @@ export default function Navbar() {
     }
   };
 
-  const displayName = user?.name || user?.email || 'My Account';
+  const displayName = getAuthDisplayName(user);
   const roleLabel = getPublicRoleLabel({
     role: user?.role,
     partnerType: user?.partnerType,
@@ -455,7 +456,7 @@ export default function Navbar() {
                     <div className="absolute right-0 z-50 mt-2 w-64 origin-top-right overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-200 ease-out">
                       <div className="border-b border-gray-100 bg-white px-5 py-4">
                         <p className="truncate text-sm font-bold text-gray-900">{displayName}</p>
-                        <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email || 'customer@jcbexchange.com'}</p>
+                        <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email || user?.mobile || 'Customer account'}</p>
                       </div>
                       <div className="p-1.5">
                         {user?.role && PORTAL_ROLES.includes(user.role) ? (

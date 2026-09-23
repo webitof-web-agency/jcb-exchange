@@ -29,6 +29,7 @@ import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import {
   EmailOtpSettingsError,
   getEmailOtpAdminSettings,
+  getEmailOtpSettings,
   updateEmailOtpSettings,
 } from '../services/emailOtp.service';
 import { getCustomerPrimeAccessState, normalizePrimeValidityUnit } from '../utils/customerPrime';
@@ -40,7 +41,8 @@ import {
 } from '../utils/customerPrimeSubscriptions';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
 import { allowedAdminPermissions } from '../utils/adminPermissions';
-import { normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { normalizeListingMedia } from '../utils/mediaUrl';
+import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretReveal';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -674,6 +676,34 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
       return res.status(error.statusCode).json({ error: error.message });
     }
 
+    next(error);
+  }
+};
+
+export const revealPlatformSecret = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestedKey = String(req.params.key || '').trim();
+    if (!isAdminSecretKey(requestedKey)) {
+      return res.status(404).json({ error: 'Secret is not available for reveal.' });
+    }
+
+    const [settings, emailOtp] = await Promise.all([
+      getAppSettings(),
+      getEmailOtpSettings(),
+    ]);
+
+    const value = getAdminSecretValue(requestedKey, {
+      mobileOtpApiKey: settings.mobileOtp.apiKey,
+      emailOtpAppPassword: emailOtp.appPassword,
+      razorpayKeySecret: settings.listingPayment.razorpay.keySecret,
+      razorpayWebhookSecret: settings.listingPayment.razorpay.webhookSecret,
+      phonepeClientSecret: settings.listingPayment.phonepe.clientSecret,
+      googleDriveClientSecret: settings.googleDrive.clientSecret,
+      googleDriveRefreshToken: settings.googleDrive.refreshToken,
+    });
+
+    return res.json({ key: requestedKey, value });
+  } catch (error) {
     next(error);
   }
 };
@@ -2091,14 +2121,7 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
       // Prisma's inferred relation type for this query is too narrow here, so we normalize it locally.
       // This keeps the API payload strongly shaped without leaking `any` into the response contract.
       listings: listings.map((listing) => {
-        const listingMedia = Array.isArray((listing as any).media)
-          ? (listing as any).media
-            .map((media: any) => {
-              const url = normalizeRemoteMediaUrl(media?.url);
-              return url ? { ...media, url } : null;
-            })
-            .filter(Boolean)
-          : [];
+        const listingMedia = normalizeListingMedia((listing as any).media);
 
         return {
           id: listing.id,
@@ -2125,7 +2148,7 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
           additionalDescription: listing.additionalDescription,
           grossPower: listing.grossPower,
           isNegotiable: listing.isNegotiable,
-          imageUrl: listingMedia.find((m: any) => m.type === 'IMAGE')?.url || null,
+          imageUrl: listingMedia.find((m: any) => String(m.type || '').toUpperCase() === 'IMAGE')?.url || null,
           media: listingMedia,
         };
       }),

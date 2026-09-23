@@ -597,7 +597,6 @@ export default function PartnerDetailPage({
                           src={getAbsoluteFileUrl(listing.imageUrl)}
                           alt={listing.title}
                           fill
-                          unoptimized
                           sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
                         />
@@ -606,7 +605,6 @@ export default function PartnerDetailPage({
                           src={getAbsoluteFileUrl(listing.images.find((image) => image.isFeatured)?.url || listing.images[0].url)}
                           alt={listing.title}
                           fill
-                          unoptimized
                           sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
                         />

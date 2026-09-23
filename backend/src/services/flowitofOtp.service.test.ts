@@ -32,8 +32,21 @@ test('sends Flowitof OTP with the documented JSON payload', async () => {
     otp_id: 'otp-template-id',
     otp_expiry: 15,
     otp_length: 6,
-    variables_values: '{otp}|15',
+    variables_values: '15|{otp}',
   });
+});
+
+test('always passes the generated OTP to a DLT variable when no extra value is configured', async () => {
+  let request: RequestInit | undefined;
+
+  await sendFlowitofOtp('9876543210', { ...settings, variablesValues: null }, {
+    fetchImplementation: async (_requestUrl, init) => {
+      request = init;
+      return new Response(JSON.stringify({ message: 'OTP sent successfully' }), { status: 200 });
+    },
+  });
+
+  assert.equal(JSON.parse(String(request?.body)).variables_values, '{otp}');
 });
 
 test('uses Flowitof verify and resend endpoints with safe provider errors', async () => {
@@ -45,7 +58,7 @@ test('uses Flowitof verify and resend endpoints with safe provider errors', asyn
 
   await assert.rejects(
     verifyFlowitofOtp('9876543210', '123456', settings, { fetchImplementation }),
-    /Flowitof OTP request was rejected/,
+    /Flowitof OTP request was rejected: bad request/,
   );
   await assert.rejects(
     resendFlowitofOtp('9876543210', settings, { fetchImplementation }),

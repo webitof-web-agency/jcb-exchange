@@ -266,7 +266,7 @@ export default function PartnerDashboard() {
                <div className="space-y-4">
                  {data.topListings.map((listing) => (
                    <div key={listing.id} className="flex items-center gap-4 rounded-xl p-2 transition-colors hover:bg-gray-50">
-                     <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                     <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         {listing.featuredImage ? (
                           <SafeRemoteImage
                             src={getAbsoluteFileUrl(listing.featuredImage)}
