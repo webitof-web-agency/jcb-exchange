@@ -1205,18 +1205,15 @@ export default function SuperAdminSettingsPage() {
                     />
 
                     <label className="block">
-                        <span className="mb-1.5 block text-sm font-semibold text-gray-700">Flowitof Smart OTP Template ID (otp_id)</span>
-                        <input
-                          type="text"
-                          value={mobileOtpForm.otpId}
-                          onChange={(event) => updateMobileOtpForm({ otpId: event.target.value })}
-                          placeholder="Enter Smart OTP template ID"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                        />
-                        <span className="mt-1 block text-xs text-gray-500">
-                          Use the ID from Flowitof Smart OTP. A DLT SMS content/message ID (such as 13846) will return “Invalid OTP ID”.
-                        </span>
-                      </label>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Flowitof Smart OTP Template ID (otp_id)</span>
+                      <input
+                        type="text"
+                        value={mobileOtpForm.otpId}
+                        onChange={(event) => updateMobileOtpForm({ otpId: event.target.value })}
+                        placeholder="Enter Smart OTP template ID"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">

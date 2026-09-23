@@ -8,6 +8,7 @@ import {
   marketplaceSmsEvents,
   recruitmentSmsEvents,
   retryFailedSmsMessage,
+  revealSmsApiKey,
   saveMarketplaceSmsAutomationRule,
   saveRecruitmentSmsAutomationRule,
   sendSmsTestMessage,
@@ -25,6 +26,14 @@ export const getSmsConfiguration = async (_req: Request, res: Response, next: Ne
     res.json({ settings: await getSmsSettings() });
   } catch (error) {
     next(error);
+  }
+};
+
+export const revealSmsApiKeyValue = async (_req: Request, res: Response) => {
+  try {
+    res.json({ value: await revealSmsApiKey() });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to reveal SMS API key.' });
   }
 };
 
@@ -112,6 +121,30 @@ export const retrySmsLog = async (req: Request, res: Response) => {
     res.json({ message: result.sent ? 'SMS retry sent.' : 'SMS retry attempted but provider rejected it.', result });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to retry SMS message.' });
+  }
+};
+
+export const deleteSmsLog = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id || id.length > 100) return res.status(400).json({ error: 'Valid SMS message id is required.' });
+    const existing = await prisma.smsMessageLog.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'SMS log not found.' });
+    }
+    await prisma.smsMessageLog.delete({ where: { id } });
+    res.json({ message: 'SMS log deleted successfully.' });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to delete SMS log.' });
+  }
+};
+
+export const clearSmsLogs = async (_req: Request, res: Response) => {
+  try {
+    await prisma.smsMessageLog.deleteMany({});
+    res.json({ message: 'All SMS logs cleared successfully.' });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to clear SMS logs.' });
   }
 };
 

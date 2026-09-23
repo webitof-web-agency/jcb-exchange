@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Smartphone,
   Store,
+  Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -29,7 +30,7 @@ type SmsSettings = {
   senderId: string;
   testRecipientPhoneMasked: string;
   smsDetails: string;
-  credentials: { apiKeyConfigured: boolean };
+  credentials: { apiKeyConfigured: boolean; encryptionKeyConfigured: boolean };
 };
 
 type SmsRule = {
@@ -215,6 +216,7 @@ export default function SmsNotificationsPage() {
     smsDetails: '0',
   });
   const [showApiKey, setShowApiKey] = useState(false);
+  const [revealingApiKey, setRevealingApiKey] = useState(false);
   const [marketplace, setMarketplace] = useState<SmsRule[]>([]);
   const [recruitment, setRecruitment] = useState<SmsRule[]>([]);
   const [logs, setLogs] = useState<SmsLog[]>([]);
@@ -224,6 +226,8 @@ export default function SmsNotificationsPage() {
   const [savingRule, setSavingRule] = useState<string | null>(null);
   const [sendingTest, setSendingTest] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -269,12 +273,41 @@ export default function SmsNotificationsPage() {
     try {
       const response = await api.put<{ message: string; settings: SmsSettings }>('/sms/settings', form);
       setSettings(response.data.settings);
-      setForm((current) => ({ ...current, apiKey: '' }));
+      setForm((current) => ({
+        ...current,
+        apiKey: '',
+        enabled: response.data.settings.enabled,
+        baseUrl: response.data.settings.baseUrl,
+        senderId: response.data.settings.senderId,
+        smsDetails: response.data.settings.smsDetails,
+      }));
       setNotice(response.data.message);
     } catch (requestError) {
       setError(errorText(requestError, 'Unable to save SMS settings.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleApiKeyVisibility = async () => {
+    if (showApiKey) {
+      setShowApiKey(false);
+      return;
+    }
+    if (form.apiKey || !settings?.credentials.apiKeyConfigured) {
+      setShowApiKey(true);
+      return;
+    }
+    setRevealingApiKey(true);
+    setError('');
+    try {
+      const response = await api.get<{ value: string }>('/sms/settings/api-key');
+      setForm((current) => ({ ...current, apiKey: response.data.value }));
+      setShowApiKey(true);
+    } catch (requestError) {
+      setError(errorText(requestError, 'Unable to reveal saved SMS API key.'));
+    } finally {
+      setRevealingApiKey(false);
     }
   };
 
@@ -329,6 +362,38 @@ export default function SmsNotificationsPage() {
       setError(errorText(requestError, 'Unable to retry SMS.'));
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const deleteLogItem = async (log: SmsLog) => {
+    if (!confirm(`Are you sure you want to delete the SMS log for ${log.eventCode}?`)) return;
+    setDeleting(log.id);
+    setError('');
+    setNotice('');
+    try {
+      const response = await api.delete<{ message: string }>(`/sms/logs/${log.id}`);
+      setNotice(response.data.message);
+      setLogs((prev) => prev.filter((l) => l.id !== log.id));
+    } catch (requestError) {
+      setError(errorText(requestError, 'Unable to delete SMS log.'));
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const clearAllLogs = async () => {
+    if (!confirm('Are you sure you want to clear all SMS delivery logs? This cannot be undone.')) return;
+    setClearing(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await api.delete<{ message: string }>('/sms/logs/clear');
+      setNotice(response.data.message);
+      setLogs([]);
+    } catch (requestError) {
+      setError(errorText(requestError, 'Unable to clear SMS logs.'));
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -483,25 +548,37 @@ export default function SmsNotificationsPage() {
 
             <div className="mt-6 grid gap-5 sm:grid-cols-1 md:grid-cols-2">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  SMS API Key <span className="normal-case font-normal text-gray-500">(required for initial setup)</span>
-                </label>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    SMS API Key <span className="normal-case font-normal text-gray-500">(required for initial setup)</span>
+                  </label>
+                  {settings?.credentials.apiKeyConfigured && settings.credentials.encryptionKeyConfigured ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3" /> Saved securely
+                    </span>
+                  ) : settings?.credentials.apiKeyConfigured ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                      <AlertCircle className="h-3 w-3" /> Restart backend
+                    </span>
+                  ) : null}
+                </div>
                 <div className="relative mt-1.5">
                   <input
                     type={showApiKey ? 'text' : 'password'}
                     value={form.apiKey}
                     onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
-                    disabled={!canManage || saving}
+                    autoComplete="new-password"
+                    disabled={!canManage || saving || revealingApiKey}
                     placeholder={settings?.credentials.apiKeyConfigured ? '••••••••  (Leave blank to keep existing key)' : 'Enter API Key (required)'}
                     className="h-11 w-full rounded-xl border border-gray-300 bg-white pl-3.5 pr-10 text-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-100 disabled:text-gray-400"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
+                    onClick={() => void toggleApiKeyVisibility()}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                     aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
                   >
-                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {revealingApiKey ? <Loader2 className="h-4 w-4 animate-spin" /> : showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
@@ -567,10 +644,7 @@ export default function SmsNotificationsPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col gap-4 rounded-xl border border-amber-200/70 bg-amber-50/80 p-4 text-xs font-medium text-amber-900 sm:flex-row sm:items-center sm:justify-between sm:text-sm">
-              <span className="leading-relaxed">
-                Ensure you use TRAI-approved DLT Sender IDs & Message IDs. API keys stay securely encrypted (AES-256-GCM) on the server.
-              </span>
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
                 onClick={() => void saveSettings()}
@@ -629,7 +703,7 @@ export default function SmsNotificationsPage() {
                 <button
                   type="button"
                   onClick={() => void sendTest()}
-                  disabled={!canManage || sendingTest || !settings?.ready}
+                  disabled={!canManage || sendingTest || !settings?.ready || !settings.enabled}
                   className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 text-sm font-bold text-white transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
                 >
                   {sendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -637,6 +711,15 @@ export default function SmsNotificationsPage() {
                 </button>
               </div>
             </div>
+            {!settings?.enabled ? (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                Enable SMS Gateway and save settings before sending a test SMS.
+              </p>
+            ) : !settings?.ready ? (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                SMS credentials are not ready. Save the API key and sender ID first.
+              </p>
+            ) : null}
           </section>
         </div>
       )}
@@ -644,9 +727,6 @@ export default function SmsNotificationsPage() {
       {/* Tab 2: Marketplace Rules */}
       {tab === 'MARKETPLACE' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-4 text-xs text-blue-900 sm:text-sm">
-            Configure automated DLT SMS rules triggered by customer and partner marketplace events (KYC updates, payment approvals, Prime membership).
-          </div>
           {marketplace.map((rule) => (
             <RuleCard
               key={`${rule.eventCode}-${rule.enabled}-${rule.messageId || ''}-${rule.variablesTemplate || ''}`}
@@ -689,14 +769,27 @@ export default function SmsNotificationsPage() {
                 Real-time provider acceptance, delivery statuses, and failed dispatch logs.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50 focus:outline-none self-start sm:self-auto"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Refresh Logs
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50 focus:outline-none"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Refresh Logs
+              </button>
+              {logs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void clearAllLogs()}
+                  disabled={!canManage || clearing}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition hover:bg-red-100 focus:outline-none disabled:opacity-50"
+                >
+                  {clearing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Clear All
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Desktop Table View */}
@@ -749,22 +842,38 @@ export default function SmsNotificationsPage() {
                         minute: '2-digit',
                       })}
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      {log.status === 'FAILED' && (
+                    <td className="px-5 py-4 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        {log.status === 'FAILED' && (
+                          <button
+                            type="button"
+                            onClick={() => void retry(log)}
+                            disabled={!canManage || retrying === log.id || deleting === log.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-3 py-1.5 text-xs font-bold text-black transition hover:bg-[#e5ad06] disabled:opacity-50"
+                          >
+                            {retrying === log.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            Retry
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => void retry(log)}
-                          disabled={!canManage || retrying === log.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-3 py-1.5 text-xs font-bold text-black transition hover:bg-[#e5ad06] disabled:opacity-50"
+                          onClick={() => void deleteLogItem(log)}
+                          disabled={!canManage || deleting === log.id || retrying === log.id}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
+                          title="Delete log"
                         >
-                          {retrying === log.id ? (
+                          {deleting === log.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <RefreshCw className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           )}
-                          Retry
+                          Delete
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -819,21 +928,36 @@ export default function SmsNotificationsPage() {
                     })}
                   </span>
 
-                  {log.status === 'FAILED' && (
+                  <div className="flex items-center gap-1.5">
+                    {log.status === 'FAILED' && (
+                      <button
+                        type="button"
+                        onClick={() => void retry(log)}
+                        disabled={!canManage || retrying === log.id || deleting === log.id}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#FFC107] px-2.5 py-1 text-xs font-bold text-black disabled:opacity-50"
+                      >
+                        {retrying === log.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3" />
+                        )}
+                        Retry
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => void retry(log)}
-                      disabled={!canManage || retrying === log.id}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#FFC107] px-2.5 py-1 text-xs font-bold text-black disabled:opacity-50"
+                      onClick={() => void deleteLogItem(log)}
+                      disabled={!canManage || deleting === log.id || retrying === log.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
                     >
-                      {retrying === log.id ? (
+                      {deleting === log.id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
-                        <RefreshCw className="h-3 w-3" />
+                        <Trash2 className="h-3 w-3" />
                       )}
-                      Retry
+                      Delete
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}

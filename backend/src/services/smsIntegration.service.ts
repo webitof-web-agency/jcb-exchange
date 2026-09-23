@@ -107,7 +107,10 @@ const serializeSettings = (settings: {
   senderId: settings.senderId || '',
   testRecipientPhoneMasked: maskPhone(settings.testRecipientPhone),
   smsDetails: settings.smsDetails,
-  credentials: { apiKeyConfigured: Boolean(settings.encryptedApiKey) },
+  credentials: {
+    apiKeyConfigured: Boolean(settings.encryptedApiKey),
+    encryptionKeyConfigured: hasUsableCredentialSecret(),
+  },
   updatedAt: settings.updatedAt,
 });
 
@@ -118,6 +121,15 @@ export const getSmsSettings = async () => {
     create: { id: SETTINGS_ID },
   });
   return serializeSettings(settings);
+};
+
+export const revealSmsApiKey = async () => {
+  const settings = await prisma.smsIntegrationSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { encryptedApiKey: true },
+  });
+  if (!settings?.encryptedApiKey) throw new Error('SMS API key is not configured.');
+  return decryptSmsCredential(settings.encryptedApiKey, getCredentialSecret());
 };
 
 export const updateSmsSettings = async (input: SmsSettingsInput) => {
