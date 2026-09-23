@@ -6,12 +6,17 @@ import {
   encryptSmsCredential,
   evaluateSmsAutomation,
   normalizeSmsRecipientPhone,
-  renderSmsVariables,
   resolveSmsTestRecipientPhone,
   sendDltSms,
   getSmsPublishedBroadcastRecipientType,
   type SmsPublishedBroadcastEvent,
 } from '../modules/sms-core';
+import {
+  getMissingSmsTemplateVariables,
+  getSmsTemplateVariableOptions,
+  renderSmsVariables,
+  validateSmsTemplateVariableOrder,
+} from '../modules/sms-core/templatePolicy';
 import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
 
 const SETTINGS_ID = 'default';
@@ -160,15 +165,18 @@ const getSmsAutomationConfiguration = async (eventCodes: readonly SmsAutomationE
   });
   const byEvent = new Map(existingRules.map((rule) => [rule.eventCode, rule]));
   return {
-    rules: eventCodes.map((eventCode) => byEvent.get(eventCode) || {
-      id: null,
-      eventCode,
-      enabled: false,
-      messageId: null,
-      variablesTemplate: '',
-      recipientPolicy: null,
-      updatedAt: null,
-    }),
+    rules: eventCodes.map((eventCode) => ({
+      ...(byEvent.get(eventCode) || {
+        id: null,
+        eventCode,
+        enabled: false,
+        messageId: null,
+        variablesTemplate: '',
+        recipientPolicy: null,
+        updatedAt: null,
+      }),
+      variableOptions: getSmsTemplateVariableOptions(eventCode),
+    })),
   };
 };
 
@@ -185,8 +193,7 @@ const saveSmsAutomationRule = async ({ eventCode, enabled, messageId, variablesT
   if (normalizedMessageId && (!/^\d+$/.test(normalizedMessageId) || normalizedMessageId.length > 30)) {
     throw new Error('DLT Message ID must contain digits only.');
   }
-  const normalizedVariables = variablesTemplate?.trim() || null;
-  if (normalizedVariables && normalizedVariables.length > 1000) throw new Error('SMS variable mapping is too long.');
+  const normalizedVariables = validateSmsTemplateVariableOrder(eventCode, variablesTemplate);
   if (enabled && !normalizedMessageId) throw new Error('Enter the approved DLT Message ID before enabling this SMS rule.');
   return prisma.smsAutomationRule.upsert({
     where: { eventCode },
@@ -208,11 +215,17 @@ const getEnabledSmsSettings = async () => {
 };
 
 const getStoredPayload = (payload: unknown) => {
-  const stored = (payload && typeof payload === 'object' ? payload : {}) as { messageId?: unknown; variablesTemplate?: unknown; payloadSnapshot?: unknown };
+  const stored = (payload && typeof payload === 'object' ? payload : {}) as {
+    messageId?: unknown;
+    variablesTemplate?: unknown;
+    variablesValues?: unknown;
+    payloadSnapshot?: unknown;
+  };
   if (typeof stored.messageId !== 'string' || !stored.messageId) throw new Error('Stored SMS message details are missing.');
   return {
     messageId: stored.messageId,
     variablesTemplate: typeof stored.variablesTemplate === 'string' ? stored.variablesTemplate : '',
+    variablesValues: typeof stored.variablesValues === 'string' ? stored.variablesValues : null,
     payloadSnapshot: stored.payloadSnapshot && typeof stored.payloadSnapshot === 'object' && !Array.isArray(stored.payloadSnapshot)
       ? stored.payloadSnapshot as Record<string, unknown>
       : {},
@@ -232,13 +245,19 @@ const deliverSmsOutboxMessage = async (messageLogId: string) => {
   try {
     const settings = await getEnabledSmsSettings();
     const apiKey = decryptSmsCredential(settings.encryptedApiKey!, getCredentialSecret());
+    const missingVariables = stored.variablesValues === null
+      ? getMissingSmsTemplateVariables(stored.variablesTemplate, stored.payloadSnapshot)
+      : [];
+    if (missingVariables.length) {
+      throw new Error(`SMS template values are missing from event data: ${missingVariables.join(', ')}.`);
+    }
     const result = await sendDltSms({
       baseUrl: settings.baseUrl,
       apiKey,
       senderId: settings.senderId!,
       messageId: stored.messageId,
       numbers: messageLog.recipientPhone,
-      variablesValues: renderSmsVariables(stored.variablesTemplate, stored.payloadSnapshot),
+      variablesValues: stored.variablesValues ?? renderSmsVariables(stored.variablesTemplate, stored.payloadSnapshot),
       smsDetails: settings.smsDetails === '1' ? '1' : '0',
     });
     await prisma.$transaction([
@@ -401,7 +420,7 @@ export const sendSmsTestMessage = async ({ messageId, variablesValues, actorUser
       recipientType: 'TEST',
       recipientPhone,
       payloadSnapshot: { messageId: messageId.trim(), variablesValues: variablesValues || '' },
-      outbox: { create: { payload: { messageId: messageId.trim(), variablesTemplate: variablesValues || '', payloadSnapshot: {} } } },
+      outbox: { create: { payload: { messageId: messageId.trim(), variablesValues: variablesValues || '', payloadSnapshot: {} } } },
     },
   });
   return deliverSmsOutboxMessage(messageLog.id);

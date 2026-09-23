@@ -30,15 +30,4 @@ export const evaluateSmsAutomation = ({
   return { shouldQueue: true, recipientPhone: normalizedPhone };
 };
 
-export const renderSmsVariables = (template: string | null | undefined, payload: Record<string, unknown>) => {
-  if (!template?.trim()) return '';
-  return template.split('|').map((part) => {
-    const key = part.trim();
-    if (!key) return '';
-    const value = payload[key];
-    if (value === undefined || value === null) return key;
-    if (Array.isArray(value)) return value.join(', ');
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  }).join('|');
-};
+export { renderSmsVariables } from './templatePolicy';

@@ -38,6 +38,7 @@ type SmsRule = {
   enabled: boolean;
   messageId: string | null;
   variablesTemplate: string | null;
+  variableOptions?: string[];
 };
 
 type SmsLog = {
@@ -187,7 +188,15 @@ function RuleCard({
         </div>
       </div>
 
-      <p className="mt-3 text-xs leading-relaxed text-gray-500">{variableHelp}</p>
+      <div className="mt-3 space-y-1 text-xs leading-relaxed text-gray-500">
+        <p>{variableHelp}</p>
+        {rule.variableOptions?.length ? (
+          <p>
+            Allowed event values:{' '}
+            <span className="font-mono text-gray-700">{rule.variableOptions.join(' | ')}</span>
+          </p>
+        ) : null}
+      </div>
     </section>
   );
 }

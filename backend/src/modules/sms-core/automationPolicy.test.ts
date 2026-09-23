@@ -17,9 +17,10 @@ test('requires an enabled integration, event rule, message id, and recipient', (
 
 test('renders pipe-separated variable keys from event payloads', () => {
   assert.equal(normalizeSmsRecipientPhone('+91 98765 43210'), '9876543210');
-  assert.equal(renderSmsVariables('customerName|listingTitle|Approved', {
+  assert.equal(renderSmsVariables('customerName|listingTitle|status', {
     customerName: 'Rahul',
     listingTitle: 'JCB 3DX',
+    status: 'Approved',
   }), 'Rahul|JCB 3DX|Approved');
 });
 
