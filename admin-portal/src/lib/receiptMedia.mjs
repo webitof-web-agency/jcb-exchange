@@ -68,9 +68,17 @@ export const getReceiptDocumentUrl = (value) => {
 
 export const getReceiptThumbnailUrl = (value) => {
   const driveFileId = getDriveFileId(value);
-  return driveFileId
-    ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w2000`
-    : null;
+  if (!driveFileId) return null;
+  
+  const apiUrl = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL 
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '') 
+    : '';
+    
+  if (apiUrl) {
+    return `${apiUrl}/api/documents/upload/public/listing-media/drive/${encodeURIComponent(driveFileId)}`;
+  }
+  
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w2000`;
 };
 
 export const shouldMaskDriveViewerControls = (value) => Boolean(getDriveFileId(value));

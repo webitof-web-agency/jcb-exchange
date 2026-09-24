@@ -31,7 +31,6 @@ import {
   buildPublicBrandingFileUrl,
   PublicBrandingPurpose,
 } from '../utils/publicBrandingUpload';
-import { parseSingleByteRange } from '../utils/httpRange';
 
 const savePublicBrandingImageLocally = async (
   req: Request,
@@ -307,7 +306,11 @@ export const uploadListingPaymentReceipt = async (req: Request, res: Response, n
   }
 };
 
-export const uploadPublicListingMedia = async (req: Request, res: Response, next: NextFunction) => {
+type ListingMediaDriveUploader = typeof uploadFileToDrive;
+
+export const createUploadPublicListingMedia = (
+  uploadToDrive: ListingMediaDriveUploader = uploadFileToDrive,
+) => async (req: Request, res: Response, next: NextFunction) => {
   const file = getUploadedFile(req);
 
   try {
@@ -317,15 +320,22 @@ export const uploadPublicListingMedia = async (req: Request, res: Response, next
 
     await enforceStoredFileSizePolicy(file, 'listing-media');
 
+    const fileName = buildPublicBrandingFileName(
+      'listing-media',
+      file.originalname,
+      randomUUID(),
+      file.mimetype,
+    );
+    const { viewLink } = await uploadToDrive(file.buffer, file.mimetype, fileName);
 
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'listing-media'));
-
+    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileName));
   } catch (error) {
     await cleanupFile(file?.path);
     next(error);
   }
 };
+
+export const uploadPublicListingMedia = createUploadPublicListingMedia();
 
 export const uploadPublicFinanceSupportImage = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -480,16 +490,12 @@ export const getPublicDriveMedia = async (req: Request, res: Response, next: Nex
     }
 
     const range = typeof req.headers.range === 'string' ? req.headers.range : undefined;
-    const { stream, headers } = await streamDriveMediaWithHeaders(fileId, range);
+    const { stream, headers, totalSize, byteRange } = await streamDriveMediaWithHeaders(fileId, range);
     const contentType = String(headers['content-type'] || 'application/octet-stream');
     const contentLength = headers['content-length'];
     const contentRange = headers['content-range'];
-    const totalSize = Number(contentLength);
-    const byteRange = range && Number.isSafeInteger(totalSize)
-      ? parseSingleByteRange(range, totalSize)
-      : null;
 
-    if (range && Number.isSafeInteger(totalSize) && !byteRange) {
+    if (range && totalSize !== null && !byteRange) {
       stream.destroy();
       res.setHeader('Content-Range', `bytes */${totalSize}`);
       return res.status(416).end();

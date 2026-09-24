@@ -1,5 +1,5 @@
 import { cache } from 'react';
-import { getDriveMediaProxyPath } from '@/lib/publicUploadUrl.mjs';
+import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -111,27 +111,7 @@ export type MachineListingDetail = {
 };
 
 export const getAbsoluteMediaUrl = (url?: string | null) => {
-  const normalizedUrl = url?.trim();
-  if (!normalizedUrl || (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(normalizedUrl) && !/^\/?(?:api\/)?uploads\/public\//i.test(normalizedUrl))) return '';
-
-  const driveMediaProxyPath = getDriveMediaProxyPath(normalizedUrl);
-  if (driveMediaProxyPath) {
-    return `${API_ORIGIN}${driveMediaProxyPath}`;
-  }
-
-  if (/^https?:\/\//i.test(normalizedUrl)) {
-    try {
-      if (/^\/uploads(?:\/|$)/i.test(new URL(normalizedUrl).pathname) && !/^\/uploads\/public\//i.test(new URL(normalizedUrl).pathname)) {
-        return '';
-      }
-    } catch {
-      return '';
-    }
-
-    return normalizedUrl;
-  }
-
-  return `${API_ORIGIN}${normalizedUrl.startsWith('/') ? '' : '/'}${normalizedUrl}`;
+  return resolveAbsoluteMediaUrl(url, API_ORIGIN);
 };
 
 export const getMachineListing = cache(async (id: string): Promise<MachineListingDetail | null> => {

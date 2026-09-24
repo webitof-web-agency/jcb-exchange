@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
+import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -36,9 +37,7 @@ export const isLegacyLocalUploadUrl = (url?: string | null) => {
 export const getAbsoluteMediaUrl = (url?: string | null) => {
   const normalizedUrl = normalizePublicUploadUrl(url);
   if (!normalizedUrl || isLegacyLocalUploadUrl(normalizedUrl)) return '';
-  if (/^https?:\/\//i.test(normalizedUrl)) return normalizedUrl;
-  // Convert server-local /uploads/public/ paths to full API origin URL
-  return `${API_ORIGIN}${normalizedUrl.startsWith('/') ? '' : '/'}${normalizedUrl}`;
+  return resolveAbsoluteMediaUrl(normalizedUrl, API_ORIGIN);
 };
 
 /**

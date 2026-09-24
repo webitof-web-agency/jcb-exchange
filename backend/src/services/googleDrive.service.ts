@@ -2,8 +2,13 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { getAppSettings } from '../utils/appSettings';
 import { extractDriveFileIdFromSecureUrl } from '../utils/secureDocumentUrl';
+import { getYearMonthFolderNames } from '../utils/driveFolderOrganization';
+import { parseSingleByteRange } from '../utils/httpRange';
+import { limitReadableToByteRange } from '../utils/mediaRangeStream';
 
 const REDIRECT_URI = 'https://developers.google.com/oauthplayground';
+const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+type DriveClient = ReturnType<typeof google.drive>;
 
 export type DriveFileAccess = 'public' | 'private';
 
@@ -19,6 +24,71 @@ const getDriveClient = async () => {
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 
   return google.drive({ version: 'v3', auth: oauth2Client });
+};
+
+const escapeDriveQueryValue = (value: string) => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+const findOrCreateChildFolder = async (
+  drive: DriveClient,
+  name: string,
+  parentFolderId: string,
+): Promise<string> => {
+  const response = await drive.files.list({
+    q: `name = '${escapeDriveQueryValue(name)}' and '${escapeDriveQueryValue(parentFolderId)}' in parents and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
+    pageSize: 1,
+    orderBy: 'createdTime',
+    fields: 'files(id,name,mimeType,trashed,capabilities(canAddChildren))',
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true,
+  });
+
+  const existingFolder = response.data.files?.find((folder) => folder.id);
+  if (existingFolder?.id) {
+    if (existingFolder.mimeType && existingFolder.mimeType !== DRIVE_FOLDER_MIME_TYPE) {
+      throw new Error(`Google Drive folder "${name}" is invalid.`);
+    }
+
+    if (existingFolder.trashed || existingFolder.capabilities?.canAddChildren === false) {
+      throw new Error(`Google Drive folder "${name}" is not writable.`);
+    }
+
+    return existingFolder.id;
+  }
+
+  const createdFolder = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: DRIVE_FOLDER_MIME_TYPE,
+      parents: [parentFolderId],
+    },
+    fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+    supportsAllDrives: true,
+  });
+
+  const createdFolderId = createdFolder.data.id;
+  if (!createdFolderId) {
+    throw new Error(`Google Drive did not return an id for the "${name}" folder.`);
+  }
+
+  if (
+    (createdFolder.data.mimeType && createdFolder.data.mimeType !== DRIVE_FOLDER_MIME_TYPE) ||
+    createdFolder.data.trashed ||
+    createdFolder.data.capabilities?.canAddChildren === false
+  ) {
+    throw new Error(`Google Drive created an invalid or unwritable "${name}" folder.`);
+  }
+
+  return createdFolderId;
+};
+
+export const resolveYearMonthUploadFolder = async (
+  drive: DriveClient,
+  rootFolderId: string,
+  uploadDate: Date = new Date(),
+): Promise<string> => {
+  const { year, month } = getYearMonthFolderNames(uploadDate);
+  const yearFolderId = await findOrCreateChildFolder(drive, year, rootFolderId);
+  return findOrCreateChildFolder(drive, month, yearFolderId);
 };
 
 export const uploadFileToDrive = async (
@@ -37,6 +107,7 @@ export const uploadFileToDrive = async (
     };
     
     const targetFolderId = folderId?.trim() || settings.googleDrive.backupFolderId?.trim();
+    let uploadFolderId: string | undefined;
     if (targetFolderId) {
       const targetFolder = await drive.files.get({
         fileId: targetFolderId,
@@ -45,14 +116,15 @@ export const uploadFileToDrive = async (
       });
 
       if (
-        targetFolder.data.mimeType !== 'application/vnd.google-apps.folder' ||
+        targetFolder.data.mimeType !== DRIVE_FOLDER_MIME_TYPE ||
         targetFolder.data.trashed ||
         targetFolder.data.capabilities?.canAddChildren !== true
       ) {
         throw new Error('Configured Google Drive upload folder is invalid or is not writable.');
       }
 
-      fileMetadata.parents = [targetFolderId];
+      uploadFolderId = await resolveYearMonthUploadFolder(drive, targetFolderId);
+      fileMetadata.parents = [uploadFolderId];
     }
 
     const media = {
@@ -72,8 +144,8 @@ export const uploadFileToDrive = async (
       throw new Error('Google Drive did not return a file id.');
     }
 
-    if (targetFolderId && !response.data.parents?.includes(targetFolderId)) {
-      throw new Error('Google Drive uploaded the file without the configured parent folder.');
+    if (uploadFolderId && !response.data.parents?.includes(uploadFolderId)) {
+      throw new Error('Google Drive uploaded the file without the expected year/month parent folder.');
     }
     
     // Public assets are intentionally link-readable so they can be rendered by
@@ -139,18 +211,33 @@ export const streamDriveMediaWithHeaders = async (fileId: string, range?: string
   });
   const response = await drive.files.get(
     { fileId, alt: 'media', supportsAllDrives: true },
-    {
-      responseType: 'stream',
-      ...(range ? { headers: { Range: range } } : {}),
-    },
+    { responseType: 'stream' },
   );
 
+  const totalSize = Number(metadataResponse.data.size);
+  const knownTotalSize = Number.isSafeInteger(totalSize) && totalSize > 0 ? totalSize : null;
+  const byteRange = range && knownTotalSize !== null
+    ? parseSingleByteRange(range, knownTotalSize)
+    : null;
+  const stream = byteRange
+    ? limitReadableToByteRange(response.data as unknown as Readable, byteRange.start, byteRange.end)
+    : response.data as unknown as Readable;
+
   return {
-    stream: response.data as unknown as Readable,
+    stream,
+    totalSize: knownTotalSize,
+    byteRange,
     headers: {
       ...response.headers,
       ...(metadataResponse.data.mimeType ? { 'content-type': metadataResponse.data.mimeType } : {}),
-      ...(metadataResponse.data.size ? { 'content-length': metadataResponse.data.size } : {}),
+      ...(byteRange
+        ? {
+            'content-length': String(byteRange.length),
+            'content-range': `bytes ${byteRange.start}-${byteRange.end}/${byteRange.total}`,
+          }
+        : metadataResponse.data.size
+          ? { 'content-length': metadataResponse.data.size }
+          : {}),
     },
   };
 };

@@ -309,33 +309,122 @@ export default function CustomerPrimePaymentsPage() {
         )}
       </div>
 
-      {/* Receipt Modal */}
+      {/* Premium Receipt Modal */}
       {selectedReceipt && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(12px)' }}
           onClick={() => setSelectedReceipt(null)}
         >
           <div 
-            className="relative w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200"
+            className="relative w-full sm:max-w-2xl flex flex-col overflow-hidden bg-white"
+            style={{
+              borderRadius: '24px 24px 24px 24px',
+              height: '92vh',
+              maxHeight: '760px',
+              boxShadow: '0 32px 80px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
+              animation: 'receiptSlideUp 0.28s cubic-bezier(0.34,1.56,0.64,1) both',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4">
-              <h3 className="text-lg font-bold text-gray-900">Payment Receipt</h3>
-              <button 
+            <style>{`
+              @keyframes receiptSlideUp {
+                from { opacity: 0; transform: translateY(32px) scale(0.97); }
+                to   { opacity: 1; transform: translateY(0)    scale(1);    }
+              }
+            `}</style>
+
+            {/* ── Header ── */}
+            <div
+              className="flex shrink-0 items-center justify-between px-5 py-4"
+              style={{
+                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-9 w-9 items-center justify-center rounded-xl"
+                  style={{ background: 'rgba(255,255,255,0.12)' }}
+                >
+                  {/* Receipt icon */}
+                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-[15px] font-bold text-white leading-tight">Payment Receipt</h3>
+                  <p className="text-[11px] text-white/50 mt-0.5">Transaction verification document</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Open in new tab */}
+                <a
+                  href={selectedReceipt}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+                  title="Open in new tab"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                {/* Close */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedReceipt(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Close"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* ── Thin accent bar ── */}
+            <div style={{ height: 3, background: 'linear-gradient(90deg, #FFC107, #FF6B35, #9C27B0)' }} />
+
+            {/* ── Receipt body ── */}
+            <div
+              className="flex-1 overflow-hidden flex items-center justify-center p-4"
+              style={{ background: 'linear-gradient(160deg, #f8fafc 0%, #f1f5f9 100%)' }}
+            >
+              <div
+                className="w-full h-full flex items-center justify-center rounded-2xl overflow-hidden"
+                style={{
+                  background: 'white',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+                  border: '1px solid rgba(0,0,0,0.06)',
+                }}
+              >
+                <ReceiptMedia
+                  url={selectedReceipt}
+                  alt="Payment Receipt"
+                  className="rounded-2xl"
+                  onClose={() => setSelectedReceipt(null)}
+                />
+              </div>
+            </div>
+
+            {/* ── Footer ── */}
+            <div
+              className="flex shrink-0 items-center justify-between px-5 py-3 border-t"
+              style={{ borderColor: 'rgba(0,0,0,0.06)', background: '#fafafa' }}
+            >
+              <p className="text-[11px] text-gray-400 select-none">
+                📎 Tap outside or press Esc to close
+              </p>
+              <button
                 type="button"
                 onClick={() => setSelectedReceipt(null)}
-                className="rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+                className="rounded-lg px-4 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 transition hover:bg-gray-100"
               >
-                <XCircle className="h-6 w-6" />
+                Close
               </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-50/50 min-h-[300px]">
-              <ReceiptMedia
-                url={selectedReceipt}
-                alt="Payment Receipt"
-                className="max-h-full max-w-full rounded-lg shadow-sm border border-gray-200"
-                onClose={() => setSelectedReceipt(null)}
-              />
             </div>
           </div>
         </div>
