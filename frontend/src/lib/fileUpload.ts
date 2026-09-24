@@ -1,7 +1,7 @@
 'use client';
 
 import api from '@/lib/api';
-import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
+import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
@@ -74,6 +74,14 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
     return '';
   }
 
+  const driveMediaProxyPath = getDriveMediaProxyPath(trimmed);
+  if (driveMediaProxyPath) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');
+    const origin = apiUrl.replace(/\/api\/?$/, '');
+    return `${origin}${driveMediaProxyPath}`;
+  }
+
   if (/^https?:\/\//i.test(trimmed)) {
     try {
       const parsed = new URL(trimmed);
@@ -96,7 +104,7 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
     return `${origin}${trimmed}`;
   }
 
-  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(trimmed)) {
+  if (/^\/?(?:api\/)?uploads(?:\/|$)/i.test(trimmed) && !/^\/?(?:api\/)?uploads\/public\//i.test(trimmed)) {
     return '';
   }
 

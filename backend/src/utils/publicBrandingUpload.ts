@@ -4,6 +4,7 @@ export type PublicBrandingPurpose =
   | 'finance-support'
   | 'hero-image'
   | 'inspection-section'
+  | 'listing-media'
   | 'site-logo'
   | 'site-dark-logo'
   | 'site-favicon'
@@ -13,6 +14,9 @@ const extensionByMimeType: Record<string, string> = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
   'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
 };
 
 export const buildPublicBrandingFileName = (

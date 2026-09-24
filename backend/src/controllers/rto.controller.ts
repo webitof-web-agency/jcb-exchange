@@ -61,7 +61,9 @@ const buildPayload = (body: any, existing?: any) => {
   };
 };
 
-const validate = (payload: ReturnType<typeof buildPayload>) => {
+export { buildPayload };
+
+export const validateRtoPayload = (payload: ReturnType<typeof buildPayload>) => {
   const required: Array<[string, string]> = [
     ['customerName', 'Customer Name'], ['vehicleNumber', 'Vehicle Number'], ['vehicleType', 'Vehicle Type'],
     ['vehicleModel', 'Vehicle Model'], ['sellerName', 'Seller Name'], ['purchaserName', 'Purchaser Name'],
@@ -80,9 +82,6 @@ const validate = (payload: ReturnType<typeof buildPayload>) => {
   const missingValidity = validityChecks.find(([, status, date]) => !status || ((status === RtoValidityStatus.VALID || status === RtoValidityStatus.EXPIRED) && !date));
   if (missingValidity) return `${missingValidity[0]} status and date are required.`;
   if (!payload.hsrpStatus) return 'HSRP Valid is required.';
-  if (Number(payload.rtoExpenses) <= 0) return 'RTO Expenses is required.';
-  if (Number(payload.vehicleMaintenanceCost) <= 0) return 'Vehicle Maintenance Cost is required.';
-  if (!payload.hourRunning || Number(payload.hourRunning) <= 0) return 'Hours Running is required.';
   if (Number(payload.rtoExpensesAdvance) > Number(payload.rtoExpenses)) return 'RTO Expenses Advance cannot exceed RTO Expenses.';
   return null;
 };
@@ -110,7 +109,7 @@ export const listRtoRecords = async (req: Request, res: Response, next: NextFunc
 export const createRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const payload = buildPayload(req.body);
-    const error = validate(payload);
+    const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
     const record = await prisma.vehicleRtoRecord.create({ data: payload });
     res.status(201).json({ success: true, record: serialize(record) });
@@ -123,7 +122,7 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
     const existing = await prisma.vehicleRtoRecord.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ success: false, error: 'RTO record not found.' });
     const payload = buildPayload(req.body, existing);
-    const error = validate(payload);
+    const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
     const record = await prisma.vehicleRtoRecord.update({ where: { id }, data: payload });
     res.json({ success: true, record: serialize(record) });

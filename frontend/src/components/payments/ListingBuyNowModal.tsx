@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import axios from 'axios';
 import {
   AlertCircle,
@@ -23,10 +22,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
-import { getAbsoluteMediaUrl } from '@/lib/api';
 import { uploadListingPaymentReceiptToServer } from '@/lib/fileUpload';
 import { useToastStore } from '@/store/toastStore';
 import BrandLoader from '@/components/ui/BrandLoader';
+import ReceiptPreviewModal from '@/components/payments/ReceiptPreviewModal';
 
 type ListingPaymentSettings = {
   rtgs: {
@@ -1064,63 +1063,6 @@ function CopyableBankField({
       >
         {value || 'Not configured'}
       </p>
-    </div>
-  );
-}
-
-function ReceiptPreviewModal({
-  fileUrl,
-  onClose,
-}: {
-  fileUrl: string;
-  onClose: () => void;
-}) {
-  const absoluteUrl = getAbsoluteMediaUrl(fileUrl);
-  const isPdf = /\.pdf$/i.test(fileUrl) || fileUrl.includes('/pdf');
-
-  return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
-        
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3 sm:px-5">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-emerald-600" />
-            <h3 className="text-xs font-bold text-gray-900 sm:text-sm">Payment Receipt Preview</h3>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200/70 text-gray-600 transition hover:bg-gray-300 hover:text-gray-900"
-            aria-label="Close preview"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Modal Body / Viewer */}
-        <div className="flex flex-1 items-center justify-center overflow-auto bg-gray-900/90 p-4 min-h-[300px]">
-          {isPdf ? (
-            <iframe
-              src={absoluteUrl}
-              className="h-[72vh] w-full rounded-lg border-0 bg-white shadow-md"
-              title="Payment Receipt PDF Preview"
-            />
-          ) : (
-            <div className="relative flex h-[72vh] w-full items-center justify-center overflow-auto">
-              <Image
-                src={absoluteUrl}
-                alt="Payment Receipt Document"
-                fill
-                unoptimized
-                sizes="100vw"
-                className="rounded-lg object-contain shadow-2xl ring-1 ring-white/10"
-              />
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

@@ -52,9 +52,21 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'http',
+        hostname: 'localhost',
+        port: '5002',
+        pathname: '/api/documents/upload/public/**',
+      },
+      {
+        protocol: 'http',
         hostname: '127.0.0.1',
         port: '5002',
         pathname: '/uploads/public/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: '5002',
+        pathname: '/api/documents/upload/public/**',
       },
       {
         protocol: 'https',

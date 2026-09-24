@@ -167,3 +167,6 @@ whatsappfront/
 # This service is required by whatsapp.controller.ts and must ship in clean deployments.
 !backend/src/services/whatsappCampaign.service.ts
 !backend/src/services/whatsappCampaign.service.test.ts
+
+# Local Codex handoff/audit documents; do not commit or push.
+/docs/

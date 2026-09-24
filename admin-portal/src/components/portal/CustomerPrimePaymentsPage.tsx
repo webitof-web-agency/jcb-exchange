@@ -6,6 +6,7 @@ import { CheckCircle2, ChevronDown, Search, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
+import ReceiptMedia from '@/components/shared/ReceiptMedia';
 
 type PrimePaymentRecord = {
   id: string;
@@ -329,11 +330,11 @@ export default function CustomerPrimePaymentsPage() {
               </button>
             </div>
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-50/50 min-h-[300px]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={selectedReceipt} 
-                alt="Payment Receipt" 
-                className="max-h-full max-w-full rounded-lg object-contain shadow-sm border border-gray-200"
+              <ReceiptMedia
+                url={selectedReceipt}
+                alt="Payment Receipt"
+                className="max-h-full max-w-full rounded-lg shadow-sm border border-gray-200"
+                onClose={() => setSelectedReceipt(null)}
               />
             </div>
           </div>

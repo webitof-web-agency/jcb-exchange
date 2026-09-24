@@ -3,12 +3,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { X, CheckCircle2, ShieldCheck, Clock, Smartphone, Receipt, QrCode, Loader2, Upload } from 'lucide-react';
+import { X, QrCode, Loader2, Upload } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
-import { getAbsoluteFileUrl, uploadCustomerPrimeReceiptToServer } from '@/lib/fileUpload';
+import { uploadCustomerPrimeReceiptToServer } from '@/lib/fileUpload';
 import { useAuthStore, type AuthUser } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import ReceiptPreviewModal from '@/components/payments/ReceiptPreviewModal';
 
 type CustomerPrimeFeature = 'CALL' | 'WHATSAPP' | 'SELL_LISTING' | 'BUY_NOW';
 
@@ -98,6 +99,7 @@ export default function CustomerPrimePaymentModal({
   const [access, setAccess] = useState<PrimeAccessPayload | null>(null);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string | null>(null);
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || !user?.id) {
@@ -349,15 +351,14 @@ export default function CustomerPrimePaymentModal({
                     {new Date(access.pendingSubscription.submittedAt).toLocaleString('en-IN')}
                   </div>
                   {access.pendingSubscription.receiptUrl ? (
-                    <a
-                      href={getAbsoluteFileUrl(access.pendingSubscription.receiptUrl)}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => setViewingReceiptUrl(access.pendingSubscription?.receiptUrl || null)}
                       className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
                     >
-                      <Receipt className="h-4 w-4" />
+                      <QrCode className="h-4 w-4" />
                       {t('primeModal.viewUploadedReceipt')}
-                    </a>
+                    </button>
                   ) : null}
                 </div>
               </div>
@@ -433,6 +434,14 @@ export default function CustomerPrimePaymentModal({
           </div>
         </div>
       </div>
+
+      {viewingReceiptUrl ? (
+        <ReceiptPreviewModal
+          fileUrl={viewingReceiptUrl}
+          onClose={() => setViewingReceiptUrl(null)}
+          title={t('primeModal.viewUploadedReceipt')}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AxiosError } from 'axios';
@@ -23,6 +22,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { generateAdminListingPaymentDetailPath } from '@/lib/routePaths';
 import { useAuthStore } from '@/store/authStore';
+import ReceiptMedia from '@/components/shared/ReceiptMedia';
 
 function CustomSelectPill({
   value,
@@ -764,13 +764,11 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
               {previewPayment.receiptUrl ? (
                 <div className="relative flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-gray-200 bg-gray-900 p-2">
                   <div className="relative h-[50vh] w-full overflow-hidden rounded-lg bg-white">
-                    <Image
-                      src={getAbsoluteFileUrl(previewPayment.receiptUrl)}
+                    <ReceiptMedia
+                      url={getAbsoluteFileUrl(previewPayment.receiptUrl)}
                       alt="Payment Receipt"
-                      fill
-                      unoptimized
-                      sizes="(max-width: 768px) 100vw, 800px"
-                      className="object-contain"
+                      className="h-full w-full"
+                      onClose={() => setPreviewPayment(null)}
                     />
                   </div>
                   <button
@@ -847,13 +845,11 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
             <div className="bg-gray-950 p-4 sm:p-6">
               <div className="relative h-[72vh] w-full overflow-hidden rounded-2xl bg-white">
                 {receiptViewerPayment.receiptUrl ? (
-                  <Image
-                    src={getAbsoluteFileUrl(receiptViewerPayment.receiptUrl)}
+                  <ReceiptMedia
+                    url={getAbsoluteFileUrl(receiptViewerPayment.receiptUrl)}
                     alt="Payment Receipt"
-                    fill
-                    unoptimized
-                    sizes="100vw"
-                    className="object-contain"
+                    className="h-full w-full"
+                    onClose={() => setReceiptViewerPayment(null)}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-gray-500">

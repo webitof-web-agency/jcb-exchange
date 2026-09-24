@@ -61,11 +61,12 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-const getVideoMimeType = (url?: string | null) => {
+const getVideoMimeType = (url?: string | null): string | undefined => {
   const normalizedUrl = String(url || '').toLowerCase();
   if (normalizedUrl.endsWith('.webm')) return 'video/webm';
   if (normalizedUrl.endsWith('.mov')) return 'video/quicktime';
-  return 'video/mp4';
+  if (normalizedUrl.endsWith('.mp4')) return 'video/mp4';
+  return undefined;
 };
 
 const getLocationLabel = (listing: MachineListingDetail, fallback: string) => {
@@ -646,6 +647,22 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm backdrop-blur-sm">
                     <Camera size={14} />
                     <span>{activeImageIndex + 1} / {images.length}</span>
+                  </div>
+                )}
+
+                {(images[activeImageIndex]?.createdAt || listing.createdAt) && (
+                  <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-sm backdrop-blur-sm" title="Upload Date">
+                    <Clock size={14} />
+                    <span suppressHydrationWarning>
+                      {new Date(images[activeImageIndex]?.createdAt || listing.createdAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </span>
                   </div>
                 )}
               </div>

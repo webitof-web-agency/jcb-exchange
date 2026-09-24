@@ -126,6 +126,35 @@ export const streamFileFromDrive = async (fileId: string): Promise<Readable> => 
   return response.data as unknown as Readable;
 };
 
+export const streamDriveMediaWithHeaders = async (fileId: string, range?: string) => {
+  if (!fileId) {
+    throw new Error('A Drive file id is required.');
+  }
+
+  const drive = await getDriveClient();
+  const metadataResponse = await drive.files.get({
+    fileId,
+    fields: 'mimeType,size',
+    supportsAllDrives: true,
+  });
+  const response = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    {
+      responseType: 'stream',
+      ...(range ? { headers: { Range: range } } : {}),
+    },
+  );
+
+  return {
+    stream: response.data as unknown as Readable,
+    headers: {
+      ...response.headers,
+      ...(metadataResponse.data.mimeType ? { 'content-type': metadataResponse.data.mimeType } : {}),
+      ...(metadataResponse.data.size ? { 'content-length': metadataResponse.data.size } : {}),
+    },
+  };
+};
+
 export const makeDriveFilePrivate = async (fileId: string): Promise<void> => {
   if (!fileId) return;
 

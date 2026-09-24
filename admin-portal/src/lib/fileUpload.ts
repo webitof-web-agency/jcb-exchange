@@ -67,7 +67,7 @@ const normalizeUploadPath = (fileUrl: string) => {
   }
 
   const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return normalizedPath.replace(/^\/api(?=\/uploads\/)/i, '');
+  return normalizedPath.replace(/^\/api(?=\/uploads\/(?!public\/))/i, '');
 };
 
 const DRIVE_HOSTS = new Set(['drive.google.com', 'drive.usercontent.google.com', 'docs.google.com']);
@@ -103,7 +103,16 @@ const getDriveFileId = (value: string) => {
 
 const normalizeDriveMediaUrl = (value: string) => {
   const driveFileId = getDriveFileId(value);
-  return driveFileId ? `https://drive.google.com/uc?id=${encodeURIComponent(driveFileId)}` : null;
+  if (!driveFileId) return null;
+
+  const encodedDriveFileId = encodeURIComponent(driveFileId);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || '';
+  
+  if (apiUrl) {
+    return `${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`;
+  }
+  
+  return `https://drive.google.com/uc?id=${encodedDriveFileId}`;
 };
 
 export const getMediaSourceCandidates = (fileUrl?: string | null) => {
@@ -115,7 +124,11 @@ export const getMediaSourceCandidates = (fileUrl?: string | null) => {
   }
 
   const encodedDriveFileId = encodeURIComponent(driveFileId);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || '';
   return [
+    ...(apiUrl
+      ? [`${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`]
+      : []),
     `https://drive.google.com/uc?id=${encodedDriveFileId}`,
     `https://drive.usercontent.google.com/download?id=${encodedDriveFileId}&export=view`,
     `https://drive.google.com/thumbnail?id=${encodedDriveFileId}&sz=w2000`,

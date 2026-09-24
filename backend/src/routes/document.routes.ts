@@ -8,6 +8,7 @@ import {
   uploadPublicSiteLogoImage,
   uploadPublicSiteDarkLogoImage,
   getSecureDocument,
+  getPublicDriveMedia,
   uploadPublicListingMedia,
   uploadPublicDocument,
   uploadCustomerPrimeReceipt,
@@ -89,6 +90,7 @@ router.post(
   publicListingMediaUpload.single('file'),
   uploadPublicListingMedia
 );
+router.get('/upload/public/listing-media/drive/:fileId', getPublicDriveMedia);
 router.get('/secure/:filename', requireAuth, requirePortalOperator, getSecureDocument);
 
 export default router;

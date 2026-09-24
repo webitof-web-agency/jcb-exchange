@@ -80,29 +80,23 @@ export default function RtoRecordDetailView() {
         return;
       }
 
-      const saved = localStorage.getItem('jcb_rto_records');
-      if (saved) {
+      const getCachedRecord = () => {
         try {
+          const saved = localStorage.getItem('jcb_rto_records');
+          if (!saved) return null;
           const parsed = JSON.parse(saved) as RtoRecord[];
-          const found = parsed.find((item) => String(item.id) === id);
-          if (found) {
-            if (isMounted) {
-              setRecord(found);
-              setLoading(false);
-            }
-            return;
-          }
+          return parsed.find((item) => String(item.id) === id) || null;
         } catch {
-          // Ignore invalid local cache and fall back to the API.
+          return null;
         }
-      }
+      };
 
       try {
         const response = await api.get('/recruitment/admin/rto-records');
         const found = ((response.data?.records || []) as RtoRecord[]).find((item) => String(item.id) === id);
         if (isMounted) setRecord(found || null);
       } catch {
-        if (isMounted) setRecord(null);
+        if (isMounted) setRecord(getCachedRecord());
       } finally {
         if (isMounted) setLoading(false);
       }

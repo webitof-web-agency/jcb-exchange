@@ -1344,6 +1344,22 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     </div>
                   )}
 
+                  {listing?.createdAt && (
+                    <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-sm backdrop-blur-sm pointer-events-none z-10" title="Upload Date">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span suppressHydrationWarning>
+                        {new Date(listing.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        })}
+                      </span>
+                    </div>
+                  )}
+
                   {activeMedia?.isFeatured ? (
                     <div className="absolute left-4 top-4 rounded-full bg-[#FFC107] px-3 py-1 text-xs font-bold text-black shadow z-10">{t('listingDetails.coverImage')}</div>
                   ) : null}

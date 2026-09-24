@@ -7,14 +7,14 @@ const withPWA = withPWAInit({
   register: true,
 });
 
-const getRemotePattern = (value: string) => {
+const getRemotePattern = (value: string, pathname = '/uploads/public/**') => {
   try {
     const parsed = new URL(value);
     return {
       protocol: parsed.protocol.replace(':', '') as 'http' | 'https',
       hostname: parsed.hostname,
       ...(parsed.port ? { port: parsed.port } : {}),
-      pathname: '/uploads/public/**',
+      pathname,
     };
   } catch {
     return null;
@@ -27,6 +27,7 @@ const isLocalHostname = (hostname: string) =>
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 const apiOrigin = apiUrl.replace(/\/api\/?$/, '');
 const dynamicPattern = getRemotePattern(apiOrigin);
+const dynamicDriveMediaPattern = getRemotePattern(apiOrigin, '/api/documents/upload/public/**');
 const shouldAllowLocalIpImages =
   process.env.NODE_ENV !== 'production' &&
   (!!dynamicPattern?.hostname && isLocalHostname(dynamicPattern.hostname));
@@ -45,9 +46,21 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'http',
+        hostname: 'localhost',
+        port: '5002',
+        pathname: '/api/documents/upload/public/**',
+      },
+      {
+        protocol: 'http',
         hostname: '127.0.0.1',
         port: '5002',
         pathname: '/uploads/public/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: '5002',
+        pathname: '/api/documents/upload/public/**',
       },
       {
         protocol: 'https',
@@ -125,6 +138,7 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       ...(dynamicPattern ? [dynamicPattern] : []),
+      ...(dynamicDriveMediaPattern ? [dynamicDriveMediaPattern] : []),
     ],
   },
 };

@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -18,6 +17,7 @@ import {
 import { toast } from 'react-toastify';
 import api, { API_ORIGIN } from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
+import ReceiptMedia from '@/components/shared/ReceiptMedia';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useHeaderStore } from '@/store/headerStore';
 import { resolveListingPaymentId } from '@/lib/routeResolvers';
@@ -443,13 +443,10 @@ export default function ListingPaymentDetailPage({
 
           {payment.receiptUrl ? (
             <div className="relative h-48 sm:h-56 w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-950">
-              <Image
-                src={getAbsoluteFileUrl(payment.receiptUrl)}
+              <ReceiptMedia
+                url={getAbsoluteFileUrl(payment.receiptUrl)}
                 alt={`${payment.listing?.title || 'Listing'} receipt`}
-                fill
-                unoptimized
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="object-contain p-1.5"
+                className="h-full w-full p-1.5"
               />
             </div>
           ) : (
@@ -524,13 +521,11 @@ export default function ListingPaymentDetailPage({
             </div>
             <div className="bg-gray-950 p-4 sm:p-6">
               <div className="relative h-[72vh] w-full overflow-hidden rounded-2xl bg-white">
-                <Image
-                  src={getAbsoluteFileUrl(payment.receiptUrl)}
+                <ReceiptMedia
+                  url={getAbsoluteFileUrl(payment.receiptUrl)}
                   alt={`${payment.listing?.title || 'Listing'} receipt`}
-                  fill
-                  unoptimized
-                  sizes="100vw"
-                  className="object-contain"
+                  className="h-full w-full"
+                  onClose={() => setReceiptViewerOpen(false)}
                 />
               </div>
             </div>

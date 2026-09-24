@@ -35,6 +35,7 @@ import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
+import ReceiptMedia from '@/components/shared/ReceiptMedia';
 import { formatPortalCurrency, formatPortalDateTime, formatPortalLabel } from '@/lib/partnerPortal';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
@@ -1336,13 +1337,11 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
           </div>
           <div className="bg-gray-950 p-4">
             <div className="relative h-[70vh] min-h-[320px] w-full overflow-hidden rounded-xl bg-white">
-              <Image
-                src={selectedReceiptUrl}
+              <ReceiptMedia
+                url={selectedReceiptUrl}
                 alt={`${lead.listing.title} payment receipt`}
-                fill
-                unoptimized
-                sizes="100vw"
-                className="object-contain"
+                className="h-full w-full"
+                onClose={() => setSelectedReceiptPayment(null)}
               />
             </div>
           </div>

@@ -18,7 +18,12 @@ import {
   publicUploadDir,
   secureUploadDir,
 } from '../utils/documentUpload';
-import { uploadFileToDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
+import {
+  uploadFileToDrive,
+  extractDriveFileId,
+  streamFileFromDrive,
+  streamDriveMediaWithHeaders,
+} from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
 import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
 import {
@@ -26,6 +31,7 @@ import {
   buildPublicBrandingFileUrl,
   PublicBrandingPurpose,
 } from '../utils/publicBrandingUpload';
+import { parseSingleByteRange } from '../utils/httpRange';
 
 const savePublicBrandingImageLocally = async (
   req: Request,
@@ -217,7 +223,7 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    
+
     // Upload to Google Drive (Resumes/Secure)
     const { fileId } = await uploadFileToDrive(
       file.buffer,
@@ -227,7 +233,7 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
       { access: 'private' },
     );
     const secureUrl = getSecureDocumentUrl(fileId);
-    
+
     res.status(201).json(buildUploadResponse(req, file, 'secure', secureUrl, file.originalname));
   } catch (error) {
     next(error);
@@ -243,10 +249,10 @@ export const uploadPublicDocument = async (req: Request, res: Response, next: Ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    
+
     // Upload to Google Drive (Public)
     const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    
+
     res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
   } catch (error) {
     next(error);
@@ -311,19 +317,9 @@ export const uploadPublicListingMedia = async (req: Request, res: Response, next
 
     await enforceStoredFileSizePolicy(file, 'listing-media');
 
-    const settings = await getAppSettings();
-    const listingMediaFolderId = settings.googleDrive.backupFolderId?.trim();
-    if (!listingMediaFolderId) {
-      throw new Error('Google Drive listing media folder is not configured.');
-    }
 
-    const { fileId, viewLink } = await uploadFileToDrive(
-      file.buffer,
-      file.mimetype,
-      file.originalname,
-      listingMediaFolderId,
-    );
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+
+    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'listing-media'));
 
   } catch (error) {
     await cleanupFile(file?.path);
@@ -471,6 +467,49 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
     const absolutePath = path.join(secureUploadDir, fileName);
     await fs.access(absolutePath);
     res.sendFile(absolutePath);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPublicDriveMedia = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fileId = decodeURIComponent(String(req.params.fileId || '')).trim();
+    if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) {
+      return res.status(400).json({ error: 'File ID is required.' });
+    }
+
+    const range = typeof req.headers.range === 'string' ? req.headers.range : undefined;
+    const { stream, headers } = await streamDriveMediaWithHeaders(fileId, range);
+    const contentType = String(headers['content-type'] || 'application/octet-stream');
+    const contentLength = headers['content-length'];
+    const contentRange = headers['content-range'];
+    const totalSize = Number(contentLength);
+    const byteRange = range && Number.isSafeInteger(totalSize)
+      ? parseSingleByteRange(range, totalSize)
+      : null;
+
+    if (range && Number.isSafeInteger(totalSize) && !byteRange) {
+      stream.destroy();
+      res.setHeader('Content-Range', `bytes */${totalSize}`);
+      return res.status(416).end();
+    }
+
+    res.status(byteRange || contentRange ? 206 : 200);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (byteRange) {
+      res.setHeader('Content-Length', String(byteRange.length));
+      res.setHeader('Content-Range', `bytes ${byteRange.start}-${byteRange.end}/${byteRange.total}`);
+    } else if (contentLength) {
+      res.setHeader('Content-Length', String(contentLength));
+    }
+    if (contentRange && !byteRange) res.setHeader('Content-Range', String(contentRange));
+
+    stream.on('error', next);
+    stream.pipe(res);
   } catch (error) {
     next(error);
   }
