@@ -14,6 +14,9 @@ import { downloadTableFile } from '@/lib/tabularExport';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
+import { FileUploadField } from '@/components/upload/FileUploadField';
+import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
+import { createEmptySellAccountDocuments, normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
@@ -23,6 +26,17 @@ const formatDate = (dateStr: string) => {
   }
   return dateStr;
 };
+
+export type SellAccountDocument = Pick<UploadedFileResult, 'access' | 'fileName' | 'originalName' | 'mimeType' | 'size' | 'fileUrl' | 'absoluteUrl'>;
+export type SellAccountDocuments = {
+  purchaseAadhaarCard: SellAccountDocument | null;
+  purchasePanCard: SellAccountDocument | null;
+  purchaseGstCertificate: SellAccountDocument | null;
+  sellAadhaarCard: SellAccountDocument | null;
+  sellPanCard: SellAccountDocument | null;
+  sellGstCertificate: SellAccountDocument | null;
+};
+type SellAccountDocumentKey = keyof SellAccountDocuments;
 
 export interface SellAccountRecord {
   id: string;
@@ -44,6 +58,9 @@ export interface SellAccountRecord {
   netProfit: number;
   dealStatus: 'OPEN' | 'IN_PROGRESS' | 'CLOSE';
   noteSheet: string;
+  purchaseDeedNumber?: string;
+  sellDeedNumber?: string;
+  documents?: SellAccountDocuments;
   createdAt: string;
 }
 
@@ -119,6 +136,18 @@ const INITIAL_MOCK_RECORDS: SellAccountRecord[] = [
 type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealStatus: SellAccountRecord['dealStatus'] | 'COMPLETED' | 'CANCELLED' | 'PENDING' };
 type ExportFormat = 'csv' | 'xls';
 
+const normalizeSellAccountRecord = (record: StoredSellAccountRecord): SellAccountRecord => ({
+  ...record,
+  purchaseDeedNumber: record.purchaseDeedNumber || '',
+  sellDeedNumber: record.sellDeedNumber || '',
+  documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
+  dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CANCELLED'
+    ? 'CLOSE'
+    : record.dealStatus === 'PENDING'
+      ? 'OPEN'
+      : record.dealStatus,
+});
+
 const DEAL_STATUS_CONFIG: Record<SellAccountRecord['dealStatus'], { label: string; bg: string; text: string; border: string; icon: ComponentType<{ className?: string }> }> = {
   OPEN: { label: 'Open', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', icon: AlertTriangle },
   IN_PROGRESS: { label: 'In Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
@@ -128,11 +157,6 @@ const DEAL_STATUS_CONFIG: Record<SellAccountRecord['dealStatus'], { label: strin
 // Input Sanitization Helpers
 const sanitizePhoneNumber = (val: string) => val.replace(/\D/g, '').slice(0, 10);
 const sanitizeVehicleNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15);
-const sanitizeNumberInput = (val: string | number) => {
-  const num = typeof val === 'number' ? val : parseFloat(val.toString().replace(/[^0-9.]/g, ''));
-  return isNaN(num) || num < 0 ? 0 : num;
-};
-
 const initialFormState: Omit<SellAccountRecord, 'id' | 'createdAt'> = {
   ownerName: '',
   ownerNumber: '',
@@ -152,7 +176,46 @@ const initialFormState: Omit<SellAccountRecord, 'id' | 'createdAt'> = {
   netProfit: 0,
   dealStatus: 'OPEN',
   noteSheet: '',
+  purchaseDeedNumber: '',
+  sellDeedNumber: '',
+  documents: createEmptySellAccountDocuments() as SellAccountDocuments,
 };
+
+// Raw string state for number inputs so user can type 0
+const initialRawInputs = {
+  purchaseAmount: '',
+  sellAmount: '',
+  expenses: '',
+  balanceAmount: '',
+};
+
+function SellAccountPdfField({
+  label,
+  document,
+  onUploaded,
+  onUploadStateChange,
+}: {
+  label: string;
+  document?: SellAccountDocument | null;
+  onUploaded: (file: UploadedFileResult) => void;
+  onUploadStateChange: (uploading: boolean) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold text-gray-700">{label}</label>
+      <FileUploadField
+        accept="application/pdf,.pdf"
+        pdfOnly
+        visibility="secure"
+        uploadedFileName={document?.originalName}
+        uploadedFileUrl={document?.fileUrl}
+        onUploaded={onUploaded}
+        onUploadStateChange={onUploadStateChange}
+        helperText="PDF only, maximum 3MB."
+      />
+    </div>
+  );
+}
 
 export default function SellAccountsPage() {
   const [records, setRecords] = useState<SellAccountRecord[]>([]);
@@ -208,25 +271,22 @@ export default function SellAccountsPage() {
   // Form State
   const [formData, setFormData] = useState(initialFormState);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  // Raw string inputs for number fields — allows typing "0" without it being swallowed
+  const [rawInputs, setRawInputs] = useState(initialRawInputs);
+  const [pendingReplacedDocuments, setPendingReplacedDocuments] = useState<Partial<Record<SellAccountDocumentKey, SellAccountDocument[]>>>({});
+  const [activeDocumentUploads, setActiveDocumentUploads] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const loadRecords = () => {
-      let nextRecords = INITIAL_MOCK_RECORDS;
+      let nextRecords = INITIAL_MOCK_RECORDS.map((record) => normalizeSellAccountRecord(record as StoredSellAccountRecord));
       const saved = localStorage.getItem('jcb_sell_accounts_records');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          nextRecords = (parsed as StoredSellAccountRecord[]).map((record) => ({
-            ...record,
-            dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CANCELLED'
-              ? 'CLOSE'
-              : record.dealStatus === 'PENDING'
-                ? 'OPEN'
-                : record.dealStatus,
-          }));
+          nextRecords = (parsed as StoredSellAccountRecord[]).map(normalizeSellAccountRecord);
         } catch {
-          nextRecords = INITIAL_MOCK_RECORDS;
+          nextRecords = INITIAL_MOCK_RECORDS.map((record) => normalizeSellAccountRecord(record as StoredSellAccountRecord));
         }
       }
 
@@ -258,7 +318,10 @@ export default function SellAccountsPage() {
     } else if (field === 'vehicleNumber') {
       value = sanitizeVehicleNumber(String(rawValue));
     } else if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses' || field === 'balanceAmount') {
-      value = sanitizeNumberInput(rawValue);
+      // Keep raw string so user can type "0" — parse numeric for formData
+      const rawStr = String(rawValue).replace(/[^0-9.]/g, '');
+      setRawInputs((prev) => ({ ...prev, [field]: rawStr }));
+      value = rawStr === '' || rawStr === '.' ? 0 : parseFloat(rawStr) || 0;
     }
 
     setFormData((prev) => {
@@ -278,6 +341,61 @@ export default function SellAccountsPage() {
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: '' }));
     }
+  };
+
+  // Sync rawInputs when form is populated (create/edit open)
+  const syncRawInputs = (data: typeof initialFormState) => {
+    setRawInputs({
+      purchaseAmount: String(data.purchaseAmount),
+      sellAmount: String(data.sellAmount),
+      expenses: String(data.expenses),
+      balanceAmount: String(data.balanceAmount),
+    });
+  };
+
+  const getDocuments = (data: Pick<SellAccountRecord, 'documents'>): SellAccountDocuments =>
+    normalizeSellAccountDocuments(data) as SellAccountDocuments;
+
+  const deleteDocumentFiles = async (documents: Array<SellAccountDocument | null | undefined>) => {
+    const uniqueUrls = [...new Set(documents.map((document) => document?.fileUrl).filter(Boolean))] as string[];
+    await Promise.allSettled(uniqueUrls.map((fileUrl) => deleteSecureFileFromServer(fileUrl)));
+  };
+
+  const handleDocumentUploaded = (key: SellAccountDocumentKey, file: UploadedFileResult) => {
+    const previous = getDocuments(formData)[key];
+    if (editingRecord && previous && previous.fileUrl !== file.fileUrl) {
+      setPendingReplacedDocuments((current) => ({
+        ...current,
+        [key]: [...(current[key] || []), previous],
+      }));
+    }
+
+    setFormData((current) => ({
+      ...current,
+      documents: {
+        ...getDocuments(current),
+        [key]: file,
+      },
+    }));
+  };
+
+  const handleDocumentUploadStateChange = (uploading: boolean) => {
+    setActiveDocumentUploads((count) => Math.max(0, count + (uploading ? 1 : -1)));
+  };
+
+  const closeForm = async () => {
+    const currentDocuments = getDocuments(formData);
+    const originalDocuments = editingRecord ? getDocuments(editingRecord) : null;
+    const uploadedDuringSession = Object.values(currentDocuments).filter((document) => {
+      if (!document) return false;
+      const original = originalDocuments && Object.values(originalDocuments).find((item) => item?.fileUrl === document.fileUrl);
+      return !original;
+    });
+
+    await deleteDocumentFiles(uploadedDuringSession);
+    setIsCreateModalOpen(false);
+    setEditingRecord(null);
+    setPendingReplacedDocuments({});
   };
 
   // Validate Form
@@ -308,6 +426,9 @@ export default function SellAccountsPage() {
     if (!canCreateSellAccounts) return;
     setFormData(initialFormState);
     setFormErrors({});
+    syncRawInputs(initialFormState);
+    setPendingReplacedDocuments({});
+    setActiveDocumentUploads(0);
     setIsCreateModalOpen(true);
   };
 
@@ -315,7 +436,7 @@ export default function SellAccountsPage() {
   const openEditModal = (record: SellAccountRecord) => {
     if (!canUpdateSellAccounts) return;
     setEditingRecord(record);
-    setFormData({
+    const fd = {
       ownerName: record.ownerName,
       ownerNumber: record.ownerNumber,
       vehicleNumber: record.vehicleNumber,
@@ -334,14 +455,25 @@ export default function SellAccountsPage() {
       netProfit: record.netProfit,
       dealStatus: record.dealStatus,
       noteSheet: record.noteSheet,
-    });
+      purchaseDeedNumber: record.purchaseDeedNumber || '',
+      sellDeedNumber: record.sellDeedNumber || '',
+      documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
+    };
+    setFormData(fd);
+    syncRawInputs(fd);
     setFormErrors({});
+    setPendingReplacedDocuments({});
+    setActiveDocumentUploads(0);
   };
 
   // Submit Create
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateSellAccounts) return;
+    if (activeDocumentUploads > 0) {
+      setFormErrors((current) => ({ ...current, documents: 'Please wait until all PDF uploads finish.' }));
+      return;
+    }
     if (!validateForm()) return;
 
     const newRecord: SellAccountRecord = {
@@ -355,9 +487,13 @@ export default function SellAccountsPage() {
   };
 
   // Submit Edit
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canUpdateSellAccounts) return;
+    if (activeDocumentUploads > 0) {
+      setFormErrors((current) => ({ ...current, documents: 'Please wait until all PDF uploads finish.' }));
+      return;
+    }
     if (!editingRecord || !validateForm()) return;
 
     const updatedRecords = records.map((rec) =>
@@ -371,12 +507,16 @@ export default function SellAccountsPage() {
 
     setRecords(updatedRecords);
     setEditingRecord(null);
+    await deleteDocumentFiles(Object.values(pendingReplacedDocuments).flat());
+    setPendingReplacedDocuments({});
   };
 
   // Confirm Delete
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!canDeleteSellAccounts) return;
     if (!deletingRecordId) return;
+    const recordToDelete = records.find((record) => record.id === deletingRecordId);
+    await deleteDocumentFiles(recordToDelete ? Object.values(getDocuments(recordToDelete)) : []);
     setRecords(records.filter((r) => r.id !== deletingRecordId));
     setDeletingRecordId(null);
   };
@@ -773,7 +913,7 @@ export default function SellAccountsPage() {
                 </h3>
               </div>
               <button
-                onClick={() => { setIsCreateModalOpen(false); setEditingRecord(null); }}
+                onClick={() => void closeForm()}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -951,10 +1091,10 @@ export default function SellAccountsPage() {
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Purchase Amount (₹) *</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={formData.purchaseAmount || ''}
-                      required
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={rawInputs.purchaseAmount}
                       onChange={(e) => handleInputChange('purchaseAmount', e.target.value)}
                       className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${formErrors.purchaseAmount ? 'border-rose-500' : 'border-gray-200'}`}
                     />
@@ -964,10 +1104,10 @@ export default function SellAccountsPage() {
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Sell Amount (₹) *</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={formData.sellAmount || ''}
-                      required
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={rawInputs.sellAmount}
                       onChange={(e) => handleInputChange('sellAmount', e.target.value)}
                       className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${formErrors.sellAmount ? 'border-rose-500' : 'border-gray-200'}`}
                     />
@@ -975,24 +1115,24 @@ export default function SellAccountsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Expenses (₹) *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Expenses (₹)</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={formData.expenses || ''}
-                      required
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={rawInputs.expenses}
                       onChange={(e) => handleInputChange('expenses', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Balance Amount (₹) *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Balance Amount (₹)</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={formData.balanceAmount || ''}
-                      required
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={rawInputs.balanceAmount}
                       onChange={(e) => handleInputChange('balanceAmount', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                     />
@@ -1012,10 +1152,44 @@ export default function SellAccountsPage() {
                 </div>
               </div>
 
-              {/* SECTION 4: TRANSFER DETAILS, STATUS & REMARK */}
+              {/* SECTION 4: PURCHASE DEED */}
+              <div className="space-y-4">
+                <h4 className="flex items-center gap-2 border-b border-amber-100 pb-1 text-xs font-bold uppercase tracking-wider text-amber-700">
+                  <FileText className="h-4 w-4" /> 4. Purchase Deed
+                </h4>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
+                    <input type="text" placeholder="e.g. PURCHASE/2026/001" value={formData.purchaseDeedNumber || ''} onChange={(e) => handleInputChange('purchaseDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
+                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
+                  </div>
+                  <SellAccountPdfField label="Aadhaar Card PDF" document={formData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <SellAccountPdfField label="PAN Card PDF" document={formData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <SellAccountPdfField label="GST Certificate PDF" document={formData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                </div>
+              </div>
+
+              {/* SECTION 5: SELL DEED */}
+              <div className="space-y-4">
+                <h4 className="flex items-center gap-2 border-b border-amber-100 pb-1 text-xs font-bold uppercase tracking-wider text-amber-700">
+                  <FileText className="h-4 w-4" /> 5. Sell Deed
+                </h4>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
+                    <input type="text" placeholder="e.g. SELL/2026/001" value={formData.sellDeedNumber || ''} onChange={(e) => handleInputChange('sellDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
+                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
+                  </div>
+                  <SellAccountPdfField label="Aadhaar Card PDF" document={formData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <SellAccountPdfField label="PAN Card PDF" document={formData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <SellAccountPdfField label="GST Certificate PDF" document={formData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                </div>
+              </div>
+
+              {/* SECTION 6: TRANSFER DETAILS, STATUS & REMARK */}
               <div className="space-y-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> 4. Status, Transfer Details & Remark
+                  <FileText className="w-4 h-4" /> 6. Status, Transfer Details & Remark
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1068,16 +1242,17 @@ export default function SellAccountsPage() {
               <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => { setIsCreateModalOpen(false); setEditingRecord(null); }}
+                  onClick={() => void closeForm()}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  disabled={activeDocumentUploads > 0}
                   className="px-6 py-2 text-sm font-bold text-gray-900 bg-[#FFC107] hover:bg-amber-400 rounded-xl transition-all shadow-md shadow-amber-500/20"
                 >
-                  {editingRecord ? 'Save Changes' : 'Create Record'}
+                  {activeDocumentUploads > 0 ? 'Uploading PDFs...' : editingRecord ? 'Save Changes' : 'Create Record'}
                 </button>
               </div>
             </form>

@@ -8,6 +8,7 @@ import {
   uploadPublicSiteLogoImage,
   uploadPublicSiteDarkLogoImage,
   getSecureDocument,
+  deleteSecureDocument,
   getPublicDriveMedia,
   uploadPublicListingMedia,
   uploadPublicDocument,
@@ -15,7 +16,7 @@ import {
   uploadListingPaymentReceipt,
   uploadSecureDocument,
 } from '../controllers/document.controller';
-import { requireAuth, requirePortalOperator } from '../middlewares/auth.middleware';
+import { requireAdmin, requireAuth, requirePortalOperator } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -92,5 +93,6 @@ router.post(
 );
 router.get('/upload/public/listing-media/drive/:fileId', getPublicDriveMedia);
 router.get('/secure/:filename', requireAuth, requirePortalOperator, getSecureDocument);
+router.delete('/secure/:filename', requireAuth, requireAdmin, deleteSecureDocument);
 
 export default router;

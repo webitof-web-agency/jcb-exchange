@@ -3,10 +3,13 @@
 import { ComponentType, useEffect, useState } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import {
-  ArrowLeft, CheckCircle2, Clock, X, Car, User, Phone,
+  ArrowLeft, CheckCircle2, Clock, X, Car, User, Phone, Pencil,
   FileText, DollarSign, AlertTriangle, ShieldCheck, Building2
 } from 'lucide-react';
 import api from '@/lib/api';
+import { getAccountUpdatePermissions } from '@/lib/accountsPermissions';
+import { hasAnyPermission } from '@/lib/permissionUtils';
+import { useAuthStore } from '@/store/authStore';
 
 type RtoRecord = {
   id: string;
@@ -68,6 +71,8 @@ export default function RtoRecordDetailView() {
     : pathname.startsWith('/admin')
       ? '/admin/accounts/rto-work-status'
       : '/superadmin/accounts/rto-work-status';
+  const currentUser = useAuthStore((state) => state.user);
+  const canUpdateRto = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || hasAnyPermission(currentUser?.permissions || [], getAccountUpdatePermissions('rto-work-status'));
 
   const [record, setRecord] = useState<RtoRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,9 +156,12 @@ export default function RtoRecordDetailView() {
             <p className="text-sm font-medium text-gray-500 mt-0.5">Vehicle: <span className="font-bold text-gray-900">{record.vehicleNumber}</span></p>
           </div>
         </div>
-        <div className={`flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 font-semibold shrink-0 ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}>
-          <StatusIcon className="h-4 w-4" />
-          {statusInfo.label}
+        <div className="flex items-center gap-3">
+          {canUpdateRto ? <button type="button" onClick={() => router.push(`${listPath}?edit=${encodeURIComponent(record.id)}`)} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-amber-600"><Pencil className="h-4 w-4" />Edit Record</button> : null}
+          <div className={`flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 font-semibold shrink-0 ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}>
+            <StatusIcon className="h-4 w-4" />
+            {statusInfo.label}
+          </div>
         </div>
       </div>
 

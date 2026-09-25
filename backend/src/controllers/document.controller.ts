@@ -19,6 +19,7 @@ import {
   secureUploadDir,
 } from '../utils/documentUpload';
 import {
+  deleteFileFromDrive,
   uploadFileToDrive,
   extractDriveFileId,
   streamFileFromDrive,
@@ -172,7 +173,11 @@ const isSecureDocumentOwner = async (userId: string, fileUrl: string) => {
   return false;
 };
 
-const secureDocumentExists = async (fileUrl: string) => {
+const secureDocumentExists = async (fileUrl: string, allowUnregisteredDriveFile = false) => {
+  if (allowUnregisteredDriveFile && extractDriveFileId(fileUrl)) {
+    return true;
+  }
+
   const fileUrlCandidates = getDocumentUrlCandidates(fileUrl);
   const [kycDocument, candidateDocument] = await Promise.all([
     prismaAny.kycDocument.findFirst({
@@ -213,7 +218,11 @@ const buildUploadResponse = (
   };
 };
 
-export const uploadSecureDocument = async (req: Request, res: Response, next: NextFunction) => {
+type SecureDocumentDriveUploader = typeof uploadFileToDrive;
+
+export const createUploadSecureDocument = (
+  uploadToDrive: SecureDocumentDriveUploader = uploadFileToDrive,
+) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = getUploadedFile(req);
 
@@ -224,7 +233,7 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
     await enforceStoredFileSizePolicy(file, 'document');
 
     // Upload to Google Drive (Resumes/Secure)
-    const { fileId } = await uploadFileToDrive(
+    const { fileId } = await uploadToDrive(
       file.buffer,
       file.mimetype,
       file.originalname,
@@ -238,6 +247,8 @@ export const uploadSecureDocument = async (req: Request, res: Response, next: Ne
     next(error);
   }
 };
+
+export const uploadSecureDocument = createUploadSecureDocument();
 
 export const uploadPublicDocument = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -449,13 +460,13 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
     const fileUrl = fileName.startsWith('drive-')
       ? getSecureDocumentUrlFromToken(fileName)
       : getSecureDocumentUrl(fileName);
-    const fileExistsInRecords = await secureDocumentExists(fileUrl);
+    const isStaffOperator = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const fileExistsInRecords = await secureDocumentExists(fileUrl, isStaffOperator);
 
     if (!fileExistsInRecords) {
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    const isStaffOperator = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
     const hasAccess = isStaffOperator || (await isSecureDocumentOwner(req.user.id, fileUrl));
 
     if (!hasAccess) {
@@ -479,6 +490,35 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
     res.sendFile(absolutePath);
   } catch (error) {
     next(error);
+  }
+};
+
+export const deleteSecureDocument = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fileName = getSafeFileName(String(req.params.filename || ''));
+    if (!fileName || fileName === '.' || fileName === '..') {
+      return res.status(400).json({ error: 'Invalid filename.' });
+    }
+
+    const fileUrl = fileName.startsWith('drive-')
+      ? getSecureDocumentUrlFromToken(fileName)
+      : getSecureDocumentUrl(fileName);
+    const driveFileId = extractDriveFileId(fileUrl);
+
+    if (driveFileId) {
+      await deleteFileFromDrive(driveFileId);
+    } else {
+      const secureRoot = path.resolve(secureUploadDir);
+      const absolutePath = path.resolve(secureRoot, fileName);
+      if (!absolutePath.startsWith(`${secureRoot}${path.sep}`)) {
+        return res.status(400).json({ error: 'Invalid filename.' });
+      }
+      await cleanupFile(absolutePath);
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
   }
 };
 

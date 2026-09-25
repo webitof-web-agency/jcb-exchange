@@ -2,6 +2,7 @@
 
 import api from '@/lib/api';
 import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
+import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
@@ -150,6 +151,18 @@ export const getUploadValidationError = (file: File) => {
   }
 
   if (isPdf && file.size > MAX_PDF_INPUT_SIZE) {
+    return `PDF size must be ${bytesToReadableLimit(MAX_PDF_INPUT_SIZE)} or smaller.`;
+  }
+
+  return null;
+};
+
+export const getPdfUploadValidationError = (file: File) => {
+  if (file.type !== 'application/pdf') {
+    return 'Only PDF files are allowed.';
+  }
+
+  if (file.size > MAX_PDF_INPUT_SIZE) {
     return `PDF size must be ${bytesToReadableLimit(MAX_PDF_INPUT_SIZE)} or smaller.`;
   }
 
@@ -656,7 +669,17 @@ export const uploadFileToServer = async ({
     },
   });
 
-  return response.data.file;
+  const uploadedFile = response.data.file;
+  if (!uploadedFile?.fileUrl) {
+    throw new Error('Upload completed but the server did not return document metadata. Please try again.');
+  }
+
+  return uploadedFile;
+};
+
+export const deleteSecureFileFromServer = async (fileUrl: string) => {
+  const securePath = normalizeSecureDocumentPath(fileUrl);
+  await api.delete(securePath);
 };
 
 export const uploadListingMediaToServer = async ({

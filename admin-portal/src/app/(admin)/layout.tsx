@@ -10,6 +10,7 @@ import PortalBrand from '@/components/layout/PortalBrand';
 import BrandLoader from '@/components/ui/BrandLoader';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useIdleAutoLogout } from '@/hooks/useIdleAutoLogout';
 import { accountsNavItems } from '@/lib/accountsPermissions';
 import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
@@ -206,6 +207,19 @@ export default function AdminLayout({
       hydrateAuth();
     }
   }, [hasHydrated, hydrateAuth]);
+
+  // ─── Idle auto-logout (configurable via NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES) ───
+  const idleTimeoutMs = (Number(process.env.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES) || 15) * 60 * 1000;
+  useIdleAutoLogout({
+    timeoutMs: idleTimeoutMs,
+    warningMs: 60 * 1000,   // always warn 1 min before logout
+    enabled: isAuthenticated,
+    onLogout: () => {
+      logout();
+      router.replace('/login');
+    },
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!hasHydrated) {

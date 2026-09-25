@@ -105,7 +105,7 @@ export const uploadFileToDrive = async (
     const fileMetadata: any = {
       name: filename,
     };
-    
+
     const targetFolderId = folderId?.trim() || settings.googleDrive.backupFolderId?.trim();
     let uploadFolderId: string | undefined;
     if (targetFolderId) {
@@ -147,7 +147,7 @@ export const uploadFileToDrive = async (
     if (uploadFolderId && !response.data.parents?.includes(uploadFolderId)) {
       throw new Error('Google Drive uploaded the file without the expected year/month parent folder.');
     }
-    
+
     // Public assets are intentionally link-readable so they can be rendered by
     // browsers without exposing the backend. Secure documents never receive an
     // anyone permission and are served through an authorized backend stream.
@@ -170,6 +170,132 @@ export const uploadFileToDrive = async (
     console.error('Error uploading file to Google Drive:', error instanceof Error ? error.message : error);
     throw new Error(error instanceof Error ? error.message : 'Failed to upload file to Google Drive');
   }
+};
+
+/**
+ * Uploads a database backup dump file to Google Drive.
+ *
+ * Folder structure inside the configured backupFolderId:
+ *   <backupFolderId>/
+ *     backup-db/          ← auto-created if not present
+ *       2026/             ← year folder (IST), auto-created if not present
+ *         09-September/   ← month folder (IST), auto-created if not present
+ *           db_dump_2026-09-25_000000.sql.gz
+ *
+ * After upload, enforces a rolling retention of maxBackups (default 30).
+ * If total backup files inside backup-db exceed the limit, oldest files
+ * are deleted one-by-one until the count is within the limit.
+ *
+ * Backup files are always private (no public Drive permission).
+ */
+export const uploadDatabaseBackupToDrive = async (
+  buffer: Buffer,
+  mimeType: string,
+  filename: string,
+  rootFolderId?: string,
+  maxBackups: number = 30,
+): Promise<{ fileId: string; viewLink: string; deletedCount: number }> => {
+  const drive = await getDriveClient();
+  const settings = await getAppSettings();
+  const targetFolderId = rootFolderId?.trim() || settings.googleDrive.backupFolderId?.trim();
+
+  if (!targetFolderId) {
+    throw new Error(
+      'Google Drive backup folder ID is not configured. Set it in Admin → Settings → Google Drive.',
+    );
+  }
+
+  // Step 1: Verify the root backup folder is valid and writable
+  const rootFolder = await drive.files.get({
+    fileId: targetFolderId,
+    fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+    supportsAllDrives: true,
+  });
+
+  if (
+    rootFolder.data.mimeType !== DRIVE_FOLDER_MIME_TYPE ||
+    rootFolder.data.trashed ||
+    rootFolder.data.capabilities?.canAddChildren !== true
+  ) {
+    throw new Error('Configured Google Drive backup root folder is invalid or not writable.');
+  }
+
+  // Step 2: Find or create 'backup-db' sub-folder inside root
+  const backupDbFolderId = await findOrCreateChildFolder(drive, 'backup-db', targetFolderId);
+
+  // Step 3: Find or create Year > Month folders inside backup-db (IST timezone)
+  const yearMonthFolderId = await resolveYearMonthUploadFolder(drive, backupDbFolderId, new Date());
+
+  // Step 4: Upload the dump file (always private — no public permission)
+  const uploadResponse = await drive.files.create({
+    requestBody: {
+      name: filename,
+      parents: [yearMonthFolderId],
+    },
+    media: {
+      mimeType,
+      body: Readable.from(buffer),
+    },
+    fields: 'id, webViewLink',
+    supportsAllDrives: true,
+  });
+
+  const fileId = uploadResponse.data.id;
+  if (!fileId) {
+    throw new Error('Google Drive did not return a file id for the database backup.');
+  }
+
+  console.log(`[backup] Uploaded DB dump: ${filename} → Drive fileId=${fileId}`);
+
+  // Step 5: Rolling 30-backup retention inside 'backup-db' folder tree
+  // List all non-folder files anywhere inside backup-db (across year/month sub-folders)
+  let deletedCount = 0;
+  try {
+    // Drive search: files whose ancestor is backupDbFolderId, ordered oldest first
+    const listResponse = await drive.files.list({
+      q: `'${escapeDriveQueryValue(backupDbFolderId)}' in ancestors and mimeType != '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
+      orderBy: 'createdTime asc',
+      pageSize: 100,
+      fields: 'files(id, name, createdTime)',
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    const allBackupFiles = listResponse.data.files || [];
+    const excessCount = allBackupFiles.length - maxBackups;
+
+    if (excessCount > 0) {
+      // Delete the oldest files to bring total back to maxBackups
+      const filesToDelete = allBackupFiles.slice(0, excessCount);
+      for (const fileToDelete of filesToDelete) {
+        if (fileToDelete.id) {
+          try {
+            await drive.files.delete({ fileId: fileToDelete.id, supportsAllDrives: true });
+            console.log(`[backup] Retention: deleted old backup "${fileToDelete.name}" (id=${fileToDelete.id})`);
+            deletedCount++;
+          } catch (deleteError) {
+            // Log but don't abort — partial cleanup is better than full failure
+            console.error(
+              `[backup] Retention: failed to delete "${fileToDelete.name}":`,
+              deleteError instanceof Error ? deleteError.message : deleteError,
+            );
+          }
+        }
+      }
+    }
+  } catch (retentionError) {
+    // Retention failure must NOT fail the backup itself
+    console.error(
+      '[backup] Retention cleanup encountered an error (backup still succeeded):',
+      retentionError instanceof Error ? retentionError.message : retentionError,
+    );
+  }
+
+  return {
+    fileId,
+    viewLink: `https://drive.google.com/file/d/${fileId}/view`,
+    deletedCount,
+  };
 };
 
 export const deleteFileFromDrive = async (fileId: string): Promise<void> => {
@@ -232,9 +358,9 @@ export const streamDriveMediaWithHeaders = async (fileId: string, range?: string
       ...(metadataResponse.data.mimeType ? { 'content-type': metadataResponse.data.mimeType } : {}),
       ...(byteRange
         ? {
-            'content-length': String(byteRange.length),
-            'content-range': `bytes ${byteRange.start}-${byteRange.end}/${byteRange.total}`,
-          }
+          'content-length': String(byteRange.length),
+          'content-range': `bytes ${byteRange.start}-${byteRange.end}/${byteRange.total}`,
+        }
         : metadataResponse.data.size
           ? { 'content-length': metadataResponse.data.size }
           : {}),

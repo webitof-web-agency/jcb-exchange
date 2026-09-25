@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from 'react';
 import {
+  getPdfUploadValidationError,
   getUploadValidationError,
   type UploadVisibility,
   type UploadedFileResult,
@@ -14,8 +15,10 @@ type FileUploadFieldProps = {
   helperText?: string;
   labelIdle?: string;
   onUploaded: (file: UploadedFileResult) => void;
+  onUploadStateChange?: (uploading: boolean) => void;
   uploadedFileName?: string | null;
   uploadedFileUrl?: string | null;
+  pdfOnly?: boolean;
   visibility: UploadVisibility;
 };
 
@@ -25,6 +28,9 @@ export function FileUploadField({
   helperText,
   labelIdle = 'No file uploaded yet.',
   onUploaded,
+  onUploadStateChange,
+  pdfOnly = false,
+  uploadedFileName,
   uploadedFileUrl,
   visibility,
 }: FileUploadFieldProps) {
@@ -42,7 +48,7 @@ export function FileUploadField({
 
     setError('');
 
-    const validationError = getUploadValidationError(file);
+    const validationError = pdfOnly ? getPdfUploadValidationError(file) : getUploadValidationError(file);
     if (validationError) {
       setError(validationError);
       if (inputRef.current) {
@@ -52,6 +58,7 @@ export function FileUploadField({
     }
 
     setUploading(true);
+    onUploadStateChange?.(true);
 
     try {
       const uploadedFile = await uploadFileToServer({ file, visibility });
@@ -65,6 +72,7 @@ export function FileUploadField({
         inputRef.current.value = '';
       }
       setUploading(false);
+      onUploadStateChange?.(false);
     }
   };
 
@@ -94,6 +102,10 @@ export function FileUploadField({
         <p id={errorId} className="text-xs font-medium text-red-600">
           {error}
         </p>
+      ) : null}
+
+      {uploadedFileUrl ? (
+        <p className="text-xs font-medium text-emerald-700">Uploaded: {uploadedFileName || 'PDF document'}</p>
       ) : null}
 
       {!uploadedFileUrl && <p className="text-xs text-gray-500">{labelIdle}</p>}

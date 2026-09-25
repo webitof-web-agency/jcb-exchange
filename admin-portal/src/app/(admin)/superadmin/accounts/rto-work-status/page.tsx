@@ -11,7 +11,7 @@ import { hasAnyPermission } from '@/lib/permissionUtils';
 import { downloadTableFile } from '@/lib/tabularExport';
 import { isAuthReady } from '@/lib/authHydration';
 import BrandLoader from '@/components/ui/BrandLoader';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { filterSelectOptions, getInitialTermsAccepted, getRtoStatusOptions, getValidityOptions, normalizeRemark, normalizeRtoStatus, normalizeValidityForEdit } from '@/lib/rtoWorkStatusForm.mjs';
 
@@ -151,6 +151,7 @@ export default function RTOWorkStatusPage() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const currentUser = useAuthStore((state) => state.user);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -301,7 +302,7 @@ export default function RTOWorkStatusPage() {
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   const openCreate = () => { if (!canCreateRto) return; setEditingId(null); setForm(emptyForm); setCities([]); setError(''); setTermsAccepted(getInitialTermsAccepted('create')); setModalOpen(true); };
-  const openEdit = async (record: RtoRecord) => {
+  const openEdit = useCallback(async (record: RtoRecord) => {
     if (!canUpdateRto) return;
     setEditingId(record.id); setForm({ ...record, rtoStatus: normalizeRtoStatus(record.rtoStatus) as Status, taxStatus: normalizeValidityForEdit(record.taxStatus) as Validity, fitnessStatus: normalizeValidityForEdit(record.fitnessStatus) as Validity, insuranceStatus: normalizeValidityForEdit(record.insuranceStatus) as Validity, pucStatus: normalizeValidityForEdit(record.pucStatus) as Validity, hsrpStatus: record.hsrpStatus === 'YES' ? 'YES' : 'NO', noteSheet: normalizeRemark(record.noteSheet) }); setError(''); setTermsAccepted(getInitialTermsAccepted('edit')); setModalOpen(true);
     const state = states.find((item) => item.name.toLowerCase() === (record.rtoAgentState || '').toLowerCase());
@@ -313,7 +314,15 @@ export default function RTOWorkStatusPage() {
         setError('Unable to load cities for this RTO agent. You can select the city again.');
       }
     }
-  };
+  }, [canUpdateRto, states]);
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId || !records.length || !states.length || modalOpen || !canUpdateRto) return;
+    const record = records.find((item) => item.id === editId);
+    if (!record) return;
+    void openEdit(record);
+    router.replace(accountBasePath, { scroll: false });
+  }, [accountBasePath, canUpdateRto, modalOpen, openEdit, records, router, searchParams, states.length]);
   const changeState = async (stateName: string) => {
     update('rtoAgentState', stateName); update('rtoAgentCity', ''); setCities([]);
     const state = states.find((item) => item.name === stateName);
@@ -344,10 +353,19 @@ export default function RTOWorkStatusPage() {
     if (missingValidity) { setError(`${missingValidity[0]} status and date are required.`); return; }
     if (!form.hirePurchaseStatus) { setError('Hire Purchase is required.'); return; }
     if (!form.hsrpStatus) { setError('HSRP Valid is required.'); return; }
+    if (!Number.isFinite(Number(form.rtoExpenses)) || Number(form.rtoExpenses) < 0) {
+      setError('RTO Expenses must be a valid non-negative number.'); return;
+    }
     if (Number(form.rtoExpensesAdvance) > Number(form.rtoExpenses)) { setError('RTO Expenses Advance cannot exceed RTO Expenses.'); return; }
     try {
       setSaving(true);
-      const response = editingId ? await api.put(`/recruitment/admin/rto-records/${editingId}`, form) : await api.post('/recruitment/admin/rto-records', form);
+      const payload = {
+        ...form,
+        rtoExpenses: Number(form.rtoExpenses),
+        rtoExpensesAdvance: Number(form.rtoExpensesAdvance),
+        vehicleMaintenanceCost: Number(form.vehicleMaintenanceCost),
+      };
+      const response = editingId ? await api.put(`/recruitment/admin/rto-records/${editingId}`, payload) : await api.post('/recruitment/admin/rto-records', payload);
       if (!response.data?.success) throw new Error(response.data?.error || 'Save failed.');
       setModalOpen(false); await loadRecords();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save RTO record.'); } finally { setSaving(false); }
@@ -409,7 +427,7 @@ export default function RTOWorkStatusPage() {
               <th className="px-5 py-4">Seller Info</th>
               <th className="px-5 py-4">Purchaser Info</th>
               <th className="px-5 py-4">RTO Agent / Office</th>
-              <th className="px-5 py-4">Financials</th>
+              <th className="px-5 py-4">Expense</th>
               <th className="px-5 py-4">RTO Status</th>
               <th className="px-5 py-4 text-right">Actions</th>
             </tr>
@@ -436,8 +454,8 @@ export default function RTOWorkStatusPage() {
                         </p>
                       ) : null}
                     </td>
-                    <td className="px-5 py-4"><p className="text-xs text-gray-500">Expense: <span className="font-medium text-gray-900">{currency(record.rtoExpenses)}</span></p><p className="mt-0.5 text-xs font-semibold text-emerald-700">Bal: {currency(record.rtoExpensesBalance)}</p></td>
-                    <td className="px-5 py-4">{statusPill(record.rtoStatus)}<p className="mt-1 text-[11px] text-gray-400">Doc: {dateValue(record.documentSendDate)}</p></td>
+                    <td className="px-5 py-4"><p className="text-xs font-medium text-gray-900">{currency(record.rtoExpenses)}</p></td>
+                    <td className="px-5 py-4">{statusPill(record.rtoStatus)}</td>
                     <td className="px-5 py-4 text-right">
                       <div className="relative flex justify-end">
                         <button
@@ -513,7 +531,8 @@ export default function RTOWorkStatusPage() {
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Vehicle Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={getValidityOptions(form[statusKey], statusKey === 'taxStatus')} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (nextStatus !== 'VALID' && nextStatus !== 'EXPIRED') update(dateKey, null); }} />{(form[statusKey] === 'VALID' || form[statusKey] === 'EXPIRED') ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid *"><StyledSelect value={form.hsrpStatus} options={(['YES', 'NO'] as HsrpStatus[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hsrpStatus', value as HsrpStatus)} /></Field><Field label="RTO Status *"><StyledSelect value={form.rtoStatus} options={getRtoStatusOptions()} onChange={(value) => update('rtoStatus', normalizeRtoStatus(value) as Status)} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Seller, Purchaser & RTO Agent</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Seller Name *"><input className={inputClass} value={form.sellerName} onChange={(e) => update('sellerName', e.target.value.toUpperCase())} /></Field><Field label="Seller Number"><input className={inputClass} inputMode="numeric" value={form.sellerNumber} onChange={(e) => update('sellerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Purcheser Name *"><input className={inputClass} value={form.purchaserName} onChange={(e) => update('purchaserName', e.target.value.toUpperCase())} /></Field><Field label="Purcheser Number"><input className={inputClass} inputMode="numeric" value={form.purchaserNumber} onChange={(e) => update('purchaserNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="RTO Office *"><input className={inputClass} value={form.rtoOffice} onChange={(e) => update('rtoOffice', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent Name *"><input className={inputClass} value={form.rtoAgentName} onChange={(e) => update('rtoAgentName', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent State *"><StyledSelect searchable value={form.rtoAgentState} placeholder="Select state" options={[{ value: '', label: 'Select state' }, ...states.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => void changeState(value)} /></Field><Field label="RTO Agent City *"><StyledSelect searchable value={form.rtoAgentCity} placeholder="Select city" disabled={!form.rtoAgentState} options={[{ value: '', label: 'Select city' }, ...cities.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('rtoAgentCity', value)} /></Field><Field label="RTO Agent Number"><input className={inputClass} inputMode="numeric" value={form.rtoAgentNumber} onChange={(e) => update('rtoAgentNumber', e.target.value.replace(/\D/g, ''))} /></Field></div></section>
-      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Remark</h3><Field label="Remark / Note"><textarea className={`${inputClass} min-h-28 resize-y`} value={form.noteSheet || ''} maxLength={5000} placeholder="Add RTO follow-up notes, document updates, or other remarks..." onChange={(e) => update('noteSheet', normalizeRemark(e.target.value))} /></Field><p className="mt-1 text-xs text-gray-500">Optional. This remark will be saved and shown on the RTO detail page.</p></section>
+      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">RTO Expense</h3><div className="grid gap-4 md:grid-cols-3"><Field label="RTO Expenses (₹) *"><input className={inputClass} type="number" min="0" step="0.01" inputMode="decimal" value={form.rtoExpenses} onChange={(e) => update('rtoExpenses', Number(e.target.value) || 0)} /></Field></div><p className="mt-2 text-xs text-gray-500">Enter the total RTO expense as a non-negative number.</p></section>
+      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Remark</h3><Field label="Remark / Note"><textarea className={`${inputClass} min-h-28 resize-y`} value={form.noteSheet || ''} maxLength={5000} placeholder="Add RTO follow-up notes, document updates, or other remarks..." onChange={(e) => update('noteSheet', e.target.value)} /></Field><p className="mt-1 text-xs text-gray-500">Optional. This remark will be saved and shown on the RTO detail page.</p></section>
       <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-4">
         <label className="flex items-start gap-3 cursor-pointer select-none">
           <input
