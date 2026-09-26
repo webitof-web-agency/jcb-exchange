@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase } from 'lucide-react';
@@ -242,15 +243,7 @@ export default function Navbar() {
   }, []);
 
   const handleToggleDropdown = () => {
-    if (window.innerWidth < 768) {
-      if (!isAuthenticated) {
-        setAuthModalOpen(true);
-      } else {
-        router.push('/notifications');
-      }
-    } else {
-      setIsDropdownOpen((current) => !current);
-    }
+    setIsDropdownOpen((current) => !current);
   };
 
   const displayName = getAuthDisplayName(user);
@@ -357,77 +350,145 @@ export default function Navbar() {
                   ) : null}
                 </button>
 
-                {isDropdownOpen ? (
-                  <div className="fixed top-[60px] right-2 left-2 sm:absolute sm:top-auto sm:right-0 sm:left-auto z-50 mt-0 sm:mt-3 sm:w-80 overflow-hidden rounded-lg border border-gray-100 bg-white text-gray-800 shadow-xl">
-                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
-                      <h3 className="text-sm font-bold text-gray-900">{t('common.notifications')}</h3>
+                {/* Desktop popover — absolute, only visible on sm+ */}
+                {isDropdownOpen && (
+                  <div className="hidden sm:flex absolute right-0 top-full z-50 mt-3 w-96 rounded-xl border border-gray-100 bg-white text-gray-800 shadow-xl flex-col overflow-hidden" style={{ maxHeight: '480px' }}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-3 rounded-t-xl flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-gray-900">{t('common.notifications')}</h3>
+                        {isAuthenticated && user?.role === 'CUSTOMER' && unreadCount > 0 && (
+                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-jcb-yellow px-1.5 text-[10px] font-extrabold text-black">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3">
-                        {notifications.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => void markAllNotificationsAsRead()}
-                            className="text-xs font-semibold text-[#9A7600] hover:text-[#7A5F00]"
-                          >
+                        {notifications.length > 0 && isAuthenticated && (
+                          <button type="button" onClick={() => void markAllNotificationsAsRead()} className="text-xs font-semibold text-[#9A7600] hover:text-[#7A5F00] transition-colors">
                             {t('common.markAllRead')}
                           </button>
-                        ) : null}
-                        <Link
-                          href={notifications[0]?.link || '/machines'}
-                          onClick={() => {
-                            if (notifications[0]) {
-                              void markNotificationAsRead(notifications[0].id);
-                            }
-                            setIsDropdownOpen(false);
-                          }}
-                          className="text-xs font-semibold text-blue-600 hover:underline"
-                        >
+                        )}
+                        <Link href="/notifications" onClick={() => setIsDropdownOpen(false)} className="text-xs font-semibold text-blue-600 hover:underline">
                           {t('common.viewAll')}
                         </Link>
                       </div>
                     </div>
-                    <div className="max-h-[350px] overflow-y-auto">
+                    {/* Body */}
+                    <div className="flex-1 overflow-y-auto">
                       {!isAuthenticated || user?.role !== 'CUSTOMER' ? (
-                        <div className="p-6 text-center text-sm text-gray-500">
-                          <Package className="mx-auto mb-2 h-8 w-8 opacity-20" />
-                          {t('common.loginToViewNotifications')}
+                        <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Package className="h-6 w-6" /></div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800 mb-1">{t('common.loginToViewNotifications')}</p>
+                            <p className="text-xs text-gray-500">Login as a customer to see your notifications</p>
+                          </div>
+                          <button type="button" onClick={() => { setIsDropdownOpen(false); setAuthModalOpen(true); }} className="rounded-lg bg-jcb-yellow px-5 py-2 text-sm font-bold text-black transition-all hover:bg-yellow-400">
+                            Login / Sign Up
+                          </button>
                         </div>
                       ) : notifications.length === 0 ? (
-                        <div className="p-6 text-center text-sm text-gray-500">
-                          <Package className="mx-auto mb-2 h-8 w-8 opacity-20" />
-                          {t('common.noNotifications')}
+                        <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400"><Package className="h-6 w-6" /></div>
+                          <p className="text-sm font-medium text-gray-500">{t('common.noNotifications')}</p>
                         </div>
                       ) : (
                         notifications.map((notification) => (
-                          <Link
-                            href={notification.link || '/machines'}
-                            key={notification.id}
-                            onClick={() => {
-                              void markNotificationAsRead(notification.id);
-                              setIsDropdownOpen(false);
-                            }}
-                            className="flex items-start gap-3 border-b border-gray-50 bg-[#FFF9E6] p-3 transition-colors hover:bg-gray-50"
-                          >
-                            <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]">
-                              <Package size={16} />
-                            </div>
+                          <Link href={notification.link || '/machines'} key={notification.id}
+                            onClick={() => { void markNotificationAsRead(notification.id); setIsDropdownOpen(false); }}
+                            className="flex items-start gap-3 border-b border-gray-50 bg-[#FFF9E6] p-3 transition-colors hover:bg-amber-50/60">
+                            <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]"><Package size={15} /></div>
                             <div className="flex-1 min-w-0">
                               <p className="line-clamp-1 text-xs font-bold text-gray-900">{notification.title}</p>
                               <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-600">{notification.message}</p>
-                              <div className="mt-1 flex items-center justify-between">
-                                <p className="text-[10px] text-gray-400">
-                                  {formatDateTime(notification.createdAt, locale)}
-                                </p>
-                                <span className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5">
-                                  {t('common.viewAll')} &rarr;
-                                </span>
-                              </div>
+                              <p className="mt-1 text-[10px] text-gray-400">{formatDateTime(notification.createdAt, locale)}</p>
                             </div>
                           </Link>
                         ))
                       )}
                     </div>
                   </div>
-                ) : null}
+                )}
+
+                {/* Mobile bottom sheet — portaled to document.body to avoid fixed-position issues */}
+                {isDropdownOpen && typeof document !== 'undefined' && createPortal(
+                  <div className="sm:hidden">
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm" onClick={() => setIsDropdownOpen(false)} />
+                    {/* Sheet */}
+                    <div className="fixed bottom-0 left-0 right-0 z-[10000] flex flex-col rounded-t-2xl bg-white text-gray-800 shadow-2xl" style={{ maxHeight: '82vh' }}>
+                      {/* Drag handle */}
+                      <div className="flex flex-shrink-0 justify-center pt-3 pb-1">
+                        <div className="h-1 w-10 rounded-full bg-gray-300" />
+                      </div>
+                      {/* Header */}
+                      <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-bold text-gray-900">{t('common.notifications')}</h3>
+                          {isAuthenticated && user?.role === 'CUSTOMER' && unreadCount > 0 && (
+                            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-jcb-yellow px-1.5 text-[10px] font-extrabold text-black">
+                              {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {notifications.length > 0 && isAuthenticated && (
+                            <button type="button" onClick={() => void markAllNotificationsAsRead()} className="text-xs font-semibold text-[#9A7600] hover:text-[#7A5F00]">
+                              {t('common.markAllRead')}
+                            </button>
+                          )}
+                          <button type="button" onClick={() => setIsDropdownOpen(false)} className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Close">
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Body */}
+                      <div className="flex-1 overflow-y-auto overscroll-contain">
+                        {!isAuthenticated || user?.role !== 'CUSTOMER' ? (
+                          <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Package className="h-7 w-7" /></div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-800 mb-1">{t('common.loginToViewNotifications')}</p>
+                              <p className="text-xs text-gray-500">Login as a customer to see your notifications</p>
+                            </div>
+                            <button type="button" onClick={() => { setIsDropdownOpen(false); setAuthModalOpen(true); }} className="rounded-lg bg-jcb-yellow px-5 py-2.5 text-sm font-bold text-black transition-all hover:bg-yellow-400 active:scale-95">
+                              Login / Sign Up
+                            </button>
+                          </div>
+                        ) : notifications.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-gray-400"><Package className="h-7 w-7" /></div>
+                            <p className="text-sm font-medium text-gray-500">{t('common.noNotifications')}</p>
+                          </div>
+                        ) : (
+                          notifications.map((notification) => (
+                            <Link href={notification.link || '/machines'} key={notification.id}
+                              onClick={() => { void markNotificationAsRead(notification.id); setIsDropdownOpen(false); }}
+                              className="flex items-start gap-3 border-b border-gray-50 bg-[#FFF9E6] p-4 transition-colors hover:bg-amber-50/60 active:bg-amber-100">
+                              <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]"><Package size={16} /></div>
+                              <div className="flex-1 min-w-0">
+                                <p className="line-clamp-1 text-sm font-bold text-gray-900">{notification.title}</p>
+                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600">{notification.message}</p>
+                                <p className="mt-1.5 text-[11px] text-gray-400">{formatDateTime(notification.createdAt, locale)}</p>
+                              </div>
+                            </Link>
+                          ))
+                        )}
+                      </div>
+                      {/* Footer */}
+                      {isAuthenticated && notifications.length > 0 && (
+                        <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+                          <Link href="/notifications" onClick={() => setIsDropdownOpen(false)}
+                            className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-100 transition-colors">
+                            View All Notifications
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>,
+                  document.body
+                )}
+
               </div>
 
               <Link href="/dealers" className="hidden md:flex rounded-[4px] bg-jcb-yellow px-6 py-2 text-sm font-bold text-black transition-colors hover:bg-yellow-400">
@@ -591,28 +652,21 @@ export default function Navbar() {
             <span>{t('navbar.careers', 'Careers')}</span>
           </Link>
 
-          {isAuthenticated ? (
-            <Link
-              href="/notifications"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === '/notifications' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                }`}
-            >
-              <Bell size={18} className={pathname === '/notifications' ? 'text-[#FFC107]' : 'text-gray-400'} />
-              <span>{t('common.notifications', 'Notifications')}</span>
-            </Link>
-          ) : (
-            <button
-              onClick={() => {
-                setIsMobileMenuOpen(false);
-                setAuthModalOpen(true);
-              }}
-              className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white text-left"
-            >
-              <Bell size={18} className="text-gray-400" />
-              <span>{t('common.notifications', 'Notifications')}</span>
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setTimeout(() => setIsDropdownOpen(true), 50);
+            }}
+            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors text-left ${pathname === '/notifications' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+          >
+            <Bell size={18} className={pathname === '/notifications' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('common.notifications', 'Notifications')}</span>
+            {isAuthenticated && user?.role === 'CUSTOMER' && unreadCount > 0 && (
+              <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-jcb-yellow px-1.5 text-[10px] font-extrabold text-black">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
 
           {isAuthenticated && (
             <Link

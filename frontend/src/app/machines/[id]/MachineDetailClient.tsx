@@ -555,30 +555,35 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-20 overflow-x-hidden w-full max-w-[100vw] flex flex-col">
-      <div className="w-full border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl py-3 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)] items-center overflow-x-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-500 no-scrollbar">
+    <div className="min-h-screen bg-[#F8F9FA] pb-28 lg:pb-20 overflow-x-hidden w-full flex flex-col">
+      {/* Breadcrumb Header */}
+      <div className="w-full border-b border-gray-200 bg-white shadow-2xs">
+        <div className="mx-auto flex max-w-7xl px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 items-center overflow-x-auto whitespace-nowrap text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-gray-500 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <Link href="/" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('navbar.home')}</Link>
-          <ChevronRight size={14} className="mx-2 flex-shrink-0" />
+          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
           <Link href="/machines" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('machineDetails.usedEquipment')}</Link>
-          <ChevronRight size={14} className="mx-2 flex-shrink-0" />
+          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
           <span className="flex-shrink-0">{listing.category?.name || t('machineDetails.machineDetail')}</span>
-          <ChevronRight size={14} className="mx-2 flex-shrink-0" />
-          <span className="max-w-[220px] flex-shrink-0 truncate font-bold text-gray-900 sm:max-w-none">
+          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
+          <span className="max-w-[180px] sm:max-w-[280px] md:max-w-none flex-shrink-0 truncate font-bold text-gray-900">
             {listing.title}
           </span>
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl py-4 sm:py-8 w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] lg:w-[calc(100%-4rem)]">
-        <div className="flex flex-col gap-6 sm:gap-8 lg:flex-row max-w-full">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-8 w-full">
+        {/* Main Grid: Gallery on left, Sticky Info Sidebar on right */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 max-w-full">
+          {/* Main Gallery Column */}
           <div className="min-w-0 flex-1 max-w-full">
-            <div className="mb-6 sm:mb-8 overflow-hidden rounded-xl border border-gray-200 sm:border-gray-100 bg-white shadow-xs sm:shadow-sm max-w-full">
+            <div className="mb-6 sm:mb-8 overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-xs sm:shadow-sm max-w-full">
+              {/* Main Image Container */}
               <div 
-                className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10] cursor-pointer group"
+                className="relative aspect-[4/3] sm:aspect-[16/10] bg-slate-900 cursor-pointer group select-none overflow-hidden"
                 onClick={() => mainImage && setIsLightboxOpen(true)}
               >
-                <div className="absolute top-4 left-4 z-10">
+                {/* Availability Badge */}
+                <div className="absolute top-2.5 left-2.5 sm:top-4 sm:left-4 z-10 flex flex-wrap items-center gap-2 max-w-[55%] sm:max-w-none">
                   {getAvailabilityBadge(listing.status, {
                     sold: t('machines.sold'),
                     reserved: t('machines.reserved'),
@@ -586,6 +591,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   })}
                 </div>
 
+                {/* Watch Video Floating Button */}
                 {videos.length > 0 && (
                   <button
                     type="button"
@@ -593,30 +599,32 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       e.stopPropagation();
                       setIsVideoModalOpen(true);
                     }}
-                    className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/85 px-3.5 py-1.5 text-xs font-bold text-white backdrop-blur-md shadow-xl transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
+                    className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 sm:gap-2 rounded-full border border-white/20 bg-slate-950/85 px-2.5 py-1 sm:px-3.5 sm:py-1.5 text-[11px] sm:text-xs font-bold text-white backdrop-blur-md shadow-xl transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
                     title={t('machineDetails.watchVideo', 'Watch Machine Video')}
                   >
-                    <div className="relative flex h-6 w-6 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs">
-                      <Play size={12} className="fill-white text-white ml-0.5" />
+                    <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs shrink-0">
+                      <Play size={10} className="fill-white text-white ml-0.5 sm:hidden" />
+                      <Play size={12} className="fill-white text-white ml-0.5 hidden sm:block" />
                       <span className="absolute -inset-0.5 rounded-full bg-red-500/40 animate-ping opacity-75 group-hover:opacity-100" />
                     </div>
-                    <span className="font-bold text-white tracking-wide">
+                    <span className="font-bold text-white tracking-wide text-[11px] sm:text-xs">
                       {t('machineDetails.watchVideo', 'Watch Video')}
                     </span>
                     {videos.length > 1 && (
-                      <span className="rounded-full bg-red-500/30 px-1.5 py-0.5 text-[10px] font-extrabold text-red-200">
+                      <span className="rounded-full bg-red-500/30 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold text-red-200">
                         {videos.length}
                       </span>
                     )}
                   </button>
                 )}
+
                 {mainImage ? (
                   <Image
                     src={getAbsoluteMediaUrl(mainImage)}
                     alt={listing.title}
                     fill
                     priority
-                    sizes="(max-width: 1024px) 100vw, 66vw"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px"
                     className="object-cover transition-transform duration-300 group-hover:scale-[1.01]"
                   />
                 ) : (
@@ -625,6 +633,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   </div>
                 )}
 
+                {/* Left/Right Prev Next Controls */}
                 {images.length > 1 && (
                   <>
                     <button
@@ -633,10 +642,11 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         e.stopPropagation();
                         setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
                       }}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
+                      className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
                       aria-label="Previous image"
                     >
-                      <ChevronLeft size={20} />
+                      <ChevronLeft size={18} className="sm:hidden" />
+                      <ChevronLeft size={20} className="hidden sm:block" />
                     </button>
 
                     <button
@@ -645,44 +655,49 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         e.stopPropagation();
                         setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
+                      className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-xs transition-all hover:bg-black/80 hover:scale-110"
                       aria-label="Next image"
                     >
-                      <ChevronRight size={20} />
+                      <ChevronRight size={18} className="sm:hidden" />
+                      <ChevronRight size={20} className="hidden sm:block" />
                     </button>
                   </>
                 )}
 
-                {images.length > 0 && (
-                  <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-gray-800 shadow-sm backdrop-blur-sm">
-                    <Camera size={14} />
-                    <span>{activeImageIndex + 1} / {images.length}</span>
-                  </div>
-                )}
+                {/* Bottom Overlay Badges (Date & Image Count) */}
+                <div className="absolute bottom-2.5 sm:bottom-4 left-2.5 sm:left-4 right-2.5 sm:right-4 z-10 flex items-center justify-between pointer-events-none gap-2">
+                  {(images[activeImageIndex]?.createdAt || listing.createdAt) ? (
+                    <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 rounded-full bg-black/65 px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-medium text-white shadow-sm backdrop-blur-sm max-w-[65%] sm:max-w-none truncate" title="Upload Date">
+                      <Clock size={12} className="shrink-0" />
+                      <span className="truncate" suppressHydrationWarning>
+                        {new Date(images[activeImageIndex]?.createdAt || listing.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        })}
+                      </span>
+                    </div>
+                  ) : <div />}
 
-                {(images[activeImageIndex]?.createdAt || listing.createdAt) && (
-                  <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-sm backdrop-blur-sm" title="Upload Date">
-                    <Clock size={14} />
-                    <span suppressHydrationWarning>
-                      {new Date(images[activeImageIndex]?.createdAt || listing.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}
-                    </span>
-                  </div>
-                )}
+                  {images.length > 0 && (
+                    <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 rounded-full bg-white/90 px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-bold text-gray-800 shadow-sm backdrop-blur-sm shrink-0">
+                      <Camera size={12} className="shrink-0" />
+                      <span>{activeImageIndex + 1} / {images.length}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Thumbnails Strip */}
               {(images.length > 1 || videos.length > 0) && (
-                <div className="relative border-t border-gray-100 p-2 sm:p-3">
+                <div className="relative border-t border-gray-100 p-2 sm:p-3 bg-gray-50/50">
                   <button
                     type="button"
                     onClick={() => scrollThumbnails('left')}
-                    className="absolute left-1 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
+                    className="hidden sm:flex absolute left-1 top-1/2 -translate-y-1/2 z-20 h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
                     aria-label="Scroll thumbnails left"
                   >
                     <ChevronLeft size={16} />
@@ -690,7 +705,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
                   <div 
                     ref={thumbnailStripRef}
-                    className="flex overflow-x-auto gap-2 sm:gap-3 snap-x [&::-webkit-scrollbar]:hidden w-full scroll-smooth px-7"
+                    className="flex overflow-x-auto gap-2 sm:gap-3 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden w-full scroll-smooth px-1 sm:px-7"
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                   >
                     {images.map((image, index) => (
@@ -698,17 +713,17 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         key={image.id}
                         type="button"
                         onClick={() => setActiveImageIndex(index)}
-                        className={`relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-center ${
+                        className={`relative aspect-[4/3] w-[72px] sm:w-[110px] sm:h-20 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all snap-start ${
                           activeImageIndex === index
-                            ? 'border-jcb-yellow shadow-xs scale-[0.98]'
-                            : 'border-transparent hover:border-gray-200 opacity-90 hover:opacity-100'
+                            ? 'border-jcb-yellow ring-2 ring-amber-400/40 shadow-xs scale-[0.98]'
+                            : 'border-transparent hover:border-gray-200 opacity-80 hover:opacity-100'
                         }`}
                       >
                         <Image
                           src={getAbsoluteMediaUrl(image.url)}
                           alt={`${listing.title} ${index + 1}`}
                           fill
-                          sizes="(max-width: 640px) 25vw, 128px"
+                          sizes="(max-width: 640px) 72px, 110px"
                           className="object-cover"
                         />
                       </button>
@@ -727,13 +742,14 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                             }
                           }
                         }}
-                        className="relative aspect-[4/3] w-[80px] sm:h-20 sm:w-32 flex-shrink-0 overflow-hidden rounded-lg border-2 border-red-500/80 bg-slate-900 text-white flex flex-col items-center justify-center gap-1 transition-all hover:scale-[1.03] shadow-sm group snap-center"
+                        className="relative aspect-[4/3] w-[72px] sm:w-[110px] sm:h-20 flex-shrink-0 overflow-hidden rounded-lg border-2 border-red-500/80 bg-slate-900 text-white flex flex-col items-center justify-center gap-1 transition-all hover:scale-[1.03] shadow-sm group snap-start"
                         title="Watch Machine Video"
                       >
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-700 transition-colors shadow-md">
-                          <Play size={12} className="fill-white text-white ml-0.5" />
+                        <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-700 transition-colors shadow-md">
+                          <Play size={10} className="fill-white text-white ml-0.5 sm:hidden" />
+                          <Play size={12} className="fill-white text-white ml-0.5 hidden sm:block" />
                         </div>
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-red-100">Video</span>
+                        <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-red-100">Video</span>
                       </button>
                     )}
                   </div>
@@ -741,7 +757,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   <button
                     type="button"
                     onClick={() => scrollThumbnails('right')}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
+                    className="hidden sm:flex absolute right-1 top-1/2 -translate-y-1/2 z-20 h-7 w-7 items-center justify-center rounded-full bg-white text-gray-700 shadow-md border border-gray-200 transition-all hover:bg-amber-50 hover:text-black hover:border-amber-300"
                     aria-label="Scroll thumbnails right"
                   >
                     <ChevronRight size={16} />
@@ -751,8 +767,9 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
             </div>
           </div>
 
+          {/* Right Sidebar: Title, Pricing & Actions */}
           <aside className="w-full flex-shrink-0 lg:w-[380px] min-w-0">
-            <div className="rounded-xl border border-gray-200 sm:border-gray-100 bg-white px-4 py-5 sm:p-6 shadow-xs sm:shadow-sm">
+            <div className="rounded-xl border border-gray-200/80 bg-white p-4 sm:p-6 shadow-xs sm:shadow-sm">
               <div className="mb-5">
                 <h1 className="mb-2 text-lg sm:text-xl font-bold text-gray-900 leading-snug tracking-tight break-words max-w-full">
                   {listing.title}
@@ -768,27 +785,29 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   <span className="text-gray-300">•</span>
                   <div className="flex items-center gap-1.5 min-w-0">
                     <MapPin size={13} className="text-gray-400 shrink-0" />
-                    <span className="truncate" title={locationLabel}>{locationLabel}</span>
+                    <span className="truncate max-w-[200px]" title={locationLabel}>{locationLabel}</span>
                   </div>
                 </div>
 
-                <div className="mb-5">
+                <div className="mb-4">
                   <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/60 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium tracking-wide text-emerald-700">
                     <CheckCircle2 size={12} className="shrink-0 text-emerald-600" />
                     <span className="uppercase">{partnerTypeLabel}</span>
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-gradient-to-br from-gray-50/90 to-gray-100/50 border border-gray-200/70 p-4 sm:p-5 mb-6 shadow-sm">
+                <div className="rounded-2xl bg-gradient-to-br from-gray-50/90 to-gray-100/60 border border-gray-200/80 p-4 sm:p-5 mb-5 shadow-2xs">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">{listing.status === 'SOLD' ? 'Final Sold Price' : 'Asking Price'}</span>
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">
+                      {listing.status === 'SOLD' ? 'Final Sold Price' : 'Asking Price'}
+                    </span>
                     {listing.status !== 'SOLD' && views > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500 shadow-xs border border-gray-100">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500 shadow-2xs border border-gray-100">
                         {views} {views === 1 ? 'view' : 'views'}
                       </span>
                     )}
                   </div>
-                  <div className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 leading-none">
+                  <div className="text-xl sm:text-2xl font-extrabold tracking-tight text-gray-900 leading-none">
                     {listing.status === 'SOLD' 
                       ? soldPriceLabel
                       : formatCurrency(listing.price || 0)}
@@ -796,23 +815,23 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 </div>
 
                 {listing.status === 'SOLD' ? (
-                  <div className="mb-6 flex flex-col gap-3">
-                    <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-50 px-4 py-3.5 font-bold text-gray-600 border border-gray-200 shadow-sm text-center text-[15px]">
-                      <CheckCircle2 size={18} className="text-[#137333]" />
+                  <div className="mb-5 flex flex-col gap-3">
+                    <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-50/80 px-4 py-3.5 font-bold text-emerald-800 border border-emerald-200/80 shadow-2xs text-center text-sm sm:text-base">
+                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
                       This equipment is sold out.
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3 mb-6">
+                  <div className="flex flex-col gap-2.5 sm:gap-3 mb-5">
                     {listing.buyNowPaymentAvailable && isOwnListing ? (
-                      <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3.5 text-center text-sm font-bold text-amber-900">
+                      <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs sm:text-sm font-bold text-amber-900">
                         This is your own listing. You cannot buy your own vehicle.
                       </div>
                     ) : listing.buyNowPaymentAvailable ? (
                       <button
                         type="button"
                         onClick={handleBuyNowClick}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#111827] px-4 py-3 font-bold text-white shadow-sm transition-colors hover:bg-black"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#111827] px-4 py-3 sm:py-3.5 font-bold text-white shadow-sm transition-all hover:bg-black hover:shadow-md active:scale-[0.99]"
                       >
                         <CreditCard size={18} />
                         Buy Now
@@ -823,13 +842,13 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       <button
                         type="button"
                         onClick={() => handleProtectedAction('CALL')}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#FFC107] px-4 py-3 font-bold text-black shadow-sm transition-colors hover:bg-[#FFB300]"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFC107] px-4 py-3 sm:py-3.5 font-bold text-black shadow-sm transition-all hover:bg-[#FFB300] hover:shadow-md active:scale-[0.99]"
                       >
                         <Phone size={18} />
                         {t('machineDetails.callSeller')}
                       </button>
                     ) : (
-                      <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-400">
+                      <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 px-4 py-3 font-bold text-gray-400">
                         <Phone size={18} />
                         {t('dealers.contactUnavailable')}
                       </div>
@@ -839,7 +858,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       <button
                         type="button"
                         onClick={() => handleProtectedAction('WHATSAPP')}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#34A853] px-4 py-3 font-bold text-white shadow-sm transition-colors hover:bg-[#2b8c45]"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#34A853] px-4 py-3 sm:py-3.5 font-bold text-white shadow-sm transition-all hover:bg-[#2b8c45] hover:shadow-md active:scale-[0.99]"
                       >
                         <MessageCircle size={18} />
                         {t('machineDetails.chatOnWhatsapp')}
@@ -848,17 +867,18 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   </div>
                 )}
 
+                {/* Seller / Dealer Info */}
                 {listing.partner?.id && 
                  listing.partner?.partnerType !== 'PRIME_CUSTOMER' && 
                  listing.partner?.partnerType !== 'STANDARD_CUSTOMER' ? (
                   <Link
                     href={dealerProfileHref || '#'}
-                    className="group block rounded-xl border border-gray-200 p-4 transition-all duration-200 hover:border-amber-400 hover:shadow-md hover:bg-amber-50/20"
+                    className="group block rounded-xl border border-gray-200/80 p-3.5 sm:p-4 transition-all duration-200 hover:border-amber-400 hover:shadow-md hover:bg-amber-50/20"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3.5 min-w-0">
                         {listing.partner?.logo ? (
-                          <div className="relative h-[48px] w-[48px] flex-shrink-0 overflow-hidden rounded-full bg-gray-100 border border-gray-200">
+                          <div className="relative h-11 w-11 sm:h-[48px] sm:w-[48px] flex-shrink-0 overflow-hidden rounded-full bg-gray-100 border border-gray-200">
                             <Image
                               src={getAbsoluteMediaUrl(listing.partner.logo)}
                               alt={listing.partner.name || t('machineDetails.dealerLogo')}
@@ -868,16 +888,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                             />
                           </div>
                         ) : (
-                          <div className="flex h-[48px] w-[48px] flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg font-bold uppercase text-amber-800 border border-amber-200 group-hover:bg-amber-200 transition-colors">
+                          <div className="flex h-11 w-11 sm:h-[48px] sm:w-[48px] flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-base sm:text-lg font-bold uppercase text-amber-800 border border-amber-200 group-hover:bg-amber-200 transition-colors">
                             {listing.partner?.name?.charAt(0) || t('machineDetails.partnerInitialFallback')}
                           </div>
                         )}
 
                         <div className="min-w-0">
-                          <h3 className="text-[16px] font-bold text-[#1a202c] truncate group-hover:text-amber-600 transition-colors">
+                          <h3 className="text-sm sm:text-[16px] font-bold text-[#1a202c] truncate group-hover:text-amber-600 transition-colors">
                             {listing.partner?.name || t('machineDetails.verifiedPartner')}
                           </h3>
-                          <div className="text-[12px] font-medium text-gray-500">{partnerTypeLabel}</div>
+                          <div className="text-[11px] sm:text-[12px] font-medium text-gray-500">{partnerTypeLabel}</div>
                         </div>
                       </div>
 
@@ -885,10 +905,10 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     </div>
                   </Link>
                 ) : (
-                  <div className="rounded-xl border border-gray-200 p-4">
-                    <div className="flex items-center gap-4">
+                  <div className="rounded-xl border border-gray-200/80 p-3.5 sm:p-4">
+                    <div className="flex items-center gap-3.5">
                       {listing.partner?.logo ? (
-                        <div className="relative h-[52px] w-[52px] flex-shrink-0 overflow-hidden rounded-full bg-gray-100">
+                        <div className="relative h-11 w-11 sm:h-[52px] sm:w-[52px] flex-shrink-0 overflow-hidden rounded-full bg-gray-100 border border-gray-200">
                           <Image
                             src={getAbsoluteMediaUrl(listing.partner.logo)}
                             alt={listing.partner.name || t('machineDetails.dealerLogo')}
@@ -898,16 +918,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           />
                         </div>
                       ) : (
-                        <div className="flex h-[52px] w-[52px] flex-shrink-0 items-center justify-center rounded-full bg-[#E2E8F0] text-xl font-bold uppercase text-gray-600">
+                        <div className="flex h-11 w-11 sm:h-[52px] sm:w-[52px] flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-base sm:text-xl font-bold uppercase text-slate-700 border border-slate-200">
                           {listing.partner?.name?.charAt(0) || t('machineDetails.partnerInitialFallback')}
                         </div>
                       )}
 
                       <div className="min-w-0">
-                        <h3 className="text-[17px] font-bold text-[#1a202c]">
+                        <h3 className="text-sm sm:text-[17px] font-bold text-[#1a202c] truncate">
                           {listing.partner?.name || t('machineDetails.verifiedPartner')}
                         </h3>
-                        <div className="text-[13px] text-gray-500">{partnerTypeLabel}</div>
+                        <div className="text-[11px] sm:text-[13px] text-gray-500">{partnerTypeLabel}</div>
                       </div>
                     </div>
                   </div>
@@ -915,18 +935,18 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
                 {/* Purchased By Card */}
                 {listing.status === 'SOLD' && (
-                  <div className="mt-3 rounded-xl border border-gray-200 p-4 bg-gray-50/50">
+                  <div className="mt-3 rounded-xl border border-gray-200/80 p-3.5 sm:p-4 bg-gray-50/50">
                     <div className="flex items-center gap-3.5">
-                      <div className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500">
-                        <UserCircle size={24} />
+                      <div className="flex h-10 w-10 sm:h-[42px] sm:w-[42px] flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500">
+                        <UserCircle size={22} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Purchased By</div>
-                        <h3 className="text-[16px] font-bold text-slate-800 truncate">
+                        <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Purchased By</div>
+                        <h3 className="text-sm sm:text-[16px] font-bold text-slate-800 truncate">
                           {buyerName || t('machineDetails.notSpecified')}
                         </h3>
                         {listing.saleRecord && (listing.saleRecord.buyerCity || listing.saleRecord.buyerState) && (
-                          <div className="text-[12px] font-medium text-slate-500 mt-0.5">
+                          <div className="text-[11px] sm:text-[12px] font-medium text-slate-500 mt-0.5">
                             {[listing.saleRecord.buyerCity, listing.saleRecord.buyerState].filter(Boolean).join(', ')}
                           </div>
                         )}
@@ -936,7 +956,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 )}
               </div>
 
-              <div className="flex items-center justify-center border-t border-gray-100 pt-6 text-xs font-semibold">
+              <div className="flex items-center justify-center border-t border-gray-100 pt-4 sm:pt-6 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={handleShare}
@@ -950,237 +970,299 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
           </aside>
         </div>
 
-        <div className="w-full mt-4 sm:mt-8 min-w-0">
-            <section className="mb-10">
-              <h2 className="mb-4 sm:mb-5 text-xl sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                <HighlightCard icon={<Settings className="text-jcb-yellow" size={20} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
-                <HighlightCard icon={<Calendar className="text-jcb-yellow" size={20} />} label={t('machineDetails.manufacturingYearLabel')} value={listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na')} />
-                <HighlightCard icon={<Clock className="text-jcb-yellow" size={20} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
-                <HighlightCard icon={<Zap className="text-jcb-yellow" size={20} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
-                <HighlightCard icon={<UserCheck className="text-jcb-yellow" size={20} />} label={t('machineDetails.previousOwnersLabel', 'Owners')} value={detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na')} />
-                <HighlightCard icon={<MapPin className="text-jcb-yellow" size={20} />} label={t('machineDetails.locationLabel')} value={locationLabel} />
-              </div>
-            </section>
+        {/* Details, Specs, Overview & Videos Sections */}
+        <div className="w-full mt-6 sm:mt-10 min-w-0">
+          {/* Key Highlights */}
+          <section className="mb-8 sm:mb-12">
+            <h2 className="mb-4 sm:mb-5 text-lg sm:text-2xl font-bold text-gray-900">{t('machineDetails.keyHighlights')}</h2>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              <HighlightCard icon={<Settings className="text-jcb-yellow" size={18} />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
+              <HighlightCard icon={<Calendar className="text-jcb-yellow" size={18} />} label={t('machineDetails.manufacturingYearLabel')} value={listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na')} />
+              <HighlightCard icon={<Clock className="text-jcb-yellow" size={18} />} label={t('machineDetails.hoursUsedLabel')} value={listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na')} />
+              <HighlightCard icon={<Zap className="text-jcb-yellow" size={18} />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
+              <HighlightCard icon={<UserCheck className="text-jcb-yellow" size={18} />} label={t('machineDetails.previousOwnersLabel', 'Owners')} value={detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na')} />
+              <HighlightCard icon={<MapPin className="text-jcb-yellow" size={18} />} label={t('machineDetails.locationLabel')} value={locationLabel} />
+            </div>
+          </section>
 
-            {(descriptionParts.overview || descriptionParts.additional) && (
-              <section className="mb-10">
-                <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.overview')}</h2>
-                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md sm:p-8">
-                  {descriptionParts.overview && (
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700 sm:text-base">
-                      {descriptionParts.overview}
+          {/* Overview & Description */}
+          {(descriptionParts.overview || descriptionParts.additional) && (
+            <section className="mb-8 sm:mb-12">
+              <h2 className="mb-4 sm:mb-5 text-lg sm:text-2xl font-bold text-gray-900">{t('machineDetails.overview')}</h2>
+              <div className="rounded-xl border border-gray-200/80 bg-white p-4 sm:p-8 shadow-xs sm:shadow-sm">
+                {descriptionParts.overview && (
+                  <p className="whitespace-pre-line text-xs sm:text-base leading-relaxed text-gray-700">
+                    {descriptionParts.overview}
+                  </p>
+                )}
+                {descriptionParts.additional && (
+                  <div className={descriptionParts.overview ? 'mt-6 sm:mt-8 border-t border-gray-100 pt-6' : ''}>
+                    <h3 className="mb-2 sm:mb-3 text-xs sm:text-sm font-bold text-gray-900">{t('machineDetails.additionalDescription')}</h3>
+                    <p className="whitespace-pre-line text-xs sm:text-sm leading-relaxed text-gray-600">
+                      {descriptionParts.additional}
                     </p>
-                  )}
-                  {descriptionParts.additional && (
-                    <div className={descriptionParts.overview ? 'mt-8' : ''}>
-                      <h3 className="mb-3 text-sm font-bold text-gray-900">{t('machineDetails.additionalDescription')}</h3>
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">
-                        {descriptionParts.additional}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {videos.length > 0 && (
-              <section id="videos-section" className="mb-10">
-                <h2 className="mb-5 text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <Video className="text-jcb-yellow" size={24} />
-                  {t('machineDetails.videos')}
-                </h2>
-                <div className={`grid grid-cols-1 gap-4 ${videos.length === 1 ? '' : 'sm:grid-cols-2'}`}>
-                  {videos.map((video) => (
-                    <div key={video.id} className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-                      <video
-                        controls
-                        muted
-                        playsInline
-                        className="w-full h-auto max-h-[70vh] object-contain bg-black"
-                        preload="metadata"
-                      >
-                        <source src={getAbsoluteMediaUrl(video.url)} type={getVideoMimeType(video.url)} />
-                        Your browser does not support the video tag.
-                      </video>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <section className="mb-10">
-              <h2 className="mb-5 text-2xl font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
-              
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <div className="flex overflow-x-auto border-b border-gray-200 no-scrollbar">
-                  <button
-                    onClick={() => setActiveTab('machine')}
-                    className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
-                      activeTab === 'machine'
-                        ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-                    }`}
-                  >
-                    <Truck className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'machine' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
-                    {t('machineDetails.vehicleDetails')}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('seller')}
-                    className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
-                      activeTab === 'seller'
-                        ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-                    }`}
-                  >
-                    <MapPin className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'seller' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
-                    {t('machineDetails.registrationLocation')}
-                  </button>
-                  {listing.vehicleCompliance && (
-                    <button
-                      onClick={() => setActiveTab('rto')}
-                      className={`flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 sm:px-6 py-4 text-sm font-bold transition-colors ${
-                        activeTab === 'rto'
-                          ? 'border-jcb-yellow text-gray-900 bg-gray-50/50'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-                      }`}
-                    >
-                      <Car className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'rto' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
-                      Vehicle Compliance
-                    </button>
-                  )}
-                </div>
-
-                <div className="p-4 sm:p-6 bg-white min-h-[300px]">
-                  {activeTab === 'machine' && (
-                    <div className="animate-in fade-in duration-300">
-                      <SpecsGrid
-                        items={[
-                          { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
-                          { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
-                          { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
-                          { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
-                          { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
-                          { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
-                          { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
-                          { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
-                          { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
-                          { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
-                          { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
-                          { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
-                        ]}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'seller' && (
-                    <div className="animate-in fade-in duration-300">
-                      <SpecsGrid
-                        items={[
-                          { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
-                          { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
-                          { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
-                          { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
-                          { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
-                          { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
-                          { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: detailAddress || t('machineDetails.na') },
-                          { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
-                          { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
-                        ]}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'rto' && listing.vehicleCompliance && (
-                    <div className="animate-in fade-in duration-300">
-                      {listing.vehicleCompliance.vehicleNumber && (
-                        <div className="mb-6 flex items-center gap-4 rounded-xl bg-amber-50 border border-amber-100 px-5 py-4">
-                          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm">
-                            <Car className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-0.5">Vehicle Number</p>
-                            <p className="text-xl font-extrabold tracking-widest text-gray-900">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {([
-                          { label: 'Hire Purchase', value: listing.vehicleCompliance.hirePurchaseStatus, type: 'hp' },
-                          { label: 'Tax Validity', value: listing.vehicleCompliance.taxStatus, date: listing.vehicleCompliance.taxValidUntil, type: 'validity' },
-                          { label: 'Fitness Validity', value: listing.vehicleCompliance.fitnessStatus, date: listing.vehicleCompliance.fitnessValidUntil, type: 'validity' },
-                          { label: 'Insurance Validity', value: listing.vehicleCompliance.insuranceStatus, date: listing.vehicleCompliance.insuranceValidUntil, type: 'validity' },
-                          { label: 'PUC Validity', value: listing.vehicleCompliance.pucStatus, date: listing.vehicleCompliance.pucValidUntil, type: 'validity' },
-                          { label: 'HSRP', value: listing.vehicleCompliance.hsrpStatus, type: 'hsrp' },
-                        ] as { label: string; value: string | null; date?: string | null; type: string }[]).map(({ label, value, date, type }) => {
-                          const normalizedValue = (value || '').toUpperCase();
-                          let badgeClass = 'bg-gray-100 text-gray-500 border border-gray-200';
-                          let dotClass = 'bg-gray-400';
-                          let displayLabel = value || 'N/A';
-
-                          if (type === 'hp') {
-                            if (normalizedValue === 'TERMINATED') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Terminated (Clear)'; }
-                            else if (normalizedValue === 'ACTIVE') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Active'; }
-                            else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
-                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
-                          } else if (type === 'validity') {
-                            if (normalizedValue === 'VALID') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Valid'; }
-                            else if (normalizedValue === 'EXPIRED') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Expired'; }
-                            else if (normalizedValue === 'NOT_AVAILABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Available'; }
-                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
-                          } else if (type === 'hsrp') {
-                            if (normalizedValue === 'YES') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Yes'; }
-                            else if (normalizedValue === 'NO') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'No'; }
-                            else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
-                            else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; displayLabel = 'Pending'; }
-                          }
-
-                          return (
-                            <div key={label} className="flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3.5 hover:shadow-sm transition-shadow">
-                              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
-                              <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold shadow-xs ${badgeClass}`}>
-                                <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
-                                {displayLabel}
-                              </span>
-                              {date && (
-                                <span className="text-[11px] font-medium text-gray-500 mt-1 flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  Until: {formatDateOnly(date) || t('machineDetails.na')}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {(listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
-                        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          {[
-                            ['RTO Office', listing.vehicleCompliance.rtoOffice],
-                            ['RTO Agent Name', listing.vehicleCompliance.rtoAgentName],
-                            ['RTO Expenses', listing.vehicleCompliance.rtoExpenses != null ? formatCurrency(listing.vehicleCompliance.rtoExpenses) : null],
-                            ['Vehicle Maintenance Cost', listing.vehicleCompliance.vehicleMaintenanceCost != null ? formatCurrency(listing.vehicleCompliance.vehicleMaintenanceCost) : null],
-                          ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
-                            <div key={label} className="flex items-center gap-3.5 rounded-xl border border-gray-100 bg-gray-50/80 px-5 py-4 hover:shadow-sm transition-shadow">
-                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 shadow-sm">
-                                <FileText className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-0.5">{label}</p>
-                                <p className="text-[15px] font-bold text-gray-900">{value}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </section>
+          )}
+
+          {/* Videos Section */}
+          {videos.length > 0 && (
+            <section id="videos-section" className="mb-8 sm:mb-12">
+              <h2 className="mb-4 sm:mb-5 text-lg sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Video className="text-jcb-yellow" size={22} />
+                {t('machineDetails.videos')}
+              </h2>
+              <div className={`grid grid-cols-1 gap-4 ${videos.length === 1 ? '' : 'sm:grid-cols-2'}`}>
+                {videos.map((video) => (
+                  <div key={video.id} className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-xs">
+                    <video
+                      controls
+                      muted
+                      playsInline
+                      className="w-full h-auto max-h-[60vh] sm:max-h-[70vh] object-contain bg-black"
+                      preload="metadata"
+                    >
+                      <source src={getAbsoluteMediaUrl(video.url)} type={getVideoMimeType(video.url)} />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Technical Specifications & Compliance Tabs */}
+          <section className="mb-8 sm:mb-12">
+            <h2 className="mb-4 sm:mb-5 text-lg sm:text-2xl font-bold text-gray-900">{t('machineDetails.technicalSpecifications')}</h2>
+            
+            <div className="overflow-hidden rounded-xl sm:rounded-2xl border border-gray-200/80 bg-white shadow-xs sm:shadow-sm">
+              <div className="flex overflow-x-auto border-b border-gray-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bg-gray-50/50">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('machine')}
+                  className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap border-b-2 px-3.5 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold transition-all ${
+                    activeTab === 'machine'
+                      ? 'border-jcb-yellow text-gray-900 bg-white shadow-2xs'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                  }`}
+                >
+                  <Truck className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'machine' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                  {t('machineDetails.vehicleDetails')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('seller')}
+                  className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap border-b-2 px-3.5 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold transition-all ${
+                    activeTab === 'seller'
+                      ? 'border-jcb-yellow text-gray-900 bg-white shadow-2xs'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                  }`}
+                >
+                  <MapPin className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'seller' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                  {t('machineDetails.registrationLocation')}
+                </button>
+                {listing.vehicleCompliance && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('rto')}
+                    className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap border-b-2 px-3.5 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold transition-all ${
+                      activeTab === 'rto'
+                        ? 'border-jcb-yellow text-gray-900 bg-white shadow-2xs'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                    }`}
+                  >
+                    <Car className={`h-4 w-4 sm:h-5 sm:w-5 ${activeTab === 'rto' ? 'text-jcb-yellow' : 'text-gray-400'}`} />
+                    Vehicle Compliance
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3.5 sm:p-6 bg-white min-h-[250px]">
+                {activeTab === 'machine' && (
+                  <div className="animate-in fade-in duration-300">
+                    <SpecsGrid
+                      items={[
+                        { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
+                        { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
+                        { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
+                        { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
+                        { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
+                        { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },
+                        { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
+                        { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
+                        { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
+                        { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
+                        { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
+                        { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
+                      ]}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'seller' && (
+                  <div className="animate-in fade-in duration-300">
+                    <SpecsGrid
+                      items={[
+                        { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
+                        { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
+                        { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
+                        { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
+                        { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
+                        { icon: <Globe className="h-4 w-4" />, label: t('machineDetails.locationLabel'), value: locationLabel },
+                        { icon: <MapPin className="h-4 w-4" />, label: t('machineDetails.addressLabel', 'Address'), value: detailAddress || t('machineDetails.na') },
+                        { icon: <Navigation className="h-4 w-4" />, label: t('machineDetails.nearbyLandmarkLabel'), value: detailLandmark || t('machineDetails.na') },
+                        { icon: <FileText className="h-4 w-4" />, label: t('machineDetails.pinCodeLabel', 'PIN Code'), value: detailPinCode || t('machineDetails.na') },
+                      ]}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'rto' && listing.vehicleCompliance && (
+                  <div className="animate-in fade-in duration-300">
+                    {listing.vehicleCompliance.vehicleNumber && (
+                      <div className="mb-4 sm:mb-6 flex items-center gap-3.5 sm:gap-4 rounded-xl bg-amber-50 border border-amber-200/70 p-3.5 sm:p-4">
+                        <div className="flex h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-2xs">
+                          <Car className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-700 mb-0.5">Vehicle Number</p>
+                          <p className="text-base sm:text-xl font-extrabold tracking-widest text-gray-900 truncate">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {([
+                        { label: 'Hire Purchase', value: listing.vehicleCompliance.hirePurchaseStatus, type: 'hp' },
+                        { label: 'Tax Validity', value: listing.vehicleCompliance.taxStatus, date: listing.vehicleCompliance.taxValidUntil, type: 'validity' },
+                        { label: 'Fitness Validity', value: listing.vehicleCompliance.fitnessStatus, date: listing.vehicleCompliance.fitnessValidUntil, type: 'validity' },
+                        { label: 'Insurance Validity', value: listing.vehicleCompliance.insuranceStatus, date: listing.vehicleCompliance.insuranceValidUntil, type: 'validity' },
+                        { label: 'PUC Validity', value: listing.vehicleCompliance.pucStatus, date: listing.vehicleCompliance.pucValidUntil, type: 'validity' },
+                        { label: 'HSRP', value: listing.vehicleCompliance.hsrpStatus, type: 'hsrp' },
+                      ] as { label: string; value: string | null; date?: string | null; type: string }[]).map(({ label, value, date, type }) => {
+                        const normalizedValue = (value || '').toUpperCase();
+                        let badgeClass = 'bg-gray-100 text-gray-500 border border-gray-200';
+                        let dotClass = 'bg-gray-400';
+                        let displayLabel = value || 'N/A';
+
+                        if (type === 'hp') {
+                          if (normalizedValue === 'TERMINATED') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Terminated (Clear)'; }
+                          else if (normalizedValue === 'ACTIVE') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Active'; }
+                          else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
+                          else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
+                        } else if (type === 'validity') {
+                          if (normalizedValue === 'VALID') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Valid'; }
+                          else if (normalizedValue === 'EXPIRED') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'Expired'; }
+                          else if (normalizedValue === 'NOT_AVAILABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Available'; }
+                          else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; }
+                        } else if (type === 'hsrp') {
+                          if (normalizedValue === 'YES') { badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200'; dotClass = 'bg-emerald-500'; displayLabel = 'Yes'; }
+                          else if (normalizedValue === 'NO') { badgeClass = 'bg-red-50 text-red-700 border border-red-200'; dotClass = 'bg-red-500'; displayLabel = 'No'; }
+                          else if (normalizedValue === 'NOT_APPLICABLE') { badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200'; dotClass = 'bg-gray-400'; displayLabel = 'Not Applicable'; }
+                          else { badgeClass = 'bg-yellow-50 text-yellow-700 border border-yellow-200'; dotClass = 'bg-yellow-500'; displayLabel = 'Pending'; }
+                        }
+
+                        return (
+                          <div key={label} className="flex flex-col gap-1 sm:gap-1.5 rounded-xl border border-gray-100 bg-gray-50/80 p-3 sm:px-4 sm:py-3.5 hover:shadow-xs transition-shadow">
+                            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
+                            <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] sm:text-xs font-bold shadow-2xs ${badgeClass}`}>
+                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                              {displayLabel}
+                            </span>
+                            {date && (
+                              <span className="text-[10px] sm:text-[11px] font-medium text-gray-500 mt-1 flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Until: {formatDateOnly(date) || t('machineDetails.na')}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
+                      <div className="mt-4 sm:mt-6 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+                        {[
+                          ['RTO Office', listing.vehicleCompliance.rtoOffice],
+                          ['RTO Agent Name', listing.vehicleCompliance.rtoAgentName],
+                          ['RTO Expenses', listing.vehicleCompliance.rtoExpenses != null ? formatCurrency(listing.vehicleCompliance.rtoExpenses) : null],
+                          ['Vehicle Maintenance Cost', listing.vehicleCompliance.vehicleMaintenanceCost != null ? formatCurrency(listing.vehicleCompliance.vehicleMaintenanceCost) : null],
+                        ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
+                          <div key={label} className="flex items-center gap-3.5 rounded-xl border border-gray-100 bg-gray-50/80 p-3.5 sm:px-5 sm:py-4 hover:shadow-xs transition-shadow">
+                            <div className="flex h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 shadow-2xs">
+                              <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 mb-0.5">{label}</p>
+                              <p className="text-xs sm:text-[15px] font-bold text-gray-900 truncate">{value}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
+
+      {/* Mobile Sticky Bottom CTA Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/90 px-3 py-2.5 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] flex items-center justify-between gap-2.5">
+        <div className="min-w-0 flex flex-col justify-center">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+            {listing.status === 'SOLD' ? 'Sold Price' : 'Asking Price'}
+          </span>
+          <span className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
+            {listing.status === 'SOLD' ? soldPriceLabel : formatCurrency(listing.price || 0)}
+          </span>
+        </div>
+
+        {listing.status === 'SOLD' ? (
+          <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold px-3 py-2 rounded-lg">
+            SOLD OUT
+          </span>
+        ) : (
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {listing.buyNowPaymentAvailable && !isOwnListing && (
+              <button
+                type="button"
+                onClick={handleBuyNowClick}
+                className="flex items-center justify-center gap-1 rounded-lg bg-[#111827] px-3 py-2 text-xs font-bold text-white shadow-xs active:scale-95 transition-transform"
+              >
+                <CreditCard size={14} />
+                <span>Buy Now</span>
+              </button>
+            )}
+
+            {contactNumber && (
+              <button
+                type="button"
+                onClick={() => handleProtectedAction('CALL')}
+                className="flex items-center justify-center gap-1 rounded-lg bg-[#FFC107] px-3 py-2 text-xs font-bold text-black shadow-xs active:scale-95 transition-transform"
+              >
+                <Phone size={14} />
+                <span>Call</span>
+              </button>
+            )}
+
+            {whatsappUrl && (
+              <button
+                type="button"
+                onClick={() => handleProtectedAction('WHATSAPP')}
+                className="flex items-center justify-center gap-1 rounded-lg bg-[#34A853] px-3 py-2 text-xs font-bold text-white shadow-xs active:scale-95 transition-transform"
+              >
+                <MessageCircle size={14} />
+                <span>WhatsApp</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {pendingFeature ? (
         <CustomerPrimePaymentModal
           isOpen={!!pendingFeature}
@@ -1201,6 +1283,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         onClose={() => setIsBuyNowOpen(false)}
       />
 
+      {/* Lightbox Modal */}
       {isLightboxOpen && mainImage && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
@@ -1208,12 +1291,12 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         >
           <button 
             onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
-            className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+            className="absolute top-3 right-3 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
           >
-            <X size={28} />
+            <X size={24} className="sm:w-7 sm:h-7" />
           </button>
           
-          <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
+          <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-2 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
             <div className="relative h-full w-full">
               <Image
                 src={getAbsoluteMediaUrl(mainImage)}
@@ -1234,50 +1317,51 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   e.stopPropagation(); 
                   setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
                 }}
-                className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+                className="absolute left-2 sm:left-8 z-[110] rounded-full bg-black/50 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
               >
-                <ChevronLeft size={24} className="sm:w-8 sm:h-8" />
+                <ChevronLeft size={20} className="sm:w-8 sm:h-8" />
               </button>
               <button 
                 onClick={(e) => { 
                   e.stopPropagation(); 
                   setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
                 }}
-                className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/40 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
+                className="absolute right-2 sm:right-8 z-[110] rounded-full bg-black/50 sm:bg-white/10 p-2 sm:p-3 text-white hover:bg-white/20 transition-all backdrop-blur-md sm:hover:scale-110"
               >
-                <ChevronRight size={24} className="sm:w-8 sm:h-8" />
+                <ChevronRight size={20} className="sm:w-8 sm:h-8" />
               </button>
             </>
           )}
 
           {images.length > 0 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md">
+            <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-black/60 px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white backdrop-blur-md">
               {activeImageIndex + 1} / {images.length}
             </div>
           )}
         </div>
       )}
 
+      {/* Video Preview Modal */}
       {isVideoModalOpen && videos.length > 0 && (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-2 sm:p-6 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setIsVideoModalOpen(false)}
         >
           <div
-            className="relative w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-gray-950 shadow-2xl"
+            className="relative w-full max-w-4xl overflow-hidden rounded-xl sm:rounded-2xl border border-white/10 bg-gray-950 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900/80 px-5 py-4 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-500">
-                  <Video size={18} />
+            <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900/80 px-4 sm:px-5 py-3 sm:py-4 backdrop-blur-sm">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-500 shrink-0">
+                  <Video size={16} />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-base font-bold text-white truncate">
                     {listing.title}
                   </h3>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-[10px] sm:text-xs text-gray-400 truncate">
                     {t('machineDetails.videoPreview', 'Machine Walkaround & Inspection Video')}
                   </p>
                 </div>
@@ -1286,10 +1370,10 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
               <button
                 type="button"
                 onClick={() => setIsVideoModalOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white"
+                className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white shrink-0 ml-2"
                 aria-label="Close video player"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
@@ -1310,16 +1394,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
             </div>
 
             {/* Modal Footer / Playlist Tabs */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-800 bg-gray-900/60 px-5 py-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-gray-800 bg-gray-900/60 px-4 sm:px-5 py-3">
               {videos.length > 1 ? (
                 <div className="flex items-center gap-2 overflow-x-auto">
-                  <span className="text-xs font-medium text-gray-400">{t('machineDetails.selectVideo', 'Select Video:')}</span>
+                  <span className="text-[11px] sm:text-xs font-medium text-gray-400">{t('machineDetails.selectVideo', 'Select Video:')}</span>
                   {videos.map((vid, idx) => (
                     <button
                       key={vid.id}
                       type="button"
                       onClick={() => setActiveVideoIndex(idx)}
-                      className={`rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                      className={`rounded-lg px-2.5 py-1 text-[11px] sm:text-xs font-bold transition-all ${
                         activeVideoIndex === idx
                           ? 'bg-red-600 text-white shadow-xs'
                           : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -1330,8 +1414,8 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   ))}
                 </div>
               ) : (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <CheckCircle2 size={14} className="text-green-500" />
+                <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-400">
+                  <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
                   <span>{t('machineDetails.verifiedInspectionVideo', 'Verified Machine Video')}</span>
                 </div>
               )}
@@ -1349,7 +1433,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     }
                   }
                 }}
-                className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 ml-auto"
+                className="text-[11px] sm:text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1 ml-auto"
               >
                 <span>{t('machineDetails.scrollToVideosSection', 'Scroll to Video Section')}</span>
                 <ChevronRight size={14} />
@@ -1364,12 +1448,16 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
 function HighlightCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="group flex flex-col rounded-xl border border-gray-100 bg-white p-3 sm:p-4 shadow-sm transition-shadow hover:shadow-md min-w-0 h-full">
-      <div className="mb-2 sm:mb-3 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-yellow-50 transition-colors group-hover:bg-yellow-100 shrink-0">
+    <div className="group flex flex-col rounded-xl border border-gray-200/80 bg-white p-3 sm:p-4 shadow-2xs transition-all hover:shadow-md hover:border-amber-300 min-w-0 h-full">
+      <div className="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 transition-colors group-hover:bg-amber-100 shrink-0">
         {icon}
       </div>
-      <span className="mb-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-500 truncate" title={label}>{label}</span>
-      <span className="text-xs sm:text-sm font-semibold text-gray-900 break-words line-clamp-2" title={value}>{value}</span>
+      <span className="mb-1 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-gray-500 truncate" title={label}>
+        {label}
+      </span>
+      <span className="text-xs sm:text-sm font-bold text-gray-900 break-words line-clamp-2 leading-snug" title={value}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -1392,19 +1480,19 @@ function SpecAccordion({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between bg-white px-6 py-5 text-left transition-colors hover:bg-amber-50/30"
+        className="flex w-full items-center justify-between bg-white px-4 sm:px-6 py-4 sm:py-5 text-left transition-colors hover:bg-amber-50/30"
       >
         <div className="flex items-center gap-3">
           {icon && (
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100/80 text-amber-700 font-bold shadow-2xs">
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-amber-100/80 text-amber-700 font-bold shadow-2xs">
               {icon}
             </div>
           )}
-          <span className="text-base font-bold text-gray-900">{title}</span>
+          <span className="text-sm sm:text-base font-bold text-gray-900">{title}</span>
         </div>
-        {isOpen ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+        {isOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
       </button>
-      {isOpen && <div className="px-6 pb-6 pt-2">{children}</div>}
+      {isOpen && <div className="px-4 sm:px-6 pb-5 pt-2">{children}</div>}
     </div>
   );
 }
@@ -1417,19 +1505,19 @@ type SpecItem = {
 
 function SpecsGrid({ items }: { items: SpecItem[] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 sm:gap-x-8 lg:gap-x-12 gap-y-2 sm:gap-y-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 sm:gap-x-8 lg:gap-x-12 gap-y-1 sm:gap-y-2">
       {items.map(({ icon, label, value }) => (
         <div 
           key={label} 
-          className="group flex items-center justify-between py-3 px-3 rounded-xl transition-all duration-200 hover:bg-slate-50 border-b border-gray-100/70 sm:border-b-0"
+          className="group flex flex-col sm:flex-row sm:items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-200 hover:bg-slate-50/80 border-b border-gray-100 last:border-b-0 sm:border-b-0 gap-1 sm:gap-4"
         >
-          <div className="flex items-center gap-3 min-w-0 pr-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600 transition-colors group-hover:bg-amber-100 group-hover:text-amber-700 flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+            <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600 transition-colors group-hover:bg-amber-100 group-hover:text-amber-700 shrink-0">
               {icon}
             </div>
-            <span className="text-sm font-medium text-gray-600 truncate">{label}</span>
+            <span className="text-xs sm:text-sm font-medium text-gray-600 truncate">{label}</span>
           </div>
-          <span className="text-sm font-bold text-gray-900 break-words text-right">{value}</span>
+          <span className="text-xs sm:text-sm font-bold text-gray-900 break-words sm:text-right pl-9 sm:pl-0">{value}</span>
         </div>
       ))}
     </div>
