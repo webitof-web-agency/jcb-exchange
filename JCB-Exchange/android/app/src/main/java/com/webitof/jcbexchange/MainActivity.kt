@@ -1,4 +1,4 @@
-package com.webitof.jcbexchangeye
+package com.webitof.jcbexchange
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

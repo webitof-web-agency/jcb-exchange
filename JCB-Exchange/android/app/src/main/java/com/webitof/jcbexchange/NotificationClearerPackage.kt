@@ -1,4 +1,4 @@
-package com.webitof.jcbexchangeye
+package com.webitof.jcbexchange
 
 import android.view.View
 import com.facebook.react.ReactPackage

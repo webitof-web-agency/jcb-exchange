@@ -1,4 +1,4 @@
-package com.webitof.jcbexchangeye
+package com.webitof.jcbexchange
 
 import android.app.NotificationManager
 import android.content.Context

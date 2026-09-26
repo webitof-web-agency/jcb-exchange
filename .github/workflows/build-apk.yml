@@ -1,9 +1,18 @@
-name: Build APK (Manual)
+name: Build APK/AAB (Manual)
 
 # ✅ Sirf manually trigger hoga — GitHub Actions tab me "Run workflow" button se
 on:
   workflow_dispatch:
     inputs:
+      build_output:
+        description: 'Build Output Type'
+        required: true
+        default: 'apk'
+        type: choice
+        options:
+          - apk
+          - aab
+          - both
       build_type:
         description: 'Build Type'
         required: true
@@ -91,26 +100,44 @@ jobs:
 
       # 9. Release APK build
       - name: Build Release APK
-        if: ${{ github.event.inputs.build_type == 'release' }}
+        if: ${{ github.event.inputs.build_type == 'release' && (github.event.inputs.build_output == 'apk' || github.event.inputs.build_output == 'both') }}
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
         run: |
           cd android
           ./gradlew assembleRelease
 
+      # 9.5. Release AAB build
+      - name: Build Release AAB
+        if: ${{ github.event.inputs.build_type == 'release' && (github.event.inputs.build_output == 'aab' || github.event.inputs.build_output == 'both') }}
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
+        run: |
+          cd android
+          ./gradlew bundleRelease
+
       # 10. Debug APK build
       - name: Build Debug APK
-        if: ${{ github.event.inputs.build_type == 'debug' }}
+        if: ${{ github.event.inputs.build_type == 'debug' && (github.event.inputs.build_output == 'apk' || github.event.inputs.build_output == 'both') }}
         run: |
           cd android
           ./gradlew assembleDebug
 
-      # 11. APK ko artifact me upload karo (download ke liye)
-      - name: Upload APK Artifact
+      # 10.5. Debug AAB build
+      - name: Build Debug AAB
+        if: ${{ github.event.inputs.build_type == 'debug' && (github.event.inputs.build_output == 'aab' || github.event.inputs.build_output == 'both') }}
+        run: |
+          cd android
+          ./gradlew bundleDebug
+
+      # 11. APK/AAB ko artifact me upload karo (download ke liye)
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JCB-Exchange-${{ github.event.inputs.build_type }}-${{ github.run_number }}
           path: |
-            JCB-Exchange/android/app/build/outputs/apk/release/JCB-Exchange.apk
-            JCB-Exchange/android/app/build/outputs/apk/debug/JCB-Exchange.apk
+            JCB-Exchange/android/app/build/outputs/apk/release/*.apk
+            JCB-Exchange/android/app/build/outputs/apk/debug/*.apk
+            JCB-Exchange/android/app/build/outputs/bundle/release/*.aab
+            JCB-Exchange/android/app/build/outputs/bundle/debug/*.aab
           retention-days: 30
