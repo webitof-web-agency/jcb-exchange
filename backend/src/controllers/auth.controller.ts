@@ -357,6 +357,7 @@ export const buildAuthUserPayload = async (user: any) => {
     whatsappNumber: user.whatsappNumber ?? null,
     city: user.city ?? null,
     state: user.state ?? null,
+    authVersion: Number.isInteger(user.authVersion) && user.authVersion >= 0 ? user.authVersion : 0,
     isPrimeCustomer: primeAccessPayload?.isPrimeCustomer ?? false,
     customerCategory: primeAccessPayload?.customerCategory ?? 'STANDARD_CUSTOMER',
     primeSubscriptionExpiresAt: primeAccessPayload?.activeSubscription?.expiresAt ?? null,
@@ -464,6 +465,7 @@ const signAuthToken = (user: any) =>
       role: user.role,
       rawRole: user.rawRole ?? user.role,
       status: user.status,
+      authVersion: Number.isInteger(user.authVersion) && user.authVersion >= 0 ? user.authVersion : 0,
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -1778,12 +1780,18 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
               whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
               city: normalizedCity || null,
               state: normalizedState || null,
+              ...(normalizedEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
+                ? { authVersion: { increment: 1 } }
+                : {}),
             }
           : {
               name: normalizedName || currentUser.name || null,
               email: normalizedEmail,
               mobile: normalizedMobile || currentUser.mobile || null,
               whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
+              ...(normalizedEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
+                ? { authVersion: { increment: 1 } }
+                : {}),
             },
         include: {
           adminProfile: true,
@@ -1865,6 +1873,7 @@ export const updatePassword = async (req: Request, res: Response, next: NextFunc
       where: { id: req.user.id },
       data: {
         password: hashedPassword,
+        authVersion: { increment: 1 },
       },
     });
 

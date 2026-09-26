@@ -8,6 +8,9 @@ export const ACCOUNT_REVOKED_MESSAGE =
 export const ACCOUNT_INACTIVE_CODE = 'ACCOUNT_INACTIVE';
 export const ACCOUNT_INACTIVE_MESSAGE =
   'This account is inactive right now. Please contact the super admin to reactivate access.';
+export const SESSION_REVOKED_CODE = 'SESSION_REVOKED';
+export const SESSION_REVOKED_MESSAGE =
+  'This session is no longer valid. Please sign in again.';
 
 const inactiveUserStatuses = new Set(['INACTIVE']);
 const revokedUserStatuses = new Set(['SUSPENDED', 'BLOCKED', 'CLOSED']);
@@ -28,6 +31,7 @@ export const authenticatedUserSelect = {
   whatsappNumber: true,
   city: true,
   state: true,
+  authVersion: true,
   createdAt: true,
   updatedAt: true,
   customRoleId: true,

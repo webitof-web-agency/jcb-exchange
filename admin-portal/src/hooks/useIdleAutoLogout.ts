@@ -11,16 +11,23 @@ export function useIdleAutoLogout({
   warningMs = 60_000,
   onLogout,
   enabled = true,
+  storageKey = 'portal_token',
 }: {
   timeoutMs: number;
   warningMs?: number;
   onLogout: () => void;
   enabled?: boolean;
+  storageKey?: string;
 }) {
   const logoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningShownRef = useRef(false);
   const resetTimersRef = useRef<() => void>(() => undefined);
+  const onLogoutRef = useRef(onLogout);
+
+  useEffect(() => {
+    onLogoutRef.current = onLogout;
+  }, [onLogout]);
 
   const clearTimers = useCallback(() => {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
@@ -149,8 +156,14 @@ export function useIdleAutoLogout({
     const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
 
     const handleActivity = () => resetTimers();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === storageKey && event.newValue === null) {
+        onLogoutRef.current();
+      }
+    };
 
     events.forEach((event) => window.addEventListener(event, handleActivity, { passive: true }));
+    window.addEventListener('storage', handleStorage);
 
     // Start timers immediately
     resetTimers();
@@ -158,7 +171,8 @@ export function useIdleAutoLogout({
     return () => {
       clearTimers();
       events.forEach((event) => window.removeEventListener(event, handleActivity));
+      window.removeEventListener('storage', handleStorage);
       dismissWarning();
     };
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 }

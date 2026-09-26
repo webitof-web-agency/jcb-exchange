@@ -6,6 +6,11 @@ import { deleteFileFromDrive } from '../services/googleDrive.service';
 import prisma from '../lib/prisma';
 import { detachLeadsFromListing, getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
+import {
+  isSelfPurchase,
+  SELF_PURCHASE_NOT_ALLOWED_CODE,
+  SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+} from '../utils/listingPurchasePolicy';
 import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibility';
 import { PushNotificationService } from '../services/pushNotification.service';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
@@ -1563,6 +1568,13 @@ export const getListingPaymentSettings = async (req: Request, res: Response, nex
       return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
     }
 
+    if (isSelfPurchase(listing!.partnerId, req.user?.id)) {
+      return res.status(409).json({
+        error: SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+        code: SELF_PURCHASE_NOT_ALLOWED_CODE,
+      });
+    }
+
     const settings = (await getAppSettings()).listingPayment;
     const publicSettings = sanitizeListingPaymentSettings(settings);
 
@@ -1749,8 +1761,11 @@ export const createListingRazorpayOrder = async (req: Request, res: Response, ne
       return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
     }
 
-    if (listing!.partnerId === req.user.id) {
-      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    if (isSelfPurchase(listing!.partnerId, req.user.id)) {
+      return res.status(409).json({
+        error: SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+        code: SELF_PURCHASE_NOT_ALLOWED_CODE,
+      });
     }
 
     const blockingPayment = await findBlockingListingPayment(listing!.id);
@@ -1824,8 +1839,11 @@ export const createListingPhonePeOrder = async (req: Request, res: Response, nex
       return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
     }
 
-    if (listing!.partnerId === req.user.id) {
-      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    if (isSelfPurchase(listing!.partnerId, req.user.id)) {
+      return res.status(409).json({
+        error: SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+        code: SELF_PURCHASE_NOT_ALLOWED_CODE,
+      });
     }
 
     const blockingPayment = await findBlockingListingPayment(listing!.id);
@@ -1943,6 +1961,14 @@ export const verifyListingPhonePeOrder = async (req: Request, res: Response, nex
 
     if (!merchantOrderId) {
       return res.status(400).json({ error: 'PhonePe merchant order ID is required.' });
+    }
+
+    const listing = await getPaymentReadyListing(listingId);
+    if (isSelfPurchase(listing?.partnerId, req.user.id)) {
+      return res.status(409).json({
+        error: SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+        code: SELF_PURCHASE_NOT_ALLOWED_CODE,
+      });
     }
 
     const existingPayment = await prismaAny.listingPaymentSubmission.findFirst({
@@ -2073,8 +2099,11 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       return res.status(listingError === 'Listing not found.' ? 404 : 400).json({ error: listingError });
     }
 
-    if (listing!.partnerId === req.user.id) {
-      return res.status(400).json({ error: 'You cannot buy your own listing.' });
+    if (isSelfPurchase(listing!.partnerId, req.user.id)) {
+      return res.status(409).json({
+        error: SELF_PURCHASE_NOT_ALLOWED_MESSAGE,
+        code: SELF_PURCHASE_NOT_ALLOWED_CODE,
+      });
     }
 
     const existingPending = await prismaAny.listingPaymentSubmission.findFirst({

@@ -1524,6 +1524,10 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
       return res.status(400).json({ error: 'Another user with the same email or mobile already exists.' });
     }
 
+    const credentialsChanged =
+      normalizedEmail !== targetUser.email ||
+      (normalizedMobile !== null && normalizedMobile !== targetUser.mobile);
+
     await prisma.user.update({
       where: { id },
       data: {
@@ -1532,6 +1536,7 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
         mobile: normalizedMobile || targetUser.mobile || null,
         city: normalizedCity,
         state: normalizedState,
+        ...(credentialsChanged ? { authVersion: { increment: 1 } } : {}),
       },
     });
 
@@ -1646,6 +1651,7 @@ export const resetManagedUserPassword = async (req: Request, res: Response, next
       where: { id },
       data: {
         password: hashedPassword,
+        authVersion: { increment: 1 },
       },
     });
 

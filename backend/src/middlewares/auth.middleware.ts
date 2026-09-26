@@ -5,12 +5,15 @@ import {
   ACCOUNT_INACTIVE_MESSAGE,
   ACCOUNT_REVOKED_CODE,
   ACCOUNT_REVOKED_MESSAGE,
+  SESSION_REVOKED_CODE,
+  SESSION_REVOKED_MESSAGE,
   fetchAuthenticatedUserById,
   getAccountAccessState,
   isPortalStatusBlocked,
   resolveEffectiveUserRole,
 } from '../utils/accountAccess';
 import prisma from '../lib/prisma';
+import { isAuthVersionCurrent } from '../utils/authVersion';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 
@@ -19,6 +22,7 @@ interface AuthTokenPayload {
   email?: string | null;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | 'PARTNER' | 'CUSTOMER';
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'BLOCKED' | 'CLOSED';
+  authVersion?: number;
   iat?: number;
   exp?: number;
 }
@@ -46,6 +50,13 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
           return res.status(403).json({
             error: ACCOUNT_REVOKED_MESSAGE,
             code: ACCOUNT_REVOKED_CODE,
+          });
+        }
+
+        if (!isAuthVersionCurrent(decoded.authVersion, user.authVersion)) {
+          return res.status(401).json({
+            error: SESSION_REVOKED_MESSAGE,
+            code: SESSION_REVOKED_CODE,
           });
         }
 

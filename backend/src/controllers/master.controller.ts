@@ -1516,6 +1516,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       model: listing.model,
       partner: {
         id: listing.partner?.partnerProfile?.id || listing.partner?.id,
+        ownerUserId: listing.partner?.id,
         name: sellerPresentation.displayName,
         partnerType: sellerPresentation.partnerType,
         customerCategory: sellerPresentation.partnerType === 'PRIME_CUSTOMER' ? 'PRIME_CUSTOMER' : 'STANDARD_CUSTOMER',
