@@ -53,6 +53,8 @@ type SiteLogoResponse = {
   manifestIconUrl?: string | null;
 };
 
+const ADMIN_LOGO_FALLBACK = '/adminlogo.png';
+
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;
   return axiosError.response?.data?.error || fallbackMessage;
@@ -859,6 +861,11 @@ export default function HomepageContentSettings() {
                           height={80}
                           unoptimized
                           className="object-contain max-h-full"
+                          onError={(event) => {
+                            event.currentTarget.onerror = null;
+                            event.currentTarget.src = ADMIN_LOGO_FALLBACK;
+                            event.currentTarget.srcset = '';
+                          }}
                         />
                       </div>
                     ) : null}
@@ -919,7 +926,19 @@ export default function HomepageContentSettings() {
                           backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h12v12H0zm12 12h12v12H12z\' fill=\'%23f3f4f6\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'
                         }}
                       >
-                        <Image src={darkLogoPreviewUrl} alt="Dark Logo Preview" width={200} height={80} unoptimized className="object-contain max-h-full" />
+                        <Image
+                          src={darkLogoPreviewUrl}
+                          alt="Dark Logo Preview"
+                          width={200}
+                          height={80}
+                          unoptimized
+                          className="object-contain max-h-full"
+                          onError={(event) => {
+                            event.currentTarget.onerror = null;
+                            event.currentTarget.src = ADMIN_LOGO_FALLBACK;
+                            event.currentTarget.srcset = '';
+                          }}
+                        />
                       </div>
                     ) : null}
 

@@ -1,8 +1,6 @@
 'use client';
 
 import React from 'react';
-import { useSiteLogo } from '@/hooks/useSiteLogo';
-import { getLoaderLogoUrl, getLogoLoadErrorFallback } from '@/lib/brandLoaderLogo';
 
 export type BrandLoaderSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type BrandLoaderVariant = 'inline' | 'section' | 'overlay' | 'fullscreen';
@@ -65,31 +63,18 @@ function ArcRing({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
   );
 }
 
-function LoaderLogo({ ring, logo, logoUrl, darkLogoUrl, initialLogoUrl }: { ring: number; logo: number; logoUrl: string | null; darkLogoUrl: string | null; initialLogoUrl?: string | null }) {
-  const activeLogoUrl = getLoaderLogoUrl({ initialLogoUrl, darkLogoUrl, logoUrl });
-  const [remoteLogoUrl, setRemoteLogoUrl] = React.useState(activeLogoUrl);
+function LoaderLogo({ ring }: { ring: number }) {
+  const activeLogoUrl = '/loadinglogo.png';
 
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {!activeLogoUrl && (
+      {activeLogoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src="/icon.svg"
-          alt=""
-          aria-hidden="true"
-          style={{ width: Math.min(logo, ring * 0.34), height: Math.min(logo, ring * 0.34), objectFit: 'contain', display: 'block' }}
-        />
-      )}
-      {remoteLogoUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={remoteLogoUrl}
+          src={activeLogoUrl}
           alt="JCB Exchange"
           fetchPriority="high"
           decoding="async"
-          onError={() => {
-            setRemoteLogoUrl(getLogoLoadErrorFallback(remoteLogoUrl, { darkLogoUrl, logoUrl }));
-          }}
           style={{ width: 'auto', height: 'auto', maxWidth: ring * 0.76, maxHeight: ring * 0.46, objectFit: 'contain', display: 'block' }}
         />
       )}
@@ -97,30 +82,25 @@ function LoaderLogo({ ring, logo, logoUrl, darkLogoUrl, initialLogoUrl }: { ring
   );
 }
 
-function Spinner({ size, bg, initialLogoUrl }: { size: BrandLoaderSize; bg: BrandLoaderBg; initialLogoUrl?: string | null }) {
-  const { logoUrl, darkLogoUrl } = useSiteLogo();
-  const { ring, logo } = SIZE_MAP[size];
+function Spinner({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
+  const { ring } = SIZE_MAP[size];
 
   return (
     <div style={{ position: 'relative', width: ring, height: ring, flexShrink: 0 }} role="status" aria-label="Loading">
       <ArcRing size={size} bg={bg} />
       {size !== 'xs' && (
         <LoaderLogo
-          key={initialLogoUrl || darkLogoUrl || logoUrl || 'fallback'}
+          key="static-loading-logo"
           ring={ring}
-          logo={logo}
-          logoUrl={logoUrl}
-          darkLogoUrl={darkLogoUrl}
-          initialLogoUrl={initialLogoUrl}
         />
       )}
     </div>
   );
 }
 
-function ResponsiveSpinner({ size, bg, initialLogoUrl }: { size: BrandLoaderSize; bg: BrandLoaderBg; initialLogoUrl?: string | null }) {
+function ResponsiveSpinner({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
   const className = `portal-brand-loader-${size}`;
-  if (size === 'xs') return <Spinner size={size} bg={bg} initialLogoUrl={initialLogoUrl} />;
+  if (size === 'xs') return <Spinner size={size} bg={bg} />;
 
   return (
     <>
@@ -131,14 +111,14 @@ function ResponsiveSpinner({ size, bg, initialLogoUrl }: { size: BrandLoaderSize
         @media (min-width: 361px) and (max-width: 480px) { .${className} { transform: scale(0.65); } }
         @media (min-width: 481px) and (max-width: 768px) { .${className} { transform: scale(0.82); } }
       `}</style>
-      <div className={className}><Spinner size={size} bg={bg} initialLogoUrl={initialLogoUrl} /></div>
+      <div className={className}><Spinner size={size} bg={bg} /></div>
     </>
   );
 }
 
-export default function BrandLoader({ size = 'md', variant = 'inline', bg = 'light', text, initialLogoUrl, className = '' }: BrandLoaderProps) {
+export default function BrandLoader({ size = 'md', variant = 'inline', bg = 'light', text, className = '' }: BrandLoaderProps) {
   const { textSize } = SIZE_MAP[size];
-  const spinner = <ResponsiveSpinner size={size} bg={bg} initialLogoUrl={initialLogoUrl} />;
+  const spinner = <ResponsiveSpinner size={size} bg={bg} />;
   const label = text ? <p style={{ color: bg === 'dark' ? '#fff' : '#374151', fontSize: textSize, fontWeight: 600, textAlign: 'center', lineHeight: 1.35 }}>{text}</p> : null;
 
   if (variant === 'inline') return <span className={`inline-flex flex-col items-center gap-2 ${className}`} role="status" aria-label="Loading">{spinner}{label}</span>;

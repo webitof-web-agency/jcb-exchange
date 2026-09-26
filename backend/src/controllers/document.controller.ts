@@ -15,7 +15,6 @@ import {
   isVideoMimeType,
   MAX_DOCUMENT_UPLOAD_SIZE,
   MAX_LISTING_VIDEO_UPLOAD_SIZE,
-  publicUploadDir,
   secureUploadDir,
 } from '../utils/documentUpload';
 import {
@@ -29,37 +28,9 @@ import { getAppSettings } from '../utils/appSettings';
 import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
 import {
   buildPublicBrandingFileName,
-  buildPublicBrandingFileUrl,
   PublicBrandingPurpose,
 } from '../utils/publicBrandingUpload';
-
-const savePublicBrandingImageLocally = async (
-  req: Request,
-  file: Express.Multer.File,
-  purpose: PublicBrandingPurpose,
-) => {
-  await enforceStoredFileSizePolicy(file, purpose);
-
-  const fileName = buildPublicBrandingFileName(
-    purpose,
-    file.originalname,
-    randomUUID(),
-    file.mimetype,
-  );
-  const purposeDirectory = path.join(publicUploadDir, purpose);
-  const destinationPath = path.join(purposeDirectory, fileName);
-
-  await fs.mkdir(purposeDirectory, { recursive: true });
-  await fs.writeFile(destinationPath, file.buffer);
-
-  return buildUploadResponse(
-    req,
-    file,
-    'public',
-    buildPublicBrandingFileUrl(purpose, fileName),
-    fileName,
-  );
-};
+import { saveBrandingImageLocally } from '../utils/brandingStorage';
 
 const prismaAny = prisma as any;
 
@@ -348,7 +319,12 @@ export const createUploadPublicListingMedia = (
 
 export const uploadPublicListingMedia = createUploadPublicListingMedia();
 
-export const uploadPublicFinanceSupportImage = async (req: Request, res: Response, next: NextFunction) => {
+type BrandingLocalSaver = typeof saveBrandingImageLocally;
+
+export const createUploadPublicBrandingImage = (
+  purpose: PublicBrandingPurpose,
+  saveLocally: BrandingLocalSaver = saveBrandingImageLocally,
+) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = getUploadedFile(req);
 
@@ -356,95 +332,28 @@ export const uploadPublicFinanceSupportImage = async (req: Request, res: Respons
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'finance-support'));
+    await enforceStoredFileSizePolicy(file, purpose);
+
+    const saved = await saveLocally(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      purpose,
+    );
+
+    return res.status(201).json(buildUploadResponse(req, file, 'public', saved.fileUrl, saved.fileName));
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
-export const uploadPublicHeroImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'hero-image'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const uploadPublicInspectionSectionImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'inspection-section'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const uploadPublicSiteLogoImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'site-logo'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const uploadPublicSiteDarkLogoImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'site-dark-logo'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const uploadPublicSiteFaviconImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'site-favicon'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const uploadPublicSiteManifestIconImage = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const file = getUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({ error: 'A file is required.' });
-    }
-
-    res.status(201).json(await savePublicBrandingImageLocally(req, file, 'site-manifest-icon'));
-  } catch (error) {
-    next(error);
-  }
-};
+export const uploadPublicFinanceSupportImage = createUploadPublicBrandingImage('finance-support');
+export const uploadPublicHeroImage = createUploadPublicBrandingImage('hero-image');
+export const uploadPublicInspectionSectionImage = createUploadPublicBrandingImage('inspection-section');
+export const uploadPublicSiteLogoImage = createUploadPublicBrandingImage('site-logo');
+export const uploadPublicSiteDarkLogoImage = createUploadPublicBrandingImage('site-dark-logo');
+export const uploadPublicSiteFaviconImage = createUploadPublicBrandingImage('site-favicon');
+export const uploadPublicSiteManifestIconImage = createUploadPublicBrandingImage('site-manifest-icon');
 
 export const getSecureDocument = async (req: Request, res: Response, next: NextFunction) => {
   try {

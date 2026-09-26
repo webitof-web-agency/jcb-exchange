@@ -29,9 +29,11 @@ const formatDate = (dateStr: string) => {
 
 export type SellAccountDocument = Pick<UploadedFileResult, 'access' | 'fileName' | 'originalName' | 'mimeType' | 'size' | 'fileUrl' | 'absoluteUrl'>;
 export type SellAccountDocuments = {
+  purchaseDeed: SellAccountDocument | null;
   purchaseAadhaarCard: SellAccountDocument | null;
   purchasePanCard: SellAccountDocument | null;
   purchaseGstCertificate: SellAccountDocument | null;
+  sellDeed: SellAccountDocument | null;
   sellAadhaarCard: SellAccountDocument | null;
   sellPanCard: SellAccountDocument | null;
   sellGstCertificate: SellAccountDocument | null;
@@ -138,8 +140,6 @@ type ExportFormat = 'csv' | 'xls';
 
 const normalizeSellAccountRecord = (record: StoredSellAccountRecord): SellAccountRecord => ({
   ...record,
-  purchaseDeedNumber: record.purchaseDeedNumber || '',
-  sellDeedNumber: record.sellDeedNumber || '',
   documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
   dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CANCELLED'
     ? 'CLOSE'
@@ -176,8 +176,6 @@ const initialFormState: Omit<SellAccountRecord, 'id' | 'createdAt'> = {
   netProfit: 0,
   dealStatus: 'OPEN',
   noteSheet: '',
-  purchaseDeedNumber: '',
-  sellDeedNumber: '',
   documents: createEmptySellAccountDocuments() as SellAccountDocuments,
 };
 
@@ -1158,11 +1156,7 @@ export default function SellAccountsPage() {
                   <FileText className="h-4 w-4" /> 4. Purchase Deed
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
-                    <input type="text" placeholder="e.g. PURCHASE/2026/001" value={formData.purchaseDeedNumber || ''} onChange={(e) => handleInputChange('purchaseDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
-                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
-                  </div>
+                  <SellAccountPdfField label="Purchase Deed PDF" document={formData.documents?.purchaseDeed} onUploaded={(file) => handleDocumentUploaded('purchaseDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="Aadhaar Card PDF" document={formData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="PAN Card PDF" document={formData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="GST Certificate PDF" document={formData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
@@ -1175,11 +1169,7 @@ export default function SellAccountsPage() {
                   <FileText className="h-4 w-4" /> 5. Sell Deed
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
-                    <input type="text" placeholder="e.g. SELL/2026/001" value={formData.sellDeedNumber || ''} onChange={(e) => handleInputChange('sellDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
-                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
-                  </div>
+                  <SellAccountPdfField label="Sell Deed PDF" document={formData.documents?.sellDeed} onUploaded={(file) => handleDocumentUploaded('sellDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="Aadhaar Card PDF" document={formData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="PAN Card PDF" document={formData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <SellAccountPdfField label="GST Certificate PDF" document={formData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />

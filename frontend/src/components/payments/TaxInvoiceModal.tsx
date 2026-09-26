@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { Download, X, FileText } from 'lucide-react';
 import api, { getAbsoluteMediaUrl } from '@/lib/api';
 
+const INVOICE_LOGO_FALLBACK = '/frontheadlogo.png';
+
 type InvoiceSettings = {
   companyName: string | null;
   gstin: string | null;
@@ -23,6 +25,7 @@ export type InvoicePaymentData = {
   transactionRef?: string | null;
   customerEmail?: string | null;
   customerMobile?: string | null;
+  customerCity?: string | null;
   customerState?: string | null;
 };
 
@@ -80,7 +83,9 @@ export default function TaxInvoiceModal({ isOpen, onClose, payment }: TaxInvoice
     defaultGstRate: 18,
     termsAndConditions: 'This is a computer-generated tax invoice and does not require a physical signature.',
   });
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // Keep the local static logo available while the dynamic branding request is
+  // loading, and as a safe fallback if an older/missing upload is returned.
+  const [logoUrl, setLogoUrl] = useState<string | null>(INVOICE_LOGO_FALLBACK);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
@@ -100,13 +105,27 @@ export default function TaxInvoiceModal({ isOpen, onClose, payment }: TaxInvoice
                 termsAndConditions: res.data.invoice.termsAndConditions || 'This is a computer-generated tax invoice and does not require a physical signature.',
               });
             }
-            if (res.data.siteLogo) {
-              setLogoUrl(getAbsoluteMediaUrl(res.data.siteLogo));
+            const dynamicLogoUrl = getAbsoluteMediaUrl(res.data.siteLogo);
+            if (!dynamicLogoUrl) {
+              setLogoUrl(INVOICE_LOGO_FALLBACK);
+              return;
             }
+
+            // Verify the configured asset before handing it to the invoice
+            // HTML and react-pdf renderers. This prevents a stale/missing
+            // server upload from producing a broken image in either output.
+            const logoProbe = new window.Image();
+            logoProbe.onload = () => {
+              if (isMounted) setLogoUrl(dynamicLogoUrl);
+            };
+            logoProbe.onerror = () => {
+              if (isMounted) setLogoUrl(INVOICE_LOGO_FALLBACK);
+            };
+            logoProbe.src = dynamicLogoUrl;
           }
         })
         .catch(() => {
-          // Keep defaults on failure
+          setLogoUrl(INVOICE_LOGO_FALLBACK);
         })
 
       return () => {
@@ -288,6 +307,7 @@ export default function TaxInvoiceModal({ isOpen, onClose, payment }: TaxInvoice
                   src={logoUrl}
                   alt={invoiceSettings.companyName || 'Logo'}
                   className="h-11 w-auto max-w-[150px] object-contain"
+                  onError={() => setLogoUrl(INVOICE_LOGO_FALLBACK)}
                 />
               ) : (
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FFC107] font-bold text-black text-sm">
@@ -336,6 +356,7 @@ export default function TaxInvoiceModal({ isOpen, onClose, payment }: TaxInvoice
                 Billed To (Customer)
               </h2>
               <p className="font-semibold text-xs text-gray-900">{payment.memberName || 'Valued Customer'}</p>
+              {payment.customerCity && <p className="text-gray-600 mt-0.5 text-[11px]">City: {payment.customerCity}</p>}
               {payment.customerMobile && (
                 <p className="text-gray-600 mt-0.5 text-[11px]">Mobile: {payment.customerMobile}</p>
               )}

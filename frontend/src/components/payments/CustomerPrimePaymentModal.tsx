@@ -10,6 +10,7 @@ import { uploadCustomerPrimeReceiptToServer } from '@/lib/fileUpload';
 import { useAuthStore, type AuthUser } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import ReceiptPreviewModal from '@/components/payments/ReceiptPreviewModal';
+import BillingLocationFields from '@/components/payments/BillingLocationFields';
 
 type CustomerPrimeFeature = 'CALL' | 'WHATSAPP' | 'SELL_LISTING' | 'BUY_NOW';
 
@@ -100,6 +101,16 @@ export default function CustomerPrimePaymentModal({
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string | null>(null);
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+  const userId = user?.id;
+  const userCity = user?.city || '';
+  const userState = user?.state || '';
+  const [billingLocation, setBillingLocation] = useState({ city: user?.city || '', state: user?.state || '' });
+
+  useEffect(() => {
+    // Reset the editable billing snapshot each time the payment dialog opens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isOpen && userId) setBillingLocation({ city: userCity, state: userState });
+  }, [isOpen, userId, userCity, userState]);
 
   useEffect(() => {
     if (!isOpen || !user?.id) {
@@ -222,6 +233,10 @@ export default function CustomerPrimePaymentModal({
   };
 
   const handleSubmit = async () => {
+    if (!billingLocation.city.trim() || !billingLocation.state.trim()) {
+      setError('Please select your billing city and state before payment.');
+      return;
+    }
     if (!receiptUrl) {
       setError(t('primeModal.receiptRequired'));
       return;
@@ -234,6 +249,8 @@ export default function CustomerPrimePaymentModal({
     try {
       const response = await api.post<SubmitResponse>('/auth/customer-prime/subscribe', {
         receiptUrl,
+        city: billingLocation.city,
+        state: billingLocation.state,
       });
 
       if (token && user && response.data.user) {
@@ -367,6 +384,10 @@ export default function CustomerPrimePaymentModal({
                 {error ? (
                   <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
                 ) : null}
+
+                <div className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-sm">
+                  <BillingLocationFields city={billingLocation.city} state={billingLocation.state} onChange={setBillingLocation} />
+                </div>
 
                 <div className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-500">

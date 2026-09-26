@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSiteLogo } from '@/hooks/useSiteLogo';
 
 type PortalBrandProps = {
   href: string;
@@ -10,6 +9,7 @@ type PortalBrandProps = {
   subtitle?: string | null;
   className?: string;
   showSubtitle?: boolean;
+  logoSrc?: string;
 };
 
 export default function PortalBrand({
@@ -18,9 +18,8 @@ export default function PortalBrand({
   subtitle,
   className = '',
   showSubtitle = true,
+  logoSrc = '/adminlogo.png',
 }: PortalBrandProps) {
-  const { logoUrl, darkLogoUrl } = useSiteLogo();
-  const activeLogoUrl = logoUrl || darkLogoUrl;
 
   const wrapperClass = size === 'footer'
     ? 'max-w-[240px] sm:max-w-[360px]'
@@ -30,31 +29,17 @@ export default function PortalBrand({
   return (
     <div className={`flex flex-col items-center justify-center text-center ${className}`}>
       <Link href={href} className={`inline-flex items-center justify-center ${wrapperClass}`}>
-        {activeLogoUrl ? (
-          <div className={`relative flex items-center justify-center ${wrapperClass}`}>
-            <Image
-              src={activeLogoUrl}
-              alt="JCB Exchange"
-              width={300}
-              height={80}
-              unoptimized
-              priority={size === 'header'}
-              loading={size === 'header' ? 'eager' : 'lazy'}
-              className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
-            />
-          </div>
-        ) : (
-          <div className={`relative flex items-center justify-center ${wrapperClass}`}>
-            <Image
-              src="/mainlogo.png"
-              alt="JCB Exchange"
-              width={300}
-              height={80}
-              priority={size === 'header'}
-              className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
-            />
-          </div>
-        )}
+        <div className={`relative flex items-center justify-center ${wrapperClass}`}>
+          <Image
+            src={logoSrc}
+            alt="JCB Exchange"
+            width={300}
+            height={80}
+            priority={size === 'header'}
+            loading={size === 'header' ? 'eager' : 'lazy'}
+            className={`w-full h-auto object-contain object-center mx-auto ${maxHeightClass}`}
+          />
+        </div>
       </Link>
       {showSubtitle && subtitle ? (
         <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-gray-400 text-center">{subtitle}</p>

@@ -178,6 +178,8 @@ export default function PersonalInfoTab() {
           ...user,
           name: response.data.user.name,
           email: response.data.user.email,
+          city: response.data.user.city,
+          state: response.data.user.state,
         });
       }
     } catch (error: unknown) {

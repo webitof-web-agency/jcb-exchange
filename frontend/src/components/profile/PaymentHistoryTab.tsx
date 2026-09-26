@@ -18,6 +18,8 @@ type PrimePaymentHistoryItem = {
   startedAt?: string | null;
   expiresAt?: string | null;
   receiptUrl?: string | null;
+  customerCity?: string | null;
+  customerState?: string | null;
 };
 
 type HistoryResponse = {
@@ -32,6 +34,8 @@ type ListingPaymentHistoryItem = {
   transactionRef: string | null;
   receiptUrl: string | null;
   paymentNote: string | null;
+  customerCity?: string | null;
+  customerState?: string | null;
   submittedAt: string;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
@@ -252,7 +256,8 @@ export default function PaymentHistoryTab() {
                             submittedAt: payment.submittedAt,
                             customerEmail: user?.email,
                             customerMobile: user?.mobile,
-                            customerState: user?.state || null,
+                            customerCity: payment.customerCity || user?.city || null,
+                            customerState: payment.customerState || user?.state || null,
                           })}
                           className="inline-flex items-center gap-1.5 rounded-full border border-yellow-400 bg-yellow-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-yellow-900 transition hover:bg-yellow-400 hover:text-black shadow-sm"
                         >

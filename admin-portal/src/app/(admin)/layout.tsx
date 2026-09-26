@@ -141,18 +141,26 @@ export default function AdminLayout({
     visitors: number;
     recurrence: number;
     listingsPendingApproval: number;
+    recruitmentApplications: number;
+    recruitmentInterviews: number;
     clearedEnquiries: number;
     clearedVisitors: number;
     clearedRecurrence: number;
+    clearedRecruitmentApplications: number;
+    clearedRecruitmentInterviews: number;
   }>({
     enquiries: 0,
     verifications: 0,
     visitors: 0,
     recurrence: 0,
     listingsPendingApproval: 0,
+    recruitmentApplications: 0,
+    recruitmentInterviews: 0,
     clearedEnquiries: 0,
     clearedVisitors: 0,
     clearedRecurrence: 0,
+    clearedRecruitmentApplications: 0,
+    clearedRecruitmentInterviews: 0,
   });
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
@@ -365,10 +373,14 @@ export default function AdminLayout({
           const backendEnquiries = backendBadges.enquiries || 0;
           const backendVisitors = backendBadges.visitors || 0;
           const backendRecurrence = backendBadges.recurrence || 0;
+          const backendRecruitmentApplications = backendBadges.recruitmentApplications || 0;
+          const backendRecruitmentInterviews = backendBadges.recruitmentInterviews || 0;
 
           let currentClearedEnquiries = parseInt(localStorage.getItem(`cleared_enquiries_${user?.id}`) || '0');
           let currentClearedVisitors = parseInt(localStorage.getItem(`cleared_visitors_${user?.id}`) || '0');
           let currentClearedRecurrence = parseInt(localStorage.getItem(`cleared_recurrence_${user?.id}`) || '0');
+          let currentClearedRecruitmentApplications = parseInt(localStorage.getItem(`cleared_recruitment_applications_${user?.id}`) || '0');
+          let currentClearedRecruitmentInterviews = parseInt(localStorage.getItem(`cleared_recruitment_interviews_${user?.id}`) || '0');
 
           if (backendEnquiries < currentClearedEnquiries) {
             currentClearedEnquiries = backendEnquiries;
@@ -383,6 +395,16 @@ export default function AdminLayout({
           if (backendRecurrence < currentClearedRecurrence) {
             currentClearedRecurrence = backendRecurrence;
             localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
+          }
+
+          if (backendRecruitmentApplications < currentClearedRecruitmentApplications) {
+            currentClearedRecruitmentApplications = backendRecruitmentApplications;
+            localStorage.setItem(`cleared_recruitment_applications_${user?.id}`, currentClearedRecruitmentApplications.toString());
+          }
+
+          if (backendRecruitmentInterviews < currentClearedRecruitmentInterviews) {
+            currentClearedRecruitmentInterviews = backendRecruitmentInterviews;
+            localStorage.setItem(`cleared_recruitment_interviews_${user?.id}`, currentClearedRecruitmentInterviews.toString());
           }
 
           if ((pathname.startsWith('/superadmin/enquiries') || pathname.startsWith('/employee/enquiries')) && backendEnquiries > currentClearedEnquiries) {
@@ -400,15 +422,29 @@ export default function AdminLayout({
             localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
           }
 
+          if ((pathname.startsWith('/superadmin/recruitment/applications') || pathname.startsWith('/employee/recruitment/applications')) && backendRecruitmentApplications > currentClearedRecruitmentApplications) {
+            currentClearedRecruitmentApplications = backendRecruitmentApplications;
+            localStorage.setItem(`cleared_recruitment_applications_${user?.id}`, currentClearedRecruitmentApplications.toString());
+          }
+
+          if ((pathname.startsWith('/superadmin/recruitment/interviews') || pathname.startsWith('/employee/recruitment/interviews')) && backendRecruitmentInterviews > currentClearedRecruitmentInterviews) {
+            currentClearedRecruitmentInterviews = backendRecruitmentInterviews;
+            localStorage.setItem(`cleared_recruitment_interviews_${user?.id}`, currentClearedRecruitmentInterviews.toString());
+          }
+
           setBadges({
             enquiries: backendBadges.enquiries || 0,
             verifications: backendBadges.verifications || 0,
             visitors: backendVisitors,
             recurrence: backendRecurrence,
             listingsPendingApproval: backendBadges.listingsPendingApproval || 0,
+            recruitmentApplications: backendRecruitmentApplications,
+            recruitmentInterviews: backendRecruitmentInterviews,
             clearedEnquiries: currentClearedEnquiries,
             clearedVisitors: currentClearedVisitors,
             clearedRecurrence: currentClearedRecurrence,
+            clearedRecruitmentApplications: currentClearedRecruitmentApplications,
+            clearedRecruitmentInterviews: currentClearedRecruitmentInterviews,
           });
         }
       } catch {
@@ -720,7 +756,15 @@ export default function AdminLayout({
                   }`}
               >
                 <span className="flex items-center gap-3">
-                  <Briefcase className={`h-5 w-5 ${isRecruitmentSectionActive ? 'text-[#FFC107]' : ''}`} />
+                  <div className="relative">
+                    <Briefcase className={`h-5 w-5 ${isRecruitmentSectionActive ? 'text-[#FFC107]' : ''}`} />
+                    {Math.max(0, (badges.recruitmentApplications || 0) - (badges.clearedRecruitmentApplications || 0)) + Math.max(0, (badges.recruitmentInterviews || 0) - (badges.clearedRecruitmentInterviews || 0)) > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      </span>
+                    )}
+                  </div>
                   <span>{t('admin.recruitment', 'Recruitment')}</span>
                 </span>
                 <ChevronDown
@@ -736,18 +780,32 @@ export default function AdminLayout({
                     const href = `${prefix}/recruitment/${item.key}`;
                     const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
+                    let badgeCount = 0;
+                    if (item.key === 'applications') {
+                      badgeCount = Math.max(0, (badges.recruitmentApplications || 0) - (badges.clearedRecruitmentApplications || 0));
+                    } else if (item.key === 'interviews') {
+                      badgeCount = Math.max(0, (badges.recruitmentInterviews || 0) - (badges.clearedRecruitmentInterviews || 0));
+                    }
+
                     return (
                       <Link
                         key={item.key}
                         href={href}
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isActive
+                        className={`flex items-center justify-between rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isActive
                             ? 'bg-[#FFC107]/10 font-semibold text-white'
                             : 'text-gray-400 hover:bg-white/5 hover:text-white'
                           }`}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
-                        <span>{t(item.labelKey, item.defaultLabel)}</span>
+                        <div className="flex items-center gap-3">
+                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
+                          <span>{t(item.labelKey, item.defaultLabel)}</span>
+                        </div>
+                        {badgeCount > 0 && (
+                          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                            {badgeCount > 99 ? '99+' : badgeCount}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}

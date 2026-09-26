@@ -15,6 +15,7 @@ type InvoicePayment = {
   transactionRef?: string | null;
   customerEmail?: string | null;
   customerMobile?: string | null;
+  customerCity?: string | null;
   customerState?: string | null;
 };
 
@@ -397,6 +398,9 @@ export const InvoicePDFTemplate = ({
             <Text style={styles.addressBoxName}>{payment?.memberName || 'Valued Customer'}</Text>
             {payment?.customerMobile && (
               <Text style={styles.addressBoxText}>Mobile: {payment.customerMobile}</Text>
+            )}
+            {payment?.customerCity && (
+              <Text style={styles.addressBoxText}>City: {payment.customerCity}</Text>
             )}
             {payment?.customerEmail && (
               <Text style={styles.addressBoxText}>Email: {payment.customerEmail}</Text>

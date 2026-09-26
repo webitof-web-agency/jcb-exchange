@@ -1674,7 +1674,10 @@ export const getPublicInvoiceSettings = async (req: Request, res: Response, next
     const settings = await getAppSettings();
     res.json({
       invoice: settings.companyInvoice,
-      siteLogo: settings.siteLogo.imageUrl,
+      // Invoices use the header/dark-theme logo because it is designed to
+      // remain visible on the white invoice background. Keep the regular site
+      // logo as a backwards-compatible fallback when no dark logo is set.
+      siteLogo: settings.siteLogo.darkLogoUrl || settings.siteLogo.imageUrl,
     });
   } catch (error) {
     next(error);

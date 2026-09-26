@@ -8,9 +8,7 @@ import {
   Calendar,
   Camera,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   Clock,
   Cog,
   CreditCard,
@@ -49,6 +47,7 @@ import { getPublicAnalyticsIdentity } from '@/lib/analytics';
 import { useToastStore } from '@/store/toastStore';
 import { API_BASE_URL } from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
+import MediaDownloadButton, { getMediaDownloadFileName } from '@/components/media/MediaDownloadButton';
 
 type MachineDetailClientProps = {
   listing: MachineListingDetail;
@@ -558,14 +557,14 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     <div className="min-h-screen bg-[#F8F9FA] pb-28 lg:pb-20 overflow-x-hidden w-full flex flex-col">
       {/* Breadcrumb Header */}
       <div className="w-full border-b border-gray-200 bg-white shadow-2xs">
-        <div className="mx-auto flex max-w-7xl px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 items-center overflow-x-auto whitespace-nowrap text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-gray-500 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <Link href="/" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('navbar.home')}</Link>
-          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
-          <Link href="/machines" className="flex-shrink-0 transition-colors hover:text-jcb-yellow">{t('machineDetails.usedEquipment')}</Link>
-          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
-          <span className="flex-shrink-0">{listing.category?.name || t('machineDetails.machineDetail')}</span>
-          <ChevronRight size={13} className="mx-1.5 sm:mx-2 flex-shrink-0 text-gray-400" />
-          <span className="max-w-[180px] sm:max-w-[280px] md:max-w-none flex-shrink-0 truncate font-bold text-gray-900">
+        <div className="mx-auto flex flex-wrap max-w-7xl px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 items-center gap-y-1 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <Link href="/" className="shrink-0 transition-colors hover:text-jcb-yellow">{t('navbar.home')}</Link>
+          <ChevronRight size={13} className="mx-1 sm:mx-1.5 shrink-0 text-gray-400" />
+          <Link href="/machines" className="shrink-0 transition-colors hover:text-jcb-yellow">{t('machineDetails.usedEquipment')}</Link>
+          <ChevronRight size={13} className="mx-1 sm:mx-1.5 shrink-0 text-gray-400" />
+          <span className="shrink-0">{listing.category?.name || t('machineDetails.machineDetail')}</span>
+          <ChevronRight size={13} className="mx-1 sm:mx-1.5 shrink-0 text-gray-400" />
+          <span className="font-bold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-none">
             {listing.title}
           </span>
         </div>
@@ -591,32 +590,44 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                   })}
                 </div>
 
-                {/* Watch Video Floating Button */}
-                {videos.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsVideoModalOpen(true);
-                    }}
-                    className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 sm:gap-2 rounded-full border border-white/20 bg-slate-950/85 px-2.5 py-1 sm:px-3.5 sm:py-1.5 text-[11px] sm:text-xs font-bold text-white backdrop-blur-md shadow-xl transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
-                    title={t('machineDetails.watchVideo', 'Watch Machine Video')}
-                  >
-                    <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs shrink-0">
-                      <Play size={10} className="fill-white text-white ml-0.5 sm:hidden" />
-                      <Play size={12} className="fill-white text-white ml-0.5 hidden sm:block" />
-                      <span className="absolute -inset-0.5 rounded-full bg-red-500/40 animate-ping opacity-75 group-hover:opacity-100" />
-                    </div>
-                    <span className="font-bold text-white tracking-wide text-[11px] sm:text-xs">
-                      {t('machineDetails.watchVideo', 'Watch Video')}
-                    </span>
-                    {videos.length > 1 && (
-                      <span className="rounded-full bg-red-500/30 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold text-red-200">
-                        {videos.length}
+                <div className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex items-center gap-2">
+                  {mainImage && (
+                    <MediaDownloadButton
+                      url={getAbsoluteMediaUrl(mainImage)}
+                      fileName={getMediaDownloadFileName(listing.title, 'IMAGE', activeImageIndex, mainImage)}
+                      label={t('machineDetails.downloadImage', 'Download image')}
+                      className="h-11 w-11 sm:h-9 sm:w-9"
+                      iconClassName="h-4 w-4"
+                    />
+                  )}
+
+                  {/* Watch Video Floating Button */}
+                  {videos.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsVideoModalOpen(true);
+                      }}
+                      className="flex min-h-11 items-center gap-1.5 sm:gap-2 rounded-full border border-white/20 bg-slate-950/85 px-2.5 py-1 sm:min-h-0 sm:px-3.5 sm:py-1.5 text-[11px] sm:text-xs font-bold text-white backdrop-blur-md shadow-xl transition-all duration-200 hover:bg-slate-900 hover:border-red-500/60 hover:scale-105 group cursor-pointer"
+                      title={t('machineDetails.watchVideo', 'Watch Machine Video')}
+                    >
+                      <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-red-600 group-hover:bg-red-500 transition-colors shadow-xs shrink-0">
+                        <Play size={10} className="fill-white text-white ml-0.5 sm:hidden" />
+                        <Play size={12} className="fill-white text-white ml-0.5 hidden sm:block" />
+                        <span className="absolute -inset-0.5 rounded-full bg-red-500/40 animate-ping opacity-75 group-hover:opacity-100" />
+                      </div>
+                      <span className="font-bold text-white tracking-wide text-[11px] sm:text-xs">
+                        {t('machineDetails.watchVideo', 'Watch Video')}
                       </span>
-                    )}
-                  </button>
-                )}
+                      {videos.length > 1 && (
+                        <span className="rounded-full bg-red-500/30 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold text-red-200">
+                          {videos.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
 
                 {mainImage ? (
                   <Image
@@ -1015,8 +1026,8 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 {t('machineDetails.videos')}
               </h2>
               <div className={`grid grid-cols-1 gap-4 ${videos.length === 1 ? '' : 'sm:grid-cols-2'}`}>
-                {videos.map((video) => (
-                  <div key={video.id} className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-xs">
+                {videos.map((video, index) => (
+                  <div key={video.id} className="relative overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-xs">
                     <video
                       controls
                       muted
@@ -1027,6 +1038,13 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       <source src={getAbsoluteMediaUrl(video.url)} type={getVideoMimeType(video.url)} />
                       Your browser does not support the video tag.
                     </video>
+                    <MediaDownloadButton
+                      url={getAbsoluteMediaUrl(video.url)}
+                      fileName={getMediaDownloadFileName(listing.title, 'VIDEO', index, video.url)}
+                      label={t('machineDetails.downloadVideo', 'Download video')}
+                      className="absolute right-3 top-3 h-11 w-11 sm:h-9 sm:w-9"
+                      iconClassName="h-4 w-4"
+                    />
                   </div>
                 ))}
               </div>
@@ -1292,9 +1310,18 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
           <button 
             onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
             className="absolute top-3 right-3 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+            aria-label="Close image viewer"
           >
             <X size={24} className="sm:w-7 sm:h-7" />
           </button>
+
+          <MediaDownloadButton
+            url={getAbsoluteMediaUrl(mainImage)}
+            fileName={getMediaDownloadFileName(listing.title, 'IMAGE', activeImageIndex, images[activeImageIndex]?.url || mainImage)}
+            label={t('machineDetails.downloadImage', 'Download image')}
+            className="absolute right-16 top-3 z-[110] h-11 w-11 sm:right-20 sm:top-6 sm:h-10 sm:w-10"
+            iconClassName="h-4 w-4"
+          />
           
           <div className="h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-2 sm:p-12 md:p-16" onClick={(e) => e.stopPropagation()}>
             <div className="relative h-full w-full">
@@ -1367,14 +1394,23 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsVideoModalOpen(false)}
-                className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white shrink-0 ml-2"
-                aria-label="Close video player"
-              >
-                <X size={18} />
-              </button>
+              <div className="ml-2 flex shrink-0 items-center gap-2">
+                <MediaDownloadButton
+                  url={getAbsoluteMediaUrl(videos[activeVideoIndex]?.url || '')}
+                  fileName={getMediaDownloadFileName(listing.title, 'VIDEO', activeVideoIndex, videos[activeVideoIndex]?.url)}
+                  label={t('machineDetails.downloadVideo', 'Download video')}
+                  className="h-11 w-11 bg-white/10 sm:h-9 sm:w-9"
+                  iconClassName="h-4 w-4"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsVideoModalOpen(false)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white sm:h-9 sm:w-9"
+                  aria-label="Close video player"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Video Player */}
@@ -1462,41 +1498,6 @@ function HighlightCard({ icon, label, value }: { icon: React.ReactNode; label: s
   );
 }
 
-function SpecAccordion({
-  icon,
-  title,
-  isOpen,
-  onToggle,
-  children,
-}: {
-  icon?: React.ReactNode;
-  title: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="border-b border-gray-100 last:border-b-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between bg-white px-4 sm:px-6 py-4 sm:py-5 text-left transition-colors hover:bg-amber-50/30"
-      >
-        <div className="flex items-center gap-3">
-          {icon && (
-            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-amber-100/80 text-amber-700 font-bold shadow-2xs">
-              {icon}
-            </div>
-          )}
-          <span className="text-sm sm:text-base font-bold text-gray-900">{title}</span>
-        </div>
-        {isOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
-      </button>
-      {isOpen && <div className="px-4 sm:px-6 pb-5 pt-2">{children}</div>}
-    </div>
-  );
-}
-
 type SpecItem = {
   icon: React.ReactNode;
   label: string;
@@ -1509,7 +1510,7 @@ function SpecsGrid({ items }: { items: SpecItem[] }) {
       {items.map(({ icon, label, value }) => (
         <div 
           key={label} 
-          className="group flex flex-col sm:flex-row sm:items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-200 hover:bg-slate-50/80 border-b border-gray-100 last:border-b-0 sm:border-b-0 gap-1 sm:gap-4"
+          className="group flex flex-row items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-200 hover:bg-slate-50/80 border-b border-gray-100 last:border-b-0 sm:border-b-0 gap-2 sm:gap-4"
         >
           <div className="flex items-center gap-2.5 min-w-0 pr-2">
             <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600 transition-colors group-hover:bg-amber-100 group-hover:text-amber-700 shrink-0">
@@ -1517,7 +1518,7 @@ function SpecsGrid({ items }: { items: SpecItem[] }) {
             </div>
             <span className="text-xs sm:text-sm font-medium text-gray-600 truncate">{label}</span>
           </div>
-          <span className="text-xs sm:text-sm font-bold text-gray-900 break-words sm:text-right pl-9 sm:pl-0">{value}</span>
+          <span className="text-xs sm:text-sm font-bold text-gray-900 text-right shrink-0 max-w-[55%] break-words leading-tight">{value}</span>
         </div>
       ))}
     </div>

@@ -2717,7 +2717,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount] = await Promise.all([
+    const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount, recruitmentApplicationsCount, recruitmentInterviewsCount] = await Promise.all([
       (prisma as any).lead.count({
         where: { status: 'NEW' },
       }),
@@ -2748,6 +2748,12 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
           },
         },
       }),
+      (prisma as any).jobApplication.count({
+        where: { currentStage: 'NEW' },
+      }),
+      (prisma as any).interview.count({
+        where: { status: 'SCHEDULED' },
+      }),
     ]);
 
     res.json({
@@ -2757,6 +2763,8 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         visitors: visitorsCount,
         recurrence: recurrenceCount,
         listingsPendingApproval: listingsPendingApprovalCount,
+        recruitmentApplications: recruitmentApplicationsCount,
+        recruitmentInterviews: recruitmentInterviewsCount,
       },
     });
   } catch (error) {

@@ -8,7 +8,6 @@ import { useToastStore } from '@/store/toastStore';
 import { X, Mail, Lock, User, Eye, EyeOff, Smartphone } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
-import SiteBrand from '@/components/layout/SiteBrand';
 import { getAuthDisplayName } from '@/lib/authDisplayName';
 
 declare global {
@@ -484,11 +483,8 @@ export default function AuthModal() {
       <div className="flex min-h-full items-start md:items-center justify-center">
         <div className="w-full min-h-screen md:min-h-0 md:h-auto md:max-w-md overflow-hidden md:rounded-xl bg-white md:shadow-2xl animate-in slide-in-from-bottom-4 md:zoom-in duration-200">
           <div className="relative flex items-center justify-center bg-transparent md:bg-[#1A1A1A] px-6 py-2 md:py-4 min-h-[48px] md:min-h-[64px]">
-            <div className="hidden md:block">
-              <SiteBrand variant="navbar" align="center" />
-            </div>
-            <div className="md:hidden flex items-center justify-center w-full">
-              <Image src="/mainlogo.png" alt="JCB Exchange" width={140} height={40} className="object-contain" />
+            <div className="flex items-center justify-center w-full">
+              <Image src="/frontloginlogo.png" alt="JCB Exchange" width={300} height={80} priority className="h-auto w-full max-w-[240px] object-contain" />
             </div>
             <button
               onClick={() => setAuthModalOpen(false)}

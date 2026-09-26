@@ -18,6 +18,8 @@ type PrimeDbRecord = {
   transactionRef?: string | null;
   receiptUrl?: string | null;
   paidAmount: unknown;
+  customerCity?: string | null;
+  customerState?: string | null;
   paidUpiId?: string | null;
   settingsSnapshot: unknown;
   startedAt?: Date | null;
@@ -76,6 +78,8 @@ const mapSubscriptionRecord = (record: PrimeDbRecord) => ({
   transactionRef: record.transactionRef || null,
   receiptUrl: record.receiptUrl || null,
   paidAmount: toNumber(record.paidAmount) || 0,
+  customerCity: record.customerCity || null,
+  customerState: record.customerState || null,
   paidUpiId: record.paidUpiId || null,
   settingsSnapshot: normalizeSettingsSnapshot(record.settingsSnapshot),
   startedAt: record.startedAt || null,
@@ -204,10 +208,14 @@ export const createCustomerPrimeSubscriptionRequest = async ({
   userId,
   role,
   receiptUrl,
+  city,
+  state,
 }: {
   userId: string;
   role?: string | null | undefined;
   receiptUrl?: string | null | undefined;
+  city: string;
+  state: string;
 }) => {
   const accessPayload = await getCustomerPrimeAccessPayload({ userId, role });
 
@@ -233,6 +241,11 @@ export const createCustomerPrimeSubscriptionRequest = async ({
   }
 
   const settingsSnapshot = buildPrimeSettingsSnapshot(accessPayload.settings);
+  const customerCity = city.trim();
+  const customerState = state.trim();
+  if (!customerCity || !customerState) {
+    throw new Error('Billing city and state are required before payment.');
+  }
 
   const record = (await prismaAny.customerPrimeSubscription.create({
     data: {
@@ -241,6 +254,8 @@ export const createCustomerPrimeSubscriptionRequest = async ({
       receiptUrl: normalizedReceiptUrl,
       paidAmount: accessPayload.settings.amount,
       paidUpiId: accessPayload.settings.upiId,
+      customerCity,
+      customerState,
       settingsSnapshot,
     },
     include: {

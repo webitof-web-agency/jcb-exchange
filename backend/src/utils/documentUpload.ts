@@ -85,6 +85,7 @@ const resolveStorageBaseDir = () => {
 };
 
 export const storageBaseDir = resolveStorageBaseDir();
+export const storagePersistenceConfigured = Boolean(process.env.APP_STORAGE_DIR?.trim());
 export const uploadRootDir = path.join(storageBaseDir, 'uploads');
 export const publicUploadDir = path.join(uploadRootDir, 'public');
 export const secureUploadDir = path.join(uploadRootDir, 'secure');

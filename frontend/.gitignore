@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ignored pdfs
+JCB_EXCHANGE_DLT_Authorization_Letter_Client_Sign_Stamp.pdf
+*.pdf

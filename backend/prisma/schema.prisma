@@ -649,6 +649,8 @@ model ListingPaymentSubmission {
   method             ListingPaymentMethod
   status             ListingPaymentStatus @default(PENDING_VERIFICATION)
   amount             Decimal              @db.Decimal(12, 2)
+  customerCity       String?
+  customerState      String?
   transactionRef     String?
   paymentNote        String?              @db.Text
   receiptUrl         String?
@@ -873,6 +875,8 @@ model CustomerPrimeSubscription {
   paymentNote        String?                         @db.Text
   receiptUrl         String?
   paidAmount         Decimal
+  customerCity       String?
+  customerState      String?
   paidUpiId          String?
   settingsSnapshot   Json
   startedAt          DateTime?

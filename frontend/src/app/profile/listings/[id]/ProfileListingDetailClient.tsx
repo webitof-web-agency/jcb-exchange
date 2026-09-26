@@ -34,6 +34,7 @@ import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { generateProfileListingDetailPath } from '@/lib/privateRoutePaths';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import MediaDownloadButton, { getMediaDownloadFileName } from '@/components/media/MediaDownloadButton';
 
 type ListingMedia = {
   id: string;
@@ -431,6 +432,15 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 className="relative aspect-[4/3] bg-gray-100 sm:aspect-[16/10] cursor-pointer group"
                 onClick={() => mainImage && setIsLightboxOpen(true)}
               >
+                    {mainImage && (
+                      <MediaDownloadButton
+                        url={getAbsoluteMediaUrl(mainImage)}
+                        fileName={getMediaDownloadFileName(listing.title, 'IMAGE', activeImageIndex, mainImage)}
+                        label={t('machineDetails.downloadImage', 'Download image')}
+                        className="absolute right-3 top-3 z-20 h-11 w-11 sm:right-4 sm:top-4 sm:h-9 sm:w-9"
+                        iconClassName="h-4 w-4"
+                      />
+                    )}
                     <SafeListingImage
                       key={[mainImage, ...imageSources].join('|') || listing.id}
                       sources={mainImage ? [mainImage, ...imageSources.filter((source) => source !== mainImage)] : imageSources}
@@ -582,8 +592,8 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                   </div>
                 </div>
                 <div className={`grid gap-4 ${videos.length > 1 ? 'lg:grid-cols-2' : ''}`}>
-                  {videos.map((video) => (
-                    <div key={video.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-black">
+                  {videos.map((video, index) => (
+                    <div key={video.id} className="relative overflow-hidden rounded-2xl border border-gray-100 bg-black">
                       <video controls muted playsInline className="h-auto max-h-[70vh] w-full object-contain" preload="metadata">
                         <source
                           src={getAbsoluteMediaUrl(video.url)}
@@ -597,6 +607,13 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                         />
                         Your browser does not support the video tag.
                       </video>
+                      <MediaDownloadButton
+                        url={getAbsoluteMediaUrl(video.url)}
+                        fileName={getMediaDownloadFileName(listing.title, 'VIDEO', index, video.url)}
+                        label={t('machineDetails.downloadVideo', 'Download video')}
+                        className="absolute right-3 top-3 h-11 w-11 sm:h-9 sm:w-9"
+                        iconClassName="h-4 w-4"
+                      />
                     </div>
                   ))}
                 </div>
@@ -690,9 +707,18 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
           <button 
             onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
             className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+            aria-label="Close image viewer"
           >
             <X size={28} />
           </button>
+
+          <MediaDownloadButton
+            url={getAbsoluteMediaUrl(mainImage)}
+            fileName={getMediaDownloadFileName(listing.title, 'IMAGE', activeImageIndex, mainImage)}
+            label={t('machineDetails.downloadImage', 'Download image')}
+            className="absolute right-16 top-4 z-[110] h-11 w-11 sm:right-20 sm:top-6 sm:h-10 sm:w-10"
+            iconClassName="h-4 w-4"
+          />
           
           <div className="relative h-full w-full max-h-screen max-w-7xl flex items-center justify-center p-4 sm:p-8" onClick={(e) => e.stopPropagation()}>
             <Image

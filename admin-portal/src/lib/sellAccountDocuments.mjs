@@ -1,7 +1,9 @@
 export const SELL_ACCOUNT_DOCUMENT_KEYS = [
+  'purchaseDeed',
   'purchaseAadhaarCard',
   'purchasePanCard',
   'purchaseGstCertificate',
+  'sellDeed',
   'sellAadhaarCard',
   'sellPanCard',
   'sellGstCertificate',
@@ -58,5 +60,5 @@ export const normalizeSellAccountDocuments = (record = {}) => {
 
 export const getSellAccountDocumentKeys = (section) =>
   section === 'purchase'
-    ? SELL_ACCOUNT_DOCUMENT_KEYS.slice(0, 3)
-    : SELL_ACCOUNT_DOCUMENT_KEYS.slice(3);
+    ? SELL_ACCOUNT_DOCUMENT_KEYS.slice(0, 4)
+    : SELL_ACCOUNT_DOCUMENT_KEYS.slice(4);

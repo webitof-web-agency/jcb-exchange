@@ -1,7 +1,79 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Request, Response } from 'express';
-import { createUploadPublicListingMedia, createUploadSecureDocument } from './document.controller';
+import {
+  createUploadPublicBrandingImage,
+  createUploadPublicListingMedia,
+  createUploadSecureDocument,
+} from './document.controller';
+
+test('uploads branding images to local public storage and returns the local public URL', async () => {
+  const uploadedFile = {
+    buffer: Buffer.from('branding-bytes'),
+    mimetype: 'image/webp',
+    originalname: 'hero.webp',
+    size: 14,
+  } as Express.Multer.File;
+  const saveCalls: Array<{
+    buffer: Buffer;
+    originalName: string;
+    mimeType: string;
+  }> = [];
+  const saveLocally = async (
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    _purpose: string,
+  ) => {
+    saveCalls.push({
+      buffer,
+      mimeType,
+      originalName,
+    });
+    return {
+      fileName: 'hero-image-local.webp',
+      fileUrl: '/uploads/public/hero-image/hero-image-local.webp',
+    };
+  };
+
+  const responseState: { statusCode: number; body?: unknown } = { statusCode: 0 };
+  const response = {
+    status(code: number) {
+      responseState.statusCode = code;
+      return response;
+    },
+    json(payload: unknown) {
+      responseState.body = payload;
+      return response;
+    },
+  } as unknown as Response;
+  const next = () => {
+    throw new Error('The branding upload should not fail.');
+  };
+  const request = {
+    file: uploadedFile,
+    protocol: 'http',
+    get: (header: string) => (header.toLowerCase() === 'host' ? 'localhost:5002' : undefined),
+  } as unknown as Request;
+
+  await createUploadPublicBrandingImage('hero-image', saveLocally)(request, response, next);
+
+  assert.equal(responseState.statusCode, 201);
+  assert.deepEqual(saveCalls, [{
+    buffer: uploadedFile.buffer,
+    mimeType: uploadedFile.mimetype,
+    originalName: 'hero.webp',
+  }]);
+  assert.deepEqual((responseState.body as { file: Record<string, unknown> }).file, {
+    access: 'public',
+    fileName: 'hero-image-local.webp',
+    originalName: 'hero.webp',
+    mimeType: 'image/webp',
+    size: 14,
+    fileUrl: '/uploads/public/hero-image/hero-image-local.webp',
+    absoluteUrl: 'http://localhost:5002/uploads/public/hero-image/hero-image-local.webp',
+  });
+});
 
 test('uploads listing media through Google Drive and returns its Drive URL', async () => {
   const uploadedFile = {

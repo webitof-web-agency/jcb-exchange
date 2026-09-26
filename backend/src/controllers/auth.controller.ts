@@ -1600,6 +1600,8 @@ export const getCustomerPrimeHistory = async (req: Request, res: Response, next:
         startedAt: subscription.startedAt,
         expiresAt: subscription.expiresAt,
         receiptUrl: subscription.receiptUrl || null,
+        customerCity: subscription.customerCity || null,
+        customerState: subscription.customerState || null,
       };
     });
 
@@ -1621,12 +1623,24 @@ export const submitCustomerPrimeSubscription = async (req: Request, res: Respons
 
     const { receiptUrl } = req.body as {
       receiptUrl?: string;
+      city?: string;
+      state?: string;
     };
 
     const subscription = await createCustomerPrimeSubscriptionRequest({
       userId: req.user.id,
       role: req.user.role,
       receiptUrl,
+      city: String(req.body?.city || '').trim(),
+      state: String(req.body?.state || '').trim(),
+    });
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        city: String(req.body?.city || '').trim(),
+        state: String(req.body?.state || '').trim(),
+      },
     });
 
     const refreshedUser = await prisma.user.findUnique({
@@ -1789,6 +1803,8 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
               email: normalizedEmail,
               mobile: normalizedMobile || currentUser.mobile || null,
               whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
+              city: normalizedCity || null,
+              state: normalizedState || null,
               ...(normalizedEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
                 ? { authVersion: { increment: 1 } }
                 : {}),

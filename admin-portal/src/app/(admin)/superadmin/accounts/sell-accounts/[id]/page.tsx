@@ -198,11 +198,9 @@ export default function SellAccountDetailView() {
             const parsed = JSON.parse(saved) as StoredSellAccountRecord[];
             const found = parsed.find((r) => r.id === id);
             if (found) {
-              const migrated: SellAccountRecord = {
-                ...found,
-                purchaseDeedNumber: found.purchaseDeedNumber || '',
-                sellDeedNumber: found.sellDeedNumber || '',
-                documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
+                const migrated: SellAccountRecord = {
+                  ...found,
+                  documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
                 dealStatus: found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' ? 'CLOSE' : found.dealStatus === 'PENDING' ? 'OPEN' : found.dealStatus
               };
               setRecord(migrated);
@@ -237,8 +235,6 @@ export default function SellAccountDetailView() {
       netProfit: record.netProfit,
       dealStatus: record.dealStatus,
       noteSheet: record.noteSheet,
-      purchaseDeedNumber: record.purchaseDeedNumber || '',
-      sellDeedNumber: record.sellDeedNumber || '',
       documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
     };
     setEditData(fd);
@@ -542,25 +538,17 @@ export default function SellAccountDetailView() {
           <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-sm font-bold uppercase tracking-wider text-amber-700">
             <FileText className="h-4 w-4" /> Purchase & Sell Deed Documents
           </h3>
-          <div className="mb-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Purchase Deed</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900">{record.purchaseDeedNumber || 'Not specified'}</p>
-            </div>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Sell Deed</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900">{record.sellDeedNumber || 'Not specified'}</p>
-            </div>
-          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Purchase Deed PDFs</p>
+              <SecurePdfDocument label="Purchase Deed Document" document={getDocuments(record).purchaseDeed} />
               <SecurePdfDocument label="Aadhaar Card" document={getDocuments(record).purchaseAadhaarCard} />
               <SecurePdfDocument label="PAN Card" document={getDocuments(record).purchasePanCard} />
               <SecurePdfDocument label="GST Certificate" document={getDocuments(record).purchaseGstCertificate} />
             </div>
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Sell Deed PDFs</p>
+              <SecurePdfDocument label="Sell Deed Document" document={getDocuments(record).sellDeed} />
               <SecurePdfDocument label="Aadhaar Card" document={getDocuments(record).sellAadhaarCard} />
               <SecurePdfDocument label="PAN Card" document={getDocuments(record).sellPanCard} />
               <SecurePdfDocument label="GST Certificate" document={getDocuments(record).sellGstCertificate} />
@@ -832,11 +820,7 @@ export default function SellAccountDetailView() {
                   <FileText className="h-4 w-4" /> 4. Purchase Deed
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
-                    <input type="text" placeholder="e.g. PURCHASE/2026/001" value={editData.purchaseDeedNumber || ''} onChange={(e) => handleEditChange('purchaseDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
-                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
-                  </div>
+                  <EditPdfField label="Purchase Deed PDF" document={editData.documents?.purchaseDeed} onUploaded={(file) => handleDocumentUploaded('purchaseDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="Aadhaar Card PDF" document={editData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="PAN Card PDF" document={editData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="GST Certificate PDF" document={editData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
@@ -849,11 +833,7 @@ export default function SellAccountDetailView() {
                   <FileText className="h-4 w-4" /> 5. Sell Deed
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-700">Deed</label>
-                    <input type="text" placeholder="e.g. SELL/2026/001" value={editData.sellDeedNumber || ''} onChange={(e) => handleEditChange('sellDeedNumber', e.target.value)} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
-                    <p className="mt-1 text-[11px] text-gray-500">Text field; letters, numbers, / and - are allowed.</p>
-                  </div>
+                  <EditPdfField label="Sell Deed PDF" document={editData.documents?.sellDeed} onUploaded={(file) => handleDocumentUploaded('sellDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="Aadhaar Card PDF" document={editData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="PAN Card PDF" document={editData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                   <EditPdfField label="GST Certificate PDF" document={editData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />

@@ -21,6 +21,7 @@ import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { syncListingRtoForListing } from '../services/listingRto.service';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
+import { normalizeBillingLocation } from '../utils/billingLocation';
 
 const prismaAny = prisma as any;
 const latestListingRtoRecords = {
@@ -1663,6 +1664,8 @@ export const getPartnerListingPaymentSubmissions = async (req: Request, res: Res
         receiptUrl: true,
         paymentNote: true,
         razorpayPaymentId: true,
+        customerCity: true,
+        customerState: true,
         submittedAt: true,
         reviewedAt: true,
         rejectionReason: true,
@@ -1720,6 +1723,8 @@ export const getCustomerListingPaymentSubmissions = async (req: Request, res: Re
         transactionRef: true,
         receiptUrl: true,
         paymentNote: true,
+        customerCity: true,
+        customerState: true,
         submittedAt: true,
         reviewedAt: true,
         rejectionReason: true,
@@ -1753,6 +1758,13 @@ export const createListingRazorpayOrder = async (req: Request, res: Response, ne
       return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
     }
 
+    let billingLocation;
+    try {
+      billingLocation = normalizeBillingLocation(req.body || {});
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Billing city and state are required before payment.' });
+    }
+
     const listingId = String(req.params.id || '').trim();
     const listing = await getPaymentReadyListing(listingId);
     const listingError = assertListingCanAcceptPayment(listing);
@@ -1777,6 +1789,8 @@ export const createListingRazorpayOrder = async (req: Request, res: Response, ne
     if (!settings.razorpay.enabled || !settings.razorpay.keyId || !settings.razorpay.keySecret) {
       return res.status(400).json({ error: 'Razorpay is not configured for listing payments.' });
     }
+
+    await prismaAny.user.update({ where: { id: req.user.id }, data: billingLocation });
 
     const amountInPaise = Math.round(Number(listing!.price || 0) * 100);
     if (!amountInPaise || amountInPaise <= 0) {
@@ -1829,6 +1843,13 @@ export const createListingPhonePeOrder = async (req: Request, res: Response, nex
 
     if (req.user.role !== 'CUSTOMER') {
       return res.status(403).json({ error: 'Buy Now payments are available for customers only.' });
+    }
+
+    let billingLocation;
+    try {
+      billingLocation = normalizeBillingLocation(req.body || {});
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Billing city and state are required before payment.' });
     }
 
     const listingId = String(req.params.id || '').trim();
@@ -1919,6 +1940,8 @@ export const createListingPhonePeOrder = async (req: Request, res: Response, nex
         method: 'PHONEPE',
         status: 'PENDING_VERIFICATION',
         amount: listing!.price,
+        customerCity: billingLocation.city,
+        customerState: billingLocation.state,
         transactionRef: merchantOrderId,
         phonepeMerchantOrderId: merchantOrderId,
         phonepeOrderId: orderPayload.orderId || null,
@@ -2087,6 +2110,12 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
     const razorpayOrderId = String(req.body?.razorpayOrderId || '').trim();
     const razorpayPaymentId = String(req.body?.razorpayPaymentId || '').trim();
     const razorpaySignature = String(req.body?.razorpaySignature || '').trim();
+    let billingLocation;
+    try {
+      billingLocation = normalizeBillingLocation(req.body || {});
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Billing city and state are required before payment.' });
+    }
 
     if (!['RTGS', 'RAZORPAY'].includes(method)) {
       return res.status(400).json({ error: 'Valid payment method is required.' });
@@ -2170,6 +2199,8 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         method,
         status: method === 'RAZORPAY' ? 'PAID' : 'PENDING_VERIFICATION',
         amount: listing!.price,
+        customerCity: billingLocation.city,
+        customerState: billingLocation.state,
         transactionRef: transactionRef || razorpayPaymentId || null,
         paymentNote: paymentNote || null,
         receiptUrl: method === 'RTGS' ? receiptUrl : null,
@@ -2188,6 +2219,8 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         submittedAt: true,
       },
     });
+
+    await prismaAny.user.update({ where: { id: req.user.id }, data: billingLocation });
 
     if (method === 'RAZORPAY') {
       await finalizeListingPaymentSale(payment.id);

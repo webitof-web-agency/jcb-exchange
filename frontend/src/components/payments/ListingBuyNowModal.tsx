@@ -26,6 +26,8 @@ import { uploadListingPaymentReceiptToServer } from '@/lib/fileUpload';
 import { useToastStore } from '@/store/toastStore';
 import BrandLoader from '@/components/ui/BrandLoader';
 import ReceiptPreviewModal from '@/components/payments/ReceiptPreviewModal';
+import BillingLocationFields from '@/components/payments/BillingLocationFields';
+import { useAuthStore } from '@/store/authStore';
 
 type ListingPaymentSettings = {
   rtgs: {
@@ -201,6 +203,7 @@ export default function ListingBuyNowModal({
   onClose: () => void;
 }) {
   const { showToast } = useToastStore();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<ListingPaymentSettings | null>(null);
   const [existingSubmission, setExistingSubmission] = useState<PaymentSubmissionRecord | null>(null);
@@ -217,6 +220,18 @@ export default function ListingBuyNowModal({
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+  const userId = user?.id;
+  const userCity = user?.city || '';
+  const userState = user?.state || '';
+  const [billingLocation, setBillingLocation] = useState({ city: user?.city || '', state: user?.state || '' });
+
+  useEffect(() => {
+    // Reset the editable billing snapshot each time the payment dialog opens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isOpen && userId) setBillingLocation({ city: userCity, state: userState });
+  }, [isOpen, userId, userCity, userState]);
+
+  const hasBillingLocation = billingLocation.city.trim().length > 0 && billingLocation.state.trim().length > 0;
 
   useEffect(() => {
     if (!isOpen) {
@@ -342,6 +357,10 @@ export default function ListingBuyNowModal({
   };
 
   const handleRtgsSubmit = async () => {
+    if (!hasBillingLocation) {
+      setError('Please select your billing city and state before payment.');
+      return;
+    }
     if (!transactionRef.trim() || !receiptUrl) {
       const errMsg = 'UTR / Reference number and receipt upload are required.';
       setError(errMsg);
@@ -366,6 +385,8 @@ export default function ListingBuyNowModal({
           transactionRef,
           receiptUrl,
           paymentNote,
+          city: billingLocation.city,
+          state: billingLocation.state,
         },
       );
       const successMsg = response.data.message || 'Payment proof submitted successfully for verification.';
@@ -406,6 +427,10 @@ export default function ListingBuyNowModal({
   };
 
   const handleRazorpayPayment = async () => {
+    if (!hasBillingLocation) {
+      setError('Please select your billing city and state before payment.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setMessage(null);
@@ -420,7 +445,7 @@ export default function ListingBuyNowModal({
         return;
       }
 
-      const orderResponse = await api.post<RazorpayOrderResponse>(`/listings/${listingId}/razorpay-order`);
+      const orderResponse = await api.post<RazorpayOrderResponse>(`/listings/${listingId}/razorpay-order`, billingLocation);
       const order = orderResponse.data.order;
 
       const checkout = new window.Razorpay({
@@ -453,6 +478,8 @@ export default function ListingBuyNowModal({
               razorpayOrderId: razorpayResponse.razorpay_order_id,
               razorpayPaymentId: razorpayResponse.razorpay_payment_id,
               razorpaySignature: razorpayResponse.razorpay_signature,
+              city: billingLocation.city,
+              state: billingLocation.state,
             })
             .then((submitResponse) => {
               const msg = submitResponse.data.message || 'Payment successful!';
@@ -486,12 +513,16 @@ export default function ListingBuyNowModal({
   };
 
   const handlePhonePePayment = async () => {
+    if (!hasBillingLocation) {
+      setError('Please select your billing city and state before payment.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setMessage(null);
 
     try {
-      const orderResponse = await api.post<PhonePeOrderResponse>(`/listings/${listingId}/phonepe-order`);
+      const orderResponse = await api.post<PhonePeOrderResponse>(`/listings/${listingId}/phonepe-order`, billingLocation);
       window.location.href = orderResponse.data.order.redirectUrl;
     } catch (paymentError) {
       const errMsg = getApiErrorMessage(paymentError, 'Unable to start PhonePe payment.');
@@ -653,6 +684,8 @@ export default function ListingBuyNowModal({
               <div className="space-y-5">
                 
                 {/* Payment Method Selector Tabs */}
+                <BillingLocationFields city={billingLocation.city} state={billingLocation.state} onChange={setBillingLocation} />
+
                 <div>
                   <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-gray-500">Select Payment Method</label>
                   <div className="grid gap-2.5 sm:grid-cols-3">

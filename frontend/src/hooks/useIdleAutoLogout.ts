@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getIdleSessionState } from '@/lib/idleSession.mjs';
 
 type UseIdleAutoLogoutOptions = {
   timeoutMs: number;
@@ -17,8 +18,7 @@ export function useIdleAutoLogout({
   enabled = true,
   storageKey = 'frontend_portal_token',
 }: UseIdleAutoLogoutOptions) {
-  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkTimerRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(0);
   const onLogoutRef = useRef(onLogout);
   const [isWarningVisible, setIsWarningVisible] = useState(false);
@@ -27,52 +27,37 @@ export function useIdleAutoLogout({
     onLogoutRef.current = onLogout;
   }, [onLogout]);
 
-  const clearTimers = useCallback(() => {
-    if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
-    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
-    logoutTimerRef.current = null;
-    warningTimerRef.current = null;
+  const clearTimer = useCallback(() => {
+    if (checkTimerRef.current !== null) window.clearInterval(checkTimerRef.current);
+    checkTimerRef.current = null;
   }, []);
 
-  const logoutNow = useCallback(() => {
-    clearTimers();
-    setIsWarningVisible(false);
-    onLogoutRef.current();
-  }, [clearTimers]);
-
-  const scheduleFromLastActivity = useCallback((resetActivity: boolean) => {
-    clearTimers();
-
-    if (resetActivity) {
-      lastActivityAtRef.current = Date.now();
-    }
-
-    if (!enabled) {
-      return;
-    }
-
-    const elapsedMs = Date.now() - lastActivityAtRef.current;
-    const remainingMs = timeoutMs - elapsedMs;
-    if (remainingMs <= 0) {
-      logoutNow();
-      return;
-    }
-
-    setIsWarningVisible(false);
-    const warningDelayMs = Math.max(0, remainingMs - warningMs);
-    warningTimerRef.current = setTimeout(() => {
-      setIsWarningVisible(true);
-    }, warningDelayMs);
-    logoutTimerRef.current = setTimeout(logoutNow, remainingMs);
-  }, [clearTimers, enabled, logoutNow, timeoutMs, warningMs]);
-
   const recordActivity = useCallback(() => {
-    scheduleFromLastActivity(true);
-  }, [scheduleFromLastActivity]);
+    lastActivityAtRef.current = Date.now();
+    setIsWarningVisible(false);
+  }, []);
+
+  const hideWarning = useCallback(() => {
+    setIsWarningVisible(false);
+  }, []);
+
+  const checkIdleState = useCallback(() => {
+    const state = getIdleSessionState(lastActivityAtRef.current, Date.now(), timeoutMs, warningMs);
+
+    if (state.shouldLogout) {
+      clearTimer();
+      setIsWarningVisible(false);
+      onLogoutRef.current();
+      return;
+    }
+
+    setIsWarningVisible(state.shouldWarn);
+  }, [clearTimer, timeoutMs, warningMs]);
 
   useEffect(() => {
     if (!enabled) {
-      clearTimers();
+      clearTimer();
+      window.setTimeout(hideWarning, 0);
       return;
     }
 
@@ -80,12 +65,15 @@ export function useIdleAutoLogout({
     const handleActivity = () => recordActivity();
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        scheduleFromLastActivity(false);
+        checkIdleState();
       }
     };
+    const handleWindowFocus = () => checkIdleState();
     const handleStorage = (event: StorageEvent) => {
       if (event.key === storageKey && event.newValue === null) {
-        logoutNow();
+        clearTimer();
+        setIsWarningVisible(false);
+        onLogoutRef.current();
       }
     };
 
@@ -93,18 +81,22 @@ export function useIdleAutoLogout({
       window.addEventListener(eventName, handleActivity, { passive: true });
     });
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('storage', handleStorage);
-    scheduleFromLastActivity(true);
+    lastActivityAtRef.current = Date.now();
+    checkIdleState();
+    checkTimerRef.current = window.setInterval(checkIdleState, 1000);
 
     return () => {
-      clearTimers();
+      clearTimer();
       activityEvents.forEach((eventName) => {
         window.removeEventListener(eventName, handleActivity);
       });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('storage', handleStorage);
     };
-  }, [clearTimers, enabled, logoutNow, recordActivity, scheduleFromLastActivity, storageKey]);
+  }, [checkIdleState, clearTimer, enabled, hideWarning, recordActivity, storageKey]);
 
   return {
     isWarningVisible,

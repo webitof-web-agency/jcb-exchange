@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { getIdleSessionState } from '@/lib/idleSession.mjs';
 
 /**
  * useIdleAutoLogout
@@ -19,8 +20,9 @@ export function useIdleAutoLogout({
   enabled?: boolean;
   storageKey?: string;
 }) {
-  const logoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkTimer = useRef<number | null>(null);
+  const warningInterval = useRef<number | null>(null);
+  const lastActivityAtRef = useRef(0);
   const warningShownRef = useRef(false);
   const resetTimersRef = useRef<() => void>(() => undefined);
   const onLogoutRef = useRef(onLogout);
@@ -30,11 +32,13 @@ export function useIdleAutoLogout({
   }, [onLogout]);
 
   const clearTimers = useCallback(() => {
-    if (logoutTimer.current) clearTimeout(logoutTimer.current);
-    if (warningTimer.current) clearTimeout(warningTimer.current);
+    if (checkTimer.current !== null) window.clearInterval(checkTimer.current);
+    checkTimer.current = null;
   }, []);
 
   const dismissWarning = useCallback(() => {
+    if (warningInterval.current !== null) window.clearInterval(warningInterval.current);
+    warningInterval.current = null;
     const overlay = document.getElementById('idle-logout-warning-overlay');
     if (overlay) overlay.remove();
     warningShownRef.current = false;
@@ -43,6 +47,9 @@ export function useIdleAutoLogout({
   const showWarning = useCallback((remainingMs: number) => {
     if (warningShownRef.current) return;
     warningShownRef.current = true;
+
+    if (warningInterval.current !== null) window.clearInterval(warningInterval.current);
+    warningInterval.current = null;
 
     // Remove any existing overlay first
     const existing = document.getElementById('idle-logout-warning-overlay');
@@ -94,85 +101,95 @@ export function useIdleAutoLogout({
 
     // Countdown updater
     let remaining = remainingSecs;
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       remaining -= 1;
       const el = document.getElementById('idle-countdown');
       if (el) el.textContent = `${remaining}s`;
-      if (remaining <= 0) clearInterval(interval);
+      if (remaining <= 0) {
+        window.clearInterval(interval);
+        warningInterval.current = null;
+      }
     }, 1000);
+    warningInterval.current = interval;
 
     // Stay button
     const stayBtn = document.getElementById('idle-stay-btn');
     if (stayBtn) {
       stayBtn.addEventListener('click', () => {
-        clearInterval(interval);
-        dismissWarning();
+      window.clearInterval(interval);
+      warningInterval.current = null;
+      dismissWarning();
         // Reset timers as if user just acted
         resetTimersRef.current();
       });
     }
 
     // Auto-remove overlay when logout fires (handled by onLogout clearing DOM)
-    overlay.dataset.interval = String(interval);
   }, [dismissWarning]);
 
-  const resetTimers = useCallback(() => {
-    clearTimers();
+  const resetIdleSession = useCallback(() => {
+    lastActivityAtRef.current = Date.now();
     dismissWarning();
+  }, [dismissWarning]);
 
-    if (!enabled) return;
+  const checkIdleState = useCallback(() => {
+    const state = getIdleSessionState(lastActivityAtRef.current, Date.now(), timeoutMs, warningMs);
 
-    const warnAt = timeoutMs - warningMs;
-
-    if (warnAt > 0) {
-      warningTimer.current = setTimeout(() => {
-        showWarning(warningMs);
-      }, warnAt);
+    if (state.shouldLogout) {
+      clearTimers();
+      dismissWarning();
+      warningShownRef.current = false;
+      onLogoutRef.current();
+      return;
     }
 
-    logoutTimer.current = setTimeout(() => {
-      // Clean up warning overlay if still showing
-      const overlay = document.getElementById('idle-logout-warning-overlay');
-      if (overlay) {
-        const intervalId = overlay.dataset.interval;
-        if (intervalId) clearInterval(Number(intervalId));
-        overlay.remove();
-      }
-      warningShownRef.current = false;
-      onLogout();
-    }, timeoutMs);
-  }, [clearTimers, dismissWarning, enabled, onLogout, showWarning, timeoutMs, warningMs]);
-
-  useEffect(() => {
-    resetTimersRef.current = resetTimers;
-  }, [resetTimers]);
+    if (state.shouldWarn) {
+      showWarning(state.remainingMs);
+    } else {
+      dismissWarning();
+    }
+  }, [clearTimers, dismissWarning, showWarning, timeoutMs, warningMs]);
 
   useEffect(() => {
     if (!enabled) {
       clearTimers();
+      dismissWarning();
       return;
     }
 
     const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
 
-    const handleActivity = () => resetTimers();
+    const handleActivity = () => resetIdleSession();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkIdleState();
+    };
+    const handleWindowFocus = () => checkIdleState();
     const handleStorage = (event: StorageEvent) => {
       if (event.key === storageKey && event.newValue === null) {
+        clearTimers();
+        dismissWarning();
         onLogoutRef.current();
       }
     };
 
     events.forEach((event) => window.addEventListener(event, handleActivity, { passive: true }));
     window.addEventListener('storage', handleStorage);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    resetTimersRef.current = resetIdleSession;
 
-    // Start timers immediately
-    resetTimers();
+    lastActivityAtRef.current = Date.now();
+    checkIdleState();
+    checkTimer.current = window.setInterval(checkIdleState, 1000);
 
     return () => {
       clearTimers();
       events.forEach((event) => window.removeEventListener(event, handleActivity));
       window.removeEventListener('storage', handleStorage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      resetTimersRef.current = () => undefined;
       dismissWarning();
     };
-  }, [enabled, storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [checkIdleState, clearTimers, dismissWarning, enabled, resetIdleSession, storageKey]);
 }

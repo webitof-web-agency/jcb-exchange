@@ -58,10 +58,9 @@ export type MediaUrlSource = {
  *
  * Accepted formats:
  *  1. Absolute remote https:// URLs (e.g. CDN / Google Drive view links).
- *  2. Local server-stored branding images served under /uploads/public/
- *     (hero image, site logo, inspection/certification section). These are
- *     written to disk by the backend and served via the static /uploads/public
- *     route, so they are fully portable within the same VPS deployment.
+ *  2. Local branding images served under /uploads/public/. Branding uploads
+ *     are kept on the configured persistent application volume; legacy Drive
+ *     URLs are accepted and restored locally during server startup.
  *
  * Plain /uploads/<anything-else> paths (legacy arbitrary uploads) are still
  * rejected to avoid accidental persistence of stale paths.
