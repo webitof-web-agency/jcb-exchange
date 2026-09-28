@@ -248,6 +248,12 @@ enum EmailOtpChallengeStatus {
   EXPIRED
 }
 
+enum BlogQuestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id               String     @id @default(uuid())
   mobile           String?    @unique
@@ -305,6 +311,8 @@ model User {
   recruitmentActivityLogs    RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
   mobileOtpChallenges        MobileOtpChallenge[]
   emailOtpChallenges         EmailOtpChallenge[]
+  blogQuestions              BlogQuestion[]       @relation("BlogQuestionAuthor")
+  answeredBlogQuestions      BlogQuestion[]       @relation("BlogQuestionAnswerer")
 }
 
 model MobileOtpChallenge {
@@ -1685,4 +1693,43 @@ model RecruitmentActivityLog {
 
   @@index([applicationId, createdAt])
   @@index([candidateId, createdAt])
+}
+
+model BlogPost {
+  id              String   @id @default(uuid())
+  title           String
+  slug            String   @unique
+  excerpt         String?  @db.Text
+  contentHtml     String   @db.Text
+  coverImageUrl   String?
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  questions       BlogQuestion[]
+
+  @@index([isPublished, publishedAt])
+  @@index([createdAt])
+}
+
+model BlogQuestion {
+  id           String             @id @default(uuid())
+  blogPostId   String
+  askedById    String
+  question     String             @db.VarChar(1000)
+  answer       String?            @db.Text
+  status       BlogQuestionStatus @default(PENDING)
+  answeredById String?
+  answeredAt   DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  blogPost   BlogPost @relation(fields: [blogPostId], references: [id], onDelete: Cascade)
+  askedBy    User     @relation("BlogQuestionAuthor", fields: [askedById], references: [id], onDelete: Cascade)
+  answeredBy User?    @relation("BlogQuestionAnswerer", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@index([blogPostId, status, createdAt])
+  @@index([askedById, createdAt])
 }

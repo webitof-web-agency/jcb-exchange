@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase, BookOpen } from 'lucide-react';
 import SellVehicleModal from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
@@ -309,7 +309,7 @@ export default function Navbar() {
               <SiteBrand align="center" />
             </div>
 
-            <nav className="hidden xl:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center gap-7 text-[13px] font-semibold text-gray-300">
+            <nav className="hidden lg:flex flex-1 justify-center items-center gap-5 xl:gap-7 text-[13px] font-semibold text-gray-300 px-4">
               <Link href="/" className="transition-colors hover:text-white">
                 {t('navbar.home')}
               </Link>
@@ -332,6 +332,12 @@ export default function Navbar() {
                   }`}
               >
                 {t('navbar.careers', 'Careers')}
+              </Link>
+              <Link
+                href="/blog"
+                className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${pathname === '/blog' || pathname.startsWith('/blog/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+              >
+                {t('navbar.blog', 'Blog')}
               </Link>
             </nav>
 
@@ -650,6 +656,15 @@ export default function Navbar() {
           >
             <Briefcase size={18} className={pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'text-[#FFC107]' : 'text-gray-400'} />
             <span>{t('navbar.careers', 'Careers')}</span>
+          </Link>
+
+          <Link
+            href="/blog"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === '/blog' || pathname.startsWith('/blog/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+          >
+            <BookOpen size={18} className={pathname === '/blog' || pathname.startsWith('/blog/') ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <span>{t('navbar.blog', 'Blog')}</span>
           </Link>
 
           <button

@@ -43,6 +43,17 @@ import {
   updateVerificationStatus,
 } from '../controllers/admin.controller';
 import {
+  createAdminBlog,
+  deleteAdminBlog,
+  listAdminBlogs,
+  updateAdminBlog,
+} from '../controllers/blog.controller';
+import {
+  deleteAdminBlogQuestion,
+  getAdminBlogQuestions,
+  moderateAdminBlogQuestion,
+} from '../controllers/blogQuestion.controller';
+import {
   getTranslationCatalog,
   saveTranslationCatalog,
 } from '../controllers/translationAdmin.controller';
@@ -84,6 +95,13 @@ router.get('/finance-support', canManageSettings, getFinanceSupportContent);
 router.put('/finance-support', canManageSettings, updateFinanceSupportContent);
 router.get('/footer', canManageFooter, getFooterContent);
 router.put('/footer', canManageFooter, updateFooterContent);
+router.get('/blogs', requireSuperAdmin, listAdminBlogs);
+router.post('/blogs', requireSuperAdmin, createAdminBlog);
+router.put('/blogs/:id', requireSuperAdmin, updateAdminBlog);
+router.delete('/blogs/:id', requireSuperAdmin, deleteAdminBlog);
+router.get('/blogs/:id/questions', requireSuperAdmin, getAdminBlogQuestions);
+router.patch('/blogs/:id/questions/:questionId', requireSuperAdmin, moderateAdminBlogQuestion);
+router.delete('/blogs/:id/questions/:questionId', requireSuperAdmin, deleteAdminBlogQuestion);
 router.get('/hero-image', canManageSettings, getHeroImageContent);
 router.put('/hero-image', canManageSettings, updateHeroImageContent);
 router.get('/inspection-section', canManageSettings, getInspectionSectionContent);

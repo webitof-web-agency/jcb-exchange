@@ -610,7 +610,7 @@ const createCustomerListingNotifications = async ({
     [locationCity, locationState].filter(Boolean).join(', '),
   ]
     .filter(Boolean)
-    .join(' • ');
+    .join(' Ã¢â‚¬Â¢ ');
 
   await prisma.notification.createMany({
     data: recipients.map((recipient) => ({
@@ -2228,7 +2228,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
 
     try {
       const listingTitle = listing?.title || 'Vehicle Listing';
-      const formattedAmount = payment.amount ? `₹${Number(payment.amount).toLocaleString('en-IN')}` : '';
+      const formattedAmount = payment.amount ? `Ã¢â€šÂ¹${Number(payment.amount).toLocaleString('en-IN')}` : '';
 
       await prismaAny.notification.create({
         data: {
@@ -2261,6 +2261,27 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
         payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
       });
+      // Admin audit copy - notify all superadmins about new payment receipt for manual review
+      void (async () => {
+        try {
+          const superAdmins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+            select: { id: true, mobile: true, whatsappNumber: true },
+          });
+          superAdmins.forEach((superAdmin) => {
+            void dispatchMarketplaceWhatsApp({
+              eventCode: 'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
+              relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+              relatedEntityId: payment.id,
+              recipientType: 'SUPER_ADMIN',
+              recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+              payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+            });
+          });
+        } catch (adminNotifErr) {
+          console.error('Failed to dispatch admin payment notification:', adminNotifErr);
+        }
+      })();
       if (method === 'RAZORPAY') {
         void dispatchMarketplaceWhatsApp({
           eventCode: 'LISTING_PAYMENT_APPROVED',

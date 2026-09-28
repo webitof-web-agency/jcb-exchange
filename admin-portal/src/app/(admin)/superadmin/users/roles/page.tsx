@@ -274,7 +274,19 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'Blog': [
+    {
+      groupName: 'Blog',
+      permissions: [
+        { id: 'blog.read', label: 'View Blog Posts' },
+        { id: 'blog.create', label: 'Create Blog Posts' },
+        { id: 'blog.update', label: 'Edit Blog Posts' },
+        { id: 'blog.delete', label: 'Delete Blog Posts' },
+      ],
+    },
+  ],
 };
+
 
 export default function RolesPage() {
   const { t } = useTranslation();

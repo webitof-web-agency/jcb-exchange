@@ -177,6 +177,8 @@ const marketplaceEventDetails: Record<string, { title: string; recipient: string
   CUSTOMER_PRIME_APPROVED: { title: 'Prime activated', recipient: 'Customer', preview: 'Prime subscription activation confirmation.' },
   CUSTOMER_PRIME_REJECTED: { title: 'Prime rejected', recipient: 'Customer', preview: 'Prime payment review result.' },
   MARKETPLACE_NEW_LISTING_PUBLISHED: { title: 'New vehicle listing', recipient: 'Opted-in active customers', preview: 'Notifies opted-in customers when a listing is published.' },
+  MARKETPLACE_NEW_PAYMENT_SUPERADMIN: { title: 'New payment received (Admin)', recipient: 'Superadmin', preview: 'Admin audit copy when a buyer submits a payment receipt for review.' },
+  MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: { title: 'KYC submitted for review (Admin)', recipient: 'Superadmin', preview: 'Alerts admin when a partner submits KYC documents for verification.' },
 };
 
 const recruitmentEventDetails: Record<string, { title: string; recipient: string; preview: string }> = {

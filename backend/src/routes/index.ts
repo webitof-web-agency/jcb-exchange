@@ -11,6 +11,7 @@ import locationRoutes from './location.routes';
 import recruitmentRoutes from './recruitment.routes';
 import whatsappRoutes from './whatsapp.routes';
 import smsRoutes from './sms.routes';
+import blogRoutes from './blog.routes';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -28,6 +29,7 @@ router.use('/locations', locationRoutes);
 router.use('/recruitment', recruitmentRoutes);
 router.use('/whatsapp', whatsappRoutes);
 router.use('/sms', smsRoutes);
+router.use('/blogs', blogRoutes);
 
 router.post('/users/fcm-token', requireAuth, saveFcmToken);
 

@@ -24,6 +24,7 @@ type SearchableSelectProps = {
   disabled?: boolean;
   className?: string;
   searchable?: boolean;
+  highlighted?: boolean;
 };
 
 export default function SearchableSelect({
@@ -35,6 +36,7 @@ export default function SearchableSelect({
   disabled = false,
   className,
   searchable = true,
+  highlighted = false,
 }: SearchableSelectProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -100,6 +102,7 @@ export default function SearchableSelect({
         }}
         className={cn(
           "flex w-full items-center justify-between rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] disabled:cursor-not-allowed disabled:opacity-60",
+          highlighted && "border-[#d59f00] bg-amber-100 font-semibold text-gray-950 shadow-sm",
           !displayValue && "text-gray-500"
         )}
       >

@@ -418,18 +418,18 @@ export default function RTOWorkStatusPage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto min-h-[360px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        {loading ? <BrandLoader variant="section" size="sm" bg="light" text="Loading RTO records..." /> : <table className="w-full min-w-[1320px] text-left text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+      <div className="overflow-x-auto min-h-[360px]">
+        {loading ? <BrandLoader variant="section" size="sm" bg="light" text="Loading RTO records..." /> : <table className="w-full text-left text-xs sm:text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
             <tr>
-              <th className="px-5 py-4">Vehicle & Model</th>
-              <th className="px-5 py-4">Customer Info</th>
-              <th className="px-5 py-4">Seller Info</th>
-              <th className="px-5 py-4">Purchaser Info</th>
-              <th className="px-5 py-4">RTO Agent / Office</th>
-              <th className="px-5 py-4">Expense</th>
-              <th className="px-5 py-4">RTO Status</th>
-              <th className="px-5 py-4 text-right">Actions</th>
+              <th className="px-3.5 py-3.5">Vehicle & Model</th>
+              <th className="px-3 py-3.5">Customer Info</th>
+              <th className="px-3 py-3.5">Seller Info</th>
+              <th className="px-3 py-3.5">Purchaser Info</th>
+              <th className="px-3 py-3.5">RTO Agent / Office</th>
+              <th className="px-3 py-3.5">Expense</th>
+              <th className="px-3 py-3.5">RTO Status</th>
+              <th className="px-3.5 py-3.5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -438,31 +438,31 @@ export default function RTOWorkStatusPage() {
                 const isNearBottom = currentRecords.length > 3 && idx >= currentRecords.length - 2;
                 return (
                   <tr key={record.id} onClick={() => router.push(`${accountBasePath}/${record.id}`)} className="cursor-pointer transition-colors hover:bg-gray-50/80">
-                    <td className="px-5 py-4"><div className="flex items-start gap-2"><Car className="mt-1 h-4 w-4 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
-                    <td className="px-5 py-4"><p className="font-semibold text-gray-900">{record.customerName}</p>{phoneLink(record.customerNumber)}</td>
-                    <td className="px-5 py-4"><p className="font-semibold text-gray-900">{record.sellerName}</p>{phoneLink(record.sellerNumber)}</td>
-                    <td className="px-5 py-4"><p className="font-semibold text-gray-900">{record.purchaserName}</p>{phoneLink(record.purchaserNumber)}</td>
-                    <td className="px-5 py-4">
-                      <p className="font-semibold text-gray-900">
+                    <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
+                    <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[130px] truncate" title={record.customerName}>{record.customerName}</p>{phoneLink(record.customerNumber)}</td>
+                    <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.sellerName}>{record.sellerName}</p>{phoneLink(record.sellerNumber)}</td>
+                    <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.purchaserName}>{record.purchaserName}</p>{phoneLink(record.purchaserNumber)}</td>
+                    <td className="px-3 py-3.5">
+                      <p className="font-semibold text-gray-900 max-w-[150px] truncate" title={`${record.rtoAgentName}${record.rtoAgentCity ? ` (${record.rtoAgentCity})` : ''}`}>
                         {record.rtoAgentName}
                         {record.rtoAgentCity ? <span className="ml-1 text-xs font-medium text-amber-700">({record.rtoAgentCity})</span> : null}
                       </p>
                       {phoneLink(record.rtoAgentNumber)}
                       {record.rtoOffice ? (
-                        <p className="mt-0.5 text-[11px] font-medium text-gray-500">
-                          RTO Office: <span className="font-bold text-gray-800">{record.rtoOffice}</span>
+                        <p className="mt-0.5 text-[11px] font-medium text-gray-500 truncate max-w-[150px]">
+                          RTO: <span className="font-bold text-gray-800">{record.rtoOffice}</span>
                         </p>
                       ) : null}
                     </td>
-                    <td className="px-5 py-4"><p className="text-xs font-medium text-gray-900">{currency(record.rtoExpenses)}</p></td>
-                    <td className="px-5 py-4">{statusPill(record.rtoStatus)}</td>
-                    <td className="px-5 py-4 text-right">
+                    <td className="px-3 py-3.5 whitespace-nowrap"><p className="text-xs font-semibold text-gray-900">{currency(record.rtoExpenses)}</p></td>
+                    <td className="px-3 py-3.5 whitespace-nowrap">{statusPill(record.rtoStatus)}</td>
+                    <td className="px-3.5 py-3.5 text-right">
                       <div className="relative flex justify-end">
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); setActionMenuId(actionMenuId === record.id ? null : record.id); }}
                           title="Actions"
-                          className={`rounded-full border p-2 transition-colors hover:bg-gray-50 ${actionMenuId === record.id ? 'border-[#FFC107] bg-amber-50 text-gray-900' : 'border-gray-200 text-gray-500'}`}
+                          className={`rounded-full border p-1.5 transition-colors hover:bg-gray-50 ${actionMenuId === record.id ? 'border-[#FFC107] bg-amber-50 text-gray-900' : 'border-gray-200 text-gray-500'}`}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>

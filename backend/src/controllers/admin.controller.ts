@@ -2717,9 +2717,27 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Parse optional per-module "last seen at" timestamps sent by the client.
+    // When provided, only entries created AFTER that timestamp are counted,
+    // so re-logging in / refreshing never re-fires stale notifications.
+    const parseSeenAt = (raw: unknown): Date | undefined => {
+      if (typeof raw !== 'string' || !raw) return undefined;
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? undefined : d;
+    };
+
+    const enquiriesSeenAt          = parseSeenAt(req.query['seenAt[enquiries]']);
+    const visitorsSeenAt           = parseSeenAt(req.query['seenAt[visitors]']);
+    const recurrenceSeenAt         = parseSeenAt(req.query['seenAt[recurrence]']);
+    const recruitmentAppsSeenAt    = parseSeenAt(req.query['seenAt[recruitmentApplications]']);
+    const recruitmentIntervsSeenAt = parseSeenAt(req.query['seenAt[recruitmentInterviews]']);
+
     const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount, recruitmentApplicationsCount, recruitmentInterviewsCount] = await Promise.all([
       (prisma as any).lead.count({
-        where: { status: 'NEW' },
+        where: {
+          status: 'NEW',
+          ...(enquiriesSeenAt ? { createdAt: { gt: enquiriesSeenAt } } : {}),
+        },
       }),
       (prisma as any).user.count({
         where: {
@@ -2736,11 +2754,15 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         where: {
           role: 'CUSTOMER',
           createdAt: {
-            gte: today,
+            gte: visitorsSeenAt ?? today,
           },
         },
       }),
-      (prisma as any).customerPrimeSubscription.count(),
+      (prisma as any).customerPrimeSubscription.count({
+        where: {
+          ...(recurrenceSeenAt ? { createdAt: { gt: recurrenceSeenAt } } : {}),
+        },
+      }),
       (prisma as any).listing.count({
         where: {
           status: {
@@ -2749,10 +2771,16 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         },
       }),
       (prisma as any).jobApplication.count({
-        where: { currentStage: 'NEW' },
+        where: {
+          currentStage: 'NEW',
+          ...(recruitmentAppsSeenAt ? { createdAt: { gt: recruitmentAppsSeenAt } } : {}),
+        },
       }),
       (prisma as any).interview.count({
-        where: { status: 'SCHEDULED' },
+        where: {
+          status: 'SCHEDULED',
+          ...(recruitmentIntervsSeenAt ? { scheduledAt: { gt: recruitmentIntervsSeenAt } } : {}),
+        },
       }),
     ]);
 
@@ -2770,8 +2798,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
   } catch (error) {
     next(error);
   }
-};
-
+}
 export const getGoogleDriveSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const settings = await getAppSettings();

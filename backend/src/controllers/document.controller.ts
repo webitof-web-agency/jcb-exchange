@@ -6,6 +6,7 @@ import prisma from '../lib/prisma';
 import {
   getSecureDocumentUrl,
   MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE,
+  MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE,
   MAX_HERO_IMAGE_UPLOAD_SIZE,
   MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE,
   MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE,
@@ -56,7 +57,7 @@ const cleanupFile = async (filePath?: string) => {
 
 const enforceStoredFileSizePolicy = async (
   file: Express.Multer.File,
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
+  purpose: 'document' | 'listing-media' | 'finance-support' | 'blog-cover' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
   if (isPdfMimeType(file.mimetype) && file.size > 3 * 1024 * 1024) {
     await cleanupFile(file.path);
@@ -83,6 +84,11 @@ const enforceStoredFileSizePolicy = async (
   if (purpose === 'finance-support' && file.size > MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE) {
     await cleanupFile(file.path);
     throw new Error('Finance support logo image must be 2MB or smaller.');
+  }
+
+  if (purpose === 'blog-cover' && file.size > MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE) {
+    await cleanupFile(file.path);
+    throw new Error('Blog cover image must be 5MB or smaller.');
   }
 
   if (purpose === 'hero-image' && file.size > MAX_HERO_IMAGE_UPLOAD_SIZE) {
@@ -320,6 +326,7 @@ export const createUploadPublicListingMedia = (
 export const uploadPublicListingMedia = createUploadPublicListingMedia();
 
 type BrandingLocalSaver = typeof saveBrandingImageLocally;
+type PublicBlogDriveUploader = typeof uploadFileToDrive;
 
 export const createUploadPublicBrandingImage = (
   purpose: PublicBrandingPurpose,
@@ -348,6 +355,35 @@ export const createUploadPublicBrandingImage = (
 };
 
 export const uploadPublicFinanceSupportImage = createUploadPublicBrandingImage('finance-support');
+
+export const createUploadPublicBlogImage = (
+  uploadToDrive: PublicBlogDriveUploader = uploadFileToDrive,
+) => async (req: Request, res: Response, next: NextFunction) => {
+  const file = getUploadedFile(req);
+
+  try {
+    if (!file) {
+      return res.status(400).json({ error: 'A blog image is required.' });
+    }
+
+    await enforceStoredFileSizePolicy(file, 'blog-cover');
+
+    const fileName = buildPublicBrandingFileName(
+      'blog-cover',
+      file.originalname,
+      randomUUID(),
+      file.mimetype,
+    );
+    const { viewLink } = await uploadToDrive(file.buffer, file.mimetype, fileName);
+
+    return res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileName));
+  } catch (error) {
+    await cleanupFile(file?.path);
+    return next(error);
+  }
+};
+
+export const uploadPublicBlogCoverImage = createUploadPublicBlogImage();
 export const uploadPublicHeroImage = createUploadPublicBrandingImage('hero-image');
 export const uploadPublicInspectionSectionImage = createUploadPublicBrandingImage('inspection-section');
 export const uploadPublicSiteLogoImage = createUploadPublicBrandingImage('site-logo');

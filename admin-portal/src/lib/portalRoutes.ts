@@ -4,11 +4,13 @@ export const employeeBrandsPermissions = ['brands.read', 'brands.create', 'brand
 export const employeeFooterPermissions = ['footer.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
 export const employeeSmsPermissions = ['sms.read', 'sms.manage'];
+export const employeeBlogPermissions = ['blog.read', 'blog.create', 'blog.update', 'blog.delete'];
 
 import { accountAnyPermissions } from './accountsPermissions';
 import {
   recruitmentAnyPermissions,
 } from './recruitmentPermissions';
+import { blogAnyPermissions } from './blogPermissions';
 
 export type EmployeeRoutePermission = {
   superadminPath: string;
@@ -91,6 +93,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/footer',
     employeePath: '/employee/footer',
     permissions: employeeFooterPermissions,
+  },
+  {
+    superadminPath: '/superadmin/blogs',
+    employeePath: '/employee/blogs',
+    permissions: blogAnyPermissions,
   },
   {
     superadminPath: '/superadmin/translations',

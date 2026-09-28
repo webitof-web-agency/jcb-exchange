@@ -31,6 +31,8 @@ export const marketplaceSmsEvents = [
   'CUSTOMER_PRIME_APPROVED',
   'CUSTOMER_PRIME_REJECTED',
   'MARKETPLACE_NEW_LISTING_PUBLISHED',
+  'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
+  'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
 ] as const;
 
 export type MarketplaceSmsEvent = (typeof marketplaceSmsEvents)[number];

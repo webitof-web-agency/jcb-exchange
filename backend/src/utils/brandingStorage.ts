@@ -10,6 +10,7 @@ import {
 
 const brandingPurposes = new Set<PublicBrandingPurpose>([
   'finance-support',
+  'blog-cover',
   'hero-image',
   'inspection-section',
   'site-logo',

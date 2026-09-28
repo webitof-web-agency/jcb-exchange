@@ -1,4 +1,5 @@
 import { AgreementType, KycDocumentType } from '@prisma/client';
+import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -2010,6 +2011,28 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
       actionComment: req.body.actionComment,
     });
 
+
+    // Admin audit copy - notify all superadmins when a partner submits KYC for review
+    void (async () => {
+      try {
+        const superAdmins = await prisma.user.findMany({
+          where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+          select: { id: true, mobile: true, whatsappNumber: true },
+        });
+        superAdmins.forEach((superAdmin) => {
+          void dispatchMarketplaceWhatsApp({
+            eventCode: 'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
+            relatedEntityType: 'PARTNER_PROFILE',
+            relatedEntityId: req.user!.id,
+            recipientType: 'SUPER_ADMIN',
+            recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+            payloadSnapshot: { partnerId: req.user!.id },
+          });
+        });
+      } catch (adminKycNotifErr) {
+        console.error('Failed to dispatch admin KYC notification:', adminKycNotifErr);
+      }
+    })();
     const refreshedPartnerUser = await getPartnerOnboardingContext(req.user.id);
 
     if (!refreshedPartnerUser) {

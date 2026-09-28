@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AxiosError } from 'axios';
 import { Link as LinkIcon, Mail, MapPin, Phone, Plus, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -56,6 +56,24 @@ const TEXT_BLOCK_OPTIONS: Option[] = [
   { id: 'H2', name: 'Heading 2' },
   { id: 'H3', name: 'Heading 3' },
 ];
+
+type LegalToolbarState = {
+  block: 'P' | 'H2' | 'H3';
+  fontSize: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  unorderedList: boolean;
+};
+
+const DEFAULT_LEGAL_TOOLBAR_STATE: LegalToolbarState = {
+  block: 'P',
+  fontSize: '16',
+  bold: false,
+  italic: false,
+  underline: false,
+  unorderedList: false,
+};
 
 const DEFAULT_PRIVACY_POLICY = `<h2>1. Information We Collect</h2>
 <p>At <strong>JCB Exchange</strong>, we collect personal information such as name, phone number, email address, and equipment listing details when you register as a buyer, seller, or dealer.</p>
@@ -302,8 +320,7 @@ export default function FooterContentSettings() {
   const [activeTab, setActiveTab] = useState<'social' | 'contact' | 'useful'>('social');
   const [activeUsefulSubTab, setActiveUsefulSubTab] = useState<'privacy' | 'terms' | 'disclaimer' | 'refund'>('privacy');
   const [editorViewMode, setEditorViewMode] = useState<'editor' | 'preview'>('editor');
-  const [selectedFontSize, setSelectedFontSize] = useState('16');
-  const [selectedTextBlock, setSelectedTextBlock] = useState('P');
+  const [legalToolbarState, setLegalToolbarState] = useState<LegalToolbarState>(DEFAULT_LEGAL_TOOLBAR_STATE);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedSelectionRef = useRef<Range | null>(null);
   const activeLegalField = getLegalPageField(activeUsefulSubTab);
@@ -415,6 +432,73 @@ export default function FooterContentSettings() {
     }
   }, [activeLegalContent, activeTab, editorViewMode]);
 
+  const readLegalToolbarState = useCallback((): LegalToolbarState => {
+    const editor = editorRef.current;
+    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!editor || !selection?.rangeCount || !editor.contains(selection.anchorNode)) {
+      return DEFAULT_LEGAL_TOOLBAR_STATE;
+    }
+
+    const anchorElement = selection.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection.anchorNode?.parentElement;
+    const blockTag = anchorElement?.closest('h2, h3, p')?.tagName.toLowerCase();
+    const block = blockTag === 'h2' || blockTag === 'h3' ? blockTag.toUpperCase() as 'H2' | 'H3' : 'P';
+
+    let fontSize = '16';
+    let currentElement = anchorElement;
+    while (currentElement && currentElement !== editor) {
+      if (currentElement instanceof HTMLElement && currentElement.style.fontSize) {
+        const explicitFontSize = currentElement.style.fontSize.replace(/px$/i, '').trim();
+        if (FONT_SIZE_OPTIONS.some((option) => String(option.id) === explicitFontSize)) {
+          fontSize = explicitFontSize;
+          break;
+        }
+      }
+      currentElement = currentElement.parentElement;
+    }
+
+    return {
+      block,
+      fontSize,
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      unorderedList: document.queryCommandState('insertUnorderedList'),
+    };
+  }, []);
+
+  const syncLegalToolbarState = useCallback(() => {
+    setLegalToolbarState(readLegalToolbarState());
+  }, [readLegalToolbarState]);
+
+  useEffect(() => {
+    savedSelectionRef.current = null;
+  }, [activeUsefulSubTab, activeTab, editorViewMode]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || activeTab !== 'useful' || editorViewMode !== 'editor') {
+      return undefined;
+    }
+
+    const handleSelectionChange = () => syncLegalToolbarState();
+    document.addEventListener('selectionchange', handleSelectionChange);
+    editor.addEventListener('keyup', handleSelectionChange);
+    editor.addEventListener('mouseup', handleSelectionChange);
+    editor.addEventListener('focus', handleSelectionChange);
+    editor.addEventListener('input', handleSelectionChange);
+    syncLegalToolbarState();
+
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      editor.removeEventListener('keyup', handleSelectionChange);
+      editor.removeEventListener('mouseup', handleSelectionChange);
+      editor.removeEventListener('focus', handleSelectionChange);
+      editor.removeEventListener('input', handleSelectionChange);
+    };
+  }, [activeTab, editorViewMode, activeUsefulSubTab, syncLegalToolbarState]);
+
   const saveSelection = () => {
     if (!editorRef.current || typeof window === 'undefined') {
       return;
@@ -461,11 +545,10 @@ export default function FooterContentSettings() {
     restoreSelection();
     document.execCommand(command, false, value);
     handleEditorInput();
+    syncLegalToolbarState();
   };
 
   const applyTextBlock = (value: string) => {
-    setSelectedTextBlock(value);
-
     if (value === 'P') {
       runEditorCommand('formatBlock', '<p>');
       return;
@@ -475,8 +558,6 @@ export default function FooterContentSettings() {
   };
 
   const applyFontSize = (value: string) => {
-    setSelectedFontSize(value);
-
     if (!editorRef.current || typeof window === 'undefined') {
       return;
     }
@@ -501,6 +582,7 @@ export default function FooterContentSettings() {
     selection.addRange(nextRange);
     savedSelectionRef.current = nextRange.cloneRange();
     handleEditorInput();
+    syncLegalToolbarState();
   };
 
   const handleResetToDefault = () => {
@@ -882,12 +964,13 @@ export default function FooterContentSettings() {
                       <div className="w-full sm:w-[190px]">
                         <SearchableSelect
                           options={TEXT_BLOCK_OPTIONS}
-                          value={selectedTextBlock}
-                          displayValue={TEXT_BLOCK_OPTIONS.find((opt) => opt.id === selectedTextBlock)?.name || 'Paragraph (Normal Text)'}
+                          value={legalToolbarState.block}
+                          displayValue={TEXT_BLOCK_OPTIONS.find((opt) => opt.id === legalToolbarState.block)?.name || 'Paragraph (Normal Text)'}
                           onChange={(option) => applyTextBlock(String(option.id))}
                           placeholder={t('footerSettings.textStylePlaceholder', 'Text style')}
                           searchable={false}
                           className="w-full text-xs"
+                          highlighted={legalToolbarState.block !== 'P'}
                         />
                       </div>
                     </div>
@@ -897,12 +980,13 @@ export default function FooterContentSettings() {
                       <div className="w-full sm:w-[150px]">
                         <SearchableSelect
                           options={FONT_SIZE_OPTIONS}
-                          value={selectedFontSize}
-                          displayValue={FONT_SIZE_OPTIONS.find((opt) => opt.id === selectedFontSize)?.name || '16 px (Normal)'}
+                          value={legalToolbarState.fontSize}
+                          displayValue={FONT_SIZE_OPTIONS.find((opt) => String(opt.id) === legalToolbarState.fontSize)?.name || '16 px (Normal)'}
                           onChange={(option) => applyFontSize(String(option.id))}
                           placeholder={t('footerSettings.fontSizePlaceholder', 'Font size')}
                           searchable={false}
                           className="w-full text-xs"
+                          highlighted={legalToolbarState.fontSize !== '16'}
                         />
                       </div>
                     </div>
@@ -910,9 +994,10 @@ export default function FooterContentSettings() {
                     <div className="flex items-center gap-1 border-l border-gray-200 pl-2">
                       <button
                         type="button"
-                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseDown={(event) => { event.preventDefault(); saveSelection(); }}
                         onClick={() => runEditorCommand('bold')}
-                        className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-bold text-gray-800 hover:border-amber-300 hover:bg-amber-100"
+                        aria-pressed={legalToolbarState.bold}
+                        className={`rounded border px-2.5 py-1 font-bold transition hover:border-amber-300 hover:bg-amber-100 ${legalToolbarState.bold ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-800'}`}
                         title={t('footerSettings.boldText', 'Bold text')}
                       >
                         B
@@ -920,9 +1005,10 @@ export default function FooterContentSettings() {
 
                       <button
                         type="button"
-                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseDown={(event) => { event.preventDefault(); saveSelection(); }}
                         onClick={() => runEditorCommand('italic')}
-                        className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold italic text-gray-800 hover:border-amber-300 hover:bg-amber-100"
+                        aria-pressed={legalToolbarState.italic}
+                        className={`rounded border px-2.5 py-1 font-semibold italic transition hover:border-amber-300 hover:bg-amber-100 ${legalToolbarState.italic ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-800'}`}
                         title={t('footerSettings.italicText', 'Italic text')}
                       >
                         I
@@ -930,9 +1016,10 @@ export default function FooterContentSettings() {
 
                       <button
                         type="button"
-                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseDown={(event) => { event.preventDefault(); saveSelection(); }}
                         onClick={() => runEditorCommand('underline')}
-                        className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold underline text-gray-800 hover:border-amber-300 hover:bg-amber-100"
+                        aria-pressed={legalToolbarState.underline}
+                        className={`rounded border px-2.5 py-1 font-semibold underline transition hover:border-amber-300 hover:bg-amber-100 ${legalToolbarState.underline ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-800'}`}
                         title={t('footerSettings.underlineText', 'Underline text')}
                       >
                         U
@@ -940,9 +1027,10 @@ export default function FooterContentSettings() {
 
                       <button
                         type="button"
-                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseDown={(event) => { event.preventDefault(); saveSelection(); }}
                         onClick={() => runEditorCommand('insertUnorderedList')}
-                        className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 hover:border-amber-300 hover:bg-amber-100"
+                        aria-pressed={legalToolbarState.unorderedList}
+                        className={`rounded border px-2.5 py-1 font-medium transition hover:border-amber-300 hover:bg-amber-100 ${legalToolbarState.unorderedList ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-800'}`}
                         title={t('footerSettings.bulletList', 'Bullet list')}>`r`n                        {`? ${t('footerSettings.bulletListLabel', 'Bullet List')}`}`r`n                      </button>
                     </div>
                   </div>

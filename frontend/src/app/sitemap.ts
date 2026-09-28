@@ -19,6 +19,12 @@ type PublicDealer = {
   district?: string | null;
 };
 
+type PublicBlog = {
+  slug: string;
+  publishedAt?: string | null;
+  updatedAt?: string | null;
+};
+
 const staticRoutes = (): MetadataRoute.Sitemap => [
   {
     url: `${SITE_URL}/`,
@@ -56,6 +62,12 @@ const staticRoutes = (): MetadataRoute.Sitemap => [
     priority: 0.8,
     lastModified: new Date(),
   },
+  {
+    url: `${SITE_URL}/blog`,
+    changeFrequency: "weekly",
+    priority: 0.8,
+    lastModified: new Date(),
+  },
 ];
 
 async function fetchJson<T>(path: string): Promise<T | null> {
@@ -75,15 +87,17 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [listingPayload, dealerPayload, jobPayload] = await Promise.all([
+  const [listingPayload, dealerPayload, jobPayload, blogPayload] = await Promise.all([
     fetchJson<{ success: boolean; data?: PublicListing[] }>("/master/public-listings"),
     fetchJson<{ success: boolean; data?: PublicDealer[] }>("/master/dealers"),
     fetchJson<{ success: boolean; jobs?: { slug: string; postedAt?: string }[] }>("/recruitment/public/jobs"),
+    fetchJson<{ data?: PublicBlog[] }>("/blogs"),
   ]);
 
   const listings = listingPayload?.success ? listingPayload.data || [] : [];
   const dealers = dealerPayload?.success ? dealerPayload.data || [] : [];
   const jobs = jobPayload?.success ? jobPayload.jobs || [] : [];
+  const blogs = blogPayload?.data || [];
 
   const listingRoutes: MetadataRoute.Sitemap = listings.map((listing) => ({
     url: `${SITE_URL}${generateMachineSlugPath(listing)}`,
@@ -110,5 +124,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: job.postedAt ? new Date(job.postedAt) : new Date(),
   }));
 
-  return [...staticRoutes(), ...listingRoutes, ...dealerRoutes, ...jobRoutes];
+  const blogRoutes: MetadataRoute.Sitemap = blogs.map((blog) => ({
+    url: `${SITE_URL}/blog/${blog.slug}`,
+    changeFrequency: "weekly",
+    priority: 0.7,
+    lastModified: blog.updatedAt
+      ? new Date(blog.updatedAt)
+      : blog.publishedAt
+        ? new Date(blog.publishedAt)
+        : new Date(),
+  }));
+
+  return [...staticRoutes(), ...listingRoutes, ...dealerRoutes, ...jobRoutes, ...blogRoutes];
 }

@@ -245,6 +245,12 @@ export default function Footer() {
                     Careers &amp; Jobs
                   </Link>
                 </li>
+                <li>
+                  <Link href="/support" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
+                    <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                    Support
+                  </Link>
+                </li>
               </ul>
             </div>
 
@@ -271,6 +277,12 @@ export default function Footer() {
                   <Link href="/disclaimer" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
                     <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
                     {t('legalPages.disclaimer', 'Disclaimer')}
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/refund-and-return-policy" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
+                    <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                    {t('legalPages.refundAndReturnPolicy', 'Refund & Return Policy')}
                   </Link>
                 </li>
               </ul>

@@ -2,6 +2,7 @@ import path from 'node:path';
 
 export type PublicBrandingPurpose =
   | 'finance-support'
+  | 'blog-cover'
   | 'hero-image'
   | 'inspection-section'
   | 'listing-media'

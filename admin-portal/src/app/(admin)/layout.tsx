@@ -16,10 +16,11 @@ import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, BookOpen } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import {
   employeeBrandsPermissions,
+  employeeBlogPermissions,
   employeeFooterPermissions,
   employeeRolesPermissions,
   employeeUsersPermissions,
@@ -45,6 +46,7 @@ const navItems = [
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
   { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
   { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
+  { href: '/superadmin/blogs', labelKey: 'admin.blog', icon: BookOpen },
   { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
 ];
 
@@ -67,6 +69,7 @@ const employeeModuleNavItems = [
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
   { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
+  { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
   { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage'] },
 ];
@@ -135,6 +138,21 @@ export default function AdminLayout({
   });
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
+  // ─── Industry-standard timestamp-based notification tracking ───────────────
+  // localStorage stores ISO timestamps of when each module was last visited.
+  // The backend receives these timestamps and returns only NEW-since-then counts.
+  // This survives logout/login because timestamps are keyed by user id.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const getModuleSeenAt = (module: string) => {
+    if (!user?.id) return null;
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(`badge_seen_at_${module}_${user.id}`) : null;
+    return raw || null;
+  };
+  const setModuleSeenAt = (module: string, isoTimestamp: string) => {
+    if (!user?.id) return;
+    localStorage.setItem(`badge_seen_at_${module}_${user.id}`, isoTimestamp);
+  };
+
   const [badges, setBadges] = useState<{
     enquiries: number;
     verifications: number;
@@ -143,11 +161,6 @@ export default function AdminLayout({
     listingsPendingApproval: number;
     recruitmentApplications: number;
     recruitmentInterviews: number;
-    clearedEnquiries: number;
-    clearedVisitors: number;
-    clearedRecurrence: number;
-    clearedRecruitmentApplications: number;
-    clearedRecruitmentInterviews: number;
   }>({
     enquiries: 0,
     verifications: 0,
@@ -156,11 +169,6 @@ export default function AdminLayout({
     listingsPendingApproval: 0,
     recruitmentApplications: 0,
     recruitmentInterviews: 0,
-    clearedEnquiries: 0,
-    clearedVisitors: 0,
-    clearedRecurrence: 0,
-    clearedRecruitmentApplications: 0,
-    clearedRecruitmentInterviews: 0,
   });
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
@@ -361,90 +369,63 @@ export default function AdminLayout({
     };
   }, [hasHydrated, isAuthenticated, logout, router, updateUser, user?.role]);
 
+  // ─── Industry-standard "last seen at" timestamp badge fetching ──────────────
+  // On each fetch, we send the stored seenAt timestamps to the backend.
+  // The backend returns only entries created AFTER those timestamps.
+  // On visiting a module page, we update its seenAt to now — clearing the badge.
+  // This is login/logout-safe: timestamps are keyed by user id in localStorage.
+  // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!hasHydrated || !isAuthenticated || (!isSuperAdmin && !isAdmin)) return;
+
+    // Mark current page as "seen" immediately when we navigate to it
+    const markCurrentPageSeen = () => {
+      const now = new Date().toISOString();
+      if (pathname.startsWith('/superadmin/enquiries') || pathname.startsWith('/employee/enquiries')) {
+        setModuleSeenAt('enquiries', now);
+      }
+      if (pathname.startsWith('/superadmin/visitors') || pathname.startsWith('/employee/visitors')) {
+        setModuleSeenAt('visitors', now);
+      }
+      if (pathname.startsWith('/superadmin/recurrence') || pathname.startsWith('/employee/recurrence')) {
+        setModuleSeenAt('recurrence', now);
+      }
+      if (pathname.startsWith('/superadmin/recruitment/applications') || pathname.startsWith('/employee/recruitment/applications')) {
+        setModuleSeenAt('recruitmentApplications', now);
+      }
+      if (pathname.startsWith('/superadmin/recruitment/interviews') || pathname.startsWith('/employee/recruitment/interviews')) {
+        setModuleSeenAt('recruitmentInterviews', now);
+      }
+    };
+    markCurrentPageSeen();
 
     let isMounted = true;
     const fetchBadges = async () => {
       try {
-        const response = await api.get('/superadmin/badges');
+        // Build query params with per-module seenAt timestamps
+        const params = new URLSearchParams();
+        const enquiriesSeenAt = getModuleSeenAt('enquiries');
+        const visitorsSeenAt = getModuleSeenAt('visitors');
+        const recurrenceSeenAt = getModuleSeenAt('recurrence');
+        const recruitmentAppsSeenAt = getModuleSeenAt('recruitmentApplications');
+        const recruitmentIntervsSeenAt = getModuleSeenAt('recruitmentInterviews');
+        if (enquiriesSeenAt) params.set('seenAt[enquiries]', enquiriesSeenAt);
+        if (visitorsSeenAt) params.set('seenAt[visitors]', visitorsSeenAt);
+        if (recurrenceSeenAt) params.set('seenAt[recurrence]', recurrenceSeenAt);
+        if (recruitmentAppsSeenAt) params.set('seenAt[recruitmentApplications]', recruitmentAppsSeenAt);
+        if (recruitmentIntervsSeenAt) params.set('seenAt[recruitmentInterviews]', recruitmentIntervsSeenAt);
+
+        const response = await api.get(`/superadmin/badges?${params.toString()}`);
         if (isMounted && response.data?.badges) {
-          const backendBadges = response.data.badges;
-          const backendEnquiries = backendBadges.enquiries || 0;
-          const backendVisitors = backendBadges.visitors || 0;
-          const backendRecurrence = backendBadges.recurrence || 0;
-          const backendRecruitmentApplications = backendBadges.recruitmentApplications || 0;
-          const backendRecruitmentInterviews = backendBadges.recruitmentInterviews || 0;
-
-          let currentClearedEnquiries = parseInt(localStorage.getItem(`cleared_enquiries_${user?.id}`) || '0');
-          let currentClearedVisitors = parseInt(localStorage.getItem(`cleared_visitors_${user?.id}`) || '0');
-          let currentClearedRecurrence = parseInt(localStorage.getItem(`cleared_recurrence_${user?.id}`) || '0');
-          let currentClearedRecruitmentApplications = parseInt(localStorage.getItem(`cleared_recruitment_applications_${user?.id}`) || '0');
-          let currentClearedRecruitmentInterviews = parseInt(localStorage.getItem(`cleared_recruitment_interviews_${user?.id}`) || '0');
-
-          if (backendEnquiries < currentClearedEnquiries) {
-            currentClearedEnquiries = backendEnquiries;
-            localStorage.setItem(`cleared_enquiries_${user?.id}`, currentClearedEnquiries.toString());
-          }
-
-          if (backendVisitors < currentClearedVisitors) {
-            currentClearedVisitors = backendVisitors;
-            localStorage.setItem(`cleared_visitors_${user?.id}`, currentClearedVisitors.toString());
-          }
-
-          if (backendRecurrence < currentClearedRecurrence) {
-            currentClearedRecurrence = backendRecurrence;
-            localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
-          }
-
-          if (backendRecruitmentApplications < currentClearedRecruitmentApplications) {
-            currentClearedRecruitmentApplications = backendRecruitmentApplications;
-            localStorage.setItem(`cleared_recruitment_applications_${user?.id}`, currentClearedRecruitmentApplications.toString());
-          }
-
-          if (backendRecruitmentInterviews < currentClearedRecruitmentInterviews) {
-            currentClearedRecruitmentInterviews = backendRecruitmentInterviews;
-            localStorage.setItem(`cleared_recruitment_interviews_${user?.id}`, currentClearedRecruitmentInterviews.toString());
-          }
-
-          if ((pathname.startsWith('/superadmin/enquiries') || pathname.startsWith('/employee/enquiries')) && backendEnquiries > currentClearedEnquiries) {
-            currentClearedEnquiries = backendEnquiries;
-            localStorage.setItem(`cleared_enquiries_${user?.id}`, currentClearedEnquiries.toString());
-          }
-
-          if ((pathname.startsWith('/superadmin/visitors') || pathname.startsWith('/employee/visitors')) && backendVisitors > currentClearedVisitors) {
-            currentClearedVisitors = backendVisitors;
-            localStorage.setItem(`cleared_visitors_${user?.id}`, currentClearedVisitors.toString());
-          }
-
-          if ((pathname.startsWith('/superadmin/recurrence') || pathname.startsWith('/employee/recurrence')) && backendRecurrence > currentClearedRecurrence) {
-            currentClearedRecurrence = backendRecurrence;
-            localStorage.setItem(`cleared_recurrence_${user?.id}`, currentClearedRecurrence.toString());
-          }
-
-          if ((pathname.startsWith('/superadmin/recruitment/applications') || pathname.startsWith('/employee/recruitment/applications')) && backendRecruitmentApplications > currentClearedRecruitmentApplications) {
-            currentClearedRecruitmentApplications = backendRecruitmentApplications;
-            localStorage.setItem(`cleared_recruitment_applications_${user?.id}`, currentClearedRecruitmentApplications.toString());
-          }
-
-          if ((pathname.startsWith('/superadmin/recruitment/interviews') || pathname.startsWith('/employee/recruitment/interviews')) && backendRecruitmentInterviews > currentClearedRecruitmentInterviews) {
-            currentClearedRecruitmentInterviews = backendRecruitmentInterviews;
-            localStorage.setItem(`cleared_recruitment_interviews_${user?.id}`, currentClearedRecruitmentInterviews.toString());
-          }
-
+          const b = response.data.badges;
           setBadges({
-            enquiries: backendBadges.enquiries || 0,
-            verifications: backendBadges.verifications || 0,
-            visitors: backendVisitors,
-            recurrence: backendRecurrence,
-            listingsPendingApproval: backendBadges.listingsPendingApproval || 0,
-            recruitmentApplications: backendRecruitmentApplications,
-            recruitmentInterviews: backendRecruitmentInterviews,
-            clearedEnquiries: currentClearedEnquiries,
-            clearedVisitors: currentClearedVisitors,
-            clearedRecurrence: currentClearedRecurrence,
-            clearedRecruitmentApplications: currentClearedRecruitmentApplications,
-            clearedRecruitmentInterviews: currentClearedRecruitmentInterviews,
+            enquiries: b.enquiries || 0,
+            verifications: b.verifications || 0,
+            visitors: b.visitors || 0,
+            recurrence: b.recurrence || 0,
+            listingsPendingApproval: b.listingsPendingApproval || 0,
+            recruitmentApplications: b.recruitmentApplications || 0,
+            recruitmentInterviews: b.recruitmentInterviews || 0,
           });
         }
       } catch {
@@ -459,6 +440,7 @@ export default function AdminLayout({
       isMounted = false;
       window.clearInterval(intervalId);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated, isAuthenticated, isSuperAdmin, isAdmin, pathname, user?.id]);
 
   const handleLogout = () => {
@@ -548,6 +530,7 @@ export default function AdminLayout({
     '/superadmin/settings': t('admin.platformSettings'),
     '/superadmin/translations': t('admin.translationManager'),
     '/superadmin/footer': t('admin.footerContent'),
+    '/superadmin/blogs': t('admin.blog', 'Blog'),
     '/superadmin/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
     '/superadmin/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
     '/superadmin/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
@@ -651,12 +634,12 @@ export default function AdminLayout({
 
               let badgeCount = 0;
               if (item.href.includes('enquiries')) {
-                badgeCount = Math.max(0, (badges.enquiries || 0) - (badges.clearedEnquiries || 0));
+                badgeCount = (badges.enquiries || 0);
               }
               else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
               else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
-              else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
-              else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
+              else if (item.href.includes('visitors')) badgeCount = (badges.visitors || 0);
+              else if (item.href.includes('recurrence')) badgeCount = (badges.recurrence || 0);
 
               return (
                 <div key={item.href} className="space-y-2">
@@ -758,7 +741,7 @@ export default function AdminLayout({
                 <span className="flex items-center gap-3">
                   <div className="relative">
                     <Briefcase className={`h-5 w-5 ${isRecruitmentSectionActive ? 'text-[#FFC107]' : ''}`} />
-                    {Math.max(0, (badges.recruitmentApplications || 0) - (badges.clearedRecruitmentApplications || 0)) + Math.max(0, (badges.recruitmentInterviews || 0) - (badges.clearedRecruitmentInterviews || 0)) > 0 && (
+                    {(badges.recruitmentApplications || 0) + (badges.recruitmentInterviews || 0) > 0 && (
                       <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
@@ -782,9 +765,9 @@ export default function AdminLayout({
 
                     let badgeCount = 0;
                     if (item.key === 'applications') {
-                      badgeCount = Math.max(0, (badges.recruitmentApplications || 0) - (badges.clearedRecruitmentApplications || 0));
+                      badgeCount = (badges.recruitmentApplications || 0);
                     } else if (item.key === 'interviews') {
-                      badgeCount = Math.max(0, (badges.recruitmentInterviews || 0) - (badges.clearedRecruitmentInterviews || 0));
+                      badgeCount = (badges.recruitmentInterviews || 0);
                     }
 
                     return (
@@ -822,12 +805,12 @@ export default function AdminLayout({
 
               let badgeCount = 0;
               if (item.href.includes('enquiries')) {
-                badgeCount = Math.max(0, (badges.enquiries || 0) - (badges.clearedEnquiries || 0));
+                badgeCount = (badges.enquiries || 0);
               }
               else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
               else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
-              else if (item.href.includes('visitors')) badgeCount = Math.max(0, (badges.visitors || 0) - (badges.clearedVisitors || 0));
-              else if (item.href.includes('recurrence')) badgeCount = Math.max(0, (badges.recurrence || 0) - (badges.clearedRecurrence || 0));
+              else if (item.href.includes('visitors')) badgeCount = (badges.visitors || 0);
+              else if (item.href.includes('recurrence')) badgeCount = (badges.recurrence || 0);
 
               return (
                 <Link

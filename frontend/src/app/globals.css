@@ -14,6 +14,11 @@
   --foreground: #171717;
 }
 
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -172,3 +177,231 @@ body {
 .brand-loader-text {
   animation: brandPulse 2s ease-in-out infinite;
 }
+
+/* ── Blog article rich-text styles ──────────────────────────────────────────
+   Matches the admin portal's contentEditable / execCommand HTML output exactly.
+   The editor produces: <b>, <strong>, <em>, <u>, <h2-h4>, <ul>/<ol>/<li>,
+   <blockquote>, <a>, <img>, <span style="font-size:..."> (from applyFontSize),
+   and <font> (browser execCommand legacy fallback).
+   ─────────────────────────────────────────────────────────────────────────── */
+.blog-content {
+  color: #1f2937;
+  font-size: 1rem;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+/* ── Headings ── */
+.blog-content h1,
+.blog-content h2,
+.blog-content h3,
+.blog-content h4,
+.blog-content h5,
+.blog-content h6 {
+  color: #111827;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+.blog-content h1[id],
+.blog-content h2[id],
+.blog-content h3[id],
+.blog-content h4[id] {
+  scroll-margin-top: 6rem;
+}
+.blog-content h1 { font-size: 2rem; }
+.blog-content h2 {
+  font-size: 1.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #f3f4f6;
+}
+.blog-content h3 { font-size: 1.25rem; }
+.blog-content h4 { font-size: 1.1rem; }
+
+/* ── Paragraphs ── */
+.blog-content p {
+  margin-top: 0;
+  margin-bottom: 1.1rem;
+}
+.blog-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Inline formatting — execCommand produces b, strong, em, u, span ── */
+.blog-content b,
+.blog-content strong {
+  font-weight: 700;
+  color: #111827;
+}
+.blog-content em,
+.blog-content i {
+  font-style: italic;
+}
+.blog-content u {
+  text-decoration: underline;
+}
+
+/* span with inline font-size from applyFontSize helper */
+.blog-content span[style*="font-size"] {
+  display: inline;
+}
+
+/* legacy <font> tag fallback (browser execCommand) */
+.blog-content font {
+  display: inline;
+}
+
+/* ── Links ── */
+.blog-content a {
+  color: #a87500;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.blog-content a:hover {
+  color: #7c5700;
+}
+
+/* ── Lists ── */
+.blog-content ul {
+  list-style-type: disc;
+  padding-left: 1.6rem;
+  margin: 0.75rem 0 1rem;
+}
+.blog-content ol {
+  list-style-type: decimal;
+  padding-left: 1.6rem;
+  margin: 0.75rem 0 1rem;
+}
+.blog-content li {
+  margin-bottom: 0.35rem;
+  line-height: 1.75;
+  color: #374151;
+}
+.blog-content li b,
+.blog-content li strong {
+  color: #111827;
+}
+.blog-content li > ul,
+.blog-content li > ol {
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+}
+
+/* ── Blockquote ── */
+.blog-content blockquote {
+  border-left: 4px solid #FFC107;
+  background-color: #fffdf0;
+  margin: 1.5rem 0;
+  padding: 0.8rem 1.25rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+.blog-content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Code & Pre ── */
+.blog-content code {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.25rem;
+  color: #a87500;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 0.875em;
+  font-weight: 500;
+  padding: 0.1em 0.4em;
+}
+.blog-content pre {
+  background-color: #0f172a;
+  border-radius: 0.75rem;
+  color: #e2e8f0;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 0.875rem;
+  line-height: 1.75;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  padding: 1.25rem 1.5rem;
+}
+.blog-content pre code {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+}
+
+/* ── Images — from both cover and inline uploads ── */
+.blog-content img {
+  border: 1px solid #f1f5f9;
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 8px 0 rgb(0 0 0 / 0.07);
+  display: block;
+  height: auto;
+  margin: 1.5rem auto;
+  max-width: 100%;
+}
+
+/* ── Horizontal rule ── */
+.blog-content hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 2rem 0;
+}
+
+/* ── Tables ── */
+.blog-content table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 1.5rem 0;
+  width: 100%;
+}
+.blog-content th {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-weight: 600;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  color: #111827;
+}
+.blog-content td {
+  border: 1px solid #e2e8f0;
+  padding: 0.6rem 0.9rem;
+  color: #374151;
+}
+.blog-content tr:nth-child(even) td {
+  background-color: #f9fafb;
+}
+
+/* ── Figure / caption ── */
+.blog-content figure {
+  margin: 1.5rem 0;
+}
+.blog-content figcaption {
+  color: #9ca3af;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  text-align: center;
+}
+
+/* ── div containers from editor ── */
+.blog-content div {
+  margin-bottom: 0.5rem;
+}
+
+/* â”€â”€ Article FAQ accordion â”€â”€ */
+.blog-faq summary::-webkit-details-marker {
+  display: none;
+}
+.blog-faq summary {
+  list-style: none;
+}
+.blog-faq .blog-content p:last-child,
+.blog-faq .blog-content ul:last-child,
+.blog-faq .blog-content ol:last-child {
+  margin-bottom: 0;
+}
+

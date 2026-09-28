@@ -79,6 +79,16 @@ const getDriveFileId = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
+  const proxyPathMatch = trimmed.match(/\/documents\/upload\/public\/listing-media\/drive\/([^/?#]+)/i);
+  if (proxyPathMatch?.[1]) {
+    try {
+      const proxyFileId = decodeURIComponent(proxyPathMatch[1]);
+      return isLikelyDriveFileId(proxyFileId) ? proxyFileId : null;
+    } catch {
+      return null;
+    }
+  }
+
   if (!/^https?:\/\//i.test(trimmed)) {
     return isLikelyDriveFileId(trimmed) ? trimmed : null;
   }
@@ -100,6 +110,16 @@ const getDriveFileId = (value: string) => {
   } catch {
     return null;
   }
+};
+
+export const getCanonicalFileUrl = (fileUrl?: string | null) => {
+  const normalizedUrl = normalizePublicUploadUrl(fileUrl);
+  if (!normalizedUrl) return '';
+
+  const driveFileId = getDriveFileId(normalizedUrl);
+  return driveFileId
+    ? `https://drive.google.com/uc?id=${encodeURIComponent(driveFileId)}`
+    : normalizedUrl;
 };
 
 const normalizeDriveMediaUrl = (value: string) => {
@@ -719,6 +739,24 @@ export const uploadFinanceSupportImageToServer = async (file: File) => {
         'Content-Type': 'multipart/form-data',
       },
     }
+  );
+
+  return response.data.file;
+};
+
+export const uploadBlogCoverImageToServer = async (file: File) => {
+  const preparedFile = await prepareFileForUpload(file);
+  const formData = new FormData();
+  formData.append('file', preparedFile);
+
+  const response = await api.post<{ file: UploadedFileResult }>(
+    '/documents/upload/public/blog-cover',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    },
   );
 
   return response.data.file;

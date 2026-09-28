@@ -53,25 +53,16 @@ export const getRemoteMediaUrl = (url?: string | null) => {
   const normalizedUrl = normalizePublicUploadUrl(url);
   if (!normalizedUrl) return null;
 
-  // Server-local branding image — convert to absolute URL using API origin
-  if (/^\/uploads\/public\//i.test(normalizedUrl)) {
-    return `${API_ORIGIN}${normalizedUrl}`;
-  }
-
-  if (!/^https?:\/\//i.test(normalizedUrl) || isLegacyLocalUploadUrl(normalizedUrl)) {
+  if (!/^https?:\/\//i.test(normalizedUrl) && !/^\/uploads\/public\//i.test(normalizedUrl)) {
     return null;
   }
 
-  try {
-    const parsedUrl = new URL(normalizedUrl);
-    if (!parsedUrl.hostname) {
-      return null;
-    }
-
-    return normalizedUrl;
-  } catch {
+  if (isLegacyLocalUploadUrl(normalizedUrl)) {
     return null;
   }
+
+  const resolvedUrl = resolveAbsoluteMediaUrl(normalizedUrl, API_ORIGIN);
+  return resolvedUrl || null;
 };
 
 const api = axios.create({

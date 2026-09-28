@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   uploadPublicFinanceSupportImage,
+  uploadPublicBlogCoverImage,
   uploadPublicHeroImage,
   uploadPublicInspectionSectionImage,
   uploadPublicSiteManifestIconImage,
@@ -16,7 +17,7 @@ import {
   uploadListingPaymentReceipt,
   uploadSecureDocument,
 } from '../controllers/document.controller';
-import { requireAdmin, requireAuth, requirePortalOperator } from '../middlewares/auth.middleware';
+import { requireAdmin, requireAuth, requirePortalOperator, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -25,6 +26,7 @@ const secureUpload = getDocumentUploadMiddleware('secure');
 const publicUpload = getDocumentUploadMiddleware('public');
 const publicListingMediaUpload = getDocumentUploadMiddleware('public', 'listing-media');
 const publicFinanceSupportUpload = getDocumentUploadMiddleware('public', 'finance-support');
+const publicBlogCoverUpload = getDocumentUploadMiddleware('public', 'blog-cover');
 const publicHeroImageUpload = getDocumentUploadMiddleware('public', 'hero-image');
 const publicInspectionSectionUpload = getDocumentUploadMiddleware('public', 'inspection-section');
 const publicSiteLogoUpload = getDocumentUploadMiddleware('public', 'site-logo');
@@ -42,6 +44,13 @@ router.post(
   requirePortalOperator,
   publicFinanceSupportUpload.single('file'),
   uploadPublicFinanceSupportImage
+);
+router.post(
+  '/upload/public/blog-cover',
+  requireAuth,
+  requireSuperAdminOrEmployeePermissions(['settings.manage']),
+  publicBlogCoverUpload.single('file'),
+  uploadPublicBlogCoverImage
 );
 router.post(
   '/upload/public/hero-image',
