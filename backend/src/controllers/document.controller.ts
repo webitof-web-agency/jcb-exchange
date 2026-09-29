@@ -325,12 +325,12 @@ export const createUploadPublicListingMedia = (
 
 export const uploadPublicListingMedia = createUploadPublicListingMedia();
 
-type BrandingLocalSaver = typeof saveBrandingImageLocally;
+type BrandingStorageSaver = typeof saveBrandingImageLocally;
 type PublicBlogDriveUploader = typeof uploadFileToDrive;
 
 export const createUploadPublicBrandingImage = (
   purpose: PublicBrandingPurpose,
-  saveLocally: BrandingLocalSaver = saveBrandingImageLocally,
+  saveMedia: BrandingStorageSaver = saveBrandingImageLocally,
 ) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = getUploadedFile(req);
@@ -341,7 +341,7 @@ export const createUploadPublicBrandingImage = (
 
     await enforceStoredFileSizePolicy(file, purpose);
 
-    const saved = await saveLocally(
+    const saved = await saveMedia(
       file.buffer,
       file.originalname,
       file.mimetype,

@@ -76,6 +76,16 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
 
   const driveMediaProxyPath = getDriveMediaProxyPath(trimmed);
   if (driveMediaProxyPath) {
+    const encodedFileId = driveMediaProxyPath.split('/').pop();
+    if (encodedFileId) {
+      try {
+        const fileId = decodeURIComponent(encodedFileId);
+        return `https://drive.google.com/uc?id=${encodeURIComponent(fileId)}`;
+      } catch {
+        // Fall back to the API proxy for malformed encoded IDs.
+      }
+    }
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');
     const origin = apiUrl.replace(/\/api\/?$/, '');

@@ -127,12 +127,6 @@ const normalizeDriveMediaUrl = (value: string) => {
   if (!driveFileId) return null;
 
   const encodedDriveFileId = encodeURIComponent(driveFileId);
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || '';
-  
-  if (apiUrl) {
-    return `${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`;
-  }
-  
   return `https://drive.google.com/uc?id=${encodedDriveFileId}`;
 };
 
@@ -147,12 +141,12 @@ export const getMediaSourceCandidates = (fileUrl?: string | null) => {
   const encodedDriveFileId = encodeURIComponent(driveFileId);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || '';
   return [
-    ...(apiUrl
-      ? [`${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`]
-      : []),
     `https://drive.google.com/uc?id=${encodedDriveFileId}`,
     `https://drive.usercontent.google.com/download?id=${encodedDriveFileId}&export=view`,
     `https://drive.google.com/thumbnail?id=${encodedDriveFileId}&sz=w2000`,
+    ...(apiUrl
+      ? [`${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`]
+      : []),
   ];
 };
 
