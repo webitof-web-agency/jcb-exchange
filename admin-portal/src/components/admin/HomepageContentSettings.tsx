@@ -493,7 +493,10 @@ export default function HomepageContentSettings() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         <div>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-semibold text-gray-700">{t('homepageSettings.brandName')}</span>
+            <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+              {t('homepageSettings.brandName')}
+              <span className="text-xs font-normal text-gray-400">(Optional)</span>
+            </span>
             <input
               type="text"
               value={item.name}

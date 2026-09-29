@@ -21,3 +21,9 @@ test('allowedAdminPermissions includes accounts read, crud, and export permissio
     assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
   });
 });
+
+test('allowedAdminPermissions includes all blog permissions', () => {
+  ['blog.read', 'blog.create', 'blog.update', 'blog.delete'].forEach((permission) => {
+    assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
+  });
+});

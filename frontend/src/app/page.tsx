@@ -302,22 +302,24 @@ export default function Home() {
         className="relative flex flex-col md:flex-row w-[90px] md:h-[80px] md:w-[240px] shrink-0 snap-center md:overflow-hidden md:rounded-lg md:bg-gray-900 md:shadow-md transition-transform active:scale-95 hover:scale-105 md:border-none"
       >
         {/* Desktop Full Card Image */}
-        <div className="hidden md:block relative w-full h-full">
+        <div className="hidden md:block relative w-full h-full bg-white">
           {imageUrl && (
             <Image
               src={imageUrl}
-              alt={`${item.name} finance support partner on JCB Exchange`}
+              alt={`${item.name || 'finance'} finance support partner on JCB Exchange`}
               fill
               sizes="(max-width: 640px) 220px, 240px"
-              className="object-cover opacity-80 transition-opacity hover:opacity-100"
+              className="object-contain p-3 transition-opacity opacity-90 hover:opacity-100"
             />
           )}
-          {/* Brand Name Overlaid */}
-          <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center pointer-events-none">
-            <p className="truncate text-[15px] font-extrabold uppercase tracking-widest text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-              {item.name}
-            </p>
-          </div>
+          {/* Brand Name Overlaid — only when name exists */}
+          {item.name && (
+            <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/40 px-2 py-0.5 text-center pointer-events-none">
+              <p className="truncate text-[10px] font-bold uppercase tracking-wider text-white">
+                {item.name}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Mobile Custom Card Layout */}
@@ -334,7 +336,7 @@ export default function Home() {
             )}
           </div>
           <span className="text-[9px] font-extrabold text-gray-800 text-center uppercase tracking-wide truncate w-full px-1">
-            {item.name}
+            {item.name || '\u00A0'}
           </span>
         </div>
       </div>

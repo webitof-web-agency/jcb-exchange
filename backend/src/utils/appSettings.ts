@@ -511,10 +511,11 @@ const normalizeFinanceSupportItems = (items?: Partial<FinanceSupportItem>[]): Fi
   const normalizedItems: FinanceSupportItem[] = [];
 
   for (const [index, item] of (items || []).entries()) {
-    const name = item.name?.trim();
+    const name = item.name?.trim() || '';
     const imageUrl = normalizeRemoteMediaUrl(item.imageUrl);
 
-    if (!name || !imageUrl) {
+    // Only imageUrl is required; name is optional
+    if (!imageUrl) {
       continue;
     }
 
