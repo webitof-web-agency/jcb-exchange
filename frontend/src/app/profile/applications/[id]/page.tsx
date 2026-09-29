@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Briefcase, Calendar, Clock, FileText, MapPin, User } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, Clock, Download, FileText, MapPin, User } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 
@@ -26,6 +26,27 @@ export default function ApplicationDetailsPage({ params }: { params: Promise<{ i
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+
+  const downloadDocument = async (documentId: string, fileName: string) => {
+    try {
+      setDownloadingDocumentId(documentId);
+      const response = await api.get(`/recruitment/my-applications/${encodeURIComponent(application?.applicationRef || '')}/documents/${documentId}/download`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      console.error('Unable to download application document:', downloadError);
+      setError('Unable to download this document right now.');
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
 
   useEffect(() => {
     void params.then(({ id }) => api.get(`/recruitment/my-applications/${id}`).then((res) => {
@@ -62,7 +83,7 @@ export default function ApplicationDetailsPage({ params }: { params: Promise<{ i
           </div>
           <div className="space-y-6">
             <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"><h2 className="mb-4 flex items-center gap-2 text-lg font-bold"><Briefcase size={19} /> Job Details</h2><p className="font-bold">{application.job.title}</p><p className="mt-2 text-sm text-gray-600">{application.job.department?.name || 'General'}</p>{application.job.locationCity && <p className="mt-2 flex items-center gap-1 text-sm text-gray-600"><MapPin size={15} /> {application.job.locationCity}, {application.job.locationState}</p>}</section>
-            <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"><h2 className="mb-4 text-lg font-bold">Documents</h2><div className="space-y-2">{(application.documents || []).length ? application.documents?.map((doc) => { const name = doc.fileName || doc.originalName || doc.category || doc.documentType || 'Document'; return <div key={doc.id} className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-semibold text-gray-900"><FileText className="shrink-0 text-red-600" size={20} /><span className="min-w-0 flex-1 truncate">{name}</span></div>; }) : <p className="text-sm text-gray-500">No documents uploaded.</p>}</div></section>
+            <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"><h2 className="mb-4 text-lg font-bold">Documents</h2><div className="space-y-2">{(application.documents || []).length ? application.documents?.map((doc) => { const name = doc.fileName || doc.originalName || doc.category || doc.documentType || 'Document'; const isOfferLetter = doc.category === 'OFFER_LETTER'; return <div key={doc.id} className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-semibold text-gray-900"><FileText className={`shrink-0 ${isOfferLetter ? 'text-amber-600' : 'text-red-600'}`} size={20} /><span className="min-w-0 flex-1 truncate">{name}</span><button type="button" onClick={() => void downloadDocument(doc.id, name)} disabled={downloadingDocumentId === doc.id} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:border-amber-400 hover:text-amber-700 disabled:opacity-50" aria-label={`Download ${name}`}><Download size={14} />{downloadingDocumentId === doc.id ? '...' : 'Download'}</button></div>; }) : <p className="text-sm text-gray-500">No documents uploaded.</p>}</div></section>
           </div>
         </div>
       </div>

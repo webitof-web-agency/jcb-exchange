@@ -7,3 +7,4 @@ export * from './reminderPolicy';
 export * from './webhookUrl';
 export * from './templatePurposePolicy';
 export * from './publishedBroadcastPolicy';
+export * from './recruitmentTemplatePolicy';

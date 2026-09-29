@@ -8,6 +8,7 @@ import {
   canRetryWhatsAppOutbox,
   sendWhatsAppTemplate,
   sendWhatsAppText,
+  uploadWhatsAppDocument,
   normalizeWhatsAppRecipientPhone,
   assertWhatsAppTemplatePurpose,
   isWhatsAppTemplatePurposeAllowed,
@@ -20,6 +21,7 @@ import {
 } from '../modules/whatsapp-core';
 import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
+import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -344,13 +346,17 @@ export const isWhatsAppIntegrationEnabled = async () => {
 };
 
 type StoredWhatsAppTemplatePayload = {
+  eventCode?: unknown;
   templateName?: unknown;
   templateLanguage?: unknown;
   templateComponents?: unknown;
+  offerLetterUrl?: unknown;
+  offerLetterFileName?: unknown;
 };
 
 const getStoredTemplatePayload = (payload: unknown) => {
   const stored = (payload && typeof payload === 'object' ? payload : {}) as StoredWhatsAppTemplatePayload;
+  const eventCode = typeof stored.eventCode === 'string' ? stored.eventCode : '';
   const templateName = typeof stored.templateName === 'string' ? stored.templateName : '';
   const templateLanguage = typeof stored.templateLanguage === 'string' ? stored.templateLanguage : 'en_US';
   if (!templateName) throw new Error('Stored WhatsApp template details are missing.');
@@ -358,7 +364,18 @@ const getStoredTemplatePayload = (payload: unknown) => {
     templateName,
     templateLanguage,
     templateComponents: Array.isArray(stored.templateComponents) ? stored.templateComponents : undefined,
+    eventCode,
+    offerLetterUrl: typeof stored.offerLetterUrl === 'string' ? stored.offerLetterUrl : null,
+    offerLetterFileName: typeof stored.offerLetterFileName === 'string' ? stored.offerLetterFileName : null,
   };
+};
+
+const streamToBuffer = async (stream: NodeJS.ReadableStream) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as AsyncIterable<Buffer | Uint8Array | string>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 };
 
 const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
@@ -374,7 +391,7 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
     throw new Error('This WhatsApp message is not ready for delivery.');
   }
 
-  const { templateName, templateLanguage, templateComponents } = getStoredTemplatePayload(messageLog.outbox.payload);
+  const { templateName, templateLanguage, templateComponents, eventCode, offerLetterUrl, offerLetterFileName } = getStoredTemplatePayload(messageLog.outbox.payload);
   await prisma.$transaction([
     prisma.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'QUEUED', errorCode: null, errorMessage: null } }),
     prisma.whatsAppOutbox.update({
@@ -386,6 +403,26 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
   try {
     const settings = await getEnabledSettings();
     const accessToken = decryptWhatsAppCredential(settings.encryptedAccessToken!, credentialSecret());
+    let deliveryComponents = templateComponents;
+    if (eventCode === 'RECRUITMENT_OFFER_SENT') {
+      const driveFileId = extractDriveFileId(offerLetterUrl);
+      if (!driveFileId) throw new Error('Offer letter Drive file is missing for WhatsApp delivery.');
+      const offerStream = await streamFileFromDrive(driveFileId);
+      const offerPdf = await streamToBuffer(offerStream);
+      const uploadedMedia = await uploadWhatsAppDocument({
+        accessToken,
+        phoneNumberId: settings.phoneNumberId!,
+        graphApiVersion: graphApiVersion(settings.graphApiVersion),
+      }, offerPdf, offerLetterFileName || 'Offer_Letter.pdf');
+      deliveryComponents = [
+        {
+          type: 'header',
+          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: offerLetterFileName || 'Offer_Letter.pdf' } }],
+        },
+        ...(Array.isArray(templateComponents) ? templateComponents : []),
+      ];
+    }
+
     const { metaMessageId } = await sendWhatsAppTemplate({
       accessToken,
       phoneNumberId: settings.phoneNumberId!,
@@ -393,7 +430,7 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
     }, messageLog.recipientPhone, {
       name: templateName,
       language: templateLanguage,
-      components: templateComponents,
+      components: deliveryComponents,
     });
     await prisma.$transaction([
       prisma.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'SENT', sentAt: new Date(), metaMessageId } }),
@@ -524,6 +561,8 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
               templateName: rule.template.name,
               templateLanguage: rule.template.language,
               templateComponents: input.templateComponents || [],
+              ...(typeof input.payloadSnapshot?.offerLetterUrl === 'string' ? { offerLetterUrl: input.payloadSnapshot.offerLetterUrl } : {}),
+              ...(typeof input.payloadSnapshot?.offerLetterFileName === 'string' ? { offerLetterFileName: input.payloadSnapshot.offerLetterFileName } : {}),
             },
           },
         },

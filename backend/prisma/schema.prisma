@@ -1647,6 +1647,8 @@ model Offer {
   offerValidUntil  DateTime?
   additionalTerms  String?     @db.Text
   offerLetterUrl   String?
+  offerLetterFileName String?
+  offerLetterData Json?
   status           OfferStatus @default(DRAFT)
   createdById      String?
   sentAt           DateTime?

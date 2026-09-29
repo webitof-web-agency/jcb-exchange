@@ -33,6 +33,8 @@ import {
 import { dispatchPublishedWhatsApp, dispatchRecruitmentWhatsApp } from '../services/whatsappIntegration.service';
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
+import { getRecruitmentTemplateComponents } from '../modules/whatsapp-core';
+import { normalizeOfferLetterData, validateOfferLetterData, type OfferLetterData } from '../utils/offerLetter';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
@@ -126,6 +128,7 @@ const dispatchRecruitmentCandidateWhatsApp = ({
     relatedEntityId,
     recipientType: 'CANDIDATE',
     recipientPhone: candidate.mobile,
+    templateComponents: getRecruitmentTemplateComponents(eventCode, { candidateName: candidate.fullName || null, ...payloadSnapshot }),
     payloadSnapshot: { candidateName: candidate.fullName || null, ...payloadSnapshot },
   });
 };
@@ -1043,8 +1046,17 @@ export const downloadMyApplicationDocument = async (req: Request, res: Response,
     });
     if (!candidate) return res.status(404).json({ success: false, error: 'Application not found.' });
 
+    const application = await prisma.jobApplication.findFirst({
+      where: {
+        candidateId: candidate.id,
+        OR: [{ id: applicationId }, { applicationRef: applicationId }],
+      },
+      select: { id: true },
+    });
+    if (!application) return res.status(404).json({ success: false, error: 'Application not found.' });
+
     const document = await prisma.candidateDocument.findFirst({
-      where: { id: documentId, applicationId, candidateId: candidate.id },
+      where: { id: documentId, applicationId: application.id, candidateId: candidate.id },
       select: { fileName: true, fileUrl: true, mimeType: true },
     });
     if (!document) return res.status(404).json({ success: false, error: 'Document not found.' });
@@ -2818,9 +2830,10 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
   try {
     const { applicationId, designation, department, joiningLocation, ctc, joiningDate, probationPeriod, reportingManager, offerValidUntil, additionalTerms } = req.body;
     const userId = req.user?.id || null;
+    const uploadedOfferPdf = req.file;
 
-    if (!applicationId || !designation || !ctc) {
-      return res.status(400).json({ success: false, error: 'Application, designation, and CTC are required.' });
+    if (!applicationId) {
+      return res.status(400).json({ success: false, error: 'Application is required.' });
     }
 
     const application = await prisma.jobApplication.findUnique({
@@ -2832,29 +2845,104 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       return res.status(404).json({ success: false, error: 'Application record not found.' });
     }
 
-    const offer = await prisma.offer.create({
-      data: {
-        applicationId,
-        candidateId: application.candidateId,
-        jobId: application.jobId,
-        designation: designation.trim(),
-        department: department?.trim() || application.job.department.name,
-        joiningLocation: joiningLocation?.trim() || `${application.job.locationCity}, ${application.job.locationState}`,
-        ctc: parseFloat(ctc),
-        joiningDate: joiningDate ? new Date(joiningDate) : null,
-        probationPeriod: probationPeriod?.trim() || null,
-        reportingManager: reportingManager?.trim() || null,
-        offerValidUntil: offerValidUntil ? new Date(offerValidUntil) : null,
-        additionalTerms: additionalTerms?.trim() || null,
-        status: 'SENT',
-        createdById: userId,
-        sentAt: new Date(),
-      },
-    });
+    let submittedOfferData: Partial<OfferLetterData> = {};
+    if (typeof req.body.offerData === 'string' && req.body.offerData.trim()) {
+      try {
+        submittedOfferData = JSON.parse(req.body.offerData) as Partial<OfferLetterData>;
+      } catch {
+        return res.status(400).json({ success: false, error: 'Offer letter data must be valid JSON.' });
+      }
+    }
 
-    await prisma.jobApplication.update({
-      where: { id: applicationId },
-      data: { currentStage: 'OFFER_SENT' },
+    const actor = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+      : null;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const offerData = normalizeOfferLetterData({
+      ...submittedOfferData,
+      letterDate: submittedOfferData.letterDate || today,
+      offerLetterNo: submittedOfferData.offerLetterNo || `JCB/OFFER/${now.getFullYear()}/${application.applicationRef}`,
+      employeeName: submittedOfferData.employeeName || application.candidate.fullName,
+      employeeAddress: submittedOfferData.employeeAddress || [application.candidate.address, application.candidate.currentCity, application.candidate.state].filter(Boolean).join(', '),
+      companyName: submittedOfferData.companyName || 'JCB Exchange',
+      companyAddress: submittedOfferData.companyAddress || application.job.locationAddress || [application.job.locationCity, application.job.locationState].filter(Boolean).join(', '),
+      designation: submittedOfferData.designation || designation || application.job.title,
+      department: submittedOfferData.department || department || application.job.department.name,
+      placeOfPosting: submittedOfferData.placeOfPosting || joiningLocation || [application.job.locationCity, application.job.locationState].filter(Boolean).join(', '),
+      salaryAmount: submittedOfferData.salaryAmount || (ctc ? String(ctc) : ''),
+      salaryPeriod: submittedOfferData.salaryPeriod || 'annum',
+      joiningDate: submittedOfferData.joiningDate || joiningDate || '',
+      probationPeriod: submittedOfferData.probationPeriod || probationPeriod || '',
+      noticePeriod: submittedOfferData.noticePeriod || '30',
+      signatoryName: submittedOfferData.signatoryName || actor?.name || '',
+      signatoryDesignation: submittedOfferData.signatoryDesignation || 'Authorized Signatory',
+      signatoryDate: submittedOfferData.signatoryDate || today,
+      signatoryPlace: submittedOfferData.signatoryPlace || joiningLocation || application.job.locationCity,
+      additionalTerms: submittedOfferData.additionalTerms || additionalTerms || '',
+    });
+    const validationErrors = validateOfferLetterData(offerData);
+    if (validationErrors.length) {
+      return res.status(400).json({ success: false, error: validationErrors[0], errors: validationErrors });
+    }
+    if (!uploadedOfferPdf || uploadedOfferPdf.mimetype !== 'application/pdf') {
+      return res.status(400).json({ success: false, error: 'A generated PDF offer letter is required.' });
+    }
+
+    const fileName = `Offer_Letter_${application.applicationRef}_${offerData.employeeName.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
+    const uploadedDriveFile = await uploadFileToDrive(
+      uploadedOfferPdf.buffer,
+      'application/pdf',
+      fileName,
+      undefined,
+      { access: 'private' },
+    );
+    const secureOfferUrl = getSecureDocumentUrl(uploadedDriveFile.fileId);
+    const salaryValue = Number(offerData.salaryAmount.replace(/,/g, ''));
+    const offerCtc = Number.isFinite(salaryValue) && salaryValue > 0 ? salaryValue : Number(ctc);
+
+    const offer = await prisma.$transaction(async (transaction) => {
+      const createdOffer = await transaction.offer.create({
+        data: {
+          applicationId,
+          candidateId: application.candidateId,
+          jobId: application.jobId,
+          designation: offerData.designation,
+          department: offerData.department,
+          joiningLocation: offerData.placeOfPosting,
+          ctc: offerCtc,
+          joiningDate: offerData.joiningDate ? new Date(offerData.joiningDate) : null,
+          probationPeriod: offerData.probationPeriod,
+          reportingManager: reportingManager?.trim() || null,
+          offerValidUntil: offerValidUntil ? new Date(offerValidUntil) : null,
+          additionalTerms: offerData.additionalTerms || null,
+          offerLetterUrl: secureOfferUrl,
+          offerLetterFileName: fileName,
+          offerLetterData: offerData as Prisma.InputJsonValue,
+          status: 'SENT',
+          createdById: userId,
+          sentAt: now,
+        },
+      });
+
+      await transaction.candidateDocument.create({
+        data: {
+          candidateId: application.candidateId,
+          applicationId,
+          category: 'OFFER_LETTER',
+          fileName,
+          fileUrl: secureOfferUrl,
+          fileSize: uploadedOfferPdf.size,
+          mimeType: 'application/pdf',
+        },
+      });
+
+      await transaction.jobApplication.update({
+        where: { id: applicationId },
+        data: { currentStage: 'OFFER_SENT' },
+      });
+
+      return createdOffer;
     });
 
     await logRecruitmentActivity({
@@ -2863,7 +2951,7 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       actorId: userId,
       action: 'OFFER_CREATED',
       title: 'Employment Offer Sent',
-      details: `Offer created for designation "${designation}" with CTC ₹${ctc}`,
+      details: `Offer created for designation "${offerData.designation}" with CTC ₹${offerCtc}`,
     });
 
     const candidateUser = await prisma.user.findFirst({
@@ -2892,7 +2980,14 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       relatedEntityType: 'OFFER',
       relatedEntityId: offer.id,
       candidate: application.candidate,
-      payloadSnapshot: { applicationId, applicationRef: application.applicationRef, jobTitle: application.job.title, designation: offer.designation },
+      payloadSnapshot: {
+        applicationId,
+        applicationRef: application.applicationRef,
+        jobTitle: application.job.title,
+        designation: offer.designation,
+        offerLetterUrl: secureOfferUrl,
+        offerLetterFileName: fileName,
+      },
     });
 
     res.status(201).json({
@@ -2975,25 +3070,136 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
 export const updateOffer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = getParamString(req.params.id);
-    const existing = await prisma.offer.findUnique({ where: { id } });
+    const existing = await prisma.offer.findUnique({
+      where: { id },
+      include: { application: { include: { candidate: true, job: { include: { department: true } } } } },
+    });
     if (!existing) return res.status(404).json({ success: false, error: 'Offer not found.' });
 
     const { designation, department, joiningLocation, ctc, joiningDate, offerValidUntil, probationPeriod, reportingManager, additionalTerms } = req.body;
     if (!designation || !ctc) return res.status(400).json({ success: false, error: 'Designation and CTC are required.' });
 
-    const offer = await prisma.offer.update({
-      where: { id },
-      data: {
-        designation: String(designation).trim(),
-        department: department !== undefined ? String(department).trim() : existing.department,
-        joiningLocation: joiningLocation !== undefined ? String(joiningLocation).trim() : existing.joiningLocation,
-        ctc: Number(ctc),
-        joiningDate: joiningDate ? new Date(joiningDate) : null,
+    let submittedOfferData: Partial<OfferLetterData> = {};
+    if (typeof req.body.offerData === 'string' && req.body.offerData.trim()) {
+      try {
+        submittedOfferData = JSON.parse(req.body.offerData) as Partial<OfferLetterData>;
+      } catch {
+        return res.status(400).json({ success: false, error: 'Offer letter data must be valid JSON.' });
+      }
+    }
+
+    const existingOfferData = existing.offerLetterData && typeof existing.offerLetterData === 'object'
+      ? existing.offerLetterData as Partial<OfferLetterData>
+      : {};
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const actor = req.user?.id
+      ? await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } })
+      : null;
+    const offerData = normalizeOfferLetterData({
+      ...existingOfferData,
+      ...submittedOfferData,
+      letterDate: submittedOfferData.letterDate || existingOfferData.letterDate || today,
+      offerLetterNo: submittedOfferData.offerLetterNo || existingOfferData.offerLetterNo || `JCB/OFFER/${now.getFullYear()}/${existing.application.applicationRef}`,
+      employeeName: submittedOfferData.employeeName || existingOfferData.employeeName || existing.application.candidate.fullName,
+      employeeAddress: submittedOfferData.employeeAddress || existingOfferData.employeeAddress || [existing.application.candidate.address, existing.application.candidate.currentCity, existing.application.candidate.state].filter(Boolean).join(', '),
+      companyName: submittedOfferData.companyName || existingOfferData.companyName || 'JCB Exchange',
+      companyAddress: submittedOfferData.companyAddress || existingOfferData.companyAddress || existing.application.job.locationAddress || [existing.application.job.locationCity, existing.application.job.locationState].filter(Boolean).join(', '),
+      designation: submittedOfferData.designation || String(designation),
+      department: submittedOfferData.department || String(department ?? existing.department),
+      placeOfPosting: submittedOfferData.placeOfPosting || String(joiningLocation ?? existing.joiningLocation),
+      salaryAmount: submittedOfferData.salaryAmount || String(ctc),
+      salaryPeriod: submittedOfferData.salaryPeriod || existingOfferData.salaryPeriod || 'annum',
+      joiningDate: submittedOfferData.joiningDate || (joiningDate ? String(joiningDate).slice(0, 10) : existing.joiningDate?.toISOString().slice(0, 10) || ''),
+      probationPeriod: submittedOfferData.probationPeriod || String(probationPeriod ?? existing.probationPeriod ?? ''),
+      noticePeriod: submittedOfferData.noticePeriod || existingOfferData.noticePeriod || '30',
+      signatoryName: submittedOfferData.signatoryName || existingOfferData.signatoryName || actor?.name || '',
+      signatoryDesignation: submittedOfferData.signatoryDesignation || existingOfferData.signatoryDesignation || 'Authorized Signatory',
+      signatoryDate: submittedOfferData.signatoryDate || existingOfferData.signatoryDate || today,
+      signatoryPlace: submittedOfferData.signatoryPlace || existingOfferData.signatoryPlace || String(joiningLocation ?? existing.joiningLocation),
+      acceptanceDate: submittedOfferData.acceptanceDate || existingOfferData.acceptanceDate || '',
+      acceptancePlace: submittedOfferData.acceptancePlace || existingOfferData.acceptancePlace || '',
+      additionalTerms: submittedOfferData.additionalTerms ?? additionalTerms ?? existing.additionalTerms ?? '',
+    });
+    const validationErrors = validateOfferLetterData(offerData);
+    if (validationErrors.length) {
+      return res.status(400).json({ success: false, error: validationErrors[0], errors: validationErrors });
+    }
+
+    const uploadedOfferPdf = req.file;
+    if (uploadedOfferPdf && uploadedOfferPdf.mimetype !== 'application/pdf') {
+      return res.status(400).json({ success: false, error: 'Offer letter must be a PDF.' });
+    }
+
+    let offerLetterUrl = existing.offerLetterUrl;
+    let offerLetterFileName = existing.offerLetterFileName;
+    let offerLetterSize: number | null = null;
+    if (uploadedOfferPdf) {
+      const fileName = `Offer_Letter_${existing.application.applicationRef}_${offerData.employeeName.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
+      const uploadedDriveFile = await uploadFileToDrive(
+        uploadedOfferPdf.buffer,
+        'application/pdf',
+        fileName,
+        undefined,
+        { access: 'private' },
+      );
+      offerLetterUrl = getSecureDocumentUrl(uploadedDriveFile.fileId);
+      offerLetterFileName = fileName;
+      offerLetterSize = uploadedOfferPdf.size;
+    }
+
+    if (!offerLetterUrl) {
+      return res.status(400).json({ success: false, error: 'A generated PDF offer letter is required.' });
+    }
+
+    const salaryValue = Number(offerData.salaryAmount.replace(/,/g, ''));
+    const offerCtc = Number.isFinite(salaryValue) && salaryValue > 0 ? salaryValue : Number(ctc);
+
+    const offer = await prisma.$transaction(async (transaction) => {
+      const updatedOffer = await transaction.offer.update({
+        where: { id },
+        data: {
+        designation: offerData.designation,
+        department: offerData.department,
+        joiningLocation: offerData.placeOfPosting,
+        ctc: offerCtc,
+        joiningDate: offerData.joiningDate ? new Date(offerData.joiningDate) : null,
         offerValidUntil: offerValidUntil ? new Date(offerValidUntil) : null,
-        probationPeriod: probationPeriod !== undefined ? String(probationPeriod).trim() || null : existing.probationPeriod,
+        probationPeriod: offerData.probationPeriod || null,
         reportingManager: reportingManager !== undefined ? String(reportingManager).trim() || null : existing.reportingManager,
-        additionalTerms: additionalTerms !== undefined ? String(additionalTerms).trim() || null : existing.additionalTerms,
-      },
+        additionalTerms: offerData.additionalTerms || null,
+        offerLetterUrl,
+        offerLetterFileName,
+        offerLetterData: offerData as Prisma.InputJsonValue,
+        },
+      });
+
+      if (uploadedOfferPdf) {
+        const currentDocument = await transaction.candidateDocument.findFirst({
+          where: { applicationId: existing.applicationId, category: 'OFFER_LETTER' },
+          orderBy: { uploadedAt: 'desc' },
+        });
+        if (currentDocument) {
+          await transaction.candidateDocument.update({
+            where: { id: currentDocument.id },
+            data: { fileName: offerLetterFileName || currentDocument.fileName, fileUrl: offerLetterUrl, fileSize: offerLetterSize, mimeType: 'application/pdf' },
+          });
+        } else {
+          await transaction.candidateDocument.create({
+            data: {
+              candidateId: existing.candidateId,
+              applicationId: existing.applicationId,
+              category: 'OFFER_LETTER',
+              fileName: offerLetterFileName || 'Offer_Letter.pdf',
+              fileUrl: offerLetterUrl,
+              fileSize: offerLetterSize,
+              mimeType: 'application/pdf',
+            },
+          });
+        }
+      }
+
+      return updatedOffer;
     });
     res.status(200).json({ success: true, offer, message: 'Offer updated successfully.' });
   } catch (error) {
@@ -3017,6 +3223,9 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
     }
 
     await prisma.offer.delete({ where: { id } });
+    await prisma.candidateDocument.deleteMany({
+      where: { applicationId: offer.applicationId, category: 'OFFER_LETTER', ...(offer.offerLetterUrl ? { fileUrl: offer.offerLetterUrl } : {}) },
+    });
     await logRecruitmentActivity({
       candidateId: offer.candidateId,
       applicationId: offer.applicationId,

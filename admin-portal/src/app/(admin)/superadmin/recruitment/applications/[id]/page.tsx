@@ -4,6 +4,7 @@
 
 import React, { useCallback, useEffect, useState, use } from 'react';
 import Link from 'next/link';
+import { PDFViewer, pdf } from '@react-pdf/renderer';
 import { usePathname, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatDate as formatDisplayDate, formatDateTime as formatDisplayDateTime } from '@/lib/i18n/formatters';
@@ -11,7 +12,10 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { downloadSecureDocument } from '@/lib/secureDownload';
 import { useAuthStore } from '@/store/authStore';
 import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recruitmentPermissions';
+import { useSiteLogo } from '@/hooks/useSiteLogo';
 import RatingDropdown from '@/components/recruitment/RatingDropdown';
+import OfferLetterPdfDocument from '@/components/recruitment/OfferLetterPdfDocument';
+import { emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
 import { toast } from 'react-toastify';
 import { isUuid } from '@/lib/routeSlug';
 import {
@@ -337,6 +341,9 @@ interface ApplicationWorkspaceData {
     joiningDate?: string | null;
     status: string;
     createdAt: string;
+    offerLetterUrl?: string | null;
+    offerLetterFileName?: string | null;
+    offerLetterData?: Partial<OfferLetterFormData> | null;
   }>;
   activityLogs: Array<{
     id: string;
@@ -437,6 +444,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const canCreateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersCreate);
   const canUpdateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersUpdate);
   const canDeleteOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersDelete);
+  const { darkLogoUrl } = useSiteLogo();
 
   const [data, setData] = useState<ApplicationWorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -486,13 +494,31 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   // Create Offer State
   const [showOfferModal, setShowOfferModal] = useState(false);
-  const [offerDesignation, setOfferDesignation] = useState('');
-  const [offerCtc, setOfferCtc] = useState('');
-  const [offerJoiningDate, setOfferJoiningDate] = useState('');
+  const [offerForm, setOfferForm] = useState<OfferLetterFormData>(emptyOfferLetterData);
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [downloadingResume, setDownloadingResume] = useState(false);
   const applicationId = data?.id || id;
+
+  const getOfferFormDefaults = useCallback((): OfferLetterFormData => {
+    const today = new Date().toISOString().slice(0, 10);
+    const location = [data?.job.locationCity, data?.job.locationState].filter(Boolean).join(', ');
+    return {
+      ...emptyOfferLetterData,
+      letterDate: today,
+      offerLetterNo: `JCB/OFFER/${new Date().getFullYear()}/${data?.applicationRef || ''}`,
+      employeeName: data?.candidate.fullName || '',
+      employeeAddress: [data?.candidate.address, data?.candidate.currentCity, data?.candidate.state].filter(Boolean).join(', '),
+      companyAddress: data?.job.locationAddress || location,
+      designation: data?.job.title || '',
+      department: data?.job.department?.name || '',
+      placeOfPosting: location,
+      joiningDate: data?.job.startDate ? new Date(data.job.startDate).toISOString().slice(0, 10) : '',
+      signatoryName: currentUser?.name || '',
+      signatoryDate: today,
+      signatoryPlace: data?.job.locationCity || '',
+    };
+  }, [currentUser?.name, data]);
 
   const fetchApplicationDetails = useCallback(async (isBackground = false) => {
     try {
@@ -774,38 +800,47 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingOfferId ? !canUpdateOffer : !canCreateOffer) return;
-    if (!offerDesignation.trim() || !offerCtc) {
-      alert('Designation and CTC are required.');
+    if (!offerForm.employeeName.trim() || !offerForm.designation.trim() || !offerForm.department.trim() || !offerForm.salaryAmount.trim() || !offerForm.joiningDate) {
+      alert('Employee name, designation, department, salary and joining date are required.');
       return;
     }
     const wasEditingOffer = Boolean(editingOfferId);
 
     try {
       setCreatingOffer(true);
-      const payload = {
-        applicationId,
-        designation: offerDesignation.trim(),
-        ctc: parseFloat(offerCtc) * 100000,
-        joiningDate: offerJoiningDate || undefined,
-      };
+      const pdfBlob = await pdf(<OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} />).toBlob();
+      const payload = new FormData();
+      payload.append('applicationId', applicationId);
+      payload.append('designation', offerForm.designation.trim());
+      payload.append('department', offerForm.department.trim());
+      payload.append('joiningLocation', offerForm.placeOfPosting.trim());
+      payload.append('ctc', offerForm.salaryAmount.replace(/,/g, '').trim());
+      payload.append('joiningDate', offerForm.joiningDate);
+      payload.append('probationPeriod', offerForm.probationPeriod.trim());
+      payload.append('additionalTerms', offerForm.additionalTerms.trim());
+      payload.append('offerData', JSON.stringify(offerForm));
+      payload.append('offerPdf', pdfBlob, `${offerForm.offerLetterNo || 'offer-letter'}.pdf`);
       if (editingOfferId) {
-        await api.patch(`/recruitment/admin/offers/${editingOfferId}`, payload);
+        await api.patch(`/recruitment/admin/offers/${editingOfferId}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
-        await api.post('/recruitment/admin/offers', payload);
+        await api.post('/recruitment/admin/offers', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
       setShowOfferModal(false);
-      setOfferDesignation('');
-      setOfferCtc('');
-      setOfferJoiningDate('');
+      setOfferForm(emptyOfferLetterData);
       setEditingOfferId(null);
       void fetchApplicationDetails(true);
       window.dispatchEvent(new Event('recruitment_offers_updated'));
       toast.success(wasEditingOffer ? 'Offer updated successfully.' : 'Offer sent successfully.');
-    } catch {
-      alert('Failed to create offer.');
+    } catch (error) {
+      console.error('Failed to save offer:', error);
+      toast.error('Failed to save offer letter. Please check the form and try again.');
     } finally {
       setCreatingOffer(false);
     }
+  };
+
+  const updateOfferField = <K extends keyof OfferLetterFormData>(field: K, value: OfferLetterFormData[K]) => {
+    setOfferForm((previous) => ({ ...previous, [field]: value }));
   };
 
   const openInterviewEditor = (iv: ApplicationWorkspaceData['interviews'][number]) => {
@@ -834,9 +869,16 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const openOfferEditor = (offer: ApplicationWorkspaceData['offers'][number]) => {
     if (!canUpdateOffer) return;
     setEditingOfferId(offer.id);
-    setOfferDesignation(offer.designation || data?.job.title || '');
-    setOfferCtc(offer.ctc ? String(offer.ctc / 100000) : '');
-    setOfferJoiningDate(offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : '');
+    const defaults = getOfferFormDefaults();
+    setOfferForm({
+      ...defaults,
+      ...(offer.offerLetterData || {}),
+      designation: offer.offerLetterData?.designation || offer.designation || defaults.designation,
+      department: offer.offerLetterData?.department || offer.department || defaults.department,
+      placeOfPosting: offer.offerLetterData?.placeOfPosting || offer.joiningLocation || defaults.placeOfPosting,
+      salaryAmount: offer.offerLetterData?.salaryAmount || (offer.ctc ? String(offer.ctc) : defaults.salaryAmount),
+      joiningDate: offer.offerLetterData?.joiningDate || (offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : defaults.joiningDate),
+    });
     setShowOfferModal(true);
   };
 
@@ -1698,9 +1740,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                   {canCreateOffer && <button
                       onClick={() => {
                         setEditingOfferId(null);
-                        setOfferDesignation(data.job.title || '');
-                        setOfferCtc('');
-                        setOfferJoiningDate('');
+                        setOfferForm(getOfferFormDefaults());
                         setShowOfferModal(true);
                       }}
                       className="px-3.5 py-1.5 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
@@ -1851,62 +1891,74 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
       {/* Create Offer Modal */}
       {showOfferModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl my-4 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <h3 className="text-sm font-bold text-gray-900">{editingOfferId ? 'Edit Employment Offer' : 'Prepare Employment Offer'}</h3>
-            <form onSubmit={handleCreateOffer} className="space-y-3 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/60 p-3 backdrop-blur-sm sm:p-5">
+          <div className="flex h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Designation *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Sales Manager"
-                  value={offerDesignation}
-                  onChange={(e) => setOfferDesignation(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-gray-900 font-semibold placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFC107]/50 focus:border-[#FFC107]"
-                />
+                <h3 className="text-base font-bold text-gray-900">{editingOfferId ? 'Edit Employment Offer' : 'Prepare Employment Offer'}</h3>
+                <p className="mt-1 text-xs text-gray-500">Complete the letter fields. The PDF preview updates instantly and is sent with the offer.</p>
               </div>
+              <button type="button" onClick={() => setShowOfferModal(false)} className="rounded-lg px-3 py-2 text-gray-500 hover:bg-gray-100" aria-label="Close offer letter">✕</button>
+            </div>
 
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Offered CTC (Rs. Lakhs) *</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  required
-                  placeholder="e.g. 8.5"
-                  value={offerCtc}
-                  onChange={(e) => setOfferCtc(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-gray-900 font-semibold placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFC107]/50 focus:border-[#FFC107]"
-                />
-              </div>
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
+              <form onSubmit={handleCreateOffer} className="min-h-0 space-y-4 overflow-y-auto p-5 text-xs sm:p-7 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="font-semibold text-gray-700">Letter date *<input type="date" required value={offerForm.letterDate} onChange={(e) => updateOfferField('letterDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                  <label className="font-semibold text-gray-700">Offer letter no. *<input required value={offerForm.offerLetterNo} onChange={(e) => updateOfferField('offerLetterNo', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                  <label className="font-semibold text-gray-700">Employee name *<input required value={offerForm.employeeName} onChange={(e) => updateOfferField('employeeName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                  <label className="font-semibold text-gray-700">Company name *<input required value={offerForm.companyName} onChange={(e) => updateOfferField('companyName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                </div>
 
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Joining Date</label>
-                <input
-                  type="date"
-                  value={offerJoiningDate}
-                  onChange={(e) => setOfferJoiningDate(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-gray-900 font-semibold placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFC107]/50 focus:border-[#FFC107]"
-                />
-              </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="font-semibold text-gray-700">Employee address<textarea rows={2} value={offerForm.employeeAddress} onChange={(e) => updateOfferField('employeeAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                  <label className="font-semibold text-gray-700">Company address<textarea rows={2} value={offerForm.companyAddress} onChange={(e) => updateOfferField('companyAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowOfferModal(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingOffer}
-                  className="px-4 py-2 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-extrabold rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {creatingOffer ? 'Sending...' : editingOfferId ? 'Save Changes' : 'Send Offer Letter'}
-                </button>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                  <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Employment details</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="font-semibold text-gray-700">Designation *<input required value={offerForm.designation} onChange={(e) => updateOfferField('designation', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Department *<input required value={offerForm.department} onChange={(e) => updateOfferField('department', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Place of posting *<input required value={offerForm.placeOfPosting} onChange={(e) => updateOfferField('placeOfPosting', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Salary / CTC *<input required inputMode="decimal" placeholder="e.g. 850000" value={offerForm.salaryAmount} onChange={(e) => updateOfferField('salaryAmount', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Salary period<select value={offerForm.salaryPeriod} onChange={(e) => updateOfferField('salaryPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900"><option value="month">Month</option><option value="annum">Annum</option></select></label>
+                    <label className="font-semibold text-gray-700">Date of joining *<input required type="date" value={offerForm.joiningDate} onChange={(e) => updateOfferField('joiningDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Probation period (months) *<input required value={offerForm.probationPeriod} onChange={(e) => updateOfferField('probationPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Notice period (days) *<input required value={offerForm.noticePeriod} onChange={(e) => updateOfferField('noticePeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-gray-600">Authorized signatory</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="font-semibold text-gray-700">Name *<input required value={offerForm.signatoryName} onChange={(e) => updateOfferField('signatoryName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Designation *<input required value={offerForm.signatoryDesignation} onChange={(e) => updateOfferField('signatoryDesignation', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Date<input type="date" value={offerForm.signatoryDate} onChange={(e) => updateOfferField('signatoryDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Place<input value={offerForm.signatoryPlace} onChange={(e) => updateOfferField('signatoryPlace', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="font-semibold text-gray-700">Acceptance date<textarea rows={1} value={offerForm.acceptanceDate} onChange={(e) => updateOfferField('acceptanceDate', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                  <label className="font-semibold text-gray-700">Acceptance place<textarea rows={1} value={offerForm.acceptancePlace} onChange={(e) => updateOfferField('acceptancePlace', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+                </div>
+                <label className="block font-semibold text-gray-700">Additional terms (one per line)<textarea rows={4} value={offerForm.additionalTerms} onChange={(e) => updateOfferField('additionalTerms', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+
+                <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
+                  <button type="button" onClick={() => setShowOfferModal(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200">Cancel</button>
+                  <button type="submit" disabled={creatingOffer} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{creatingOffer ? 'Generating & sending...' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button>
+                </div>
+              </form>
+
+              <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5">
+                <div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner">
+                  <PDFViewer showToolbar={false} className="h-full w-full border-0">
+                    <OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} />
+                  </PDFViewer>
+                </div>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

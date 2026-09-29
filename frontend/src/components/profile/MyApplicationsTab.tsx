@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Briefcase, Calendar, ChevronRight, X, User as UserIcon, FileText, Clock } from 'lucide-react';
+import { Briefcase, Calendar, ChevronRight, Download, X, User as UserIcon, FileText, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 
@@ -17,9 +17,11 @@ type ApplicationAnswer = {
 
 type ApplicationDocument = {
   id: string;
-  documentType: string;
+  documentType?: string;
   fileUrl: string;
-  originalName: string;
+  originalName?: string;
+  fileName?: string;
+  category?: string;
 };
 
 type StageHistory = {
@@ -83,6 +85,7 @@ export default function MyApplicationsTab() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [appDetail, setAppDetail] = useState<MyApplicationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
 
   const fetchApplications = useCallback(async () => {
     try {
@@ -105,6 +108,26 @@ export default function MyApplicationsTab() {
   useEffect(() => {
     void fetchApplications();
   }, [fetchApplications]);
+
+  const downloadDocument = async (document: ApplicationDocument) => {
+    if (!appDetail) return;
+    const name = document.fileName || document.originalName || document.category || document.documentType || 'Document';
+    try {
+      setDownloadingDocumentId(document.id);
+      const response = await api.get(`/recruitment/my-applications/${encodeURIComponent(appDetail.applicationRef)}/documents/${document.id}/download`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const anchor = window.document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      console.error('Failed to download application document:', downloadError);
+      setError('Unable to download this document right now.');
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
 
   const handleViewDetail = async (id: string) => {
     setSelectedAppId(id);
@@ -325,16 +348,17 @@ export default function MyApplicationsTab() {
                           <h4 className="font-bold text-gray-900 mb-3">Documents</h4>
                           <div className="space-y-2">
                             {appDetail.documents.map(doc => (
-                              <a
+                              <button
                                 key={doc.id}
-                                href={api.getUri({ url: doc.fileUrl })}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors group"
+                                type="button"
+                                onClick={() => void downloadDocument(doc)}
+                                disabled={downloadingDocumentId === doc.id}
+                                className="flex w-full items-center gap-2 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors group disabled:opacity-50"
                               >
-                                <FileText className="w-5 h-5 text-red-500 group-hover:text-red-600" />
-                                <span className="text-sm font-medium text-gray-700 truncate">{doc.originalName}</span>
-                              </a>
+                                <FileText className={`w-5 h-5 ${doc.category === 'OFFER_LETTER' ? 'text-amber-500' : 'text-red-500'} group-hover:text-red-600`} />
+                                <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-gray-700">{doc.fileName || doc.originalName || doc.category || doc.documentType || 'Document'}</span>
+                                <Download className="h-4 w-4 shrink-0 text-gray-500" />
+                              </button>
                             ))}
                           </div>
                         </div>

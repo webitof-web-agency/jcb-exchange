@@ -48,3 +48,28 @@ export const sendWhatsAppTemplate = async (
   if (!response.ok) throw new Error(result.error?.message || 'Meta rejected the WhatsApp template message.');
   return { metaMessageId: result.messages?.[0]?.id || null };
 };
+
+export const uploadWhatsAppDocument = async (
+  config: WhatsAppCloudApiConfig,
+  file: Buffer,
+  fileName: string,
+) => {
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', 'application/pdf');
+  const pdfBytes = new Uint8Array(file.byteLength);
+  pdfBytes.set(file);
+  form.append('file', new Blob([pdfBytes.buffer], { type: 'application/pdf' }), fileName);
+
+  const response = await fetch(
+    `https://graph.facebook.com/${encodeURIComponent(config.graphApiVersion)}/${encodeURIComponent(config.phoneNumberId)}/media`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+      body: form,
+    },
+  );
+  const result = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+  if (!response.ok || !result.id) throw new Error(result.error?.message || 'Meta rejected the WhatsApp document upload.');
+  return { mediaId: result.id };
+};

@@ -55,6 +55,7 @@ import { createRtoRecord, deleteRtoRecord, listRtoRecords, updateRtoRecord } fro
 
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
+const offerLetterUpload = getDocumentUploadMiddleware('secure', 'offer-letter');
 
 const canViewRecruitmentDashboard = requireSuperAdminOrEmployeePermissions(['recruitment.dashboard.read']);
 const canViewDepartments = requireSuperAdminOrEmployeePermissions(['recruitment.departments.read']);
@@ -173,8 +174,8 @@ router.post('/admin/interviews/:id/feedback', canManageInterviewScorecards, subm
 
 // Offers
 router.get('/admin/offers', canViewOffers, getAdminOffers);
-router.post('/admin/offers', canCreateOffers, createOffer);
-router.patch('/admin/offers/:id', canUpdateOffers, updateOffer);
+router.post('/admin/offers', canCreateOffers, offerLetterUpload.single('offerPdf'), createOffer);
+router.patch('/admin/offers/:id', canUpdateOffers, offerLetterUpload.single('offerPdf'), updateOffer);
 router.patch('/admin/offers/:id/status', canChangeOfferStatus, updateOfferStatus);
 router.delete('/admin/offers/:id', canDeleteOffers, deleteOffer);
 

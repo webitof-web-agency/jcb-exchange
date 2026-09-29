@@ -73,6 +73,8 @@ next-env.d.ts
 /*.md
 /*.txt
 /*.csv
+/*.docx
+jcbexchangeoffer.docx
 !README.md
 
 # Mobile / React Native Build Outputs
