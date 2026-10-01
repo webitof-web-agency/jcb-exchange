@@ -83,8 +83,8 @@ android {
         applicationId "com.webitof.jcbexchange"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode project.hasProperty('VERSION_CODE') ? project.property('VERSION_CODE').toInteger() : 1
-        versionName project.hasProperty('VERSION_NAME') ? project.property('VERSION_NAME') : "1.0"
+        versionCode project.hasProperty('VERSION_CODE') ? project.property('VERSION_CODE').toInteger() : 2
+        versionName project.hasProperty('VERSION_NAME') ? project.property('VERSION_NAME') : "1.1.0"
         manifestPlaceholders = [usesCleartextTraffic: true]
     }
     aaptOptions {

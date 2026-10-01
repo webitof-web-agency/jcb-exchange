@@ -5,14 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       version_code:
-        description: 'Override Version Code (e.g. 2 - Leave blank for default)'
+        description: 'Play Store versionCode (integer, must increase). Default: 2. Override if Play Console has a higher code.'
         required: false
-        default: ''
+        default: '2'
         type: string
       version_name:
-        description: 'Override Version Name (e.g. 1.1.0 - Leave blank for default)'
+        description: 'User-visible versionName. Default: 1.1.0. You can override it manually.'
         required: false
-        default: ''
+        default: '1.1.0'
         type: string
       build_output:
         description: 'Build Output Type'
