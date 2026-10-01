@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import App from '../App';
+import App, { statusBarProps } from '../App';
 
 jest.mock('react-native-webview', () => {
   const ReactMock = require('react');
@@ -50,4 +50,10 @@ test('renders correctly', async () => {
   await ReactTestRenderer.act(() => {
     renderer?.unmount();
   });
+});
+
+test('does not configure deprecated Android status bar appearance props', async () => {
+  expect(statusBarProps).toEqual({ barStyle: 'dark-content' });
+  expect('backgroundColor' in statusBarProps).toBe(false);
+  expect('translucent' in statusBarProps).toBe(false);
 });

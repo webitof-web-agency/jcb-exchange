@@ -13,6 +13,10 @@ import type { Permission } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import HybridWebView from './src/screens/HybridWebView';
 
+export const statusBarProps = {
+  barStyle: 'dark-content' as const,
+};
+
 
 
 function App() {
@@ -76,9 +80,7 @@ function App() {
   return (
     <SafeAreaProvider>
       <StatusBar
-        barStyle={showSplash ? 'dark-content' : 'dark-content'}
-        backgroundColor={showSplash ? '#FFFFFF' : '#F7F7F8'}
-        translucent={false}
+        {...statusBarProps}
       />
       <SafeAreaView style={styles.safeArea}>
         <HybridWebView onWebLoaded={() => setWebViewLoaded(true)} />
