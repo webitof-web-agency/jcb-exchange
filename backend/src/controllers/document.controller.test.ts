@@ -5,8 +5,62 @@ import {
   createUploadPublicBlogImage,
   createUploadPublicBrandingImage,
   createUploadPublicListingMedia,
+  createUploadCustomerPrimeReceipt,
   createUploadSecureDocument,
 } from './document.controller';
+
+test('uploads Prime receipts privately and returns the authenticated Drive proxy URL', async () => {
+  const uploadedFile = {
+    buffer: Buffer.from('receipt-bytes'),
+    mimetype: 'image/jpeg',
+    originalname: 'payment.jpg',
+    size: 13,
+  } as Express.Multer.File;
+  const uploadCalls: Array<{ access?: string }> = [];
+  const uploadToDrive = async (
+    _buffer: Buffer,
+    _mimeType: string,
+    _filename: string,
+    _folderId?: string,
+    options?: { access?: string },
+  ) => {
+    uploadCalls.push(options || {});
+    return {
+      fileId: 'prime-receipt-file-id',
+      viewLink: 'https://drive.google.com/uc?id=prime-receipt-file-id',
+    };
+  };
+
+  const responseState: { statusCode: number; body?: unknown } = { statusCode: 0 };
+  const response = {
+    status(code: number) {
+      responseState.statusCode = code;
+      return response;
+    },
+    json(payload: unknown) {
+      responseState.body = payload;
+      return response;
+    },
+  } as unknown as Response;
+  const next = () => {
+    throw new Error('The Prime receipt upload should not fail.');
+  };
+  const request = {
+    user: { id: 'customer-1', role: 'CUSTOMER' },
+    file: uploadedFile,
+    protocol: 'https',
+    get: (header: string) => (header.toLowerCase() === 'host' ? 'api.example.com' : undefined),
+  } as unknown as Request;
+
+  await createUploadCustomerPrimeReceipt(uploadToDrive)(request, response, next);
+
+  assert.equal(responseState.statusCode, 201);
+  assert.deepEqual(uploadCalls, [{ access: 'private' }]);
+  assert.equal(
+    (responseState.body as { file: { fileUrl: string } }).file.fileUrl,
+    'https://api.example.com/api/documents/upload/public/listing-media/drive/prime-receipt-file-id',
+  );
+});
 
 test('uploads branding images to local public storage and returns the local public URL', async () => {
   const uploadedFile = {

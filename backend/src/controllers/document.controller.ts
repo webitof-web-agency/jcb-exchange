@@ -246,7 +246,14 @@ export const uploadPublicDocument = async (req: Request, res: Response, next: Ne
   }
 };
 
-export const uploadCustomerPrimeReceipt = async (req: Request, res: Response, next: NextFunction) => {
+type CustomerPrimeReceiptDriveUploader = typeof uploadFileToDrive;
+
+const getDriveMediaProxyUrl = (req: Request, fileId: string) =>
+  `${getApiOrigin(req)}/api/documents/upload/public/listing-media/drive/${encodeURIComponent(fileId)}`;
+
+export const createUploadCustomerPrimeReceipt = (
+  uploadToDrive: CustomerPrimeReceiptDriveUploader = uploadFileToDrive,
+) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Authentication required.' });
@@ -263,12 +270,25 @@ export const uploadCustomerPrimeReceipt = async (req: Request, res: Response, ne
     }
 
     await enforceStoredFileSizePolicy(file, 'document');
-    const { fileId, viewLink } = await uploadFileToDrive(file.buffer, file.mimetype, file.originalname);
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileId));
+    const { fileId } = await uploadToDrive(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      undefined,
+      { access: 'private' },
+    );
+
+    // Prime receipts do not need a public Google Drive permission. The API
+    // streams the private Drive file through its own authenticated service
+    // account, avoiding failures when public sharing is disabled by Drive.
+    const proxyUrl = getDriveMediaProxyUrl(req, fileId);
+    res.status(201).json(buildUploadResponse(req, file, 'public', proxyUrl, file.originalname));
   } catch (error) {
     next(error);
   }
 };
+
+export const uploadCustomerPrimeReceipt = createUploadCustomerPrimeReceipt();
 
 export const uploadListingPaymentReceipt = async (req: Request, res: Response, next: NextFunction) => {
   try {
