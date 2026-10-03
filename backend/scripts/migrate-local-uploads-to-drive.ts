@@ -3,6 +3,7 @@ import path from 'path';
 import prisma from '../src/lib/prisma';
 import { uploadFileToDrive } from '../src/services/googleDrive.service';
 import { getSecureDocumentUrl } from '../src/utils/secureDocumentUrl';
+import { replaceBlogImageSources } from '../src/utils/blogMediaMigration';
 import { secureUploadDir, uploadRootDir } from '../src/utils/documentUpload';
 
 const prismaAny = prisma as any;
@@ -127,6 +128,37 @@ const migrateTableField = async (modelName: string, fieldName: string) => {
   }
 };
 
+const migrateBlogPosts = async () => {
+  const blogPostModel = prismaAny.blogPost;
+  if (!blogPostModel) return;
+
+  const posts = await blogPostModel.findMany({
+    select: { id: true, coverImageUrl: true, contentHtml: true },
+  });
+
+  for (const post of posts) {
+    const nextCoverImageUrl = await migrateUrl(post.coverImageUrl);
+    const nextContentHtml = await replaceBlogImageSources(post.contentHtml, async (source) => {
+      const migratedSource = await migrateUrl(source);
+      return typeof migratedSource === 'string' ? migratedSource : source;
+    });
+
+    if (
+      execute &&
+      (nextCoverImageUrl !== post.coverImageUrl || nextContentHtml !== post.contentHtml)
+    ) {
+      await blogPostModel.update({
+        where: { id: post.id },
+        data: {
+          coverImageUrl: nextCoverImageUrl,
+          contentHtml: nextContentHtml,
+        },
+      });
+      console.log(`[updated] BlogPost media ${post.id}`);
+    }
+  }
+};
+
 const migrateSettings = async () => {
   const settingsRecord = await prismaAny.platformRuntimeSettings.findUnique({
     where: { key: 'platform' },
@@ -154,6 +186,7 @@ const main = async () => {
   await migrateTableField('candidateDocument', 'fileUrl');
   await migrateTableField('listingPaymentSubmission', 'receiptUrl');
   await migrateTableField('customerPrimeSubscription', 'receiptUrl');
+  await migrateBlogPosts();
 
   console.log(JSON.stringify(stats, null, 2));
 };

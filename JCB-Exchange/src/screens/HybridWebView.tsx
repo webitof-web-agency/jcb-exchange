@@ -25,6 +25,7 @@ import {
   getWhatsappSupportUrl,
 } from '../config/appConfig';
 import { buildFcmSyncScript } from '../lib/fcmBridge';
+import { shouldHideWebViewLoading } from '../lib/webViewLoading';
 
 interface Props {
   onWebLoaded?: () => void;
@@ -332,6 +333,11 @@ function HybridWebView({ onWebLoaded }: Props) {
           setWebReady(true);
           if (onWebLoaded) onWebLoaded();
         }}
+        onLoadProgress={({ nativeEvent }) => {
+          if (shouldHideWebViewLoading(nativeEvent)) {
+            setLoading(false);
+          }
+        }}
         onError={(event) => {
           setLoading(false);
           setWebReady(false);
@@ -342,6 +348,9 @@ function HybridWebView({ onWebLoaded }: Props) {
         }}
         onNavigationStateChange={(navState) => {
           setCanGoBack(navState.canGoBack);
+          if (!navState.loading) {
+            setLoading(false);
+          }
         }}
         onShouldStartLoadWithRequest={(request) => {
           const nextUrl = request.url || '';

@@ -10,15 +10,6 @@ export const resolveAbsoluteMediaUrl = (value, apiOrigin) => {
 
   const driveMediaProxyPath = getDriveMediaProxyPath(normalizedUrl);
   if (driveMediaProxyPath) {
-    const encodedFileId = driveMediaProxyPath.split('/').pop();
-    if (encodedFileId) {
-      try {
-        return `https://drive.google.com/uc?id=${encodeURIComponent(decodeURIComponent(encodedFileId))}`;
-      } catch {
-        return `${apiOrigin}${driveMediaProxyPath}`;
-      }
-    }
-
     return `${apiOrigin}${driveMediaProxyPath}`;
   }
 

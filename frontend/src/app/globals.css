@@ -86,10 +86,15 @@ body {
 
 .finance-marquee-bleed {
   position: relative;
-  left: 50%;
-  right: 50%;
-  margin-left: -50vw;
-  margin-right: -50vw;
+}
+
+@media (min-width: 768px) {
+  .finance-marquee-bleed {
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+  }
 }
 /* Range Slider Styles */
 .thumb,

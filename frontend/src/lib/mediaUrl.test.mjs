@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveAbsoluteMediaUrl } from './mediaUrl.mjs';
 
-test('uses the public Google Drive URL for public media', () => {
+test('uses the API Drive media proxy for public Google Drive media', () => {
   assert.equal(
     resolveAbsoluteMediaUrl(
       'https://drive.google.com/uc?id=1AbCdEfGhIjKlMnOpQrStUvWxYz',
-      'http://localhost:5002',
+      'https://api.jcbexchange.com',
     ),
-    'https://drive.google.com/uc?id=1AbCdEfGhIjKlMnOpQrStUvWxYz',
+    'https://api.jcbexchange.com/api/documents/upload/public/drive/1AbCdEfGhIjKlMnOpQrStUvWxYz',
   );
 });
 

@@ -79,7 +79,7 @@ const getDriveFileId = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const proxyPathMatch = trimmed.match(/\/documents\/upload\/public\/listing-media\/drive\/([^/?#]+)/i);
+  const proxyPathMatch = trimmed.match(/\/documents\/upload\/public\/(?:drive|listing-media\/drive)\/([^/?#]+)/i);
   if (proxyPathMatch?.[1]) {
     try {
       const proxyFileId = decodeURIComponent(proxyPathMatch[1]);
@@ -145,7 +145,7 @@ export const getMediaSourceCandidates = (fileUrl?: string | null) => {
     `https://drive.usercontent.google.com/download?id=${encodedDriveFileId}&export=view`,
     `https://drive.google.com/thumbnail?id=${encodedDriveFileId}&sz=w2000`,
     ...(apiUrl
-      ? [`${apiUrl}/api/documents/upload/public/listing-media/drive/${encodedDriveFileId}`]
+      ? [`${apiUrl}/api/documents/upload/public/drive/${encodedDriveFileId}`]
       : []),
   ];
 };
@@ -753,7 +753,12 @@ export const uploadBlogCoverImageToServer = async (file: File) => {
     },
   );
 
-  return response.data.file;
+  const uploadedFile = response.data.file;
+  if (!uploadedFile?.fileUrl || !getDriveFileId(uploadedFile.fileUrl)) {
+    throw new Error('Blog image upload completed without a valid Google Drive URL. Please try again.');
+  }
+
+  return uploadedFile;
 };
 
 export const uploadHeroImageToServer = async (file: File) => {

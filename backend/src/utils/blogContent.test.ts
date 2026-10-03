@@ -29,6 +29,15 @@ test('unwraps malformed block-level content from accidental heading wrappers', (
   assert.match(sanitized, /<p>This paragraph is normal\.<\/p>/);
 });
 
+test('preserves public Google Drive and API proxy image sources in article HTML', () => {
+  const sanitized = sanitizeBlogHtml(
+    '<p><img src="https://drive.google.com/uc?id=blog-drive-file-id" alt="Cover"></p><p><img src="https://api.jcbexchange.com/api/documents/upload/public/drive/blog-drive-file-id" alt="Proxy"></p>',
+  );
+
+  assert.match(sanitized, /https:\/\/drive\.google\.com\/uc\?id=blog-drive-file-id/);
+  assert.match(sanitized, /https:\/\/api\.jcbexchange\.com\/api\/documents\/upload\/public\/drive\/blog-drive-file-id/);
+});
+
 test('rejects an empty blog title or content payload', () => {
   assert.throws(() => normalizeBlogSlug(''), /cannot be empty/i);
   assert.throws(() => sanitizeBlogHtml('   '), /content cannot be empty/i);

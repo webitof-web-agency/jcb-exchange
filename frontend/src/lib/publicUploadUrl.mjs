@@ -29,7 +29,7 @@ export const getDriveMediaProxyPath = (value) => {
     const fileId = queryId || pathId;
     if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) return null;
 
-    return `/api/documents/upload/public/listing-media/drive/${encodeURIComponent(fileId)}`;
+    return `/api/documents/upload/public/drive/${encodeURIComponent(fileId)}`;
   } catch {
     return null;
   }

@@ -13,7 +13,7 @@ test('normalizes legacy API-prefixed public upload URLs', () => {
 test('maps public Google Drive media to the backend streaming proxy', () => {
   assert.equal(
     getDriveMediaProxyPath('https://drive.google.com/uc?id=video-file-id'),
-    '/api/documents/upload/public/listing-media/drive/video-file-id',
+    '/api/documents/upload/public/drive/video-file-id',
   );
   assert.equal(getDriveMediaProxyPath('/uploads/public/listing-media/video.mp4'), null);
 });

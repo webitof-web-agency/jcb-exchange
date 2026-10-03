@@ -100,6 +100,9 @@ router.post(
   publicListingMediaUpload.single('file'),
   uploadPublicListingMedia
 );
+// Public Drive media is used by listings, blog covers, and inline blog images.
+// Keep the legacy listing-media route below for already-persisted URLs.
+router.get('/upload/public/drive/:fileId', getPublicDriveMedia);
 router.get('/upload/public/listing-media/drive/:fileId', getPublicDriveMedia);
 router.get('/secure/:filename', requireAuth, requirePortalOperator, getSecureDocument);
 router.delete('/secure/:filename', requireAuth, requireAdmin, deleteSecureDocument);

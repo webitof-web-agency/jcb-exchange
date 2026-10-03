@@ -126,7 +126,6 @@ export default function Home() {
   const [isLocationSuggestionsOpen, setIsLocationSuggestionsOpen] = React.useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = React.useState(false);
   const [activeNewIndex, setActiveNewIndex] = React.useState(0);
-  const [activeFinanceIndex, setActiveFinanceIndex] = React.useState(0);
 
   const handleHeroSearch = () => {
     const params = new URLSearchParams();
@@ -142,14 +141,6 @@ export default function Home() {
     // width * 0.85 approx since cards are 85vw
     const index = Math.round(scrollLeft / (width * 0.85));
     setActiveNewIndex(index);
-  };
-
-  const handleFinanceScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const scrollLeft = e.currentTarget.scrollLeft;
-    // Mobile card width is 100px + gap-3 (12px) = 112px
-    const cardWidth = 112;
-    const index = Math.round(scrollLeft / cardWidth);
-    setActiveFinanceIndex(index);
   };
 
   const visibleLocationSuggestions = React.useMemo(() => {
@@ -181,13 +172,6 @@ export default function Home() {
       return true;
     });
   }, [financeSupportItems]);
-
-  const financeRows = React.useMemo(() => {
-    const normalizedItems = uniqueFinanceSupportItems.filter((item) => item.imageUrl);
-    const row1 = normalizedItems.filter((_, index) => index % 2 === 0);
-    const row2 = normalizedItems.filter((_, index) => index % 2 === 1);
-    return { row1, row2 };
-  }, [uniqueFinanceSupportItems]);
 
   const listingStatusLabels = React.useMemo(
     () => ({
@@ -796,31 +780,11 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {/* Mobile: Manual Scroll with Dots */}
-            <div className="md:hidden flex flex-col mb-1">
-              <div
-                className="flex overflow-x-auto snap-x snap-mandatory gap-3 px-4 py-2 hide-scrollbar w-full"
-                onScroll={handleFinanceScroll}
-              >
-                {uniqueFinanceSupportItems.filter(item => item.imageUrl).map((item, index) =>
-                  renderFinanceCard(item, `m1-${item.id}-${index}`)
-                )}
-              </div>
-              <div className="flex justify-center items-center gap-1.5 mt-2">
-                {uniqueFinanceSupportItems.filter(item => item.imageUrl).map((_, i) => (
-                  <div
-                    key={`f-dot-${i}`}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${activeFinanceIndex === i ? 'bg-jcb-yellow w-4' : 'bg-gray-300 w-1.5'}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Desktop: Single continuous marquee loop */}
-            <div className="hidden md:block finance-marquee-shell finance-marquee-bleed flex w-screen overflow-hidden">
-              <div className="animate-marquee-left finance-marquee-track flex">
-                {[0, 1].map((copy) => (
-                  <div className="finance-marquee-group flex shrink-0 items-center gap-5 px-8 py-2" key={`finance-copy-${copy}`}>
+             {/* Single continuous marquee loop on every screen size. */}
+             <div className="finance-marquee-shell finance-marquee-bleed flex w-full md:w-screen overflow-hidden">
+               <div className="animate-marquee-left finance-marquee-track flex">
+                 {[0, 1].map((copy) => (
+                   <div className="finance-marquee-group flex shrink-0 items-center gap-3 px-4 py-2 md:gap-5 md:px-8" key={`finance-copy-${copy}`}>
                     {uniqueFinanceSupportItems.map((item, index) =>
                       renderFinanceCard(item, `finance-${copy}-${item.id}-${index}`)
                     )}
