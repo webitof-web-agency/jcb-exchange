@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/apiError.mjs';
+import { getProfileSessionToken } from '@/lib/profileSession.mjs';
 import { User, Phone, Mail, MessageCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -169,21 +171,25 @@ export default function PersonalInfoTab() {
     setMessage({ type: '', text: '' });
 
     try {
-      const response = await api.patch<ProfileResponse & { message?: string }>('/auth/profile', formData);
+      const response = await api.patch<ProfileResponse & { message?: string; token?: string }>('/auth/profile', formData);
       setMessage({ type: 'success', text: response.data.message || t('profile.profileUpdated') });
       
-      // Update local storage user if name/email changed
-      if (token && user) {
-        setAuth(token, {
+      // The backend rotates authVersion when email/mobile changes, so persist
+      // the refreshed token before the next authenticated request.
+      const nextToken = getProfileSessionToken(response.data.token, token);
+      if (nextToken && user) {
+        setAuth(nextToken, {
           ...user,
           name: response.data.user.name,
           email: response.data.user.email,
+          mobile: response.data.user.mobile,
+          whatsappNumber: response.data.user.whatsappNumber,
           city: response.data.user.city,
           state: response.data.user.state,
         });
       }
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : t('profile.updateProfileFailed');
+      const errorMsg = getApiErrorMessage(error, t('profile.updateProfileFailed'));
       setMessage({ type: 'error', text: errorMsg });
     } finally {
       setSaving(false);

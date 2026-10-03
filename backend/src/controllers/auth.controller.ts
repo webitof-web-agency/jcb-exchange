@@ -77,6 +77,7 @@ import {
   getNewMobileOtpCustomerData,
   type MobileOtpAccountUser,
 } from '../services/mobileOtpAccount.service';
+import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 const prismaAny = prisma as any;
@@ -1709,8 +1710,9 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
     };
 
     const normalizedName = name?.trim();
-    const normalizedEmail = email?.trim().toLowerCase();
-    const normalizedMobile = mobile?.trim();
+    const normalizedEmail = email?.trim().toLowerCase() || null;
+    const rawMobile = mobile?.trim() || '';
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
     const normalizedWhatsapp = whatsappNumber?.trim();
     const normalizedOwnerName = ownerName?.trim();
     const normalizedBusinessName = businessName?.trim();
@@ -1723,8 +1725,8 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
     const normalizedGoogleMapsLocation = googleMapsLocation?.trim();
     const normalizedServiceAreas = serviceAreas?.trim();
 
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: 'Email is required.' });
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
     }
 
     const currentUser = await prisma.user.findUnique({
@@ -1753,13 +1755,17 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       return res.status(400).json({ error: 'Name is required.' });
     }
 
-    const conflictingEmailUser = await prisma.user.findFirst({
-      where: {
-        email: normalizedEmail,
-        id: { not: userId },
-      },
-      select: { id: true },
-    });
+    const nextEmail = normalizedEmail || currentUser.email || null;
+
+    const conflictingEmailUser = nextEmail
+      ? await prisma.user.findFirst({
+          where: {
+            email: { equals: nextEmail, mode: 'insensitive' },
+            id: { not: userId },
+          },
+          select: { id: true },
+        })
+      : null;
 
     if (conflictingEmailUser) {
       return res.status(409).json({ error: 'Email address is already in use.' });
@@ -1768,7 +1774,7 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
     if (normalizedMobile) {
       const conflictingMobileUser = await prisma.user.findFirst({
         where: {
-          mobile: normalizedMobile,
+          mobile: { in: getProfileMobileCandidates(normalizedMobile) },
           id: { not: userId },
         },
         select: { id: true },
@@ -1790,23 +1796,23 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
         data: isPartnerProfileAccount
           ? {
               name: normalizedOwnerName || currentUser.name,
-              email: normalizedEmail,
+              email: nextEmail,
               mobile: normalizedMobile || currentUser.mobile || null,
               whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
               city: normalizedCity || null,
               state: normalizedState || null,
-              ...(normalizedEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
+              ...(nextEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
                 ? { authVersion: { increment: 1 } }
                 : {}),
             }
           : {
               name: normalizedName || currentUser.name || null,
-              email: normalizedEmail,
+              email: nextEmail,
               mobile: normalizedMobile || currentUser.mobile || null,
               whatsappNumber: normalizedWhatsapp || currentUser.whatsappNumber || null,
               city: normalizedCity || null,
               state: normalizedState || null,
-              ...(normalizedEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
+              ...(nextEmail !== currentUser.email || (normalizedMobile && normalizedMobile !== currentUser.mobile)
                 ? { authVersion: { increment: 1 } }
                 : {}),
             },
@@ -1839,9 +1845,11 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
     });
 
     const authUser = await buildAuthUserPayload(updatedUser);
+    const refreshedToken = signAuthToken(authUser);
 
-    res.json({
+    return res.json({
       message: 'Profile updated successfully.',
+      token: refreshedToken,
       user: authUser,
     });
   } catch (error) {
