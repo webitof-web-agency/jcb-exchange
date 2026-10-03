@@ -1,6 +1,6 @@
 export type ListingRtoFormState = {
   hirePurchaseStatus: 'PENDING' | 'ACTIVE' | 'TERMINATED' | 'NOT_APPLICABLE';
-  taxStatus: 'VALID' | 'EXPIRED';
+  taxStatus: 'VALID' | 'EXPIRED' | 'LIFETIME';
   taxValidUntil: string;
   fitnessStatus: 'VALID' | 'EXPIRED';
   fitnessValidUntil: string;
@@ -59,7 +59,7 @@ export const validateListingRtoForm = (
   if (!base.vehicleModel.trim()) return 'Vehicle Model is required.';
   if (!form.hirePurchaseStatus) return 'Hire Purchase is required.';
   const validityChecks: Array<[string, string, string]> = [
-    ['Tax Validity', form.taxStatus, form.taxValidUntil],
+    ['Tax Validity', form.taxStatus, form.taxStatus === 'LIFETIME' ? 'skip' : form.taxValidUntil],
     ['Fitness Validity', form.fitnessStatus, form.fitnessValidUntil],
     ['Insurance Validity', form.insuranceStatus, base.insuranceExpiry],
     ['PUC Validity', form.pucStatus, form.pucValidUntil],

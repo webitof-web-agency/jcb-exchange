@@ -66,13 +66,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.13.0'
           cache: 'npm'
           cache-dependency-path: JCB-Exchange/package-lock.json
 
       # 4. npm dependencies install
       - name: Install dependencies
         run: npm ci
+
+      # Fail early if the committed RN/AGP/Node versions drift apart.
+      - name: Verify Android build configuration
+        run: node --test scripts/android-build-config.test.mjs
 
       # 5. .env file banana
       - name: Create .env file

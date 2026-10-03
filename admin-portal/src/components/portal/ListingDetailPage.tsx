@@ -469,8 +469,8 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     previousOwners: parsed.previousOwners || '',
     rtoDetails: {
       hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
-      taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-      taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+      taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.taxStatus === 'LIFETIME' ? 'LIFETIME' : 'VALID',
+      taxValidUntil: linkedRto?.taxStatus === 'LIFETIME' ? '' : (linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : ''),
       fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
       fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
       insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
@@ -1983,6 +1983,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     if (type === 'validity') {
                       if (v === 'VALID') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Valid'; }
                       else if (v === 'EXPIRED') { cls = 'bg-red-100 text-red-700'; label = 'Expired'; }
+                      else if (v === 'LIFETIME') { cls = 'bg-amber-100 text-amber-700'; label = 'LLT'; }
                       else if (v === 'NOT_AVAILABLE') { cls = 'bg-gray-100 text-gray-500'; label = 'N/A'; }
                     } else if (type === 'hp') {
                       if (v === 'TERMINATED') { cls = 'bg-emerald-100 text-emerald-700'; label = 'Terminated'; }
@@ -2004,7 +2005,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       </div>
                       {([
                         ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
-                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
+                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && rto.taxStatus !== 'LIFETIME' && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
                         ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
                         ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],
                         ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],

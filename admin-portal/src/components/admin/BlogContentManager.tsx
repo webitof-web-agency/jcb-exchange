@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, ImagePlus, Link2, Loader2, MessageCircle, Pencil, Plus, Save, Trash2, Upload, X } from 'lucide-react';
+import { ImagePlus, Link2, Loader2, MessageCircle, Pencil, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { getAbsoluteFileUrl, getCanonicalFileUrl, uploadBlogCoverImageToServer } from '@/lib/fileUpload';

@@ -1556,8 +1556,8 @@ export default function PartnerListingsPage() {
       selectedBuyerCityId: '',
       rtoDetails: {
         hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
-        taxStatus: (linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
-        taxValidUntil: linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        taxStatus: (linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.taxStatus === 'LIFETIME' ? 'LIFETIME' : 'VALID'),
+        taxValidUntil: linkedRto?.taxStatus === 'LIFETIME' ? '' : (linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : ''),
         fitnessStatus: (linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),
         fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
         insuranceStatus: (linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID'),

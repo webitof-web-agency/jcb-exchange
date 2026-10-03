@@ -16,7 +16,7 @@
     "@react-native-firebase/messaging": "24.1.1",
     "react": "19.2.3",
     "react-native": "0.87.0",
-    "react-native-safe-area-context": "^5.5.2",
+    "react-native-safe-area-context": "5.10.1",
     "react-native-webview": "^13.16.1"
   },
   "devDependencies": {

@@ -1,7 +1,8 @@
 'use client';
 
 import api from '@/lib/api';
-import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
+import { API_ORIGIN } from '@/lib/api';
+import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
@@ -139,14 +140,13 @@ export const getMediaSourceCandidates = (fileUrl?: string | null) => {
   }
 
   const encodedDriveFileId = encodeURIComponent(driveFileId);
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || '';
+  const apiUrl = API_ORIGIN;
+  const proxyUrl = `${apiUrl}/api/documents/upload/public/drive/${encodedDriveFileId}`;
   return [
+    proxyUrl,
     `https://drive.google.com/uc?id=${encodedDriveFileId}`,
     `https://drive.usercontent.google.com/download?id=${encodedDriveFileId}&export=view`,
     `https://drive.google.com/thumbnail?id=${encodedDriveFileId}&sz=w2000`,
-    ...(apiUrl
-      ? [`${apiUrl}/api/documents/upload/public/drive/${encodedDriveFileId}`]
-      : []),
   ];
 };
 
@@ -192,6 +192,11 @@ export const getAbsoluteFileUrl = (fileUrl?: string | null) => {
   const trimmed = normalizedFileUrl;
   if (!trimmed) {
     return '';
+  }
+
+  const driveMediaProxyPath = getDriveMediaProxyPath(trimmed);
+  if (driveMediaProxyPath) {
+    return `${API_ORIGIN}${driveMediaProxyPath}`;
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
