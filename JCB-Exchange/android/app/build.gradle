@@ -120,12 +120,6 @@ android {
             manifestPlaceholders = [usesCleartextTraffic: false]
         }
     }
-
-    applicationVariants.all { variant ->
-        variant.outputs.all {
-            outputFileName = "JCB-Exchange.apk"
-        }
-    }
 }
 
 dependencies {
