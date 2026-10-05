@@ -5,13 +5,7 @@ export type ListingPaymentOutcome = {
   requiresManualReview: boolean;
 };
 
-export const getListingPaymentOutcome = (method: ListingPaymentMethod): ListingPaymentOutcome =>
-  method === 'RTGS'
-    ? {
-      status: 'PENDING_VERIFICATION',
-      requiresManualReview: true,
-    }
-    : {
-      status: 'PAID',
-      requiresManualReview: false,
-    };
+export const getListingPaymentOutcome = (_method: ListingPaymentMethod): ListingPaymentOutcome => ({
+  status: 'PAID',
+  requiresManualReview: false,
+});

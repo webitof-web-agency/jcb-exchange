@@ -390,11 +390,11 @@ export default function ListingBuyNowModal({
           state: billingLocation.state,
         },
       );
-      const successMsg = response.data.message || 'Payment proof submitted successfully for verification.';
+      const successMsg = response.data.message || 'Payment proof submitted successfully. Vehicle purchase is confirmed.';
       setMessage(successMsg);
       toast.success(successMsg);
       showToast({
-        title: 'Payment Proof Submitted',
+        title: 'Payment Confirmed',
         description: successMsg,
         variant: 'success',
       });
@@ -405,7 +405,7 @@ export default function ListingBuyNowModal({
         setExistingSubmission({
           id: `${Date.now()}`,
           method: 'RTGS',
-          status: 'PENDING_VERIFICATION',
+          status: 'PAID',
           amount,
           transactionRef,
           receiptUrl,
@@ -958,7 +958,7 @@ export default function ListingBuyNowModal({
                         className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFC107] py-3 text-xs font-bold text-black shadow-2xs transition-all hover:bg-[#e5ad06] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {submitting ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : <CheckCircle2 className="h-4 w-4" />}
-                        Submit Payment Proof
+                        Confirm Payment Proof
                       </button>
                     </div>
                   </div>

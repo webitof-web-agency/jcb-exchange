@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getListingPaymentOutcome } from './listingPaymentPolicy';
 
-test('keeps RTGS payment receipts pending for manual review', () => {
+test('auto-approves RTGS payment receipts after the required receipt proof is submitted', () => {
   assert.deepEqual(getListingPaymentOutcome('RTGS'), {
-    status: 'PENDING_VERIFICATION',
-    requiresManualReview: true,
+    status: 'PAID',
+    requiresManualReview: false,
   });
 });
 
@@ -18,4 +18,13 @@ test('marks Razorpay and PhonePe payments paid after gateway verification', () =
     status: 'PAID',
     requiresManualReview: false,
   });
+});
+
+test('auto-approves every supported listing payment method without manual review', () => {
+  for (const method of ['RTGS', 'RAZORPAY', 'PHONEPE'] as const) {
+    assert.deepEqual(getListingPaymentOutcome(method), {
+      status: 'PAID',
+      requiresManualReview: false,
+    });
+  }
 });
