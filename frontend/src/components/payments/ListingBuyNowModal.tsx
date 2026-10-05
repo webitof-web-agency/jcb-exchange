@@ -301,6 +301,7 @@ export default function ListingBuyNowModal({
     }),
     [settings],
   );
+  const isCompletedPayment = existingSubmission?.status === 'PAID' || existingSubmission?.status === 'APPROVED';
 
   const copyToClipboard = (text: string | null | undefined, label: string) => {
     if (!text) return;
@@ -587,18 +588,18 @@ export default function ListingBuyNowModal({
             ) : existingSubmission ? (
               /* EXISTING PAYMENT SUBMISSION STATUS CARD (INDUSTRY STANDARD) */
               <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="rounded-2xl border border-amber-200/80 bg-[#FFFBEB]/70 p-5 shadow-xs">
+                <div className={`rounded-2xl border p-5 shadow-xs ${isCompletedPayment ? 'border-emerald-200/80 bg-emerald-50/70' : 'border-amber-200/80 bg-[#FFFBEB]/70'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                        <Clock className="h-5 w-5 animate-pulse" />
+                      <div className={`flex h-9 w-9 items-center justify-center rounded-full ${isCompletedPayment ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {isCompletedPayment ? <CheckCircle2 className="h-5 w-5" /> : <Clock className="h-5 w-5 animate-pulse" />}
                       </div>
                       <div>
-                        <h3 className="text-sm font-extrabold text-gray-900">Payment Verification Under Review</h3>
+                        <h3 className="text-sm font-extrabold text-gray-900">{isCompletedPayment ? 'Payment Successful' : 'Payment Verification Under Review'}</h3>
                         <p className="text-[11px] font-medium text-gray-600">Submission Date: {formatDate(existingSubmission.submittedAt)}</p>
                       </div>
                     </div>
-                    <span className="rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-black uppercase text-amber-900 tracking-wider">
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wider ${isCompletedPayment ? 'border-emerald-300 bg-emerald-100 text-emerald-900' : 'border-amber-300 bg-amber-100 text-amber-900'}`}>
                       {existingSubmission.status === 'PAID' ? '✓ PAID' : '⏳ UNDER REVIEW'}
                     </span>
                   </div>
@@ -655,9 +656,11 @@ export default function ListingBuyNowModal({
                 <div className="flex items-start gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-xs text-blue-900">
                   <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
                   <div className="space-y-0.5">
-                    <p className="font-bold text-blue-950">Duplicate Submissions Restricted</p>
+                    <p className="font-bold text-blue-950">{isCompletedPayment ? 'Vehicle Purchase Confirmed' : 'Duplicate Submissions Restricted'}</p>
                     <p className="text-blue-800 leading-relaxed">
-                      You have already submitted a payment proof for this machine. Our finance team is reviewing your transaction. You will be notified as soon as verification is complete.
+                      {isCompletedPayment
+                        ? 'Your online payment was verified automatically and this vehicle purchase is confirmed.'
+                        : 'You have already submitted a payment proof for this machine. Our finance team is reviewing your transaction. You will be notified as soon as verification is complete.'}
                     </p>
                   </div>
                 </div>

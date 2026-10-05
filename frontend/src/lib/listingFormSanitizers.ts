@@ -22,6 +22,18 @@ export const sanitizeMixedText = (value: string, maxLength = 160) =>
 export const sanitizeUppercaseCode = (value: string, maxLength = 40) =>
   collapseSpaces(value.toUpperCase().replace(/[^A-Z0-9\s/-]/g, '')).slice(0, maxLength);
 
+export const sanitizeEngineNumber = (value: string, maxLength = 40) =>
+  collapseSpaces(value.toUpperCase().replace(/[^A-Z0-9\s./-]/g, '')).slice(0, maxLength).trim();
+
+export const SELL_VEHICLE_AVAILABILITY_OPTIONS = ['AVAILABLE', 'SOLD'] as const;
+
+export const normalizeSellVehicleAvailability = (value: string) => {
+  const normalized = value.toUpperCase();
+  if (normalized === 'SOLD') return 'SOLD';
+  if (normalized === 'PENDING') return 'PENDING';
+  return 'AVAILABLE';
+};
+
 export const sanitizeMultilineMixedText = (value: string, maxLength = 2000) =>
   collapseMultilineSpaces(value.replace(/[^A-Za-z0-9\s.,&()/#%+\-:\n]/g, '')).slice(0, maxLength);
 
@@ -49,6 +61,7 @@ export const sanitizeListingFieldValue = (field: string, value: string) => {
   if (field in digitFieldMaxLength) return sanitizeDigitsOnly(value, digitFieldMaxLength[field]);
   if (textOnlyFields.has(field)) return sanitizeTextOnly(value);
   if (uppercaseCodeFields.has(field)) return sanitizeUppercaseCode(value);
+  if (field === 'engineNumber') return sanitizeEngineNumber(value);
   if (multilineFields.has(field)) return sanitizeMultilineMixedText(value);
   if (mixedTextFields.has(field)) return sanitizeMixedText(value);
   return value.trim();

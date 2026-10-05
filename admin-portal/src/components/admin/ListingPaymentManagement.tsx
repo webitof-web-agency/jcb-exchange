@@ -671,7 +671,7 @@ export default function ListingPaymentManagement() {
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           ) : null}
-                          <div className="flex gap-2">
+                          {payment.method === 'RTGS' && payment.status === 'PENDING_VERIFICATION' ? <div className="flex gap-2">
                             <button
                               type="button"
                               onClick={() => void handleListingPaymentStatus(payment.id, 'APPROVED')}
@@ -688,7 +688,7 @@ export default function ListingPaymentManagement() {
                               <XCircle className="h-3.5 w-3.5" />
                               Reject
                             </button>
-                          </div>
+                          </div> : null}
                         </div>
                       </td>
                     </tr>

@@ -32,6 +32,7 @@ import {
   PublicBrandingPurpose,
 } from '../utils/publicBrandingUpload';
 import { saveBrandingImageLocally } from '../utils/brandingStorage';
+import { normalizeMultipartFilename } from '../utils/filenameEncoding';
 
 const prismaAny = prisma as any;
 
@@ -41,7 +42,13 @@ const getApiOrigin = (req: Request) => {
   return `${protocol}://${req.get('host')}`;
 };
 
-const getUploadedFile = (req: Request) => req.file;
+const getUploadedFile = (req: Request) => {
+  if (req.file) {
+    req.file.originalname = normalizeMultipartFilename(req.file.originalname);
+  }
+
+  return req.file;
+};
 
 const cleanupFile = async (filePath?: string) => {
   if (!filePath) {

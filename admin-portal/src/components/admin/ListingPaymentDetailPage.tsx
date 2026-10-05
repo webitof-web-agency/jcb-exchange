@@ -318,7 +318,7 @@ export default function ListingPaymentDetailPage({
               </Link>
             ) : null}
 
-            {payment.status === 'PENDING_VERIFICATION' ? (
+            {payment.method === 'RTGS' && payment.status === 'PENDING_VERIFICATION' ? (
               <>
                 <button
                   type="button"

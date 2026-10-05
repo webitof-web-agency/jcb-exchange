@@ -264,22 +264,32 @@ export default function CustomerPrimePaymentModal({
         current
           ? {
             ...current,
-            pendingSubscription: response.data.subscription
+            hasActiveSubscription: response.data.subscription?.status === 'ACTIVE' || current.hasActiveSubscription,
+            isPrimeCustomer: response.data.subscription?.status === 'ACTIVE' || current.isPrimeCustomer,
+            customerCategory: response.data.subscription?.status === 'ACTIVE' ? 'PRIME_CUSTOMER' : current.customerCategory,
+            activeSubscription: response.data.subscription?.status === 'ACTIVE'
               ? {
                 id: response.data.subscription.id,
-                submittedAt: response.data.subscription.submittedAt || new Date().toISOString(),
-                receiptUrl: response.data.subscription.receiptUrl || receiptUrl,
+                expiresAt: response.data.subscription.expiresAt || null,
               }
-              : current.pendingSubscription,
+              : current.activeSubscription,
+            pendingSubscription: response.data.subscription?.status === 'ACTIVE'
+              ? null
+              : response.data.subscription
+                ? {
+                  id: response.data.subscription.id,
+                  submittedAt: response.data.subscription.submittedAt || new Date().toISOString(),
+                  receiptUrl: response.data.subscription.receiptUrl || receiptUrl,
+                }
+                : current.pendingSubscription,
           }
           : current,
       );
 
       setMessage(response.data.message);
-
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      if (response.data.subscription?.status !== 'ACTIVE') {
+        setTimeout(() => onClose(), 1500);
+      }
     } catch (submitError) {
       setError(getApiErrorMessage(submitError, t('primeModal.submitFailed')));
     } finally {
@@ -359,8 +369,8 @@ export default function CustomerPrimePaymentModal({
             ) : access.pendingSubscription ? (
               <div className="space-y-5">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-                  <p className="font-semibold mb-1">{t('primeModal.paymentSubmittedTitle')}</p>
-                  {t('primeModal.paymentSubmittedDescription')}
+                  <p className="font-semibold mb-1">{t('primeModal.paymentActivatedTitle', 'Prime Membership Activated')}</p>
+                  {t('primeModal.paymentActivatedDescription', 'Your payment is verified and your Prime access will be activated automatically.')}
                 </div>
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="text-sm font-semibold text-gray-900">{t('primeModal.submittedAt')}</div>
@@ -444,10 +454,10 @@ export default function CustomerPrimePaymentModal({
                     disabled={submitting || uploadingReceipt || !receiptUrl}
                     className="inline-flex w-full items-center justify-center rounded-xl bg-[#111827] px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {submitting ? t('primeModal.submitting') : t('primeModal.submitForApproval')}
+                    {submitting ? t('primeModal.submitting') : t('primeModal.activatePrime', 'Activate Prime Membership')}
                   </button>
                   <p className="mt-3 text-center text-xs leading-5 text-gray-500">
-                    {t('primeModal.approvalNote')}
+                    {t('primeModal.autoApprovalNote', 'Prime membership activates automatically after payment verification.')}
                   </p>
                 </div>
               </div>

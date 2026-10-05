@@ -11,7 +11,9 @@ import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
 import ListingRtoFields from '@/components/sell/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
-import { sanitizeListingFieldValue, sanitizeListingFormData } from '@/lib/listingFormSanitizers';
+import { normalizeSellVehicleAvailability, sanitizeListingFieldValue, sanitizeListingFormData, SELL_VEHICLE_AVAILABILITY_OPTIONS } from '@/lib/listingFormSanitizers';
+import { getListingSaveResponse } from '@/lib/listingSaveResponse';
+import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -30,6 +32,7 @@ type ListingFormState = {
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
+  engineNumber: string;
   previousOwners: string;
   condition: string;
   operatingHours: string;
@@ -133,6 +136,7 @@ type ParsedListingDetails = {
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
+  engineNumber: string;
   previousOwners: string;
   fuelType: string;
   transmission: string;
@@ -190,6 +194,7 @@ const initialForm: ListingFormState = {
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
+  engineNumber: '',
   previousOwners: '',
   condition: '',
   operatingHours: '',
@@ -258,8 +263,6 @@ const createEmptyPreviewState = (): MediaPreviewState => ({
 const conditions = ['Excellent', 'Good', 'Fair', 'Needs Repair'];
 const fuelTypes = ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other'];
 const transmissions = ['Manual', 'Automatic'];
-const editableAvailabilityTypes = ['AVAILABLE', 'RESERVED', 'SOLD'];
-
 const mediaSlots: MediaSlotConfig[] = [
   { key: 'front-view', label: 'Front View (Image)', kind: 'image' },
   { key: 'rear-view', label: 'Rear View (Image)', kind: 'image' },
@@ -291,7 +294,7 @@ const buildMediaPreviewState = (
   const unslottedImages: Array<{ url: string; type: string; isFeatured: boolean; slot?: string | null }> = [];
 
   media
-    .filter((item) => item.type === 'IMAGE')
+    .filter((item) => String(item.type || '').toUpperCase() === 'IMAGE')
     .forEach((mediaItem) => {
       const explicitSlot = isKnownMediaSlotKey(mediaItem.slot) ? mediaItem.slot : null;
 
@@ -333,7 +336,7 @@ const buildMediaPreviewState = (
     nextPreviewState[fallbackSlot] = getAbsoluteFileUrl(mediaItem.url);
   });
 
-  const videoMedia = media.find((item) => item.type === 'VIDEO');
+  const videoMedia = media.find((item) => String(item.type || '').toUpperCase() === 'VIDEO');
   if (videoMedia) {
     nextMediaState['walkaround-video'] = {
       access: 'public',
@@ -404,6 +407,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
+  engineNumber: '',
   previousOwners: '',
   fuelType: '',
   transmission: '',
@@ -453,6 +457,10 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'chassis or serial':
         parsed.chassisOrSerialNo = value;
         break;
+      case 'engine number':
+      case 'engine no':
+        parsed.engineNumber = value;
+        break;
       case 'owners':
         parsed.previousOwners = value;
         break;
@@ -495,6 +503,7 @@ const buildListingDescription = (form: ListingFormState) =>
     form.registrationYear ? `Registration year: ${form.registrationYear}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
     form.chassisOrSerialNo ? `Chassis/serial: ${form.chassisOrSerialNo}` : '',
+    form.engineNumber ? `Engine number: ${form.engineNumber}` : '',
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
@@ -761,12 +770,13 @@ export default function SellVehicleModal({
       registrationYear: parsedDetails.registrationYear,
       registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
+      engineNumber: parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
       operatingHours: String(listing.operatingHours || ''),
       fuelType: parsedDetails.fuelType,
       transmission: parsedDetails.transmission,
-      currentAvailability: listingStatusToAvailability(listing.status || 'DRAFT'),
+      currentAvailability: normalizeSellVehicleAvailability(listingStatusToAvailability(listing.status || 'DRAFT')),
       title: listing.title || '',
       price: String(listing.price || ''),
       state: listing.locationState || '',
@@ -955,7 +965,7 @@ export default function SellVehicleModal({
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (sanitizedForm.currentAvailability !== 'PENDING') {
+      if (['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability)) {
         payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
@@ -984,16 +994,17 @@ export default function SellVehicleModal({
 
       if (editingListingId) {
         const updateResponse = await api.put<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}`, payload);
-        const shouldSyncAvailability = form.currentAvailability !== 'PENDING';
+        const shouldSyncAvailability = ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
+        let availabilityResponse;
 
         if (shouldSyncAvailability) {
-          response = await api.patch<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}/availability`, {
+          availabilityResponse = await api.patch<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}/availability`, {
             status: availabilityToListingStatus(form.currentAvailability),
             buyerDetails: payload.buyerDetails,
           });
-        } else {
-          response = updateResponse;
         }
+
+        response = getListingSaveResponse(updateResponse, availabilityResponse?.data);
       } else {
         response = await api.post<{ listing: ListingRecord; message: string }>('/listings', payload);
       }
@@ -1160,6 +1171,9 @@ export default function SellVehicleModal({
                     <Field label={t('sellModal.chassisSerialNumber')}>
                       <input value={form.chassisOrSerialNo} onChange={(event) => updateField('chassisOrSerialNo', event.target.value)} className={fieldClassName} />
                     </Field>
+                    <Field label={t('sellModal.engineNumber', 'Engine Number')}>
+                      <input value={form.engineNumber} onChange={(event) => updateField('engineNumber', event.target.value)} className={fieldClassName} maxLength={40} />
+                    </Field>
                     <Field label={t('sellModal.meterReading')}>
                       <input value={form.operatingHours} onChange={(event) => updateField('operatingHours', event.target.value)} className={fieldClassName} placeholder={t('sellModal.meterReadingPlaceholder')} />
                     </Field>
@@ -1198,7 +1212,7 @@ export default function SellVehicleModal({
                     </Field>
                     <Field label={t('sellModal.currentAvailability')}>
                       <SearchableSelect
-                        options={(form.currentAvailability === 'PENDING' ? ['PENDING'] : editableAvailabilityTypes).map((option) => ({ id: option, name: localizedAvailability(option) }))}
+                        options={(form.currentAvailability === 'PENDING' ? ['PENDING'] : SELL_VEHICLE_AVAILABILITY_OPTIONS).map((option) => ({ id: option, name: localizedAvailability(option) }))}
                         value={form.currentAvailability}
                         onChange={(opt) => {
                           const val = String(opt.id);
@@ -1317,6 +1331,7 @@ export default function SellVehicleModal({
                     {mediaSlots.map((slot) => (
                       <ListingMediaUploadBox
                         key={slot.key}
+                        slotKey={slot.key}
                         label={localizedMediaLabels[slot.key]}
                         kind={slot.kind}
                         uploadedFile={mediaState[slot.key]}
@@ -1534,6 +1549,7 @@ export default function SellVehicleModal({
                           <DetailItem label={t('sellModal.registrationYear')} value={parsedDetails.registrationYear || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.vehicleNumber', 'Vehicle Number')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.engineNumber', 'Engine Number')} value={parsedDetails.engineNumber || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.insuranceExpiry')} value={parsedDetails.insuranceExpiry || t('sellModal.na')} />
                         </div>
@@ -1666,6 +1682,7 @@ function DetailItem({
 }
 
 function ListingMediaUploadBox({
+  slotKey,
   label,
   kind,
   previewUrl,
@@ -1676,6 +1693,7 @@ function ListingMediaUploadBox({
   onClear,
   onUploadingChange,
 }: {
+  slotKey: MediaSlotKey;
   label: string;
   kind: 'image' | 'video';
   previewUrl: string;
@@ -1690,6 +1708,8 @@ function ListingMediaUploadBox({
   const [error, setError] = useState('');
   const { token, setAuthModalOpen } = useAuthStore();
   const { t } = useTranslation();
+  const sampleMedia = getSellVehicleSampleMedia(slotKey);
+  const hasUploadedPreview = Boolean(previewUrl);
 
   const handleChange = async (file?: File) => {
     if (!file) {
@@ -1737,7 +1757,7 @@ function ListingMediaUploadBox({
   return (
     <div className="space-y-2">
       <label className="relative flex min-h-[154px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 p-4 transition hover:border-[#FFC107] hover:bg-[#FFC107]/5">
-        {previewUrl ? (
+        {hasUploadedPreview ? (
           <Image
             src={previewUrl}
             alt={label}
@@ -1745,9 +1765,29 @@ function ListingMediaUploadBox({
             unoptimized
             className="rounded-xl object-cover"
           />
+        ) : sampleMedia?.kind === 'image' ? (
+          <Image
+            src={sampleMedia.src}
+            alt={`Example ${label}`}
+            fill
+            unoptimized
+            aria-hidden="true"
+            className="rounded-xl object-cover opacity-45"
+          />
+        ) : sampleMedia?.kind === 'video' ? (
+          <video
+            src={sampleMedia.src}
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload="metadata"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover opacity-45"
+          />
         ) : null}
 
-        {previewUrl && kind === 'video' ? (
+        {hasUploadedPreview && kind === 'video' ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/10">
             <div className="flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-[#111827] shadow-lg">
               <PlayCircle className="h-5 w-5" />
@@ -1756,7 +1796,13 @@ function ListingMediaUploadBox({
           </div>
         ) : null}
 
-        <div className={`relative z-20 flex flex-col items-center ${previewUrl ? 'rounded-lg bg-white/90 px-3 py-2 shadow-sm' : ''}`}>
+        {!hasUploadedPreview && sampleMedia ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 shadow-sm">
+            Example
+          </div>
+        ) : null}
+
+        <div className={`relative z-20 flex flex-col items-center ${hasUploadedPreview || sampleMedia ? 'rounded-lg bg-white/90 px-3 py-2 shadow-sm' : ''}`}>
           <Upload className="mb-2 h-5 w-5 text-gray-400" />
           <span className="text-center text-xs font-medium text-gray-600">{label}</span>
           {uploadedFile ? (

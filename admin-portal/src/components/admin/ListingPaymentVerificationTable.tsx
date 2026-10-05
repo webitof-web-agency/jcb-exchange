@@ -23,6 +23,8 @@ import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { generateAdminListingPaymentDetailPath } from '@/lib/routePaths';
 import { useAuthStore } from '@/store/authStore';
 import ReceiptMedia from '@/components/shared/ReceiptMedia';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
+import LiveInvoiceEditorModal, { type LiveInvoicePaymentData } from '@/components/portal/LiveInvoiceEditorModal';
 
 function CustomSelectPill({
   value,
@@ -167,7 +169,6 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payments, setPayments] = useState<ListingPaymentRecord[]>([]);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -179,6 +180,8 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
   const [receiptViewerPayment, setReceiptViewerPayment] = useState<ListingPaymentRecord | null>(null);
   // Full Note Modal State
   const [noteModalPayment, setNoteModalPayment] = useState<ListingPaymentRecord | null>(null);
+  // Generate Bill Live Modal State
+  const [liveInvoicePayment, setLiveInvoicePayment] = useState<LiveInvoicePaymentData | null>(null);
 
   const loadPayments = useCallback(async () => {
     setLoading(true);
@@ -202,16 +205,11 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest('[data-payment-menu]')) {
-        return;
-      }
-      setOpenMenuId(null);
+      // Intentionally left blank, or you can remove handlePointerDown entirely
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpenMenuId(null);
         setPreviewPayment(null);
         setReceiptViewerPayment(null);
         setNoteModalPayment(null);
@@ -239,7 +237,6 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
         { status, rejectionReason },
       );
       setPayments((current) => current.map((payment) => (payment.id === paymentId ? response.data.payment : payment)));
-      setOpenMenuId(null);
       if (previewPayment?.id === paymentId) {
         setPreviewPayment(response.data.payment);
       }
@@ -592,22 +589,17 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
 
                       {/* Payment Note with View Full Note Button */}
                       {payment.paymentNote ? (
-                        <div className="mt-1.5 flex flex-col items-start gap-0.5">
-                          <p className="max-w-[180px] truncate text-[11px] italic text-gray-600 bg-gray-50 px-2 py-0.5 rounded border border-gray-100" title={payment.paymentNote}>
-                            {payment.paymentNote}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNoteModalPayment(payment);
-                            }}
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 hover:text-amber-900 transition hover:underline cursor-pointer"
-                          >
-                            <FileText className="h-3 w-3" />
-                            <span>View note</span>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNoteModalPayment(payment);
+                          }}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 hover:text-amber-900 transition hover:underline cursor-pointer"
+                        >
+                          <FileText className="h-3 w-3" />
+                          <span>View note</span>
+                        </button>
                       ) : null}
                     </td>
 
@@ -628,72 +620,53 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
 
                     {/* Actions Menu */}
                     <td className="px-4 py-3.5 text-right align-top">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <div className="relative inline-block text-left" data-payment-menu>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenMenuId((current) => (current === payment.id ? null : payment.id));
-                            }}
-                            aria-label="Open payment actions"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-2xs transition hover:border-gray-300 hover:bg-gray-100 hover:text-gray-900 cursor-pointer"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                          {openMenuId === payment.id ? (
-                            <div
-                              className={`absolute right-0 z-50 w-48 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${isNearBottom ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'
-                                }`}
-                            >
-                              {receiptUrl ? (
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setPreviewPayment(payment);
-                                    setOpenMenuId(null);
-                                  }}
-                                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-100 hover:text-gray-950 cursor-pointer"
-                                >
-                                  <Eye className="h-3.5 w-3.5 text-gray-500" />
-                                  View Receipt
-                                </button>
-                              ) : null}
-
-                              {isPending ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void handleStatusUpdate(payment.id, 'APPROVED');
-                                      setOpenMenuId(null);
-                                    }}
-                                    className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 cursor-pointer"
-                                  >
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                    Approve Payment
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void handleStatusUpdate(payment.id, 'REJECTED');
-                                      setOpenMenuId(null);
-                                    }}
-                                    className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 cursor-pointer"
-                                  >
-                                    <XCircle className="h-3.5 w-3.5 text-red-500" />
-                                    Reject Payment
-                                  </button>
-                                </>
-                              ) : (
-                                <div className="px-3.5 py-2 text-xs text-gray-400 font-medium">Status finalized</div>
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
+                      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <PortalActionDropdown
+                          align="right"
+                          items={[
+                            {
+                              label: 'Generate Bill',
+                              icon: <ReceiptText className="h-3.5 w-3.5" />,
+                              variant: 'default' as const,
+                              onClick: () => {
+                                setLiveInvoicePayment({
+                                  id: payment.id,
+                                  memberName: payment.buyer?.name || payment.partner?.name || 'Customer',
+                                  planName: payment.listing?.title || 'Listing Payment',
+                                  amount: payment.amount || 0,
+                                  submittedAt: payment.submittedAt || new Date().toISOString(),
+                                  transactionRef: payment.transactionRef,
+                                  customerEmail: payment.buyer?.email || payment.partner?.email || null,
+                                  customerMobile: payment.buyer?.mobile || payment.partner?.mobile || null,
+                                  customerCity: null,
+                                  customerState: null,
+                                });
+                              },
+                            },
+                            ...(receiptUrl ? [
+                              {
+                                label: 'View Receipt',
+                                icon: <Eye className="h-3.5 w-3.5" />,
+                                variant: 'default' as const,
+                                onClick: () => setPreviewPayment(payment),
+                              }
+                            ] : []),
+                            ...(isPending ? [
+                              {
+                                label: 'Approve Payment',
+                                icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+                                variant: 'success' as const,
+                                onClick: () => void handleStatusUpdate(payment.id, 'APPROVED'),
+                              },
+                              {
+                                label: 'Reject Payment',
+                                icon: <XCircle className="h-3.5 w-3.5" />,
+                                variant: 'danger' as const,
+                                onClick: () => void handleStatusUpdate(payment.id, 'REJECTED'),
+                              }
+                            ] : [])
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -917,6 +890,16 @@ export default function ListingPaymentVerificationTable({ onPendingCountChange, 
           </div>
         </div>
       ) : null}
+
+      {/* Live Interactive Invoice Builder Modal */}
+      {liveInvoicePayment && (
+        <LiveInvoiceEditorModal
+          isOpen={true}
+          onClose={() => setLiveInvoicePayment(null)}
+          payment={liveInvoicePayment}
+          initialType="NON_TAX"
+        />
+      )}
     </div>
   );
 }

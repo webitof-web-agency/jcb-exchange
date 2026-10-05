@@ -140,6 +140,7 @@ type ParsedListingDetails = {
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
+  engineNumber: string;
   previousOwners: string;
   fuelType: string;
   transmission: string;
@@ -183,6 +184,7 @@ type ListingEditForm = {
   transmission: string;
   grossPower: string;
   chassisOrSerialNo: string;
+  engineNumber: string;
   registrationNo: string;
   registrationYear: string;
   insuranceExpiry: string;
@@ -196,6 +198,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
+  engineNumber: '',
   previousOwners: '',
   fuelType: '',
   transmission: '',
@@ -228,6 +231,8 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial': parsed.chassisOrSerialNo = value; break;
+      case 'engine number':
+      case 'engine no': parsed.engineNumber = value; break;
       case 'owners': parsed.previousOwners = value; break;
       case 'fuel': parsed.fuelType = value; break;
       case 'transmission': parsed.transmission = value; break;
@@ -331,6 +336,7 @@ const buildListingDescription = (form: ListingEditForm) => {
     ['Registration Year', form.registrationYear],
     ['Registration No', form.registrationNo],
     ['Chassis / Serial', form.chassisOrSerialNo],
+    ['Engine Number', form.engineNumber],
     ['Owners', form.previousOwners],
     ['Fuel', form.fuelType],
     ['Transmission', form.transmission],
@@ -463,6 +469,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     transmission: parsed.transmission || '',
     grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
     chassisOrSerialNo: parsed.chassisOrSerialNo || '',
+    engineNumber: parsed.engineNumber || '',
     registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
     registrationYear: parsed.registrationYear || '',
     insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsed.insuranceExpiry || '',
@@ -500,6 +507,7 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
       'transmission',
       'grossPower',
       'chassisOrSerialNo',
+      'engineNumber',
       'registrationNo',
       'registrationYear',
       'insuranceExpiry',
@@ -828,6 +836,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         next.transmission = baseForm.transmission;
         next.grossPower = baseForm.grossPower;
         next.chassisOrSerialNo = baseForm.chassisOrSerialNo;
+        next.engineNumber = baseForm.engineNumber;
         next.registrationNo = baseForm.registrationNo;
         next.registrationYear = baseForm.registrationYear;
         next.insuranceExpiry = baseForm.insuranceExpiry;
@@ -1905,6 +1914,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <Field label={t('listingDetails.chassisSerialNo')}>
                   <input value={form.chassisOrSerialNo} onChange={(event) => updateForm('chassisOrSerialNo', event.target.value)} className={inputClassName} />
                 </Field>
+                <Field label={t('listingDetails.engineNumber', 'Engine Number')}>
+                  <input value={form.engineNumber} onChange={(event) => updateForm('engineNumber', event.target.value)} className={inputClassName} maxLength={40} />
+                </Field>
                 <Field label={t('listingDetails.vehicleNumber', 'Vehicle Number')}>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
@@ -1957,6 +1969,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.chassisSerialNo')}</span>
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.chassisOrSerialNo || t('listingDetails.na')}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-gray-50 py-2">
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.engineNumber', 'Engine Number')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.engineNumber || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.vehicleNumber', 'Vehicle Number')}</span>

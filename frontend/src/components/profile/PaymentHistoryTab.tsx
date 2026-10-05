@@ -5,7 +5,7 @@ import { Calendar, CheckCircle2, CreditCard, FileText, RefreshCw, ShieldAlert, U
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
-import TaxInvoiceModal, { type InvoicePaymentData } from '@/components/payments/TaxInvoiceModal';
+import SubscriptionInvoiceModal, { type InvoicePaymentData } from '@/components/payments/SubscriptionInvoiceModal';
 import BrandLoader from '@/components/ui/BrandLoader';
 
 type PrimePaymentHistoryItem = {
@@ -370,7 +370,7 @@ export default function PaymentHistoryTab() {
         />
       ) : null}
 
-      <TaxInvoiceModal
+      <SubscriptionInvoiceModal
         isOpen={Boolean(selectedInvoicePayment)}
         onClose={() => setSelectedInvoicePayment(null)}
         payment={selectedInvoicePayment}

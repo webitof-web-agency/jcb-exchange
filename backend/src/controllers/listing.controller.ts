@@ -22,6 +22,8 @@ import { syncListingRtoForListing } from '../services/listingRto.service';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
+import { canCreateListing, canEditListing } from '../utils/listingAccess';
+import { getListingPaymentOutcome, type ListingPaymentMethod } from '../utils/listingPaymentPolicy';
 
 const prismaAny = prisma as any;
 const latestListingRtoRecords = {
@@ -642,8 +644,14 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const authenticatedUserId = req.user.id;
 
     const isCustomer = req.user.role === 'CUSTOMER';
-    if (!isCustomer && req.user.role !== 'PARTNER') {
-      return res.status(403).json({ error: 'Customer or approved partner access required.' });
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const permissions = req.user.role === 'EMPLOYEE' ? await getEmployeePermissions(req.user.id) : [];
+    if (!canCreateListing(req.user.role, permissions)) {
+      return res.status(403).json({ error: 'Customer, partner, or authorized admin access required.' });
+    }
+
+    if (req.user.role === 'EMPLOYEE' && !permissions.includes('ALL_ACCESS') && !permissions.includes('listings.create')) {
+      return res.status(403).json({ error: 'You do not have permission to create listings.' });
     }
 
     if (isCustomer) {
@@ -665,7 +673,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     }
 
     let partnerProfileId = null;
-    if (!isCustomer) {
+    if (!isCustomer && !isAdmin) {
       const partnerProfile = await getApprovedPartnerProfile(req.user.id);
       if (!partnerProfile) {
         return res.status(403).json({
@@ -997,23 +1005,17 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
 
 export const updateListing = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
     }
 
-    if (req.user.role === 'EMPLOYEE') {
-      const permissions = await getEmployeePermissions(req.user.id);
-      if (
-        !permissions.includes('ALL_ACCESS') &&
-        !permissions.includes('listings.update') &&
-        !permissions.includes('listings.approve')
-      ) {
-        return res.status(403).json({ error: 'You do not have permission to edit listings.' });
-      }
+    const editPermissions = req.user.role === 'EMPLOYEE' ? await getEmployeePermissions(req.user.id) : [];
+    if (!canEditListing(req.user.role, editPermissions)) {
+      return res.status(403).json({ error: 'You do not have permission to edit listings.' });
     }
 
     const listingId = String(req.params.id || '');
-    const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
     const existingListing = isAdmin
       ? await prismaAny.listing.findUnique({
           where: { id: listingId },
@@ -1261,7 +1263,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
 export const deleteListing = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
@@ -1273,7 +1275,7 @@ export const deleteListing = async (req: Request, res: Response, next: NextFunct
     }
 
     const listingId = String(req.params.id || '');
-    const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
     const existingListing = isAdmin
       ? await prismaAny.listing.findUnique({
           where: { id: listingId },
@@ -1468,7 +1470,7 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
 
 export const updateListingAvailability = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+    if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
     }
 
@@ -1481,7 +1483,7 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
 
     const listingId = String(req.params.id || '');
     const { status } = req.body;
-    const isAdmin = ['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
 
     const existingListing = isAdmin
       ? await prismaAny.listing.findUnique({ where: { id: listingId } })
@@ -2103,7 +2105,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
     }
 
     const listingId = String(req.params.id || '').trim();
-    const method = String(req.body?.method || '').trim().toUpperCase();
+    const methodValue = String(req.body?.method || '').trim().toUpperCase();
     const transactionRef = String(req.body?.transactionRef || '').trim();
     const receiptUrl = String(req.body?.receiptUrl || '').trim();
     const paymentNote = String(req.body?.paymentNote || '').trim();
@@ -2117,9 +2119,10 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       return res.status(400).json({ error: error instanceof Error ? error.message : 'Billing city and state are required before payment.' });
     }
 
-    if (!['RTGS', 'RAZORPAY'].includes(method)) {
+    if (!['RTGS', 'RAZORPAY'].includes(methodValue)) {
       return res.status(400).json({ error: 'Valid payment method is required.' });
     }
+    const method = methodValue as ListingPaymentMethod;
 
     const listing = await getPaymentReadyListing(listingId);
     const listingError = assertListingCanAcceptPayment(listing);
@@ -2191,13 +2194,15 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       }
     }
 
+    const paymentOutcome = getListingPaymentOutcome(method);
+
     const payment = await prismaAny.listingPaymentSubmission.create({
       data: {
         listingId: listing!.id,
         buyerId: req.user.id,
         partnerId: listing!.partnerId,
         method,
-        status: method === 'RAZORPAY' ? 'PAID' : 'PENDING_VERIFICATION',
+        status: paymentOutcome.status,
         amount: listing!.price,
         customerCity: billingLocation.city,
         customerState: billingLocation.state,
@@ -2222,7 +2227,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
 
     await prismaAny.user.update({ where: { id: req.user.id }, data: billingLocation });
 
-    if (method === 'RAZORPAY') {
+    if (!paymentOutcome.requiresManualReview) {
       await finalizeListingPaymentSale(payment.id);
     }
 
@@ -2230,19 +2235,26 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       const listingTitle = listing?.title || 'Vehicle Listing';
       const formattedAmount = payment.amount ? `Ã¢â€šÂ¹${Number(payment.amount).toLocaleString('en-IN')}` : '';
 
+      const notificationTitle = paymentOutcome.requiresManualReview
+        ? 'Payment Receipt Submitted'
+        : 'Payment Successful';
+      const notificationMessage = paymentOutcome.requiresManualReview
+        ? `Your payment receipt ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" has been submitted and is under verification.`
+        : `Your online payment ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" was captured successfully. The vehicle purchase is confirmed.`;
+
       await prismaAny.notification.create({
         data: {
           userId: req.user.id,
-          title: 'Payment Receipt Submitted',
-          message: `Your payment receipt ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" has been submitted and is under verification.`,
+          title: notificationTitle,
+          message: notificationMessage,
           link: '/profile',
-          type: 'PAYMENT_SUBMITTED',
+          type: paymentOutcome.requiresManualReview ? 'PAYMENT_SUBMITTED' : 'PAYMENT_VERIFIED',
         },
       });
 
       PushNotificationService.sendToUser(req.user.id, {
-        title: 'Payment Receipt Submitted',
-        body: `Your payment receipt ${formattedAmount ? `of ${formattedAmount} ` : ''}for "${listingTitle}" has been submitted and is under verification.`,
+        title: notificationTitle,
+        body: notificationMessage,
         icon: '/icon.png',
         url: '/profile',
         path: '/profile',
@@ -2253,36 +2265,37 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         where: { id: req.user.id },
         select: { mobile: true, whatsappNumber: true },
       });
-      void dispatchMarketplaceWhatsApp({
-        eventCode: 'LISTING_PAYMENT_SUBMITTED',
-        relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
-        relatedEntityId: payment.id,
-        recipientType: 'CUSTOMER',
-        recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
-        payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
-      });
-      // Admin audit copy - notify all superadmins about new payment receipt for manual review
-      void (async () => {
-        try {
-          const superAdmins = await prisma.user.findMany({
-            where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-            select: { id: true, mobile: true, whatsappNumber: true },
-          });
-          superAdmins.forEach((superAdmin) => {
-            void dispatchMarketplaceWhatsApp({
-              eventCode: 'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
-              relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
-              relatedEntityId: payment.id,
-              recipientType: 'SUPER_ADMIN',
-              recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
-              payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+      if (paymentOutcome.requiresManualReview) {
+        void dispatchMarketplaceWhatsApp({
+          eventCode: 'LISTING_PAYMENT_SUBMITTED',
+          relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+          relatedEntityId: payment.id,
+          recipientType: 'CUSTOMER',
+          recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+        });
+        // Admin audit copy - notify all superadmins about new payment receipt for manual review
+        void (async () => {
+          try {
+            const superAdmins = await prisma.user.findMany({
+              where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+              select: { id: true, mobile: true, whatsappNumber: true },
             });
-          });
-        } catch (adminNotifErr) {
-          console.error('Failed to dispatch admin payment notification:', adminNotifErr);
-        }
-      })();
-      if (method === 'RAZORPAY') {
+            superAdmins.forEach((superAdmin) => {
+              void dispatchMarketplaceWhatsApp({
+                eventCode: 'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
+                relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
+                relatedEntityId: payment.id,
+                recipientType: 'SUPER_ADMIN',
+                recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+                payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+              });
+            });
+          } catch (adminNotifErr) {
+            console.error('Failed to dispatch admin payment notification:', adminNotifErr);
+          }
+        })();
+      } else {
         void dispatchMarketplaceWhatsApp({
           eventCode: 'LISTING_PAYMENT_APPROVED',
           relatedEntityType: 'LISTING_PAYMENT_SUBMISSION',
@@ -2306,9 +2319,9 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
 
     res.status(201).json({
       success: true,
-      message: method === 'RAZORPAY'
-        ? 'Payment captured successfully.'
-        : 'Payment receipt submitted successfully. Verification is pending.',
+      message: paymentOutcome.requiresManualReview
+        ? 'Payment receipt submitted successfully. Verification is pending.'
+        : 'Payment captured successfully. Vehicle purchase is confirmed.',
       payment: {
         ...payment,
         amount: Number(payment.amount || 0),

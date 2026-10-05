@@ -474,15 +474,15 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-white md:bg-black/60 md:p-4 md:backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4 backdrop-blur-sm">
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setIsGoogleScriptReady(true)}
       />
-      <div className="flex min-h-full items-start md:items-center justify-center">
-        <div className="w-full min-h-screen md:min-h-0 md:h-auto md:max-w-md overflow-hidden md:rounded-xl bg-white md:shadow-2xl animate-in slide-in-from-bottom-4 md:zoom-in duration-200">
-          <div className="relative flex items-center justify-center bg-transparent md:bg-[#1A1A1A] px-6 py-2 md:py-4 min-h-[48px] md:min-h-[64px]">
+      <div className="flex w-full items-center justify-center">
+        <div className="my-auto w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white shadow-2xl animate-in slide-in-from-bottom-4 zoom-in duration-200">
+          <div className="relative flex min-h-[64px] items-center justify-center bg-[#1A1A1A] px-6 py-3 sm:py-4">
             <div className="flex items-center justify-center w-full">
               <Image src="/frontloginlogo.png" alt="JCB Exchange" width={300} height={80} priority className="h-auto w-full max-w-[240px] object-contain" />
             </div>
@@ -494,7 +494,7 @@ export default function AuthModal() {
             </button>
           </div>
 
-          <div className="p-5 pt-0 md:pt-6 sm:p-6 flex flex-col">
+          <div className="flex flex-col p-5 sm:p-6">
             <div className="mb-4 -mt-2 md:mt-0 text-center">
               <h4 className="text-2xl font-bold text-gray-900">
                 {isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}

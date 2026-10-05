@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { CheckCircle2, ChevronDown, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Eye, Search, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import ReceiptMedia from '@/components/shared/ReceiptMedia';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 
 type PrimePaymentRecord = {
   id: string;
@@ -68,6 +69,8 @@ export default function CustomerPrimePaymentsPage() {
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
   const [openFilterDropdown, setOpenFilterDropdown] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
+
+
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
@@ -158,7 +161,11 @@ export default function CustomerPrimePaymentsPage() {
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">{actionMessage}</div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">Prime Payments</h2>
+      </div>
+
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:w-auto filter-dropdown-container">
             <button
@@ -271,34 +278,35 @@ export default function CustomerPrimePaymentsPage() {
                         <div className="mt-1 text-xs text-gray-500">Expires {formatPortalDate(payment.expiresAt)}</div>
                       ) : null}
                     </td>
-                    <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        {payment.status === 'PENDING' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handlePaymentReview(payment.id, 'ACTIVE')}
-                              disabled={paymentActionId === payment.id}
-                              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handlePaymentReview(payment.id, 'REJECTED')}
-                              disabled={paymentActionId === payment.id}
-                              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                            >
-                              <XCircle className="h-4 w-4" />
-                              Reject
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500">
-                            {payment.status === 'ACTIVE' ? 'Prime unlocked' : payment.rejectionReason || 'Closed'}
-                          </span>
-                        )}
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <PortalActionDropdown
+                          align="right"
+                          items={[
+                            ...(payment.receiptUrl ? [
+                              {
+                                label: 'View Receipt',
+                                icon: <Eye className="h-3.5 w-3.5" />,
+                                variant: 'default' as const,
+                                onClick: () => setSelectedReceipt(getAbsoluteFileUrl(payment.receiptUrl)),
+                              }
+                            ] : []),
+                            ...(payment.status === 'PENDING' ? [
+                              {
+                                label: 'Approve Payment',
+                                icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+                                variant: 'success' as const,
+                                onClick: () => void handlePaymentReview(payment.id, 'ACTIVE'),
+                              },
+                              {
+                                label: 'Reject Payment',
+                                icon: <XCircle className="h-3.5 w-3.5" />,
+                                variant: 'danger' as const,
+                                onClick: () => void handlePaymentReview(payment.id, 'REJECTED'),
+                              }
+                            ] : [])
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -429,6 +437,7 @@ export default function CustomerPrimePaymentsPage() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

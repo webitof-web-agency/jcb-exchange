@@ -583,7 +583,7 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
           </div>
 
           <div className="flex flex-col gap-2 lg:items-end">
-            {latestListingPayment && latestListingPayment.status === 'PENDING_VERIFICATION' ? (
+            {latestListingPayment && latestListingPayment.method === 'RTGS' && latestListingPayment.status === 'PENDING_VERIFICATION' ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -643,7 +643,7 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
           </div>
         ) : null}
 
-        {latestListingPayment && latestListingPayment.status === 'PENDING_VERIFICATION' && isPaymentRejectFormOpen ? (
+        {latestListingPayment && latestListingPayment.method === 'RTGS' && latestListingPayment.status === 'PENDING_VERIFICATION' && isPaymentRejectFormOpen ? (
           <div className="mt-4 rounded-2xl border border-red-100 bg-red-50/50 p-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">
               Decline reason

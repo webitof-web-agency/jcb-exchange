@@ -2,6 +2,7 @@ import prisma from '../lib/prisma';
 import { getAppSettings } from './appSettings';
 import {
   buildPrimeSettingsSnapshot,
+  buildAutoApprovedPrimeSubscriptionData,
   buildUpiPaymentUri,
   calculatePrimeExpiryAt,
   getCustomerPrimeAccessState,
@@ -110,6 +111,45 @@ export const syncExpiredCustomerPrimeSubscriptions = async (userId?: string) => 
   });
 };
 
+const autoActivatePendingCustomerPrimeSubscriptions = async ({
+  userId,
+  fallbackSettings,
+}: {
+  userId?: string;
+  fallbackSettings: CustomerPrimeSettingsSnapshot;
+}) => {
+  const pendingRecords = ((await prismaAny.customerPrimeSubscription.findMany({
+    where: {
+      status: 'PENDING',
+      ...(userId ? { userId } : {}),
+    },
+    select: {
+      id: true,
+      submittedAt: true,
+      settingsSnapshot: true,
+    },
+  })) || []) as Array<{ id: string; submittedAt: Date; settingsSnapshot: unknown }>;
+
+  for (const pendingRecord of pendingRecords) {
+    const storedSnapshot = normalizeSettingsSnapshot(pendingRecord.settingsSnapshot);
+    const settingsSnapshot = storedSnapshot.validityValue
+      ? storedSnapshot
+      : fallbackSettings;
+
+    if (!settingsSnapshot.validityValue) {
+      continue;
+    }
+
+    await prismaAny.customerPrimeSubscription.updateMany({
+      where: { id: pendingRecord.id, status: 'PENDING' },
+      data: buildAutoApprovedPrimeSubscriptionData({
+        submittedAt: pendingRecord.submittedAt,
+        settingsSnapshot,
+      }),
+    });
+  }
+};
+
 export const getCustomerPrimeAccessPayload = async ({
   userId,
   role,
@@ -135,6 +175,10 @@ export const getCustomerPrimeAccessPayload = async ({
     };
   }
 
+  await autoActivatePendingCustomerPrimeSubscriptions({
+    userId,
+    fallbackSettings: buildPrimeSettingsSnapshot(settings),
+  });
   await syncExpiredCustomerPrimeSubscriptions(userId);
 
   const subscriptions = ((await prismaAny.customerPrimeSubscription.findMany({
@@ -232,7 +276,7 @@ export const createCustomerPrimeSubscriptionRequest = async ({
   }
 
   if (accessPayload.pendingSubscription) {
-    throw new Error('Your earlier Prime payment request is still pending super admin approval.');
+    throw new Error('Your earlier Prime payment request is still being activated. Please try again shortly.');
   }
 
   const normalizedReceiptUrl = normalizeText(receiptUrl);
@@ -247,10 +291,18 @@ export const createCustomerPrimeSubscriptionRequest = async ({
     throw new Error('Billing city and state are required before payment.');
   }
 
+  const submittedAt = new Date();
+  const autoActivation = buildAutoApprovedPrimeSubscriptionData({
+    submittedAt,
+    activatedAt: submittedAt,
+    settingsSnapshot,
+  });
+
   const record = (await prismaAny.customerPrimeSubscription.create({
     data: {
       userId,
-      status: 'PENDING',
+      ...autoActivation,
+      submittedAt,
       receiptUrl: normalizedReceiptUrl,
       paidAmount: accessPayload.settings.amount,
       paidUpiId: accessPayload.settings.upiId,
@@ -394,6 +446,10 @@ export const listCustomerPrimeSubscriptions = async ({
   status?: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' | undefined;
   take?: number;
 }) => {
+  const settings = normalizeCustomerPrimeSettings((await getAppSettings()).customerPrime);
+  await autoActivatePendingCustomerPrimeSubscriptions({
+    fallbackSettings: buildPrimeSettingsSnapshot(settings),
+  });
   await syncExpiredCustomerPrimeSubscriptions();
 
   const records = ((await prismaAny.customerPrimeSubscription.findMany({
@@ -422,6 +478,11 @@ export const listCustomerPrimeSubscriptionsForUser = async ({
   userId: string;
   take?: number;
 }) => {
+  const settings = normalizeCustomerPrimeSettings((await getAppSettings()).customerPrime);
+  await autoActivatePendingCustomerPrimeSubscriptions({
+    userId,
+    fallbackSettings: buildPrimeSettingsSnapshot(settings),
+  });
   await syncExpiredCustomerPrimeSubscriptions(userId);
 
   const records = ((await prismaAny.customerPrimeSubscription.findMany({

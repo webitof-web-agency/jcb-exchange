@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { ComponentType, useEffect, useState } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import {
@@ -13,7 +14,11 @@ import api from '@/lib/api';
 import { FileUploadField } from '@/components/upload/FileUploadField';
 import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
-import { normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
+import { normalizeSellAccountDocuments, SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
+import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
+import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
+import { useTranslation } from '@/hooks/useTranslation';
+import { toast } from 'react-toastify';
 
 type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealStatus: SellAccountRecord['dealStatus'] | 'COMPLETED' | 'CANCELLED' | 'PENDING' };
 
@@ -34,6 +39,7 @@ const formatDate = (dateStr: string) => {
 
 const sanitizePhoneNumber = (val: string) => val.replace(/\D/g, '').slice(0, 10);
 const sanitizeVehicleNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15);
+const sanitizeEngineNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9./\s-]/g, '').replace(/\s+/g, ' ').trimStart().slice(0, 40);
 
 type EditFormData = Omit<SellAccountRecord, 'id' | 'createdAt'>;
 type SellAccountDocumentKey = keyof SellAccountDocuments;
@@ -56,18 +62,20 @@ function EditPdfField({
   onUploaded: (file: UploadedFileResult) => void;
   onUploadStateChange: (uploading: boolean) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div>
       <label className="mb-1 block text-xs font-semibold text-gray-700">{label}</label>
       <FileUploadField
-        accept="application/pdf,.pdf"
-        pdfOnly
+        accept={SELL_ACCOUNT_DOCUMENT_ACCEPT}
         visibility="secure"
         uploadedFileName={document?.originalName}
+        uploadedFileMimeType={document?.mimeType}
         uploadedFileUrl={document?.fileUrl}
         onUploaded={onUploaded}
         onUploadStateChange={onUploadStateChange}
-        helperText="PDF only, maximum 3MB."
+        helperText={t('sellAccounts.documentHelper', 'PDF up to 3MB or JPG, PNG, WEBP up to 5MB.')}
       />
     </div>
   );
@@ -78,6 +86,7 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
+  const isImage = document?.mimeType?.startsWith('image/') || /\.(?:jpe?g|png|webp|gif)$/i.test(document?.originalName || '');
 
   useEffect(() => () => {
     if (viewerUrl) URL.revokeObjectURL(viewerUrl);
@@ -85,11 +94,14 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
 
   const fetchDocumentBlob = async () => {
     if (!document?.fileUrl) {
-      throw new Error('PDF file is not available.');
+      throw new Error('Document file is not available.');
     }
 
     const response = await api.get(normalizeSecureDocumentPath(document.fileUrl), { responseType: 'blob' });
-    return new Blob([response.data], { type: 'application/pdf' });
+    const documentMimeType = isImage
+      ? (document.mimeType?.startsWith('image/') ? document.mimeType : response.data.type || 'image/*')
+      : document.mimeType || 'application/pdf';
+    return new Blob([response.data], { type: documentMimeType });
   };
 
   const openDocument = async () => {
@@ -100,7 +112,7 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
       const blob = await fetchDocumentBlob();
       setViewerUrl(URL.createObjectURL(blob));
     } catch {
-      setError('Unable to load this PDF.');
+      setError('Unable to load this document.');
     } finally {
       setLoading(false);
     }
@@ -114,16 +126,18 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
       const blob = await fetchDocumentBlob();
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = window.document.createElement('a');
-      const requestedName = document.originalName || document.fileName || `${label}.pdf`;
+      const requestedName = document.originalName || document.fileName || `${label}.${isImage ? 'jpg' : 'pdf'}`;
       const safeName = requestedName.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').trim() || `${label}.pdf`;
       anchor.href = downloadUrl;
-      anchor.download = safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;
+      anchor.download = /\.(?:pdf|jpe?g|png|webp|gif)$/i.test(safeName)
+        ? safeName
+        : `${safeName}.${isImage ? 'jpg' : 'pdf'}`;
       window.document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
     } catch {
-      setError('Unable to download this PDF.');
+      setError('Unable to download this document.');
     } finally {
       setDownloading(false);
     }
@@ -139,7 +153,7 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
         {document ? (
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             <button type="button" onClick={() => void openDocument()} disabled={loading || downloading} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-gray-950 disabled:opacity-60">
-              {loading ? 'Loading...' : viewerUrl ? 'Loaded' : 'View PDF'}
+              {loading ? 'Loading...' : viewerUrl ? 'Loaded' : isImage ? 'View Image' : 'View PDF'}
             </button>
             <button type="button" onClick={() => void downloadDocument()} disabled={loading || downloading} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 disabled:opacity-60">
               <Download className="h-3.5 w-3.5" />
@@ -149,7 +163,11 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
         ) : null}
       </div>
       {error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
-      {viewerUrl ? <iframe title={label} src={viewerUrl} className="mt-3 h-56 w-full rounded-lg border border-gray-200 bg-white" /> : null}
+      {viewerUrl ? (
+        isImage
+          ? <Image src={viewerUrl} alt={label} width={800} height={450} unoptimized className="mt-3 max-h-72 w-full rounded-lg border border-gray-200 bg-white object-contain p-1" />
+          : <iframe title={label} src={viewerUrl} className="mt-3 h-56 w-full rounded-lg border border-gray-200 bg-white" />
+      ) : null}
     </div>
   );
 }
@@ -168,6 +186,8 @@ export default function SellAccountDetailView() {
   const [record, setRecord] = useState<SellAccountRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
+  const { t } = useTranslation();
 
   // Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -180,8 +200,16 @@ export default function SellAccountDetailView() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await api.get('/master/categories');
-        setCategories(res.data.data || []);
+        const [categoriesResult, brandsResult] = await Promise.allSettled([
+          api.get('/master/categories'),
+          api.get('/master/brands'),
+        ]);
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value.data.data || []);
+        }
+        if (brandsResult.status === 'fulfilled') {
+          setBrands(brandsResult.value.data.data || []);
+        }
       } catch (err) {
         console.error('Failed to load categories', err);
       }
@@ -200,6 +228,7 @@ export default function SellAccountDetailView() {
             if (found) {
                 const migrated: SellAccountRecord = {
                   ...found,
+                  brandName: found.brandName || '',
                   documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
                 dealStatus: found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' ? 'CLOSE' : found.dealStatus === 'PENDING' ? 'OPEN' : found.dealStatus
               };
@@ -220,8 +249,10 @@ export default function SellAccountDetailView() {
       ownerName: record.ownerName,
       ownerNumber: record.ownerNumber,
       vehicleNumber: record.vehicleNumber,
+      engineNumber: record.engineNumber || '',
       sellDate: record.sellDate,
       vehicleType: record.vehicleType,
+      brandName: record.brandName || '',
       vehicleModel: record.vehicleModel,
       sellerName: record.sellerName,
       sellerNumber: record.sellerNumber,
@@ -239,10 +270,10 @@ export default function SellAccountDetailView() {
     };
     setEditData(fd);
     setRawInputs({
-      purchaseAmount: String(record.purchaseAmount),
-      sellAmount: String(record.sellAmount),
-      expenses: String(record.expenses),
-      balanceAmount: String(record.balanceAmount),
+      purchaseAmount: toEditableAmount(record.purchaseAmount),
+      sellAmount: toEditableAmount(record.sellAmount),
+      expenses: toEditableAmount(record.expenses),
+      balanceAmount: toEditableAmount(record.balanceAmount),
     });
     setEditErrors({});
     setPendingReplacedDocuments({});
@@ -258,17 +289,19 @@ export default function SellAccountDetailView() {
       value = sanitizePhoneNumber(String(rawValue));
     } else if (field === 'vehicleNumber') {
       value = sanitizeVehicleNumber(String(rawValue));
+    } else if (field === 'engineNumber') {
+      value = sanitizeEngineNumber(String(rawValue));
     } else if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses' || field === 'balanceAmount') {
-      const rawStr = String(rawValue).replace(/[^0-9.]/g, '');
-      setRawInputs((prev) => ({ ...prev, [field]: rawStr }));
-      value = rawStr === '' || rawStr === '.' ? 0 : parseFloat(rawStr) || 0;
+      const normalizedAmount = normalizeAmountInput(String(rawValue));
+      setRawInputs((prev) => ({ ...prev, [field]: normalizedAmount.raw }));
+      value = normalizedAmount.value;
     }
 
     setEditData((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, [field]: value };
       if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses') {
-        updated.netProfit = (Number(updated.sellAmount) || 0) - (Number(updated.purchaseAmount) || 0) - (Number(updated.expenses) || 0);
+        updated.netProfit = calculateSellAccountNetProfit(updated.sellAmount, updated.purchaseAmount, updated.expenses);
       }
       return updated;
     });
@@ -326,23 +359,11 @@ export default function SellAccountDetailView() {
   // Validate edit form
   const validateEdit = () => {
     if (!editData) return false;
-    const errors: Record<string, string> = {};
-    if (!editData.ownerName.trim()) errors.ownerName = 'Owner Name is required';
-    if (!editData.ownerNumber || editData.ownerNumber.length < 10) errors.ownerNumber = 'Valid 10-digit phone required';
-    if (!editData.vehicleNumber.trim()) errors.vehicleNumber = 'Vehicle Number is required';
-    if (!editData.vehicleType.trim()) errors.vehicleType = 'Category is required';
-    if (!editData.vehicleModel.trim()) errors.vehicleModel = 'Vehicle Model is required';
-    if (!editData.sellDate.trim()) errors.sellDate = 'Sell Date is required';
-    if (!editData.sellerName.trim()) errors.sellerName = 'Seller Name is required';
-    if (!editData.sellerNumber || editData.sellerNumber.length < 10) errors.sellerNumber = 'Valid 10-digit phone required';
-    if (!editData.purchaserName.trim()) errors.purchaserName = 'Purchaser Name is required';
-    if (!editData.purchaserNumber || editData.purchaserNumber.length < 10) errors.purchaserNumber = 'Valid 10-digit phone required';
-    if (editData.purchaseAmount <= 0) errors.purchaseAmount = 'Purchase amount must be greater than 0';
-    if (editData.sellAmount <= 0) errors.sellAmount = 'Sell amount must be greater than 0';
-    if (!editData.dealStatus) errors.dealStatus = 'Deal Status is required';
-    if (!editData.transferDetails.trim()) errors.transferDetails = 'Transfer Details are required';
-    if (!editData.noteSheet.trim()) errors.noteSheet = 'Remark is required';
+    const errors = getSellAccountValidationErrors(editData, { isEditing: true }) as unknown as Record<string, string>;
     setEditErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error('Please complete the required fields before saving.');
+    }
     return Object.keys(errors).length === 0;
   };
 
@@ -351,25 +372,28 @@ export default function SellAccountDetailView() {
     e.preventDefault();
     if (!record || !editData) return;
     if (activeDocumentUploads > 0) {
-      setEditErrors((current) => ({ ...current, documents: 'Please wait until all PDF uploads finish.' }));
+      setEditErrors((current) => ({ ...current, documents: 'Please wait until all document uploads finish.' }));
+      toast.info('Please wait until all document uploads finish.');
       return;
     }
     if (!validateEdit()) return;
 
-    const saved = localStorage.getItem('jcb_sell_accounts_records');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as SellAccountRecord[];
-        const updated = parsed.map((r) =>
-          r.id === record.id ? { ...r, ...editData } : r
-        );
-        localStorage.setItem('jcb_sell_accounts_records', JSON.stringify(updated));
-        setRecord({ ...record, ...editData });
-      } catch { }
+    try {
+      const saved = localStorage.getItem('jcb_sell_accounts_records');
+      const parsed = saved ? JSON.parse(saved) as SellAccountRecord[] : [];
+      const updatedRecord = { ...record, ...editData };
+      const updated = upsertSellAccountRecord(parsed, updatedRecord);
+      localStorage.setItem('jcb_sell_accounts_records', JSON.stringify(updated));
+      setRecord(updatedRecord);
+    } catch {
+      setEditErrors((current) => ({ ...current, documents: 'Unable to save this record. Please try again.' }));
+      toast.error(getAccountSaveErrorToast('Sell Account'));
+      return;
     }
     await deleteDocumentFiles(Object.values(pendingReplacedDocuments).flat());
     setPendingReplacedDocuments({});
     setIsEditOpen(false);
+    toast.success(getAccountSaveSuccessToast('Sell Account', 'edit'));
   };
 
   if (loading) {
@@ -441,8 +465,16 @@ export default function SellAccountDetailView() {
                 <p className="font-bold text-gray-900 text-lg mt-0.5">{record.vehicleNumber}</p>
               </div>
               <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Engine Number</p>
+                <p className="font-bold text-gray-900 mt-0.5">{record.engineNumber || '—'}</p>
+              </div>
+              <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Model</p>
                 <p className="font-bold text-gray-900 mt-0.5">{record.vehicleModel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brand</p>
+                <p className="font-medium text-gray-800 mt-0.5">{record.brandName || '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</p>
@@ -604,7 +636,7 @@ export default function SellAccountDetailView() {
                 <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
                   <Car className="w-4 h-4" /> 1. Vehicle & Owner Details
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Owner Name *</label>
                     <input
@@ -643,21 +675,47 @@ export default function SellAccountDetailView() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Category *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Engine Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. JCB-ENG-12345"
+                      maxLength={40}
+                      value={editData.engineNumber || ''}
+                      onChange={(e) => handleEditChange('engineNumber', e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm uppercase focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.category', 'Category')} *</label>
                     <SearchableSelect
                       options={categories.map((cat) => ({ id: cat.name, name: cat.name }))}
                       value={editData.vehicleType}
-                      displayValue={editData.vehicleType || 'Select Category'}
+                      displayValue={editData.vehicleType || t('listingDetails.selectCategory', 'Select Category')}
                       onChange={(opt) => handleEditChange('vehicleType', String(opt.id))}
                       searchable={true}
-                      placeholder="Select Category"
+                      placeholder={t('listingDetails.selectCategory', 'Select Category')}
                       className={`w-full bg-gray-50 ${editErrors.vehicleType ? 'border-rose-500' : 'border-gray-200'}`}
                     />
                     {editErrors.vehicleType && <p className="text-[11px] text-rose-500 mt-1">{editErrors.vehicleType}</p>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Vehicle Model *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.brand', 'Brand')} *</label>
+                    <SearchableSelect
+                      options={brands.map((brand) => ({ id: brand.id, name: brand.name }))}
+                      value={editData.brandName}
+                      displayValue={editData.brandName || t('listingDetails.selectBrand', 'Select Brand')}
+                      onChange={(option) => handleEditChange('brandName', option.name)}
+                      searchable
+                      placeholder={t('listingDetails.selectBrand', 'Select Brand')}
+                      className={`w-full bg-gray-50 ${editErrors.brandName ? 'border-rose-500' : 'border-gray-200'}`}
+                    />
+                    {editErrors.brandName && <p className="text-[11px] text-rose-500 mt-1">{editErrors.brandName}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.model', 'Vehicle Model')} *</label>
                     <input
                       type="text"
                       placeholder="e.g. JCB 3DX Super 2023"
@@ -819,11 +877,12 @@ export default function SellAccountDetailView() {
                 <h4 className="flex items-center gap-2 border-b border-amber-100 pb-1 text-xs font-bold uppercase tracking-wider text-amber-700">
                   <FileText className="h-4 w-4" /> 4. Purchase Deed
                 </h4>
+                {editErrors.documents ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{editErrors.documents}</p> : null}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <EditPdfField label="Purchase Deed PDF" document={editData.documents?.purchaseDeed} onUploaded={(file) => handleDocumentUploaded('purchaseDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="Aadhaar Card PDF" document={editData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="PAN Card PDF" document={editData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="GST Certificate PDF" document={editData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="Purchase Deed Document" document={editData.documents?.purchaseDeed} onUploaded={(file) => handleDocumentUploaded('purchaseDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="Aadhaar Card Document" document={editData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="PAN Card Document" document={editData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="GST Certificate Document" document={editData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                 </div>
               </div>
 
@@ -833,10 +892,10 @@ export default function SellAccountDetailView() {
                   <FileText className="h-4 w-4" /> 5. Sell Deed
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <EditPdfField label="Sell Deed PDF" document={editData.documents?.sellDeed} onUploaded={(file) => handleDocumentUploaded('sellDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="Aadhaar Card PDF" document={editData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="PAN Card PDF" document={editData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="GST Certificate PDF" document={editData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="Sell Deed Document" document={editData.documents?.sellDeed} onUploaded={(file) => handleDocumentUploaded('sellDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="Aadhaar Card Document" document={editData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="PAN Card Document" document={editData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
+                  <EditPdfField label="GST Certificate Document" document={editData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
                 </div>
               </div>
 

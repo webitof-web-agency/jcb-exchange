@@ -134,6 +134,36 @@ export const calculatePrimeExpiryAt = ({
   return expiryDate;
 };
 
+export const buildAutoApprovedPrimeSubscriptionData = ({
+  submittedAt,
+  activatedAt = new Date(),
+  settingsSnapshot,
+}: {
+  submittedAt: Date;
+  activatedAt?: Date;
+  settingsSnapshot: Partial<CustomerPrimeSettingsSnapshot> | CustomerPrimeSettingsSnapshot;
+}) => {
+  const snapshot = buildPrimeSettingsSnapshot(settingsSnapshot);
+  if (!snapshot.validityValue) {
+    throw new Error('Prime subscription snapshot is missing validity information.');
+  }
+
+  return {
+    status: 'ACTIVE' as const,
+    startedAt: submittedAt,
+    expiresAt: calculatePrimeExpiryAt({
+      paidAt: submittedAt,
+      validityValue: snapshot.validityValue,
+      validityUnit: snapshot.validityUnit,
+    }),
+    approvedByUserId: null,
+    approvedAt: activatedAt,
+    rejectedByUserId: null,
+    rejectedAt: null,
+    rejectionReason: null,
+  };
+};
+
 export const buildUpiPaymentUri = ({
   upiId,
   amount,

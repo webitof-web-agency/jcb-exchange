@@ -8,6 +8,10 @@ node_modules/
 .pnp
 .pnp.js
 
+# Local billing sample (do not commit)
+/billsample.pdf
+/billsample.PDF
+
 # Environment Variables & Secrets
 .env
 .env.*
@@ -40,6 +44,9 @@ tmp/
 */tmp/
 backups/
 */backups/
+
+# Local sample images and videos (never commit)
+/sample-images/
 
 # Local Codex skill/playbook artifacts (do not commit)
 codex-skills/

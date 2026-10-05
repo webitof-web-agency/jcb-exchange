@@ -4,13 +4,22 @@ import {
   createEmptySellAccountDocuments,
   getSellAccountDocumentKeys,
   normalizeSellAccountDocuments,
+  SELL_ACCOUNT_DOCUMENT_ACCEPT,
 } from './sellAccountDocuments.mjs';
 
-test('creates the three purchase and three sell PDF slots empty', () => {
+test('accepts PDF and common image formats for sell account documents', () => {
+  assert.match(SELL_ACCOUNT_DOCUMENT_ACCEPT, /application\/pdf/);
+  assert.match(SELL_ACCOUNT_DOCUMENT_ACCEPT, /image\/jpeg/);
+  assert.match(SELL_ACCOUNT_DOCUMENT_ACCEPT, /image\/png/);
+});
+
+test('creates all purchase and sell document slots empty', () => {
   assert.deepEqual(createEmptySellAccountDocuments(), {
+    purchaseDeed: null,
     purchaseAadhaarCard: null,
     purchasePanCard: null,
     purchaseGstCertificate: null,
+    sellDeed: null,
     sellAadhaarCard: null,
     sellPanCard: null,
     sellGstCertificate: null,
@@ -20,6 +29,7 @@ test('creates the three purchase and three sell PDF slots empty', () => {
 test('normalizes older sell account records without document fields', () => {
   assert.equal(normalizeSellAccountDocuments({}).purchasePanCard, null);
   assert.deepEqual(getSellAccountDocumentKeys('purchase'), [
+    'purchaseDeed',
     'purchaseAadhaarCard',
     'purchasePanCard',
     'purchaseGstCertificate',
@@ -27,11 +37,16 @@ test('normalizes older sell account records without document fields', () => {
 });
 
 test('preserves uploaded document metadata for both deed sections', () => {
-  const pdf = { fileUrl: '/documents/secure/drive-pdf-1', originalName: 'pan.pdf' };
-  const documents = normalizeSellAccountDocuments({ purchasePanCard: pdf });
+  const image = {
+    fileUrl: '/documents/secure/drive-image-1',
+    originalName: 'pan.png',
+    mimeType: 'image/png',
+  };
+  const documents = normalizeSellAccountDocuments({ purchasePanCard: image });
 
-  assert.equal(documents.purchasePanCard.fileUrl, pdf.fileUrl);
-  assert.equal(documents.purchasePanCard.originalName, pdf.originalName);
+  assert.equal(documents.purchasePanCard.fileUrl, image.fileUrl);
+  assert.equal(documents.purchasePanCard.originalName, image.originalName);
+  assert.equal(documents.purchasePanCard.mimeType, image.mimeType);
   assert.equal(documents.sellPanCard, null);
 });
 

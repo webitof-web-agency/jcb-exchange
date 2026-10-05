@@ -212,7 +212,7 @@ function LoginPageInner() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+                  <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('authPortal.emailAddress')}</label>
                     <div className="relative">
@@ -221,12 +221,13 @@ function LoginPageInner() {
                       </div>
                       <input
                         type="email"
+                        name="email"
                         required
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-lg bg-[#F5F8FA] text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:border-transparent transition-all sm:text-sm"
                         placeholder={t('authPortal.enterEmailAddress')}
-                        autoComplete="off"
+                        autoComplete="username"
                       />
                     </div>
                   </div>
@@ -239,12 +240,13 @@ function LoginPageInner() {
                       </div>
                       <input
                         type={showPassword ? 'text' : 'password'}
+                        name="password"
                         required
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg bg-[#F5F8FA] text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:border-transparent transition-all sm:text-sm"
                         placeholder={t('authPortal.enterPassword')}
-                        autoComplete="new-password"
+                        autoComplete="current-password"
                       />
                       <button
                         type="button"

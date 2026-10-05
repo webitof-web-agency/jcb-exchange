@@ -9,6 +9,8 @@ export const SELL_ACCOUNT_DOCUMENT_KEYS = [
   'sellGstCertificate',
 ];
 
+export const SELL_ACCOUNT_DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp';
+
 export const createEmptySellAccountDocuments = () => Object.fromEntries(
   SELL_ACCOUNT_DOCUMENT_KEYS.map((key) => [key, null]),
 );

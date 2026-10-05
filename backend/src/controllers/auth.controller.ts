@@ -1005,12 +1005,13 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-    if (!email || !password) {
+    if (!normalizedEmail || typeof password !== 'string' || !password) {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user || !user.password) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -1656,7 +1657,7 @@ export const submitCustomerPrimeSubscription = async (req: Request, res: Respons
     const authUser = await buildAuthUserPayload(refreshedUser);
 
     return res.status(201).json({
-      message: 'Prime payment submitted successfully. Super admin approval is pending.',
+      message: 'Prime payment verified successfully. Your Prime membership is active now.',
       subscription,
       user: authUser,
     });

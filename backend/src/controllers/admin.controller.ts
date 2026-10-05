@@ -1131,6 +1131,23 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
       return res.status(400).json({ error: 'Valid payment status is required.' });
     }
 
+    const paymentForReview = await prismaAny.listingPaymentSubmission.findUnique({
+      where: { id },
+      select: { method: true, status: true },
+    });
+
+    if (!paymentForReview) {
+      return res.status(404).json({ error: 'Listing payment submission not found.' });
+    }
+
+    if (paymentForReview.method !== 'RTGS') {
+      return res.status(400).json({ error: 'Only RTGS receipt payments require manual review.' });
+    }
+
+    if (paymentForReview.status !== 'PENDING_VERIFICATION') {
+      return res.status(400).json({ error: 'Only pending RTGS receipt payments can be reviewed.' });
+    }
+
     const payment = await prismaAny.listingPaymentSubmission.update({
       where: { id },
       data: {
