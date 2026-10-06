@@ -30,6 +30,7 @@ const buildPayload = (body: any, existing?: any) => {
     customerName: text(value('customerName')),
     customerNumber: phone(value('customerNumber')),
     vehicleNumber: text(value('vehicleNumber')).toUpperCase(),
+    brandName: text(value('brandName')),
     vehicleType: text(value('vehicleType')),
     vehicleModel: text(value('vehicleModel')),
     hirePurchaseStatus: validEnum(value('hirePurchaseStatus'), Object.values(RtoHirePurchaseStatus), existing?.hirePurchaseStatus || RtoHirePurchaseStatus.PENDING),
@@ -65,7 +66,7 @@ export { buildPayload };
 
 export const validateRtoPayload = (payload: ReturnType<typeof buildPayload>) => {
   const required: Array<[string, string]> = [
-    ['customerName', 'Customer Name'], ['vehicleNumber', 'Vehicle Number'], ['vehicleType', 'Vehicle Type'],
+    ['customerName', 'Customer Name'], ['vehicleNumber', 'Vehicle Number'], ['brandName', 'Brand'], ['vehicleType', 'Vehicle Type'],
     ['vehicleModel', 'Vehicle Model'], ['sellerName', 'Seller Name'], ['purchaserName', 'Purchaser Name'],
     ['rtoOffice', 'RTO Office'], ['rtoAgentName', 'RTO Agent Name'], ['rtoAgentState', 'RTO Agent State'],
     ['rtoAgentCity', 'RTO Agent City'],
@@ -96,6 +97,7 @@ export const listRtoRecords = async (req: Request, res: Response, next: NextFunc
         ...(q ? { OR: [
           { customerName: { contains: q, mode: 'insensitive' } },
           { vehicleNumber: { contains: q, mode: 'insensitive' } },
+          { brandName: { contains: q, mode: 'insensitive' } },
           { rtoOffice: { contains: q, mode: 'insensitive' } },
           { rtoAgentName: { contains: q, mode: 'insensitive' } },
         ] } : {}),

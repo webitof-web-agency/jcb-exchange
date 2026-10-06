@@ -7,6 +7,7 @@ const validPayload = {
   customerName: 'Customer',
   customerNumber: '',
   vehicleNumber: 'CG04GO4234',
+  brandName: 'JCB',
   vehicleType: 'Backhoe Loader',
   vehicleModel: 'JCB 3DX',
   hirePurchaseStatus: RtoHirePurchaseStatus.PENDING,
@@ -60,4 +61,17 @@ test('trims and persists remarks for create and edit payloads', () => {
   const existing = { ...validPayload, noteSheet: 'Existing remark' };
   assert.equal(buildPayload({}, existing).noteSheet, 'Existing remark');
   assert.equal(buildPayload({ noteSheet: '   ' }, existing).noteSheet, null);
+});
+
+test('trims and persists the selected brand', () => {
+  const payload = buildPayload({ ...validPayload, brandName: '  CAT  ' });
+
+  assert.equal(payload.brandName, 'CAT');
+});
+
+test('requires a brand for RTO records', () => {
+  assert.equal(
+    validateRtoPayload({ ...validPayload, brandName: '' }),
+    'Brand is required.',
+  );
 });

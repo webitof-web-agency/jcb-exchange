@@ -16,6 +16,7 @@ type RtoRecord = {
   customerName: string;
   customerNumber?: string;
   vehicleNumber: string;
+  brandName?: string;
   vehicleType?: string;
   vehicleModel?: string;
   hirePurchaseStatus: string;
@@ -180,6 +181,10 @@ export default function RtoRecordDetailView() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Model</p>
                 <p className="font-bold text-gray-900 mt-0.5">{record.vehicleModel || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brand</p>
+                <p className="font-bold text-gray-900 mt-0.5">{record.brandName || '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</p>

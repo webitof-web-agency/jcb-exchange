@@ -183,6 +183,11 @@ enum ListingPaymentStatus {
   PAID
 }
 
+enum ListingBillType {
+  NON_TAX
+  TAX_INVOICE
+}
+
 enum WhatsAppMessageStatus {
   QUEUED
   SENT
@@ -296,6 +301,7 @@ model User {
   listingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentBuyer")
   listingPaymentSellerSubmissions ListingPaymentSubmission[] @relation("ListingPaymentSeller")
   reviewedListingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentReviewer")
+  createdListingBills ListingBill[] @relation("ListingBillCreator")
   auditLogs          AuditLog[]           @relation("AuditActor")
   leadActivities     LeadActivity[]       @relation("LeadActivityActor")
   notifications      Notification[]
@@ -583,6 +589,7 @@ model VehicleRtoRecord {
   customerName          String
   customerNumber        String
   vehicleNumber         String
+  brandName             String                 @default("")
   vehicleType           String
   vehicleModel          String
   hirePurchaseStatus    RtoHirePurchaseStatus @default(PENDING)
@@ -680,6 +687,7 @@ model ListingPaymentSubmission {
   buyer      User    @relation("ListingPaymentBuyer", fields: [buyerId], references: [id])
   partner    User    @relation("ListingPaymentSeller", fields: [partnerId], references: [id])
   reviewedBy User?   @relation("ListingPaymentReviewer", fields: [reviewedByUserId], references: [id])
+  bills      ListingBill[]
 
   @@index([listingId, status])
   @@index([buyerId, status])
@@ -1044,6 +1052,22 @@ model WhatsAppOutbox {
 
   @@index([status, nextAttemptAt])
   @@map("whatsapp_outbox")
+}
+
+model ListingBill {
+  id            String          @id @default(uuid())
+  paymentId     String
+  billType      ListingBillType
+  payload       Json
+  createdByUserId String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  payment       ListingPaymentSubmission @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdBy     User?           @relation("ListingBillCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([paymentId, billType])
+  @@index([updatedAt])
 }
 
 model SmsIntegrationSettings {

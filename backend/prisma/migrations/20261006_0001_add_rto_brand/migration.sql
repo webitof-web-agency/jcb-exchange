@@ -1,0 +1,2 @@
+ALTER TABLE "VehicleRtoRecord"
+  ADD COLUMN IF NOT EXISTS "brandName" TEXT NOT NULL DEFAULT '';

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, FileText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import axios from 'axios';
 import api from '@/lib/api';
@@ -12,6 +12,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import ListingPaymentVerificationTable from '@/components/admin/ListingPaymentVerificationTable';
+import ListingBillsTable from '@/components/admin/ListingBillsTable';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { buildPaginationItems } from '@/lib/paginationUtils';
@@ -1006,9 +1007,9 @@ export default function PartnerListingsPage() {
   const [pendingBrandFilter, setPendingBrandFilter] = useState('ALL');
   const [pendingDealerFilter, setPendingDealerFilter] = useState('ALL');
   const [pendingSearch, setPendingSearch] = useState('');
-  const [listingView, setListingView] = useState<'all' | 'pending' | 'payments'>(() => {
+  const [listingView, setListingView] = useState<'all' | 'pending' | 'payments' | 'bills'>(() => {
     const requestedView = searchParams.get('view');
-    if (requestedView === 'payments' || requestedView === 'pending' || requestedView === 'all') {
+    if (requestedView === 'payments' || requestedView === 'pending' || requestedView === 'all' || requestedView === 'bills') {
       return requestedView;
     }
     return 'all';
@@ -1989,32 +1990,50 @@ export default function PartnerListingsPage() {
             ) : null}
 
             {canVerifyPayment ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setListingView('payments');
-                  setCurrentPage(1);
-                  if (user?.id) {
-                    localStorage.setItem(`cleared_listings_payments_${user.id}`, pendingPaymentVerificationsCount.toString());
-                    window.dispatchEvent(new CustomEvent('badge_refresh'));
-                  }
-                }}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'payments'
-                    ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
-                    : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
-                  }`}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <ReceiptText className="h-4 w-4" />
-                  <span>Payment Verification ({pendingPaymentVerificationsCount})</span>
-                  {pendingPaymentVerificationsCount > clearedPaymentsCount ? (
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                    </span>
-                  ) : null}
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListingView('payments');
+                    setCurrentPage(1);
+                    if (user?.id) {
+                      localStorage.setItem(`cleared_listings_payments_${user.id}`, pendingPaymentVerificationsCount.toString());
+                      window.dispatchEvent(new CustomEvent('badge_refresh'));
+                    }
+                  }}
+                  className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'payments'
+                      ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
+                      : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
+                    }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <ReceiptText className="h-4 w-4" />
+                    <span>Payment Verification ({pendingPaymentVerificationsCount})</span>
+                    {pendingPaymentVerificationsCount > clearedPaymentsCount ? (
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListingView('bills');
+                    setCurrentPage(1);
+                  }}
+                  className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${listingView === 'bills'
+                      ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold'
+                      : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'
+                    }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    <span>Bills</span>
+                  </span>
+                </button>
+              </>
             ) : null}
           </div>
           {canCreate ? (
@@ -2242,6 +2261,10 @@ export default function PartnerListingsPage() {
         {listingView === 'payments' ? (
           <div className="p-4 sm:p-6">
             <ListingPaymentVerificationTable onPendingCountChange={(count) => setPendingPaymentVerificationsCount(count)} />
+          </div>
+        ) : listingView === 'bills' ? (
+          <div className="p-4 sm:p-6">
+            <ListingBillsTable />
           </div>
         ) : loadingListings ? (
           <BrandLoader variant="section" size="sm" bg="light" text="Loading your listings..." />

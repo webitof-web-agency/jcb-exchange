@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Download, Printer, X, FileText, Check, FileCheck, Building2, Sparkles, Hash, Calendar, User, Phone, Mail, CreditCard, MapPin } from 'lucide-react';
+import { Download, X, Check, FileCheck, Building2, Sparkles, Hash, Calendar, User, Phone, Mail, CreditCard, MapPin } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from 'react-toastify';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import type { InvoiceSettings } from './SubscriptionInvoicePDFTemplate';
 
@@ -21,11 +22,50 @@ export type LiveInvoicePaymentData = {
   customerState?: string | null;
 };
 
+export type LiveInvoiceBillPayload = {
+  invoiceNumber: string;
+  invoiceType: 'NON_TAX' | 'TAX_INVOICE';
+  invoiceDate: string;
+  memberName: string;
+  customerMobile: string;
+  customerEmail: string;
+  customerState: string;
+  itemDescription: string;
+  amount: number;
+  customNotes: string;
+  taxType: 'INTRA_STATE' | 'INTER_STATE';
+  gstRate: number;
+  invoiceSettings?: InvoiceSettings;
+  logoUrl?: string;
+};
+
+export type SavedListingBill = {
+  id: string;
+  paymentId: string;
+  billType: 'NON_TAX' | 'TAX_INVOICE';
+  payload: LiveInvoiceBillPayload;
+  createdAt: string;
+  updatedAt: string;
+  payment?: {
+    id: string;
+    amount: number;
+    submittedAt: string;
+    transactionRef?: string | null;
+    method?: string;
+    status?: string;
+    buyer?: { name?: string | null; mobile?: string | null; email?: string | null; city?: string | null; state?: string | null } | null;
+    partner?: { name?: string | null; mobile?: string | null; email?: string | null } | null;
+    listing?: { id?: string; title?: string } | null;
+  } | null;
+};
+
 export type LiveInvoiceEditorModalProps = {
   isOpen: boolean;
   onClose: () => void;
   payment: LiveInvoicePaymentData | null;
   initialType?: 'NON_TAX' | 'TAX_INVOICE';
+  savedBill?: SavedListingBill | null;
+  onSaved?: (bill: SavedListingBill) => void;
 };
 
 const numberToWordsInr = (num: number): string => {
@@ -69,6 +109,8 @@ export default function LiveInvoiceEditorModal({
   onClose,
   payment,
   initialType = 'NON_TAX',
+  savedBill = null,
+  onSaved,
 }: LiveInvoiceEditorModalProps) {
   const [invoiceType, setInvoiceType] = useState<'NON_TAX' | 'TAX_INVOICE'>(initialType);
   const [taxType, setTaxType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
@@ -93,69 +135,40 @@ export default function LiveInvoiceEditorModal({
   const [itemDescription, setItemDescription] = useState('');
   const [amountInput, setAmountInput] = useState<string>('0');
   const [gstRate, setGstRate] = useState<number>(18);
-  const [customNotes, setCustomNotes] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const activeSavedBill = savedBill;
 
   useEffect(() => {
-    if (payment) {
-      // Check if there is an existing saved invoice in localStorage
-      let savedData: {
-        invoiceNumber?: string;
-        invoiceType?: 'NON_TAX' | 'TAX_INVOICE';
-        invoiceDate?: string;
-        memberName?: string;
-        customerMobile?: string;
-        customerEmail?: string;
-        customerState?: string;
-        itemDescription?: string;
-        amount?: number;
-        customNotes?: string;
-        taxType?: 'INTRA_STATE' | 'INTER_STATE';
-      } | null = null;
-
-      try {
-        const stored = localStorage.getItem(`jcb_invoice_${payment.id}`);
-        if (stored) {
-          savedData = JSON.parse(stored);
-        }
-      } catch (e) {
-        console.warn('Could not read saved invoice:', e);
-      }
-
+    if (!isOpen || !payment) return;
+    const timer = window.setTimeout(() => {
+      const savedData: Partial<LiveInvoiceBillPayload> | null = activeSavedBill?.payload || null;
+      const selectedType = savedData?.invoiceType || initialType;
       const dt = payment.submittedAt ? new Date(payment.submittedAt) : new Date();
       const dateStr = dt.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const rawNum = payment.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
 
-      if (savedData) {
-        if (savedData.invoiceType) setInvoiceType(savedData.invoiceType);
-        if (savedData.taxType) setTaxType(savedData.taxType);
-        setInvoiceNumber(savedData.invoiceNumber || (invoiceType === 'TAX_INVOICE' ? `TAX-${rawNum}` : `BILL-${rawNum}`));
-        setInvoiceDate(savedData.invoiceDate || dateStr);
-        setMemberName(savedData.memberName || payment.memberName || 'Customer');
-        setCustomerMobile(savedData.customerMobile || payment.customerMobile || '');
-        setCustomerEmail(savedData.customerEmail || payment.customerEmail || '');
-        setCustomerState(savedData.customerState || payment.customerState || invoiceSettings.state || 'Maharashtra');
-        setItemDescription(savedData.itemDescription || payment.planName || 'Listing / Subscription Charge');
-        setAmountInput(savedData.amount !== undefined ? savedData.amount.toString() : (payment.amount || 0).toString());
-        setCustomNotes(savedData.customNotes || (invoiceType === 'NON_TAX' ? 'This is an official payment bill/receipt. No GST or tax is charged.' : 'This is an official Tax Invoice issued under GST regulations.'));
-      } else {
-        setInvoiceNumber(invoiceType === 'TAX_INVOICE' ? `TAX-${rawNum}` : `BILL-${rawNum}`);
-        setInvoiceDate(dateStr);
-        setMemberName(payment.memberName || 'Customer');
-        setCustomerMobile(payment.customerMobile || '');
-        setCustomerEmail(payment.customerEmail || '');
-        setCustomerState(payment.customerState || invoiceSettings.state || 'Maharashtra');
-        setItemDescription(payment.planName || 'Listing / Subscription Charge');
-        setAmountInput((payment.amount || 0).toString());
-        setCustomNotes(
-          invoiceType === 'NON_TAX'
-            ? 'This is an official payment bill/receipt. No GST or tax is charged.'
-            : 'This is an official Tax Invoice issued under GST regulations.'
-        );
-      }
-    }
-  }, [payment, invoiceType, invoiceSettings.state]);
+      setInvoiceType(selectedType);
+      setTaxType(savedData?.taxType || 'INTRA_STATE');
+      setInvoiceNumber(savedData?.invoiceNumber || (selectedType === 'TAX_INVOICE' ? `TAX-${rawNum}` : `BILL-${rawNum}`));
+      setInvoiceDate(savedData?.invoiceDate || dateStr);
+      setMemberName(savedData?.memberName || payment.memberName || 'Customer');
+      setCustomerMobile(savedData?.customerMobile || payment.customerMobile || '');
+      setCustomerEmail(savedData?.customerEmail || payment.customerEmail || '');
+      setCustomerState(savedData?.customerState || payment.customerState || 'Maharashtra');
+      setItemDescription(savedData?.itemDescription || payment.planName || 'Listing / Subscription Charge');
+      setAmountInput(savedData?.amount !== undefined ? String(savedData.amount) : String(payment.amount || 0));
+      setGstRate(savedData?.gstRate !== undefined ? Number(savedData.gstRate) : 18);
+      if (savedData?.invoiceSettings) setInvoiceSettings(savedData.invoiceSettings);
+      if (savedData?.logoUrl) setLogoUrl(savedData.logoUrl);
+    setSavedSuccess(false);
+      setSaveError(null);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [isOpen, payment, activeSavedBill, initialType]);
 
   // Fetch Company Settings & Settings Logo (dark logo / site logo)
   useEffect(() => {
@@ -202,12 +215,12 @@ export default function LiveInvoiceEditorModal({
             city: res.data.companyInvoice.city || 'Mumbai',
             termsAndConditions: res.data.companyInvoice.termsAndConditions || 'Computer generated invoice.',
           });
-          if (res.data.companyInvoice.defaultGstRate !== undefined) {
+          if (res.data.companyInvoice.defaultGstRate !== undefined && !activeSavedBill?.payload?.gstRate) {
             setGstRate(Number(res.data.companyInvoice.defaultGstRate));
           }
         }
 
-        if (!rawLogo && (res.data?.darkLogo || res.data?.siteLogo)) {
+        if (!rawLogo && !activeSavedBill?.payload?.logoUrl && (res.data?.darkLogo || res.data?.siteLogo)) {
           const settingsLogo = getAbsoluteFileUrl(res.data?.darkLogo || res.data?.siteLogo);
           if (settingsLogo && isMounted) {
             setLogoUrl(settingsLogo);
@@ -225,7 +238,7 @@ export default function LiveInvoiceEditorModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen]);
+  }, [isOpen, activeSavedBill]);
 
   if (!isOpen || !payment) return null;
 
@@ -264,7 +277,7 @@ export default function LiveInvoiceEditorModal({
             formattedDate={invoiceDate}
             invoiceTitle="BILL / PAYMENT RECEIPT"
             itemDescription={itemDescription}
-            notes={customNotes}
+            notes={invoiceSettings.termsAndConditions || undefined}
           />
         ).toBlob();
 
@@ -319,13 +332,8 @@ export default function LiveInvoiceEditorModal({
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleSave = () => {
-    const savedRecord = {
-      paymentId: payment.id,
+  const handleSave = async () => {
+    const payload: LiveInvoiceBillPayload = {
       invoiceNumber,
       invoiceType,
       taxType,
@@ -336,20 +344,33 @@ export default function LiveInvoiceEditorModal({
       customerState,
       itemDescription,
       amount: numericAmount,
-      customNotes,
-      savedAt: new Date().toISOString(),
+      customNotes: invoiceSettings.termsAndConditions || '',
+      gstRate,
+      invoiceSettings,
+      logoUrl,
     };
 
+    setSaving(true);
+    setSaveError(null);
     try {
-      localStorage.setItem(`jcb_invoice_${payment.id}`, JSON.stringify(savedRecord));
-    } catch (e) {
-      console.warn('Failed to store invoice locally:', e);
+      const sameTypeBill = activeSavedBill?.payload?.invoiceType === invoiceType ? activeSavedBill : null;
+      const response = await api.post<{ bill: SavedListingBill }>('/superadmin/listing-bills', {
+        paymentId: payment.id,
+        billId: sameTypeBill?.id,
+        payload,
+      });
+      onSaved?.(response.data.bill);
+      toast.success(response.data.bill.billType === 'TAX_INVOICE' ? 'Tax invoice saved successfully.' : 'Non-tax bill saved successfully.');
+      setSavedSuccess(true);
+      window.setTimeout(() => setSavedSuccess(false), 3500);
+    } catch (error) {
+      console.error('Failed to save bill:', error);
+      const message = 'Bill save failed. Please try again.';
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
     }
-
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-    }, 3500);
   };
 
   return (
@@ -406,10 +427,11 @@ export default function LiveInvoiceEditorModal({
           <button
             type="button"
             onClick={handleSave}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-amber-500 cursor-pointer shadow-sm"
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-amber-500 disabled:opacity-60 cursor-pointer shadow-sm"
           >
             <Check className="h-4 w-4" />
-            <span>Save Invoice</span>
+            <span>{saving ? 'Saving...' : 'Save Bill'}</span>
           </button>
 
           <button
@@ -424,15 +446,6 @@ export default function LiveInvoiceEditorModal({
 
           <button
             type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 px-3.5 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-          >
-            <Printer className="h-4 w-4" />
-            <span>Print</span>
-          </button>
-
-          <button
-            type="button"
             onClick={onClose}
             className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white cursor-pointer ml-2"
           >
@@ -440,6 +453,12 @@ export default function LiveInvoiceEditorModal({
           </button>
         </div>
       </div>
+
+      {saveError ? (
+        <div className="shrink-0 border-b border-red-400/30 bg-red-950/80 px-6 py-2 text-center text-xs font-semibold text-red-200 print:hidden">
+          {saveError}
+        </div>
+      ) : null}
 
       {/* ── Main Workspace Scrollable Area ── */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-slate-900/60 [scrollbar-width:thin]">
@@ -689,17 +708,17 @@ export default function LiveInvoiceEditorModal({
             </div>
           </div>
 
-          {/* Section 5: Terms & Notes */}
+          {/* Section 5: Terms & Conditions from Platform Settings */}
           <div className="rounded-xl border border-slate-200 p-4 bg-white">
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Terms &amp; Notes (Editable)
+              Terms &amp; Conditions (From Settings)
             </label>
-            <textarea
-              rows={2}
-              value={customNotes}
-              onChange={(e) => setCustomNotes(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-700 outline-none focus:bg-white focus:border-amber-400"
-            />
+            <div
+              className="min-h-14 whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-700"
+              aria-readonly="true"
+            >
+              {invoiceSettings.termsAndConditions || 'Terms & Conditions are not configured in Settings.'}
+            </div>
           </div>
 
           <div className="mt-6 text-center text-[10px] text-slate-400 pt-4 border-t border-slate-100">

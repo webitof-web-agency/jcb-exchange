@@ -3,7 +3,7 @@
 'use client';
 
 import { ComponentType, FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Car, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, FileText, Filter, MoreVertical, Phone, Plus, RefreshCw, Search, Trash2, X, Pencil } from 'lucide-react';
+import { AlertTriangle, Car, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, FileText, Filter, Loader2, Mail, MapPin, MoreVertical, Phone, Plus, RefreshCw, Search, Trash2, X, Pencil } from 'lucide-react';
 import api from '@/lib/api';
 import { getAccountCreatePermissions, getAccountDeletePermissions, getAccountExportPermission, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
 import { buildPaginationItems } from '@/lib/paginationUtils';
@@ -11,6 +11,7 @@ import { hasAnyPermission } from '@/lib/permissionUtils';
 import { downloadTableFile } from '@/lib/tabularExport';
 import { isAuthReady } from '@/lib/authHydration';
 import BrandLoader from '@/components/ui/BrandLoader';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { filterSelectOptions, getInitialTermsAccepted, getRtoStatusOptions, getValidityOptions, normalizeRemark, normalizeRtoStatus, normalizeValidityForEdit } from '@/lib/rtoWorkStatusForm.mjs';
@@ -25,7 +26,7 @@ type HirePurchase = 'PENDING' | 'ACTIVE' | 'TERMINATED' | 'NOT_APPLICABLE';
 
 type RtoRecord = {
   id: string;
-  customerName: string; customerNumber: string; vehicleNumber: string; vehicleType: string; vehicleModel: string;
+  customerName: string; customerNumber: string; vehicleNumber: string; brandName: string; vehicleType: string; vehicleModel: string;
   hirePurchaseStatus: HirePurchase; taxStatus: Validity; taxValidUntil: string | null;
   fitnessStatus: Validity; fitnessValidUntil: string | null; insuranceStatus: Validity; insuranceValidUntil: string | null;
   pucStatus: Validity; pucValidUntil: string | null; hsrpStatus: HsrpStatus;
@@ -43,7 +44,7 @@ type StatusConfig = { label: string; bg: string; text: string; border: string; i
 type ExportFormat = 'csv' | 'xls';
 
 const emptyForm: FormState = {
-  customerName: '', customerNumber: '', vehicleNumber: '', vehicleType: '', vehicleModel: '', hirePurchaseStatus: 'PENDING',
+  customerName: '', customerNumber: '', vehicleNumber: '', brandName: '', vehicleType: '', vehicleModel: '', hirePurchaseStatus: 'PENDING',
   taxStatus: 'VALID', taxValidUntil: null, fitnessStatus: 'VALID', fitnessValidUntil: null,
   insuranceStatus: 'VALID', insuranceValidUntil: null, pucStatus: 'VALID', pucValidUntil: null,
   hsrpStatus: 'NO', sellerName: '', sellerNumber: '', purchaserName: '', purchaserNumber: '', rtoOffice: '',
@@ -151,8 +152,10 @@ export default function RTOWorkStatusPage() {
   const [states, setStates] = useState<Option[]>([]);
   const [cities, setCities] = useState<Option[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -187,6 +190,18 @@ export default function RTOWorkStatusPage() {
       const response = await api.get('/recruitment/admin/rto-records');
       setRecords((response.data?.records || []).map((record: RtoRecord) => ({ ...record, rtoStatus: normalizeRtoStatus(record.rtoStatus) as Status })));
     } catch { setError('Unable to load RTO records.'); } finally { setLoading(false); }
+  }, [hasHydrated, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthReady(hasHydrated, isAuthenticated)) return;
+
+    const loadBrands = async () => {
+      try {
+        const response = await api.get('/master/brands');
+        setBrands((response.data?.data || []).filter((item: { id?: string; name?: string }) => item.id && item.name));
+      } catch { setError('Unable to load vehicle brands.'); }
+    };
+    void loadBrands();
   }, [hasHydrated, isAuthenticated]);
 
   useEffect(() => { void loadRecords(); }, [loadRecords]);
@@ -237,8 +252,9 @@ export default function RTOWorkStatusPage() {
     const query = search.toLowerCase().trim();
     const matchesSearch = !query || [
       record.customerName, record.customerNumber, record.vehicleNumber, record.vehicleType, record.vehicleModel,
+      record.brandName,
       record.sellerName, record.sellerNumber, record.purchaserName, record.purchaserNumber, record.rtoOffice, record.rtoAgentName,
-    ].some((value) => value.toLowerCase().includes(query));
+    ].some((value) => String(value || '').toLowerCase().includes(query));
     return matchesSearch && (statusFilter === 'ALL' || record.rtoStatus === statusFilter);
   }), [records, search, statusFilter]);
 
@@ -246,6 +262,7 @@ export default function RTOWorkStatusPage() {
     { header: 'Customer Name', value: (record: RtoRecord) => record.customerName },
     { header: 'Customer Number', value: (record: RtoRecord) => record.customerNumber },
     { header: 'Vehicle Number', value: (record: RtoRecord) => vehicleNumberDisplay(record.vehicleNumber) },
+    { header: 'Brand', value: (record: RtoRecord) => record.brandName },
     { header: 'Vehicle Type', value: (record: RtoRecord) => record.vehicleType },
     { header: 'Vehicle Model', value: (record: RtoRecord) => record.vehicleModel },
     { header: 'Vehicle Maintenance Cost', value: (record: RtoRecord) => record.vehicleMaintenanceCost },
@@ -313,7 +330,7 @@ export default function RTOWorkStatusPage() {
   const openCreate = () => { if (!canCreateRto) return; setEditingId(null); setForm(emptyForm); setRtoExpensesInput(''); setCities([]); setError(''); setTermsAccepted(getInitialTermsAccepted('create')); setModalOpen(true); };
   const openEdit = useCallback(async (record: RtoRecord) => {
     if (!canUpdateRto) return;
-    setEditingId(record.id); setForm({ ...record, rtoStatus: normalizeRtoStatus(record.rtoStatus) as Status, taxStatus: normalizeValidityForEdit(record.taxStatus) as Validity, fitnessStatus: normalizeValidityForEdit(record.fitnessStatus) as Validity, insuranceStatus: normalizeValidityForEdit(record.insuranceStatus) as Validity, pucStatus: normalizeValidityForEdit(record.pucStatus) as Validity, hsrpStatus: record.hsrpStatus === 'YES' ? 'YES' : 'NO', noteSheet: normalizeRemark(record.noteSheet) }); setRtoExpensesInput(toEditableAmount(record.rtoExpenses)); setError(''); setTermsAccepted(getInitialTermsAccepted('edit')); setModalOpen(true);
+    setEditingId(record.id); setForm({ ...record, brandName: record.brandName || '', rtoStatus: normalizeRtoStatus(record.rtoStatus) as Status, taxStatus: normalizeValidityForEdit(record.taxStatus) as Validity, fitnessStatus: normalizeValidityForEdit(record.fitnessStatus) as Validity, insuranceStatus: normalizeValidityForEdit(record.insuranceStatus) as Validity, pucStatus: normalizeValidityForEdit(record.pucStatus) as Validity, hsrpStatus: record.hsrpStatus === 'YES' ? 'YES' : 'NO', noteSheet: normalizeRemark(record.noteSheet) }); setRtoExpensesInput(toEditableAmount(record.rtoExpenses)); setError(''); setTermsAccepted(getInitialTermsAccepted('edit')); setModalOpen(true);
     const state = states.find((item) => item.name.toLowerCase() === (record.rtoAgentState || '').toLowerCase());
     if (state) {
       try {
@@ -352,7 +369,7 @@ export default function RTOWorkStatusPage() {
       setError(message); toast.error(message);
       return;
     }
-    if (!form.customerName || !form.vehicleNumber || !form.vehicleType || !form.vehicleModel || !form.sellerName || !form.purchaserName || !form.rtoOffice || !form.rtoAgentName || !form.rtoAgentState || !form.rtoAgentCity) {
+    if (!form.customerName || !form.vehicleNumber || !form.brandName || !form.vehicleType || !form.vehicleModel || !form.sellerName || !form.purchaserName || !form.rtoOffice || !form.rtoAgentName || !form.rtoAgentState || !form.rtoAgentCity) {
       const message = 'Please fill all required fields.';
       setError(message); toast.error(message); return;
     }
@@ -403,7 +420,7 @@ export default function RTOWorkStatusPage() {
     const StatusIcon = config.icon;
     return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 ${config.bg} ${config.text} ${config.border}`}><StatusIcon className="h-3.5 w-3.5" />{config.label}</span>;
   };
-  const columns = ['CUSTOMER NAME', 'CUSTOMER NUMBER', 'VEHICLE NUMBER', 'VEHICLE TYPE', 'VEHICLE MODAL', 'HIRE PURCHASE', 'TAX VALIDITY', 'FITNESS VALIDITY', 'INSURANCE VALIDITY', 'PUC VALIDITY', 'HSRP VALID', 'SELLER NAME', 'SELLER NUMBER', 'PURCHESER NAME', 'PURCHESER NUMBER', 'RTO AGENT NAME LOCATION', 'RTO AGENT NUMBER', 'RTO EXPENSES', 'RTO EXPENSES ADVANCE', 'RTO EXPENSES BALANCE', 'DOCUMENT SEND DATE', 'RTO STATUS', 'NOTE SHEET'];
+  const columns = ['CUSTOMER NAME', 'CUSTOMER NUMBER', 'VEHICLE NUMBER', 'VEHICLE TYPE', 'VEHICLE MODEL', 'HIRE PURCHASE', 'TAX VALIDITY', 'FITNESS VALIDITY', 'INSURANCE VALIDITY', 'PUC VALIDITY', 'HSRP VALID', 'SELLER NAME', 'SELLER NUMBER', 'PURCHESER NAME', 'PURCHESER NUMBER', 'RTO AGENT NAME LOCATION', 'RTO AGENT NUMBER', 'RTO EXPENSES', 'RTO EXPENSES ADVANCE', 'RTO EXPENSES BALANCE', 'DOCUMENT SEND DATE', 'RTO STATUS', 'NOTE SHEET'];
 
   return <div className="space-y-4">
     {error && !modalOpen ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
@@ -456,7 +473,7 @@ export default function RTOWorkStatusPage() {
                 const isNearBottom = currentRecords.length > 3 && idx >= currentRecords.length - 2;
                 return (
                   <tr key={record.id} onClick={() => router.push(`${accountBasePath}/${record.id}`)} className="cursor-pointer transition-colors hover:bg-gray-50/80">
-                    <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
+                    <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.brandName ? `${record.brandName} · ` : ''}{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[130px] truncate" title={record.customerName}>{record.customerName}</p>{phoneLink(record.customerNumber)}</td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.sellerName}>{record.sellerName}</p>{phoneLink(record.sellerNumber)}</td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.purchaserName}>{record.purchaserName}</p>{phoneLink(record.purchaserNumber)}</td>
@@ -546,7 +563,7 @@ export default function RTOWorkStatusPage() {
 
     {modalOpen ? <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"><div className="mx-auto my-4 max-w-6xl rounded-2xl bg-white shadow-xl"><div className="flex items-center justify-between border-b border-gray-100 p-5"><div><h2 className="text-xl font-bold text-gray-900">{editingId ? 'Edit RTO Record' : 'Add RTO Record'}</h2><p className="text-xs text-gray-500">All fields match the RTO work status sheet.</p></div><button onClick={() => setModalOpen(false)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><form onSubmit={save} className="space-y-6 p-5">
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Vehicle Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field></div></section>
+      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Vehicle Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field><Field label="Brand *"><SearchableSelect options={brands} value={form.brandName} displayValue={form.brandName} onChange={(option) => update('brandName', option.name)} placeholder="Select vehicle brand" className="w-full" /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={getValidityOptions(form[statusKey], statusKey === 'taxStatus')} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (nextStatus !== 'VALID' && nextStatus !== 'EXPIRED') update(dateKey, null); }} />{(form[statusKey] === 'VALID' || form[statusKey] === 'EXPIRED') ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid *"><StyledSelect value={form.hsrpStatus} options={(['YES', 'NO'] as HsrpStatus[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hsrpStatus', value as HsrpStatus)} /></Field><Field label="RTO Status *"><StyledSelect value={form.rtoStatus} options={getRtoStatusOptions()} onChange={(value) => update('rtoStatus', normalizeRtoStatus(value) as Status)} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Seller, Purchaser & RTO Agent</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Seller Name *"><input className={inputClass} value={form.sellerName} onChange={(e) => update('sellerName', e.target.value.toUpperCase())} /></Field><Field label="Seller Number"><input className={inputClass} inputMode="numeric" value={form.sellerNumber} onChange={(e) => update('sellerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Purcheser Name *"><input className={inputClass} value={form.purchaserName} onChange={(e) => update('purchaserName', e.target.value.toUpperCase())} /></Field><Field label="Purcheser Number"><input className={inputClass} inputMode="numeric" value={form.purchaserNumber} onChange={(e) => update('purchaserNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="RTO Office *"><input className={inputClass} value={form.rtoOffice} onChange={(e) => update('rtoOffice', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent Name *"><input className={inputClass} value={form.rtoAgentName} onChange={(e) => update('rtoAgentName', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent State *"><StyledSelect searchable value={form.rtoAgentState} placeholder="Select state" options={[{ value: '', label: 'Select state' }, ...states.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => void changeState(value)} /></Field><Field label="RTO Agent City *"><StyledSelect searchable value={form.rtoAgentCity} placeholder="Select city" disabled={!form.rtoAgentState} options={[{ value: '', label: 'Select city' }, ...cities.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('rtoAgentCity', value)} /></Field><Field label="RTO Agent Number"><input className={inputClass} inputMode="numeric" value={form.rtoAgentNumber} onChange={(e) => update('rtoAgentNumber', e.target.value.replace(/\D/g, ''))} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">RTO Expense</h3><div className="grid gap-4 md:grid-cols-3"><Field label="RTO Expenses (₹) *"><input className={inputClass} type="text" min="0" step="0.01" inputMode="decimal" placeholder="0" value={rtoExpensesInput} onChange={(e) => updateRtoExpenses(e.target.value)} /></Field></div><p className="mt-2 text-xs text-gray-500">Enter the total RTO expense as a non-negative number.</p></section>
@@ -561,15 +578,13 @@ export default function RTOWorkStatusPage() {
           />
           <span className="text-xs font-medium text-gray-700 leading-relaxed">
             I hereby confirm that all submitted customer, vehicle, and RTO details are accurate and verified. I agree to the{' '}
-            <a
-              href="/terms-and-conditions"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="font-bold text-amber-800 underline decoration-amber-500 underline-offset-2 hover:text-amber-900"
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setTermsModalOpen(true); }}
+              className="font-bold text-amber-800 underline decoration-amber-500 underline-offset-2 hover:text-amber-900 cursor-pointer"
             >
-              Terms & Conditions
-            </a>
+              Terms &amp; Conditions
+            </button>
             {' '}and official compliance rules for managing RTO records.
           </span>
         </label>
@@ -579,5 +594,154 @@ export default function RTOWorkStatusPage() {
         <button disabled={!termsAccepted || saving} type="submit" className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-gray-950 hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50 transition">{saving ? 'Saving...' : editingId ? 'Update Record' : 'Save Record'}</button>
       </div>
     </form></div></div> : null}
+
+    {termsModalOpen ? <TermsModal onClose={() => setTermsModalOpen(false)} /> : null}
   </div>;
+}
+
+// ─── Terms & Conditions Modal ────────────────────────────────────────────────
+// Dynamically fetches content from /master/footer API (legalPages.termsConditions)
+// Same source as the frontend /terms-and-conditions page (LegalPageContent).
+// Falls back to a platform-specific default when nothing has been configured yet.
+
+function TermsModal({ onClose }: { onClose: () => void }) {
+  const [customHtml, setCustomHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchContent = async () => {
+      try {
+        const response = await api.get('/master/footer');
+        if (!active) return;
+        const html = response.data?.data?.legalPages?.termsConditions;
+        if (typeof html === 'string' && html.trim().length > 10) {
+          setCustomHtml(html.trim());
+        }
+      } catch {
+        // Network error — show fallback below
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchContent();
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Sticky Header ── */}
+        <div className="flex shrink-0 items-center justify-between border-b border-amber-100 bg-white px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100">
+              <FileText className="h-5 w-5 text-amber-700" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Terms &amp; Conditions</h2>
+              <p className="text-xs text-gray-500">JCB Exchange Platform Agreement</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+            aria-label="Close Terms and Conditions"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* ── Scrollable Content ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+              <p className="mt-3 text-xs font-semibold text-gray-500">Loading Terms &amp; Conditions…</p>
+            </div>
+          ) : customHtml ? (
+            /* Dynamic HTML saved by admin via Footer Content Settings */
+            <div
+              className="prose max-w-none text-sm leading-relaxed text-gray-700 sm:text-base prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:font-semibold prose-a:text-amber-700 prose-a:underline hover:prose-a:text-amber-800 prose-strong:text-gray-900 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1"
+              dangerouslySetInnerHTML={{ __html: customHtml }}
+            />
+          ) : (
+            /* Default fallback when no content is configured yet */
+            <div className="space-y-6 text-sm leading-relaxed text-gray-700">
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-gray-900">1. Acceptance of Terms &amp; Platform Guidelines</h3>
+                <p>
+                  By accessing JCB Exchange, managing vehicle listings, or updating RTO records, you agree to
+                  comply with all terms and conditions set forth herein. If you do not agree with any part of
+                  these terms, you must refrain from using the platform.
+                </p>
+                <ul className="list-disc space-y-2 pl-5 text-gray-600">
+                  <li>All submitted vehicle and customer records must be accurate and legally verified.</li>
+                  <li>Authorized employees and partner dealers must maintain strict confidentiality of user data.</li>
+                </ul>
+              </section>
+
+              <hr className="border-gray-100" />
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-gray-900">2. RTO Record Management &amp; Accuracy</h3>
+                <p>
+                  Users and administrative operators updating RTO Work Status records certify that all tax
+                  validity, fitness certificates, insurance details, and hire purchase agreements conform to
+                  official regional transport office standards in India.
+                </p>
+              </section>
+
+              <hr className="border-gray-100" />
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-gray-900">3. Compliance &amp; Legal Verification</h3>
+                <p>
+                  Misrepresentation of machinery serial numbers, engine details, ownership documents, or
+                  fraudulent financial advances will lead to immediate record revocation and legal review under
+                  applicable Indian commerce and transport laws.
+                </p>
+              </section>
+
+              <hr className="border-gray-100" />
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-gray-900">4. Support &amp; Regulatory Contact</h3>
+                <div className="mt-2 space-y-2 rounded-xl border border-gray-200/80 bg-gray-50 p-4 text-xs text-gray-700">
+                  <p className="font-bold text-gray-900">JCB Exchange Official Operations</p>
+                  <p className="flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    Plot No. 3033, Currency Tower, Raipur, Chhattisgarh, India
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <a href="mailto:jcbexchange@gmail.com" className="font-semibold text-amber-700 underline hover:text-amber-800">
+                      jcbexchange@gmail.com
+                    </a>
+                  </p>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+
+        {/* ── Sticky Footer ── */}
+        <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gray-950 transition hover:bg-amber-600"
+          >
+            I Understand — Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

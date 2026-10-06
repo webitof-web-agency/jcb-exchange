@@ -60,6 +60,7 @@ import {
 import { requireAuth, requireSuperAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
+import { deleteListingBill, getListingBills, saveListingBill } from '../controllers/listingBill.controller';
 
 const router = Router();
 
@@ -126,6 +127,9 @@ const canVerifyListingPayment = requireSuperAdminOrEmployeePermissions(['listing
 router.get('/listing-payments', canVerifyListingPayment, getListingPaymentSubmissions);
 router.get('/listing-payments/:id', canVerifyListingPayment, getListingPaymentSubmissionById);
 router.patch('/listing-payments/:id/status', canVerifyListingPayment, updateListingPaymentSubmissionStatus);
+router.get('/listing-bills', canVerifyListingPayment, getListingBills);
+router.post('/listing-bills', canVerifyListingPayment, saveListingBill);
+router.delete('/listing-bills/:id', canVerifyListingPayment, deleteListingBill);
 router.get('/users', canViewUsers, getAdminUsers);
 router.get('/partners', canViewPartners, getAdminPartners);
 router.get('/visitors', canViewVisitors, getCustomerVisitors);
