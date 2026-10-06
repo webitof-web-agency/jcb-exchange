@@ -169,6 +169,7 @@ enum CustomerPrimeSubscriptionStatus {
   EXPIRED
   CANCELLED
 }
+
 enum ListingPaymentMethod {
   RTGS
   RAZORPAY
@@ -186,6 +187,41 @@ enum ListingPaymentStatus {
 enum ListingBillType {
   NON_TAX
   TAX_INVOICE
+}
+
+enum FinanceTransactionType {
+  DEBIT
+  CREDIT
+  TRANSFER
+}
+
+enum FinancePaymentMethod {
+  CASH
+  UPI
+  NEFT
+  RTGS
+  IMPS
+  BANK_TRANSFER
+  DEBIT_CARD
+  CREDIT_CARD
+  CHEQUE
+  OTHER
+}
+
+enum FinanceTransactionSource {
+  MANUAL
+  IMPORT
+}
+
+enum FinanceTransactionStatus {
+  POSTED
+  VOIDED
+}
+
+enum FinanceImportStatus {
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
 }
 
 enum WhatsAppMessageStatus {
@@ -280,45 +316,45 @@ model User {
   fcmToken         String?
   pushSubscription Json?
 
-  createdBy          User?                @relation("UserCreation", fields: [createdById], references: [id])
-  createdUsers       User[]               @relation("UserCreation")
-  adminProfile       AdminProfile?
-  adminPermissions   AdminPermission[]
-  customRole         CustomRole?          @relation("UserCustomRole", fields: [customRoleId], references: [id])
-  partnerProfile     PartnerProfile?
-  teamMemberships    PartnerTeamMember[]
-  listings           Listing[]
-  leads              Lead[]               @relation("CustomerLeads")
-  assignedLeads      Lead[]               @relation("DealerLeads")
-  reviewedKycDocs    KycDocument[]        @relation("KycReviewer")
-  kycReviewActions   KycReviewLog[]       @relation("KycReviewActor")
-  verifiedDeposits   PartnerDeposit[]     @relation("DepositVerifier")
-  acceptedAgreements PartnerAgreement[]   @relation("AgreementAcceptor")
-  approvedPartners   PartnerProfile[]     @relation("PartnerApprover")
-  customerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeSubscriptions")
+  createdBy                          User?                       @relation("UserCreation", fields: [createdById], references: [id])
+  createdUsers                       User[]                      @relation("UserCreation")
+  adminProfile                       AdminProfile?
+  adminPermissions                   AdminPermission[]
+  customRole                         CustomRole?                 @relation("UserCustomRole", fields: [customRoleId], references: [id])
+  partnerProfile                     PartnerProfile?
+  teamMemberships                    PartnerTeamMember[]
+  listings                           Listing[]
+  leads                              Lead[]                      @relation("CustomerLeads")
+  assignedLeads                      Lead[]                      @relation("DealerLeads")
+  reviewedKycDocs                    KycDocument[]               @relation("KycReviewer")
+  kycReviewActions                   KycReviewLog[]              @relation("KycReviewActor")
+  verifiedDeposits                   PartnerDeposit[]            @relation("DepositVerifier")
+  acceptedAgreements                 PartnerAgreement[]          @relation("AgreementAcceptor")
+  approvedPartners                   PartnerProfile[]            @relation("PartnerApprover")
+  customerPrimeSubscriptions         CustomerPrimeSubscription[] @relation("CustomerPrimeSubscriptions")
   approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeApprover")
   rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeRejector")
-  listingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentBuyer")
-  listingPaymentSellerSubmissions ListingPaymentSubmission[] @relation("ListingPaymentSeller")
-  reviewedListingPaymentSubmissions ListingPaymentSubmission[] @relation("ListingPaymentReviewer")
-  createdListingBills ListingBill[] @relation("ListingBillCreator")
-  auditLogs          AuditLog[]           @relation("AuditActor")
-  leadActivities     LeadActivity[]       @relation("LeadActivityActor")
-  notifications      Notification[]
-  createdJobs                Job[]                       @relation("JobCreator")
-  assignedApplications       JobApplication[]            @relation("AssignedRecruiter")
-  stageHistoryChanges        ApplicationStageHistory[]   @relation("StageHistoryChanger")
-  authoredCandidateNotes     CandidateNote[]             @relation("CandidateNoteAuthor")
-  submittedCandidateRatings CandidateRating[]            @relation("CandidateRatingEvaluator")
-  scheduledInterviews        Interview[]                 @relation("InterviewScheduler")
-  conductedInterviews        Interview[]                 @relation("Interviewer")
-  submittedInterviewFeedbacks InterviewFeedback[]        @relation("InterviewFeedbackAuthor")
-  createdOffers              Offer[]                     @relation("OfferCreator")
-  recruitmentActivityLogs    RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
-  mobileOtpChallenges        MobileOtpChallenge[]
-  emailOtpChallenges         EmailOtpChallenge[]
-  blogQuestions              BlogQuestion[]       @relation("BlogQuestionAuthor")
-  answeredBlogQuestions      BlogQuestion[]       @relation("BlogQuestionAnswerer")
+  listingPaymentSubmissions          ListingPaymentSubmission[]  @relation("ListingPaymentBuyer")
+  listingPaymentSellerSubmissions    ListingPaymentSubmission[]  @relation("ListingPaymentSeller")
+  reviewedListingPaymentSubmissions  ListingPaymentSubmission[]  @relation("ListingPaymentReviewer")
+  createdListingBills                ListingBill[]               @relation("ListingBillCreator")
+  auditLogs                          AuditLog[]                  @relation("AuditActor")
+  leadActivities                     LeadActivity[]              @relation("LeadActivityActor")
+  notifications                      Notification[]
+  createdJobs                        Job[]                       @relation("JobCreator")
+  assignedApplications               JobApplication[]            @relation("AssignedRecruiter")
+  stageHistoryChanges                ApplicationStageHistory[]   @relation("StageHistoryChanger")
+  authoredCandidateNotes             CandidateNote[]             @relation("CandidateNoteAuthor")
+  submittedCandidateRatings          CandidateRating[]           @relation("CandidateRatingEvaluator")
+  scheduledInterviews                Interview[]                 @relation("InterviewScheduler")
+  conductedInterviews                Interview[]                 @relation("Interviewer")
+  submittedInterviewFeedbacks        InterviewFeedback[]         @relation("InterviewFeedbackAuthor")
+  createdOffers                      Offer[]                     @relation("OfferCreator")
+  recruitmentActivityLogs            RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
+  mobileOtpChallenges                MobileOtpChallenge[]
+  emailOtpChallenges                 EmailOtpChallenge[]
+  blogQuestions                      BlogQuestion[]              @relation("BlogQuestionAuthor")
+  answeredBlogQuestions              BlogQuestion[]              @relation("BlogQuestionAnswerer")
 }
 
 model MobileOtpChallenge {
@@ -340,18 +376,18 @@ model MobileOtpChallenge {
 }
 
 model EmailOtpIntegrationSettings {
-  id                    String   @id @default("default")
-  enabled               Boolean  @default(false)
-  smtpHost              String   @default("smtp.gmail.com")
-  smtpPort              Int      @default(465)
-  smtpSecure            Boolean  @default(true)
-  senderEmail           String?
-  senderName            String   @default("JCB Exchange")
-  encryptedAppPassword  String?  @db.Text
-  otpExpiryMinutes      Int      @default(10)
-  otpLength             Int      @default(6)
-  updatedAt             DateTime @updatedAt
-  updatedByUserId       String?
+  id                   String   @id @default("default")
+  enabled              Boolean  @default(false)
+  smtpHost             String   @default("smtp.gmail.com")
+  smtpPort             Int      @default(465)
+  smtpSecure           Boolean  @default(true)
+  senderEmail          String?
+  senderName           String   @default("JCB Exchange")
+  encryptedAppPassword String?  @db.Text
+  otpExpiryMinutes     Int      @default(10)
+  otpLength            Int      @default(6)
+  updatedAt            DateTime @updatedAt
+  updatedByUserId      String?
 }
 
 model EmailOtpChallenge {
@@ -391,15 +427,15 @@ model CustomRole {
   permissions String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  users       User[]   @relation("UserCustomRole")
+
+  users User[] @relation("UserCustomRole")
 }
 
 model AdminPermission {
-  id          String             @id @default(uuid())
+  id          String   @id @default(uuid())
   adminUserId String
   permission  String
-  createdAt   DateTime           @default(now())
+  createdAt   DateTime @default(now())
 
   adminUser User @relation(fields: [adminUserId], references: [id])
 
@@ -408,48 +444,48 @@ model AdminPermission {
 }
 
 model PartnerProfile {
-  id                String                  @id @default(uuid())
-  userId            String                  @unique
-  ownerName         String?
-  businessName      String?
-  partnerType       PartnerType?
-  businessAddress   String?
-  district          String?
-  pinCode           String?
-  businessExperience String?
-  expectedMonthlyListings Int?
-  listingLimit      Int                     @default(5)
-  referralCode      String?
-  businessDescription String?               @db.Text
-  businessLogoUrl   String?
-  googleMapsLocation String?
-  serviceAreas      String?
-  workingHours      String?
-  alternateMobile   String?
-  websiteUrl        String?
-  socialLinks       String?
-  yearsInBusiness   Int?
-  teamSize          Int?
-  gstNumber         String?
+  id                         String                  @id @default(uuid())
+  userId                     String                  @unique
+  ownerName                  String?
+  businessName               String?
+  partnerType                PartnerType?
+  businessAddress            String?
+  district                   String?
+  pinCode                    String?
+  businessExperience         String?
+  expectedMonthlyListings    Int?
+  listingLimit               Int                     @default(5)
+  referralCode               String?
+  businessDescription        String?                 @db.Text
+  businessLogoUrl            String?
+  googleMapsLocation         String?
+  serviceAreas               String?
+  workingHours               String?
+  alternateMobile            String?
+  websiteUrl                 String?
+  socialLinks                String?
+  yearsInBusiness            Int?
+  teamSize                   Int?
+  gstNumber                  String?
   businessRegistrationNumber String?
-  onboardingStatus  PartnerOnboardingStatus @default(ACCOUNT_CREATED)
-  accountStatus     PartnerAccountStatus    @default(PENDING)
-  kycStatus         KycStatus               @default(NOT_STARTED)
-  depositStatus     DepositStatus           @default(NOT_SUBMITTED)
-  contactPreference String?
-  approvedById      String?
-  approvedAt        DateTime?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  onboardingStatus           PartnerOnboardingStatus @default(ACCOUNT_CREATED)
+  accountStatus              PartnerAccountStatus    @default(PENDING)
+  kycStatus                  KycStatus               @default(NOT_STARTED)
+  depositStatus              DepositStatus           @default(NOT_SUBMITTED)
+  contactPreference          String?
+  approvedById               String?
+  approvedAt                 DateTime?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
 
-  user          User               @relation(fields: [userId], references: [id])
-  approvedBy    User?              @relation("PartnerApprover", fields: [approvedById], references: [id])
-  teamMembers   PartnerTeamMember[]
-  categories    Category[]
-  kycDocuments  KycDocument[]
-  kycReviews    KycReviewLog[]
-  deposits      PartnerDeposit[]
-  agreements    PartnerAgreement[]
+  user         User                @relation(fields: [userId], references: [id])
+  approvedBy   User?               @relation("PartnerApprover", fields: [approvedById], references: [id])
+  teamMembers  PartnerTeamMember[]
+  categories   Category[]
+  kycDocuments KycDocument[]
+  kycReviews   KycReviewLog[]
+  deposits     PartnerDeposit[]
+  agreements   PartnerAgreement[]
 
   @@index([onboardingStatus])
   @@index([accountStatus])
@@ -457,13 +493,13 @@ model PartnerProfile {
 }
 
 model PartnerTeamMember {
-  id               String          @id @default(uuid())
+  id               String           @id @default(uuid())
   partnerProfileId String
   userId           String
   staffRole        PartnerStaffRole
-  isPrimary        Boolean         @default(false)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  isPrimary        Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
   user           User           @relation(fields: [userId], references: [id])
@@ -473,17 +509,17 @@ model PartnerTeamMember {
 }
 
 model CategoryIcon {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  svgData   String     @db.Text
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  svgData   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   categories Category[]
 }
 
 model Category {
-  id               String          @id @default(uuid())
+  id               String  @id @default(uuid())
   partnerProfileId String?
   name             String
   iconId           String?
@@ -492,8 +528,8 @@ model Category {
   icon           CategoryIcon?   @relation(fields: [iconId], references: [id])
   listings       Listing[]
 
-  @@index([partnerProfileId])
   @@unique([partnerProfileId, name])
+  @@index([partnerProfileId])
 }
 
 model Brand {
@@ -512,39 +548,39 @@ model Model {
 }
 
 model Listing {
-  id                String        @id @default(uuid())
-  partnerId         String
-  categoryId        String
-  brandId           String
-  modelId           String
-  title             String
-  price             Decimal
-  isNegotiable      Boolean       @default(false)
-  manufacturingYear Int
-  operatingHours    Int?
-  locationState     String
-  locationCity      String
-  address           String?
-  condition         String?
-  description       String?       @db.Text
-  additionalDescription String?   @db.Text
-  grossPower        String?
-  status            ListingStatus @default(DRAFT)
-  soldAt            DateTime?
-  contactMode       String?
-  views             Int           @default(0)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id                    String        @id @default(uuid())
+  partnerId             String
+  categoryId            String
+  brandId               String
+  modelId               String
+  title                 String
+  price                 Decimal
+  isNegotiable          Boolean       @default(false)
+  manufacturingYear     Int
+  operatingHours        Int?
+  locationState         String
+  locationCity          String
+  address               String?
+  condition             String?
+  description           String?       @db.Text
+  additionalDescription String?       @db.Text
+  grossPower            String?
+  status                ListingStatus @default(DRAFT)
+  soldAt                DateTime?
+  contactMode           String?
+  views                 Int           @default(0)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
-  partner    User        @relation(fields: [partnerId], references: [id])
-  category   Category    @relation(fields: [categoryId], references: [id])
-  brand      Brand       @relation(fields: [brandId], references: [id])
-  model      Model       @relation(fields: [modelId], references: [id])
-  media      Media[]
-  leads      Lead[]
-  saleRecord SaleRecord?
+  partner            User                       @relation(fields: [partnerId], references: [id])
+  category           Category                   @relation(fields: [categoryId], references: [id])
+  brand              Brand                      @relation(fields: [brandId], references: [id])
+  model              Model                      @relation(fields: [modelId], references: [id])
+  media              Media[]
+  leads              Lead[]
+  saleRecord         SaleRecord?
   paymentSubmissions ListingPaymentSubmission[]
-  rtoRecords        VehicleRtoRecord[]
+  rtoRecords         VehicleRtoRecord[]
 
   @@index([status, soldAt])
 }
@@ -584,44 +620,44 @@ enum RtoWorkStatus {
 }
 
 model VehicleRtoRecord {
-  id                    String                 @id @default(uuid())
-  listingId             String?
-  customerName          String
-  customerNumber        String
-  vehicleNumber         String
-  brandName             String                 @default("")
-  vehicleType           String
-  vehicleModel          String
-  hirePurchaseStatus    RtoHirePurchaseStatus @default(PENDING)
-  taxStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
-  taxValidUntil         DateTime?
-  fitnessStatus         RtoValidityStatus     @default(NOT_AVAILABLE)
-  fitnessValidUntil     DateTime?
-  insuranceStatus       RtoValidityStatus     @default(NOT_AVAILABLE)
-  insuranceValidUntil   DateTime?
-  pucStatus             RtoValidityStatus     @default(NOT_AVAILABLE)
-  pucValidUntil         DateTime?
-  hsrpStatus            RtoHsrpStatus        @default(PENDING)
-  sellerName            String
-  sellerNumber          String
-  purchaserName         String
-  purchaserNumber       String
-  rtoOffice             String
-  rtoAgentName          String
-  rtoAgentState         String
-  rtoAgentCity          String
-  rtoAgentNumber        String
-  rtoExpenses           Decimal              @default(0) @db.Decimal(12, 2)
-  rtoExpensesAdvance    Decimal              @default(0) @db.Decimal(12, 2)
-  documentSendDate      DateTime?
-  rtoStatus             RtoWorkStatus        @default(PENDING)
-  noteSheet             String?              @db.Text
-  vehicleMaintenanceCost Decimal             @default(0) @db.Decimal(12, 2)
-  hourRunning          Int?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  id                     String                @id @default(uuid())
+  listingId              String?
+  customerName           String
+  customerNumber         String
+  vehicleNumber          String
+  brandName              String                @default("")
+  vehicleType            String
+  vehicleModel           String
+  hirePurchaseStatus     RtoHirePurchaseStatus @default(PENDING)
+  taxStatus              RtoValidityStatus     @default(NOT_AVAILABLE)
+  taxValidUntil          DateTime?
+  fitnessStatus          RtoValidityStatus     @default(NOT_AVAILABLE)
+  fitnessValidUntil      DateTime?
+  insuranceStatus        RtoValidityStatus     @default(NOT_AVAILABLE)
+  insuranceValidUntil    DateTime?
+  pucStatus              RtoValidityStatus     @default(NOT_AVAILABLE)
+  pucValidUntil          DateTime?
+  hsrpStatus             RtoHsrpStatus         @default(PENDING)
+  sellerName             String
+  sellerNumber           String
+  purchaserName          String
+  purchaserNumber        String
+  rtoOffice              String
+  rtoAgentName           String
+  rtoAgentState          String
+  rtoAgentCity           String
+  rtoAgentNumber         String
+  rtoExpenses            Decimal               @default(0) @db.Decimal(12, 2)
+  rtoExpensesAdvance     Decimal               @default(0) @db.Decimal(12, 2)
+  documentSendDate       DateTime?
+  rtoStatus              RtoWorkStatus         @default(PENDING)
+  noteSheet              String?               @db.Text
+  vehicleMaintenanceCost Decimal               @default(0) @db.Decimal(12, 2)
+  hourRunning            Int?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  listing               Listing?              @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   @@index([vehicleNumber])
   @@index([rtoStatus])
@@ -630,24 +666,24 @@ model VehicleRtoRecord {
 }
 
 model AnalyticsEvent {
-  id                 String   @id @default(uuid())
-  eventType          String
-  anonymousId        String?
-  sessionId          String?
-  actorUserId        String?
-  listingId          String?
-  partnerId          String?
-  brandId            String?
-  modelId            String?
-  categoryId         String?
-  manufacturingYear  Int?
-  query              String?
-  filterPayload      Json?
-  resultCount        Int?
-  source             String?
-  dedupeKey          String?  @unique
-  occurredAt         DateTime @default(now())
-  createdAt          DateTime @default(now())
+  id                String   @id @default(uuid())
+  eventType         String
+  anonymousId       String?
+  sessionId         String?
+  actorUserId       String?
+  listingId         String?
+  partnerId         String?
+  brandId           String?
+  modelId           String?
+  categoryId        String?
+  manufacturingYear Int?
+  query             String?
+  filterPayload     Json?
+  resultCount       Int?
+  source            String?
+  dedupeKey         String?  @unique
+  occurredAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   @@index([eventType, occurredAt])
   @@index([listingId, eventType, occurredAt])
@@ -657,36 +693,36 @@ model AnalyticsEvent {
 }
 
 model ListingPaymentSubmission {
-  id                 String               @id @default(uuid())
-  listingId          String
-  buyerId            String
-  partnerId          String
-  method             ListingPaymentMethod
-  status             ListingPaymentStatus @default(PENDING_VERIFICATION)
-  amount             Decimal              @db.Decimal(12, 2)
-  customerCity       String?
-  customerState      String?
-  transactionRef     String?
-  paymentNote        String?              @db.Text
-  receiptUrl         String?
-  razorpayOrderId    String?
-  razorpayPaymentId  String?
-  razorpaySignature  String?
+  id                     String               @id @default(uuid())
+  listingId              String
+  buyerId                String
+  partnerId              String
+  method                 ListingPaymentMethod
+  status                 ListingPaymentStatus @default(PENDING_VERIFICATION)
+  amount                 Decimal              @db.Decimal(12, 2)
+  customerCity           String?
+  customerState          String?
+  transactionRef         String?
+  paymentNote            String?              @db.Text
+  receiptUrl             String?
+  razorpayOrderId        String?
+  razorpayPaymentId      String?
+  razorpaySignature      String?
   phonepeMerchantOrderId String?
-  phonepeOrderId     String?
-  phonepeTransactionId String?
-  settingsSnapshot   Json
-  reviewedByUserId   String?
-  reviewedAt         DateTime?
-  rejectionReason    String?              @db.Text
-  submittedAt        DateTime             @default(now())
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  phonepeOrderId         String?
+  phonepeTransactionId   String?
+  settingsSnapshot       Json
+  reviewedByUserId       String?
+  reviewedAt             DateTime?
+  rejectionReason        String?              @db.Text
+  submittedAt            DateTime             @default(now())
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 
-  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  buyer      User    @relation("ListingPaymentBuyer", fields: [buyerId], references: [id])
-  partner    User    @relation("ListingPaymentSeller", fields: [partnerId], references: [id])
-  reviewedBy User?   @relation("ListingPaymentReviewer", fields: [reviewedByUserId], references: [id])
+  listing    Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer      User          @relation("ListingPaymentBuyer", fields: [buyerId], references: [id])
+  partner    User          @relation("ListingPaymentSeller", fields: [partnerId], references: [id])
+  reviewedBy User?         @relation("ListingPaymentReviewer", fields: [reviewedByUserId], references: [id])
   bills      ListingBill[]
 
   @@index([listingId, status])
@@ -728,24 +764,24 @@ model Media {
 }
 
 model Lead {
-  id          String     @id @default(uuid())
-  listingId   String?
-  customerId  String
-  dealerId    String
-  enquiryType String
-  message     String?    @db.Text
-  status      LeadStatus @default(NEW)
-  listingTitleSnapshot String?
-  listingStatusSnapshot String?
-  listingPriceSnapshot Decimal?
-  listingLocationCitySnapshot String?
+  id                           String     @id @default(uuid())
+  listingId                    String?
+  customerId                   String
+  dealerId                     String
+  enquiryType                  String
+  message                      String?    @db.Text
+  status                       LeadStatus @default(NEW)
+  listingTitleSnapshot         String?
+  listingStatusSnapshot        String?
+  listingPriceSnapshot         Decimal?
+  listingLocationCitySnapshot  String?
   listingLocationStateSnapshot String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt                    DateTime   @default(now())
+  updatedAt                    DateTime   @updatedAt
 
-  listing  Listing? @relation(fields: [listingId], references: [id])
-  customer User    @relation("CustomerLeads", fields: [customerId], references: [id])
-  dealer   User    @relation("DealerLeads", fields: [dealerId], references: [id])
+  listing    Listing?       @relation(fields: [listingId], references: [id])
+  customer   User           @relation("CustomerLeads", fields: [customerId], references: [id])
+  dealer     User           @relation("DealerLeads", fields: [dealerId], references: [id])
   activities LeadActivity[]
 
   @@index([listingId])
@@ -758,7 +794,7 @@ model LeadActivity {
   id        String   @id @default(uuid())
   leadId    String
   actorId   String?
-  type      String   // 'CREATED' | 'STATUS_CHANGE' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'FOLLOW_UP' | 'ROUTING_UPDATE'
+  type      String // 'CREATED' | 'STATUS_CHANGE' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'FOLLOW_UP' | 'ROUTING_UPDATE'
   title     String
   content   String?  @db.Text
   metadata  Json?
@@ -769,7 +805,6 @@ model LeadActivity {
 
   @@index([leadId, createdAt])
 }
-
 
 model KycDocument {
   id               String            @id @default(uuid())
@@ -813,24 +848,24 @@ model KycReviewLog {
 }
 
 model PartnerDeposit {
-  id               String        @id @default(uuid())
-  partnerProfileId String
-  depositType      DepositType
-  amount           Decimal?
-  referenceNo      String?
-  paymentDate      DateTime?
-  paymentMode      String?
-  receiptUrl       String?
-  bankDetails      String?       @db.Text
-  lockInPeriodDays Int?
-  refundEligibleOn DateTime?
+  id                  String        @id @default(uuid())
+  partnerProfileId    String
+  depositType         DepositType
+  amount              Decimal?
+  referenceNo         String?
+  paymentDate         DateTime?
+  paymentMode         String?
+  receiptUrl          String?
+  bankDetails         String?       @db.Text
+  lockInPeriodDays    Int?
+  refundEligibleOn    DateTime?
   guaranteeExpiryDate DateTime?
-  notes            String?       @db.Text
-  status           DepositStatus @default(SUBMITTED)
-  verifiedById     String?
-  verifiedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  notes               String?       @db.Text
+  status              DepositStatus @default(SUBMITTED)
+  verifiedById        String?
+  verifiedAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
   verifiedBy     User?          @relation("DepositVerifier", fields: [verifiedById], references: [id])
@@ -875,40 +910,40 @@ model Notification {
   userId    String
   title     String
   message   String
-  type      String?  
+  type      String?
   isRead    Boolean  @default(false)
-  link      String?  
+  link      String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CustomerPrimeSubscription {
-  id                 String                          @id @default(uuid())
-  userId             String
-  status             CustomerPrimeSubscriptionStatus @default(PENDING)
-  transactionRef     String?
-  paymentNote        String?                         @db.Text
-  receiptUrl         String?
-  paidAmount         Decimal
-  customerCity       String?
-  customerState      String?
-  paidUpiId          String?
-  settingsSnapshot   Json
-  startedAt          DateTime?
-  expiresAt          DateTime?
-  submittedAt        DateTime                        @default(now())
-  approvedByUserId   String?
-  approvedAt         DateTime?
-  rejectedByUserId   String?
-  rejectedAt         DateTime?
-  rejectionReason    String?                         @db.Text
-  createdAt          DateTime                        @default(now())
-  updatedAt          DateTime                        @updatedAt
+  id               String                          @id @default(uuid())
+  userId           String
+  status           CustomerPrimeSubscriptionStatus @default(PENDING)
+  transactionRef   String?
+  paymentNote      String?                         @db.Text
+  receiptUrl       String?
+  paidAmount       Decimal
+  customerCity     String?
+  customerState    String?
+  paidUpiId        String?
+  settingsSnapshot Json
+  startedAt        DateTime?
+  expiresAt        DateTime?
+  submittedAt      DateTime                        @default(now())
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedByUserId String?
+  rejectedAt       DateTime?
+  rejectionReason  String?                         @db.Text
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
 
-  user       User   @relation("CustomerPrimeSubscriptions", fields: [userId], references: [id])
-  approvedBy User?  @relation("CustomerPrimeApprover", fields: [approvedByUserId], references: [id])
-  rejectedBy User?  @relation("CustomerPrimeRejector", fields: [rejectedByUserId], references: [id])
+  user       User  @relation("CustomerPrimeSubscriptions", fields: [userId], references: [id])
+  approvedBy User? @relation("CustomerPrimeApprover", fields: [approvedByUserId], references: [id])
+  rejectedBy User? @relation("CustomerPrimeRejector", fields: [rejectedByUserId], references: [id])
 
   @@index([userId, status])
   @@index([status, expiresAt])
@@ -933,7 +968,7 @@ model TranslationKeyRegistry {
   id             String   @id @default(uuid())
   app            String
   translationKey String   @map("translation_key")
-  baseValue      String   @db.Text @map("base_value")
+  baseValue      String   @map("base_value") @db.Text
   namespace      String
   firstSeenAt    DateTime @default(now()) @map("first_seen_at")
   lastSeenAt     DateTime @default(now()) @map("last_seen_at")
@@ -957,33 +992,33 @@ model PlatformRuntimeSettings {
 }
 
 model WhatsAppIntegrationSettings {
-  id                           String   @id @default("default")
-  enabled                      Boolean  @default(false)
-  graphApiVersion              String   @default("v23.0")
-  phoneNumberId                String?
-  businessAccountId            String?
-  testRecipientPhone           String?
-  encryptedAccessToken         String?  @db.Text
-  encryptedWebhookVerifyToken  String?  @db.Text
-  encryptedAppSecret           String?  @db.Text
-  updatedByUserId              String?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  id                          String   @id @default("default")
+  enabled                     Boolean  @default(false)
+  graphApiVersion             String   @default("v23.0")
+  phoneNumberId               String?
+  businessAccountId           String?
+  testRecipientPhone          String?
+  encryptedAccessToken        String?  @db.Text
+  encryptedWebhookVerifyToken String?  @db.Text
+  encryptedAppSecret          String?  @db.Text
+  updatedByUserId             String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 
   @@map("whatsapp_integration_settings")
 }
 
 model WhatsAppMetaTemplate {
-  id              String   @id @default(uuid())
-  metaTemplateId  String?  @unique
-  name            String
-  language        String   @default("en_US")
-  category        String?
-  status          String   @default("DRAFT")
-  components      Json?
-  lastSyncedAt    DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(uuid())
+  metaTemplateId String?   @unique
+  name           String
+  language       String    @default("en_US")
+  category       String?
+  status         String    @default("DRAFT")
+  components     Json?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   automationRules WhatsAppAutomationRule[]
   campaigns       WhatsAppCampaign[]
@@ -1009,23 +1044,23 @@ model WhatsAppAutomationRule {
 }
 
 model WhatsAppMessageLog {
-  id                String                 @id @default(uuid())
+  id                String                @id @default(uuid())
   eventCode         String
   relatedEntityType String?
   relatedEntityId   String?
   recipientType     WhatsAppRecipientType
   recipientPhone    String
-  status            WhatsAppMessageStatus  @default(QUEUED)
-  metaMessageId     String?                @unique
+  status            WhatsAppMessageStatus @default(QUEUED)
+  metaMessageId     String?               @unique
   errorCode         String?
-  errorMessage      String?                @db.Text
+  errorMessage      String?               @db.Text
   payloadSnapshot   Json?
-  dedupeKey         String?                @unique
+  dedupeKey         String?               @unique
   sentAt            DateTime?
   deliveredAt       DateTime?
   readAt            DateTime?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   outbox WhatsAppOutbox?
 
@@ -1055,19 +1090,80 @@ model WhatsAppOutbox {
 }
 
 model ListingBill {
-  id            String          @id @default(uuid())
-  paymentId     String
-  billType      ListingBillType
-  payload       Json
+  id              String          @id @default(uuid())
+  paymentId       String
+  billType        ListingBillType
+  payload         Json
   createdByUserId String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  payment       ListingPaymentSubmission @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  createdBy     User?           @relation("ListingBillCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  payment   ListingPaymentSubmission @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdBy User?                    @relation("ListingBillCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@unique([paymentId, billType])
   @@index([updatedAt])
+}
+
+model FinanceImportBatch {
+  id              String              @id @default(uuid())
+  fileName        String
+  bankName        String?
+  accountName     String?
+  statementFrom   DateTime?
+  statementTo     DateTime?
+  openingBalance  Decimal?            @db.Decimal(14, 2)
+  closingBalance  Decimal?            @db.Decimal(14, 2)
+  totalRows       Int                 @default(0)
+  importedRows    Int                 @default(0)
+  duplicateRows   Int                 @default(0)
+  failedRows      Int                 @default(0)
+  status          FinanceImportStatus @default(COMPLETED)
+  createdByUserId String?
+  createdAt       DateTime            @default(now())
+
+  transactions FinanceTransaction[]
+
+  @@index([createdAt])
+  @@index([accountName, statementFrom, statementTo])
+}
+
+model FinanceTransaction {
+  id              String                   @id @default(uuid())
+  transactionDate DateTime
+  valueDate       DateTime?
+  type            FinanceTransactionType
+  amount          Decimal                  @db.Decimal(14, 2)
+  balance         Decimal?                 @db.Decimal(14, 2)
+  accountName     String                   @default("Cash")
+  paymentMethod   FinancePaymentMethod     @default(OTHER)
+  name            String
+  category        String                   @default("Miscellaneous")
+  narration       String                   @db.Text
+  reference       String?
+  chequeNumber    String?
+  invoiceNumber   String?
+  attachmentUrl   String?
+  notes           String?                  @db.Text
+  source          FinanceTransactionSource @default(MANUAL)
+  status          FinanceTransactionStatus @default(POSTED)
+  fingerprint     String?                  @unique
+  rawData         Json?
+  importBatchId   String?
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  importBatch FinanceImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@index([transactionDate])
+  @@index([type, transactionDate])
+  @@index([category, transactionDate])
+  @@index([accountName, transactionDate])
+  @@index([status, transactionDate])
+  @@index([importBatchId])
+  @@index([reference])
 }
 
 model SmsIntegrationSettings {
@@ -1144,14 +1240,14 @@ model SmsOutbox {
 }
 
 model WhatsAppConsent {
-  id        String                   @id @default(uuid())
-  phone     String
-  category  WhatsAppConsentCategory
-  optedIn   Boolean                  @default(false)
-  source    String?
+  id              String                  @id @default(uuid())
+  phone           String
+  category        WhatsAppConsentCategory
+  optedIn         Boolean                 @default(false)
+  source          String?
   updatedByUserId String?
-  createdAt DateTime                 @default(now())
-  updatedAt DateTime                 @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@unique([phone, category])
   @@index([category, optedIn])
@@ -1159,21 +1255,21 @@ model WhatsAppConsent {
 }
 
 model WhatsAppCampaign {
-  id              String                 @id @default(uuid())
-  name            String
-  category        WhatsAppConsentCategory
-  templateId      String
-  status          WhatsAppCampaignStatus @default(DRAFT)
-  audienceFilters Json?
-  createdByUserId String
+  id                String                  @id @default(uuid())
+  name              String
+  category          WhatsAppConsentCategory
+  templateId        String
+  status            WhatsAppCampaignStatus  @default(DRAFT)
+  audienceFilters   Json?
+  createdByUserId   String
   confirmedByUserId String?
-  confirmedAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  confirmedAt       DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
-  template   WhatsAppMetaTemplate       @relation(fields: [templateId], references: [id])
+  template   WhatsAppMetaTemplate        @relation(fields: [templateId], references: [id])
   recipients WhatsAppCampaignRecipient[]
 
   @@index([status, createdAt])
@@ -1181,18 +1277,18 @@ model WhatsAppCampaign {
 }
 
 model WhatsAppCampaignRecipient {
-  id              String                 @id @default(uuid())
-  campaignId      String
-  recipientType   WhatsAppRecipientType
-  recipientPhone  String
+  id               String                @id @default(uuid())
+  campaignId       String
+  recipientType    WhatsAppRecipientType
+  recipientPhone   String
   sourceEntityType String?
-  sourceEntityId  String?
-  messageLogId    String?
-  status          WhatsAppMessageStatus  @default(QUEUED)
-  errorMessage    String?                @db.Text
-  sentAt          DateTime?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  sourceEntityId   String?
+  messageLogId     String?
+  status           WhatsAppMessageStatus @default(QUEUED)
+  errorMessage     String?               @db.Text
+  sentAt           DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   campaign WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
@@ -1202,57 +1298,57 @@ model WhatsAppCampaignRecipient {
 }
 
 model Country {
-  id              Int     @id
-  name            String
-  iso3            String?
-  iso2            String?
-  numericCode     String?
-  phonecode       String?
-  capital         String?
-  currency        String?
-  currencyName    String?
-  currencySymbol  String?
-  tld             String?
-  native          String?
-  region          String?
-  subregion       String?
-  nationality     String?
-  latitude        String?
-  longitude       String?
-  emoji           String?
-  emojiU          String?
+  id             Int     @id
+  name           String
+  iso3           String?
+  iso2           String?
+  numericCode    String?
+  phonecode      String?
+  capital        String?
+  currency       String?
+  currencyName   String?
+  currencySymbol String?
+  tld            String?
+  native         String?
+  region         String?
+  subregion      String?
+  nationality    String?
+  latitude       String?
+  longitude      String?
+  emoji          String?
+  emojiU         String?
 
-  states          State[]
-  cities          City[]
+  states State[]
+  cities City[]
 }
 
 model State {
-  id           Int     @id
-  name         String
-  countryId    Int
-  countryCode  String?
-  stateCode    String?
-  latitude     String?
-  longitude    String?
+  id          Int     @id
+  name        String
+  countryId   Int
+  countryCode String?
+  stateCode   String?
+  latitude    String?
+  longitude   String?
 
-  country      Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  cities       City[]
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities  City[]
 
   @@index([countryId])
 }
 
 model City {
-  id           Int     @id
-  name         String
-  stateId      Int
-  stateCode    String?
-  countryId    Int
-  countryCode  String?
-  latitude     String?
-  longitude    String?
+  id          Int     @id
+  name        String
+  stateId     Int
+  stateCode   String?
+  countryId   Int
+  countryCode String?
+  latitude    String?
+  longitude   String?
 
-  state        State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
-  country      Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  state   State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
 
   @@index([stateId])
   @@index([countryId])
@@ -1361,57 +1457,57 @@ model JobDepartment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  jobs        Job[]
+  jobs Job[]
 }
 
 model Job {
-  id                   String             @id @default(uuid())
+  id                   String         @id @default(uuid())
   title                String
-  slug                 String             @unique
-  jobCode              String             @unique
+  slug                 String         @unique
+  jobCode              String         @unique
   departmentId         String
-  vacancies            Int                @default(1)
-  employmentType       EmploymentType     @default(FULL_TIME)
-  workMode             WorkMode           @default(ON_SITE)
+  vacancies            Int            @default(1)
+  employmentType       EmploymentType @default(FULL_TIME)
+  workMode             WorkMode       @default(ON_SITE)
   locationCity         String
   locationState        String
   locationAddress      String?
-  minExperience        Float              @default(0)
+  minExperience        Float          @default(0)
   maxExperience        Float?
-  minSalary            Decimal?           @db.Decimal(12, 2)
-  maxSalary            Decimal?           @db.Decimal(12, 2)
-  currency             String             @default("INR")
-  salaryVisibility     Boolean            @default(true)
+  minSalary            Decimal?       @db.Decimal(12, 2)
+  maxSalary            Decimal?       @db.Decimal(12, 2)
+  currency             String         @default("INR")
+  salaryVisibility     Boolean        @default(true)
   educationRequirement String?
-  summary              String?            @db.Text
-  description          String             @db.Text
+  summary              String?        @db.Text
+  description          String         @db.Text
   responsibilities     String[]
   requirements         String[]
   preferredSkills      String[]
   benefits             String[]
   workingHours         String?
-  aboutCompany         String?            @db.Text
+  aboutCompany         String?        @db.Text
   startDate            DateTime?
   deadline             DateTime?
-  resumeRequired       Boolean            @default(true)
-  coverLetterRequired  Boolean            @default(false)
+  resumeRequired       Boolean        @default(true)
+  coverLetterRequired  Boolean        @default(false)
   seoTitle             String?
-  metaDescription      String?            @db.Text
+  metaDescription      String?        @db.Text
   ogImage              String?
   canonicalUrl         String?
-  status               JobStatus          @default(DRAFT)
+  status               JobStatus      @default(DRAFT)
   postedAt             DateTime?
   closedAt             DateTime?
   createdById          String?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
-  department           JobDepartment      @relation(fields: [departmentId], references: [id])
-  createdBy            User?              @relation("JobCreator", fields: [createdById], references: [id])
-  customQuestions      JobCustomQuestion[]
-  applications         JobApplication[]
-  interviews           Interview[]
-  offers               Offer[]
+  department      JobDepartment       @relation(fields: [departmentId], references: [id])
+  createdBy       User?               @relation("JobCreator", fields: [createdById], references: [id])
+  customQuestions JobCustomQuestion[]
+  applications    JobApplication[]
+  interviews      Interview[]
+  offers          Offer[]
 
   @@index([status, postedAt])
   @@index([departmentId])
@@ -1420,18 +1516,18 @@ model Job {
 }
 
 model JobCustomQuestion {
-  id          String             @id @default(uuid())
-  jobId       String
-  question    String
-  type        CustomQuestionType @default(SHORT_TEXT)
-  options     String[]
-  isRequired  Boolean            @default(false)
-  order       Int                @default(0)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id         String             @id @default(uuid())
+  jobId      String
+  question   String
+  type       CustomQuestionType @default(SHORT_TEXT)
+  options    String[]
+  isRequired Boolean            @default(false)
+  order      Int                @default(0)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
 
-  job         Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  answers     ApplicationAnswer[]
+  job     Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  answers ApplicationAnswer[]
 
   @@index([jobId])
 }
@@ -1461,13 +1557,13 @@ model Candidate {
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 
-  applications       JobApplication[]
-  documents          CandidateDocument[]
-  notes              CandidateNote[]
-  ratings            CandidateRating[]
-  interviews         Interview[]
-  offers             Offer[]
-  activityLogs       RecruitmentActivityLog[]
+  applications JobApplication[]
+  documents    CandidateDocument[]
+  notes        CandidateNote[]
+  ratings      CandidateRating[]
+  interviews   Interview[]
+  offers       Offer[]
+  activityLogs RecruitmentActivityLog[]
 
   @@index([email])
   @@index([mobile])
@@ -1475,29 +1571,29 @@ model Candidate {
 }
 
 model JobApplication {
-  id                  String                    @id @default(uuid())
-  applicationRef      String                    @unique
+  id                  String   @id @default(uuid())
+  applicationRef      String   @unique
   jobId               String
   candidateId         String
-  currentStage        String                    @default("NEW")
+  currentStage        String   @default("NEW")
   terminalStatus      String?
   assignedRecruiterId String?
   overallRating       Float?
-  isDuplicateOverride Boolean                   @default(false)
-  appliedAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
+  isDuplicateOverride Boolean  @default(false)
+  appliedAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  job                 Job                       @relation(fields: [jobId], references: [id])
-  candidate           Candidate                 @relation(fields: [candidateId], references: [id])
-  assignedRecruiter   User?                     @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
-  answers             ApplicationAnswer[]
-  documents           CandidateDocument[]
-  stageHistory        ApplicationStageHistory[]
-  notes               CandidateNote[]
-  ratings             CandidateRating[]
-  interviews          Interview[]
-  offers              Offer[]
-  activityLogs        RecruitmentActivityLog[]
+  job               Job                       @relation(fields: [jobId], references: [id])
+  candidate         Candidate                 @relation(fields: [candidateId], references: [id])
+  assignedRecruiter User?                     @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
+  answers           ApplicationAnswer[]
+  documents         CandidateDocument[]
+  stageHistory      ApplicationStageHistory[]
+  notes             CandidateNote[]
+  ratings           CandidateRating[]
+  interviews        Interview[]
+  offers            Offer[]
+  activityLogs      RecruitmentActivityLog[]
 
   @@unique([jobId, candidateId])
   @@index([jobId])
@@ -1507,15 +1603,15 @@ model JobApplication {
 }
 
 model ApplicationAnswer {
-  id            String            @id @default(uuid())
+  id            String   @id @default(uuid())
   applicationId String
   questionId    String
-  answerText    String?           @db.Text
+  answerText    String?  @db.Text
   answerJson    Json?
-  createdAt     DateTime          @default(now())
+  createdAt     DateTime @default(now())
 
-  application   JobApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  question      JobCustomQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  application JobApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question    JobCustomQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([applicationId])
   @@index([questionId])
@@ -1532,61 +1628,61 @@ model CandidateDocument {
   mimeType      String?
   uploadedAt    DateTime         @default(now())
 
-  candidate     Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  application   JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  candidate   Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application JobApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
 
   @@index([candidateId])
   @@index([applicationId])
 }
 
 model ApplicationStage {
-  id          String   @id @default(uuid())
-  name        String
-  code        String   @unique
-  order       Int      @default(0)
-  color       String?  @default("blue")
-  isSystem    Boolean  @default(false)
-  isTerminal  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  name       String
+  code       String   @unique
+  order      Int      @default(0)
+  color      String?  @default("blue")
+  isSystem   Boolean  @default(false)
+  isTerminal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model ApplicationStageHistory {
-  id                 String         @id @default(uuid())
+  id                 String   @id @default(uuid())
   applicationId      String
   fromStage          String?
   toStage            String
   fromTerminalStatus String?
   toTerminalStatus   String?
   changedById        String?
-  notes              String?        @db.Text
-  createdAt          DateTime       @default(now())
+  notes              String?  @db.Text
+  createdAt          DateTime @default(now())
 
-  application        JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  changedBy          User?          @relation("StageHistoryChanger", fields: [changedById], references: [id])
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  changedBy   User?          @relation("StageHistoryChanger", fields: [changedById], references: [id])
 
   @@index([applicationId, createdAt])
 }
 
 model CandidateNote {
-  id            String          @id @default(uuid())
+  id            String   @id @default(uuid())
   candidateId   String
   applicationId String?
   authorId      String
-  content       String          @db.Text
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  content       String   @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  candidate     Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  author        User            @relation("CandidateNoteAuthor", fields: [authorId], references: [id])
+  candidate   Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User            @relation("CandidateNoteAuthor", fields: [authorId], references: [id])
 
   @@index([candidateId])
   @@index([applicationId])
 }
 
 model CandidateRating {
-  id                  String          @id @default(uuid())
+  id                  String   @id @default(uuid())
   candidateId         String
   applicationId       String?
   evaluatorId         String
@@ -1595,41 +1691,41 @@ model CandidateRating {
   technicalRating     Int?
   experienceRating    Int?
   cultureFitRating    Int?
-  feedback            String?         @db.Text
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  feedback            String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  candidate           Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  application         JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  evaluator           User            @relation("CandidateRatingEvaluator", fields: [evaluatorId], references: [id])
+  candidate   Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  evaluator   User            @relation("CandidateRatingEvaluator", fields: [evaluatorId], references: [id])
 
   @@index([candidateId])
   @@index([applicationId])
 }
 
 model Interview {
-  id              String            @id @default(uuid())
+  id              String          @id @default(uuid())
   applicationId   String
   candidateId     String
   jobId           String
   scheduledAt     DateTime
-  durationMinutes Int               @default(30)
-  type            InterviewType     @default(VIDEO)
-  status          InterviewStatus   @default(SCHEDULED)
+  durationMinutes Int             @default(30)
+  type            InterviewType   @default(VIDEO)
+  status          InterviewStatus @default(SCHEDULED)
   interviewerId   String?
   meetingUrl      String?
   location        String?
-  notes           String?           @db.Text
+  notes           String?         @db.Text
   createdById     String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  application     JobApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  candidate       Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job             Job               @relation(fields: [jobId], references: [id])
-  interviewer     User?             @relation("Interviewer", fields: [interviewerId], references: [id])
-  createdBy       User?             @relation("InterviewScheduler", fields: [createdById], references: [id])
-  feedback        InterviewFeedback[]
+  application JobApplication      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidate   Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job         Job                 @relation(fields: [jobId], references: [id])
+  interviewer User?               @relation("Interviewer", fields: [interviewerId], references: [id])
+  createdBy   User?               @relation("InterviewScheduler", fields: [createdById], references: [id])
+  feedback    InterviewFeedback[]
 
   @@index([applicationId])
   @@index([candidateId])
@@ -1650,40 +1746,40 @@ model InterviewFeedback {
   recommendation      InterviewRecommendation @default(HIRE)
   submittedAt         DateTime                @default(now())
 
-  interview           Interview               @relation(fields: [interviewId], references: [id], onDelete: Cascade)
-  interviewer         User                    @relation("InterviewFeedbackAuthor", fields: [interviewerId], references: [id])
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interviewer User      @relation("InterviewFeedbackAuthor", fields: [interviewerId], references: [id])
 
   @@index([interviewId])
 }
 
 model Offer {
-  id               String      @id @default(uuid())
-  applicationId    String
-  candidateId      String
-  jobId            String
-  designation      String
-  department       String
-  joiningLocation  String
-  ctc              Decimal     @db.Decimal(12, 2)
-  joiningDate      DateTime?
-  probationPeriod  String?
-  reportingManager String?
-  offerValidUntil  DateTime?
-  additionalTerms  String?     @db.Text
-  offerLetterUrl   String?
+  id                  String      @id @default(uuid())
+  applicationId       String
+  candidateId         String
+  jobId               String
+  designation         String
+  department          String
+  joiningLocation     String
+  ctc                 Decimal     @db.Decimal(12, 2)
+  joiningDate         DateTime?
+  probationPeriod     String?
+  reportingManager    String?
+  offerValidUntil     DateTime?
+  additionalTerms     String?     @db.Text
+  offerLetterUrl      String?
   offerLetterFileName String?
-  offerLetterData Json?
-  status           OfferStatus @default(DRAFT)
-  createdById      String?
-  sentAt           DateTime?
-  respondedAt      DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  offerLetterData     Json?
+  status              OfferStatus @default(DRAFT)
+  createdById         String?
+  sentAt              DateTime?
+  respondedAt         DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
-  application      JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  candidate        Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job              Job            @relation(fields: [jobId], references: [id])
-  createdBy        User?          @relation("OfferCreator", fields: [createdById], references: [id])
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidate   Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job         Job            @relation(fields: [jobId], references: [id])
+  createdBy   User?          @relation("OfferCreator", fields: [createdById], references: [id])
 
   @@index([applicationId])
   @@index([candidateId])
@@ -1691,50 +1787,50 @@ model Offer {
 }
 
 model RecruitmentEmailTemplate {
-  id          String   @id @default(uuid())
-  name        String
-  code        String   @unique
-  subject     String
-  bodyHtml    String   @db.Text
-  variables   String[]
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  subject   String
+  bodyHtml  String   @db.Text
+  variables String[]
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model RecruitmentActivityLog {
-  id            String          @id @default(uuid())
+  id            String   @id @default(uuid())
   candidateId   String?
   applicationId String?
   actorId       String?
   action        String
   title         String
-  details       String?         @db.Text
+  details       String?  @db.Text
   metadata      Json?
-  createdAt     DateTime        @default(now())
+  createdAt     DateTime @default(now())
 
-  candidate     Candidate?      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  actor         User?           @relation("RecruitmentActivityActor", fields: [actorId], references: [id])
+  candidate   Candidate?      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actor       User?           @relation("RecruitmentActivityActor", fields: [actorId], references: [id])
 
   @@index([applicationId, createdAt])
   @@index([candidateId, createdAt])
 }
 
 model BlogPost {
-  id              String   @id @default(uuid())
-  title           String
-  slug            String   @unique
-  excerpt         String?  @db.Text
-  contentHtml     String   @db.Text
-  coverImageUrl   String?
-  isPublished     Boolean  @default(false)
-  publishedAt     DateTime?
-  createdById     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  title         String
+  slug          String    @unique
+  excerpt       String?   @db.Text
+  contentHtml   String    @db.Text
+  coverImageUrl String?
+  isPublished   Boolean   @default(false)
+  publishedAt   DateTime?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  questions       BlogQuestion[]
+  questions BlogQuestion[]
 
   @@index([isPublished, publishedAt])
   @@index([createdAt])

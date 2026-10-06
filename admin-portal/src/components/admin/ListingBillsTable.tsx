@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Edit3, FileText, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Download, FileText, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import LiveInvoiceEditorModal, {
   type LiveInvoicePaymentData,
   type SavedListingBill,
 } from '@/components/portal/LiveInvoiceEditorModal';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   const axiosError = error as { response?: { data?: { error?: string } } };
@@ -83,6 +84,128 @@ export default function ListingBillsTable() {
     }
   };
 
+  const handleDownloadPdf = async (bill: SavedListingBill) => {
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const payload = bill.payload;
+      const invoiceNumber = payload.invoiceNumber || 'BILL';
+      const invoiceDate = payload.invoiceDate || formatDate(bill.updatedAt);
+      const memberName = payload.memberName || bill.payment?.buyer?.name || bill.payment?.partner?.name || 'Customer';
+      const itemDescription = payload.itemDescription || bill.payment?.listing?.title || 'Listing Payment';
+      const numericAmount = Number(payload.amount ?? bill.payment?.amount ?? 0);
+      const customerEmail = payload.customerEmail || bill.payment?.buyer?.email || bill.payment?.partner?.email || '';
+      const customerMobile = payload.customerMobile || bill.payment?.buyer?.mobile || bill.payment?.partner?.mobile || '';
+      const customerState = payload.customerState || bill.payment?.buyer?.state || '';
+      const logoUrl = payload.logoUrl || '/loadinglogo.png';
+
+      const fallbackSettings = {
+        companyName: 'JCB EXCHANGE HUB PRIVATE LIMITED',
+        gstin: null,
+        address: null,
+        city: null,
+        state: null,
+        termsAndConditions: null,
+      };
+
+      let invoiceSettings = payload.invoiceSettings;
+      if (!invoiceSettings) {
+        try {
+          const res = await api.get<{ settings: any }>('/superadmin/invoice-settings');
+          invoiceSettings = res.data.settings;
+        } catch {
+          invoiceSettings = fallbackSettings;
+        }
+      }
+
+      const safeSettings = invoiceSettings || fallbackSettings;
+
+      toast.info(`Generating PDF for ${invoiceNumber}...`);
+
+      if (bill.billType === 'NON_TAX') {
+        const { NonTaxInvoicePDFTemplate } = await import('@/components/portal/NonTaxInvoicePDFTemplate');
+        const blob = await pdf(
+          <NonTaxInvoicePDFTemplate
+            invoiceSettings={safeSettings}
+            payment={{
+              memberName,
+              planName: itemDescription,
+              transactionRef: bill.payment?.transactionRef,
+              customerEmail,
+              customerMobile,
+              customerCity: bill.payment?.buyer?.city || null,
+              customerState,
+            }}
+            logoUrl={logoUrl}
+            totalAmount={numericAmount}
+            invoiceNumber={invoiceNumber}
+            formattedDate={invoiceDate}
+            invoiceTitle="BILL / PAYMENT RECEIPT"
+            itemDescription={itemDescription}
+            notes={safeSettings.termsAndConditions || undefined}
+          />
+        ).toBlob();
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${invoiceNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('PDF downloaded successfully!');
+      } else {
+        const gstRate = Number(payload.gstRate || 18);
+        const isIntraState = payload.taxType === 'INTRA_STATE';
+        const taxableValue = Number((numericAmount / (1 + gstRate / 100)).toFixed(2));
+        const totalTaxAmount = Number((numericAmount - taxableValue).toFixed(2));
+        const cgstAmount = isIntraState ? Number((totalTaxAmount / 2).toFixed(2)) : 0;
+        const sgstAmount = isIntraState ? Number((totalTaxAmount / 2).toFixed(2)) : 0;
+        const igstAmount = !isIntraState ? totalTaxAmount : 0;
+
+        const { SubscriptionInvoicePDFTemplate } = await import('@/components/portal/SubscriptionInvoicePDFTemplate');
+        const blob = await pdf(
+          <SubscriptionInvoicePDFTemplate
+            invoiceSettings={safeSettings}
+            payment={{
+              memberName,
+              planName: itemDescription,
+              transactionRef: bill.payment?.transactionRef,
+              customerEmail,
+              customerMobile,
+              customerCity: bill.payment?.buyer?.city || null,
+              customerState,
+            }}
+            logoUrl={logoUrl}
+            taxableValue={taxableValue}
+            totalAmount={numericAmount}
+            gstRate={gstRate}
+            isIntraState={isIntraState}
+            cgstAmount={cgstAmount}
+            sgstAmount={sgstAmount}
+            igstAmount={igstAmount}
+            invoiceNumber={invoiceNumber}
+            formattedDate={invoiceDate}
+          />
+        ).toBlob();
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${invoiceNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('PDF downloaded successfully!');
+      }
+    } catch (err) {
+      console.error('Failed to generate PDF directly:', err);
+      toast.info('Opening bill editor for download...');
+      setEditingBill(bill);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-48 items-center justify-center text-sm text-gray-500">
@@ -143,23 +266,29 @@ export default function ListingBillsTable() {
                   </td>
                   <td className="px-4 py-4 font-semibold text-gray-900">{formatCurrency(Number(bill.payload.amount || 0))}</td>
                   <td className="px-4 py-4 text-gray-600">{formatDate(bill.updatedAt)}</td>
-                  <td className="px-4 py-4">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditingBill(bill)}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-amber-400 hover:text-gray-900"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" /> Edit / Download
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(bill)}
-                        className="rounded-full border border-red-200 p-1.5 text-red-600 hover:bg-red-50"
-                        aria-label={`Delete ${bill.payload.invoiceNumber || 'bill'}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                  <td className="px-4 py-4 text-right">
+                    <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+                      <PortalActionDropdown
+                        align="right"
+                        items={[
+                          {
+                            label: 'Edit Bill',
+                            icon: <Pencil className="h-4 w-4 text-amber-600" />,
+                            onClick: () => setEditingBill(bill),
+                          },
+                          {
+                            label: 'Download PDF',
+                            icon: <Download className="h-4 w-4 text-emerald-600" />,
+                            onClick: () => void handleDownloadPdf(bill),
+                          },
+                          {
+                            label: 'Delete Bill',
+                            icon: <Trash2 className="h-4 w-4 text-red-600" />,
+                            variant: 'danger' as const,
+                            onClick: () => void handleDelete(bill),
+                          },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>

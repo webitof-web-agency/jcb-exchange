@@ -98,6 +98,15 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'Finance': [
+    {
+      groupName: 'Expenses & Transactions',
+      permissions: [
+        { id: 'finance.read', label: 'View Expenses & Transactions' },
+        { id: 'finance.manage', label: 'Manage Expenses & Transactions' },
+      ],
+    },
+  ],
   'Recruitment': [
     {
       groupName: 'Recruitment Dashboard',

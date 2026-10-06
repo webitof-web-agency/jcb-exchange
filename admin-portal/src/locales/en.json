@@ -72,7 +72,8 @@
     "partnerDeposit": "Partner Deposit",
     "analytics": "Analytics",
     "analyticsTitle": "Advanced Analytics",
-    "smsNotifications": "SMS Notifications"
+    "smsNotifications": "SMS Notifications",
+    "expenses": "Expenses & Transactions"
   },
   "partner": {
     "portalAccount": "Partner portal",

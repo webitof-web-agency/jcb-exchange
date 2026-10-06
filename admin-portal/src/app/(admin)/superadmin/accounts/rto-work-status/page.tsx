@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+﻿/* eslint-disable react-hooks/set-state-in-effect */
 
 'use client';
 
@@ -12,6 +12,7 @@ import { downloadTableFile } from '@/lib/tabularExport';
 import { isAuthReady } from '@/lib/authHydration';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SearchableSelect from '@/components/ui/SearchableSelect';
+import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { filterSelectOptions, getInitialTermsAccepted, getRtoStatusOptions, getValidityOptions, normalizeRemark, normalizeRtoStatus, normalizeValidityForEdit } from '@/lib/rtoWorkStatusForm.mjs';
@@ -64,7 +65,7 @@ const statusConfig: Record<Status, StatusConfig> = {
   CANCELLED: { label: 'Cancelled', bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', icon: X },
 };
 const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-const dateValue = (value: string | null) => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : '—';
+const dateValue = (value: string | null) => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : 'â€”';
 
 const exportDateValue = (value: string | null) => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : '';
 
@@ -304,6 +305,16 @@ export default function RTOWorkStatusPage() {
     setExportMenuOpen(false);
   };
 
+  const downloadRecord = (record: RtoRecord) => {
+    if (!canExportRto) return;
+    downloadTableFile({
+      columns: exportColumns,
+      rows: [record],
+      fileName: `rto-record-${record.vehicleNumber || record.id}`,
+      format: 'xls',
+    });
+  };
+
   const recordCounts = useMemo(() => ({
     all: records.length,
     pending: records.filter((record) => record.rtoStatus === 'PENDING').length,
@@ -412,7 +423,7 @@ export default function RTOWorkStatusPage() {
     try { await api.delete(`/recruitment/admin/rto-records/${id}`); await loadRecords(); } catch { setError('Unable to delete RTO record.'); }
   };
 
-  const currency = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+  const currency = (value: number) => `â‚¹${Number(value || 0).toLocaleString('en-IN')}`;
   const phoneLink = (phoneNumber: string) => phoneNumber ? <a href={`tel:${phoneNumber}`} onClick={(event) => event.stopPropagation()} className="mt-0.5 flex items-center gap-1 text-xs text-blue-600 hover:underline"><Phone className="h-3 w-3 text-blue-500" />{phoneNumber}</a> : <span className="mt-0.5 block text-xs text-gray-400">No number</span>;
   const validityCell = (status: Validity, date: string | null) => <span className="whitespace-nowrap">{label(status)}{date ? <small className="block text-gray-400">{dateValue(date)}</small> : null}</span>;
   const statusPill = (status: Status) => {
@@ -469,11 +480,10 @@ export default function RTOWorkStatusPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {currentRecords.length > 0 ? (
-              currentRecords.map((record, idx) => {
-                const isNearBottom = currentRecords.length > 3 && idx >= currentRecords.length - 2;
+              currentRecords.map((record) => {
                 return (
                   <tr key={record.id} onClick={() => router.push(`${accountBasePath}/${record.id}`)} className="cursor-pointer transition-colors hover:bg-gray-50/80">
-                    <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.brandName ? `${record.brandName} · ` : ''}{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
+                    <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.brandName ? `${record.brandName} Â· ` : ''}{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[130px] truncate" title={record.customerName}>{record.customerName}</p>{phoneLink(record.customerNumber)}</td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.sellerName}>{record.sellerName}</p>{phoneLink(record.sellerNumber)}</td>
                     <td className="px-3 py-3.5"><p className="font-semibold text-gray-900 max-w-[140px] truncate" title={record.purchaserName}>{record.purchaserName}</p>{phoneLink(record.purchaserNumber)}</td>
@@ -492,25 +502,33 @@ export default function RTOWorkStatusPage() {
                     <td className="px-3 py-3.5 whitespace-nowrap"><p className="text-xs font-semibold text-gray-900">{currency(record.rtoExpenses)}</p></td>
                     <td className="px-3 py-3.5 whitespace-nowrap">{statusPill(record.rtoStatus)}</td>
                     <td className="px-3.5 py-3.5 text-right">
-                      <div className="relative flex justify-end">
-                        <button
-                          type="button"
-                          onClick={(event) => { event.stopPropagation(); setActionMenuId(actionMenuId === record.id ? null : record.id); }}
-                          title="Actions"
-                          className={`rounded-full border p-1.5 transition-colors hover:bg-gray-50 ${actionMenuId === record.id ? 'border-[#FFC107] bg-amber-50 text-gray-900' : 'border-gray-200 text-gray-500'}`}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
-                        {actionMenuId === record.id ? (
-                          <div
-                            onClick={(event) => event.stopPropagation()}
-                            className={`absolute right-0 ${isNearBottom ? 'bottom-full mb-2' : 'top-full mt-2'} z-50 w-48 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-2xl`}
-                          >
-                            <button type="button" onClick={() => { router.push(`${accountBasePath}/${record.id}`); setActionMenuId(null); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs font-semibold text-gray-700 transition hover:bg-gray-50"><Eye className="h-4 w-4 text-gray-500" />View Details</button>
-                            {canUpdateRto ? <button type="button" onClick={() => { setActionMenuId(null); void openEdit(record); }} className="flex w-full items-center gap-3 border-t border-gray-100 px-4 py-2.5 text-left text-xs font-semibold text-blue-600 transition hover:bg-blue-50"><Pencil className="h-4 w-4 text-blue-500" />Edit Record</button> : null}
-                            {canDeleteRto ? <button type="button" onClick={() => { setActionMenuId(null); void remove(record.id); }} className="flex w-full items-center gap-3 border-t border-gray-100 px-4 py-2.5 text-left text-xs font-semibold text-red-600 transition hover:bg-red-50"><Trash2 className="h-4 w-4 text-red-500" />Delete Record</button> : null}
-                          </div>
-                        ) : null}
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <PortalActionDropdown
+                          align="right"
+                          items={[
+                            {
+                              label: 'View Details',
+                              icon: <Eye className="h-4 w-4 text-gray-500" />,
+                              onClick: () => router.push(`${accountBasePath}/${record.id}`),
+                            },
+                            ...(canUpdateRto ? [{
+                              label: 'Edit Record',
+                              icon: <Pencil className="h-4 w-4 text-blue-500" />,
+                              onClick: () => void openEdit(record),
+                            }] : []),
+                            ...(canExportRto ? [{
+                              label: 'Download Record',
+                              icon: <Download className="h-4 w-4 text-gray-500" />,
+                              onClick: () => downloadRecord(record),
+                            }] : []),
+                            ...(canDeleteRto ? [{
+                              label: 'Delete Record',
+                              icon: <Trash2 className="h-4 w-4 text-red-500" />,
+                              variant: 'danger' as const,
+                              onClick: () => void remove(record.id),
+                            }] : []),
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -556,17 +574,17 @@ export default function RTOWorkStatusPage() {
         <div className="relative w-full xl:max-w-3xl"><Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} /><input className={`${inputClass} h-11 rounded-full bg-white pl-10`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vehicle, customer, RTO office or agent..." /></div>
         <div className="flex flex-wrap items-center gap-2"><Filter size={16} className="text-gray-400" /><div className="w-full sm:w-64"><StyledSelect value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} /></div><button onClick={() => { setSearch(''); setStatusFilter('ALL'); }} className="rounded-xl bg-gray-100 p-3 text-gray-600 hover:bg-gray-200" aria-label="Reset filters"><RefreshCw size={17} /></button></div>
       </div>
-      <div className="overflow-x-auto"><table className="min-w-[2600px] w-full text-left text-sm"><thead className="border-b border-gray-200 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr>{columns.map((column) => <th key={column} className="whitespace-nowrap px-5 py-4">{column}</th>)}<th className="sticky right-0 bg-gray-50 px-5 py-4">ACTION</th></tr></thead><tbody className="divide-y divide-gray-100">{loading ? <tr><td colSpan={24} className="py-16 text-center text-gray-500">Loading RTO records...</td></tr> : filteredRecords.length ? filteredRecords.map((record) => <tr key={record.id} className="hover:bg-gray-50"><td className="px-5 py-4 font-semibold text-gray-900">{record.customerName}</td><td className="px-5 py-4">{record.customerNumber || '—'}</td><td className="px-5 py-4 font-bold text-gray-900">{record.vehicleNumber}</td><td className="px-5 py-4">{record.vehicleType}</td><td className="px-5 py-4">{record.vehicleModel}</td><td className="px-5 py-4">{label(record.hirePurchaseStatus)}</td><td className="px-5 py-4">{validityCell(record.taxStatus, record.taxValidUntil)}</td><td className="px-5 py-4">{validityCell(record.fitnessStatus, record.fitnessValidUntil)}</td><td className="px-5 py-4">{validityCell(record.insuranceStatus, record.insuranceValidUntil)}</td><td className="px-5 py-4">{validityCell(record.pucStatus, record.pucValidUntil)}</td><td className="px-5 py-4">{label(record.hsrpStatus)}</td><td className="px-5 py-4">{record.sellerName}</td><td className="px-5 py-4">{record.sellerNumber || '—'}</td><td className="px-5 py-4">{record.purchaserName}</td><td className="px-5 py-4">{record.purchaserNumber || '—'}</td><td className="px-5 py-4">{record.rtoAgentName}<small className="block text-gray-400">{record.rtoAgentCity}, {record.rtoAgentState}</small></td><td className="px-5 py-4">{record.rtoAgentNumber || '—'}</td><td className="px-5 py-4">₹{record.rtoExpenses.toLocaleString('en-IN')}</td><td className="px-5 py-4">₹{record.rtoExpensesAdvance.toLocaleString('en-IN')}</td><td className="px-5 py-4 font-semibold">₹{record.rtoExpensesBalance.toLocaleString('en-IN')}</td><td className="px-5 py-4">{dateValue(record.documentSendDate)}</td><td className="px-5 py-4"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{label(record.rtoStatus)}</span></td><td className="max-w-xs px-5 py-4">{record.noteSheet || '—'}</td><td className="sticky right-0 bg-white px-5 py-4"><div className="relative flex justify-end"><button type="button" onClick={() => setActionMenuId(actionMenuId === record.id ? null : record.id)} className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100" aria-label="Open actions"><MoreVertical size={17} /></button>{actionMenuId === record.id ? <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setSelected(record); setActionMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Eye size={14} /> View</button><button type="button" onClick={() => { setActionMenuId(null); void openEdit(record); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Pencil size={14} /> Edit</button><button type="button" onClick={() => { setActionMenuId(null); void remove(record.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"><Trash2 size={14} /> Delete</button></div> : null}</div></td></tr>) : <tr><td colSpan={24} className="py-16 text-center text-gray-500"><FileText className="mx-auto mb-2 text-gray-300" size={36} />No RTO records found.</td></tr>}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="min-w-[2600px] w-full text-left text-sm"><thead className="border-b border-gray-200 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr>{columns.map((column) => <th key={column} className="whitespace-nowrap px-5 py-4">{column}</th>)}<th className="sticky right-0 bg-gray-50 px-5 py-4">ACTION</th></tr></thead><tbody className="divide-y divide-gray-100">{loading ? <tr><td colSpan={24} className="py-16 text-center text-gray-500">Loading RTO records...</td></tr> : filteredRecords.length ? filteredRecords.map((record) => <tr key={record.id} className="hover:bg-gray-50"><td className="px-5 py-4 font-semibold text-gray-900">{record.customerName}</td><td className="px-5 py-4">{record.customerNumber || 'â€”'}</td><td className="px-5 py-4 font-bold text-gray-900">{record.vehicleNumber}</td><td className="px-5 py-4">{record.vehicleType}</td><td className="px-5 py-4">{record.vehicleModel}</td><td className="px-5 py-4">{label(record.hirePurchaseStatus)}</td><td className="px-5 py-4">{validityCell(record.taxStatus, record.taxValidUntil)}</td><td className="px-5 py-4">{validityCell(record.fitnessStatus, record.fitnessValidUntil)}</td><td className="px-5 py-4">{validityCell(record.insuranceStatus, record.insuranceValidUntil)}</td><td className="px-5 py-4">{validityCell(record.pucStatus, record.pucValidUntil)}</td><td className="px-5 py-4">{label(record.hsrpStatus)}</td><td className="px-5 py-4">{record.sellerName}</td><td className="px-5 py-4">{record.sellerNumber || 'â€”'}</td><td className="px-5 py-4">{record.purchaserName}</td><td className="px-5 py-4">{record.purchaserNumber || 'â€”'}</td><td className="px-5 py-4">{record.rtoAgentName}<small className="block text-gray-400">{record.rtoAgentCity}, {record.rtoAgentState}</small></td><td className="px-5 py-4">{record.rtoAgentNumber || 'â€”'}</td><td className="px-5 py-4">â‚¹{record.rtoExpenses.toLocaleString('en-IN')}</td><td className="px-5 py-4">â‚¹{record.rtoExpensesAdvance.toLocaleString('en-IN')}</td><td className="px-5 py-4 font-semibold">â‚¹{record.rtoExpensesBalance.toLocaleString('en-IN')}</td><td className="px-5 py-4">{dateValue(record.documentSendDate)}</td><td className="px-5 py-4"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{label(record.rtoStatus)}</span></td><td className="max-w-xs px-5 py-4">{record.noteSheet || 'â€”'}</td><td className="sticky right-0 bg-white px-5 py-4"><div className="relative flex justify-end"><button type="button" onClick={() => setActionMenuId(actionMenuId === record.id ? null : record.id)} className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100" aria-label="Open actions"><MoreVertical size={17} /></button>{actionMenuId === record.id ? <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setSelected(record); setActionMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Eye size={14} /> View</button><button type="button" onClick={() => { setActionMenuId(null); void openEdit(record); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Pencil size={14} /> Edit</button><button type="button" onClick={() => { setActionMenuId(null); void remove(record.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"><Trash2 size={14} /> Delete</button></div> : null}</div></td></tr>) : <tr><td colSpan={24} className="py-16 text-center text-gray-500"><FileText className="mx-auto mb-2 text-gray-300" size={36} />No RTO records found.</td></tr>}</tbody></table></div>
     </div>
 
-    {selected ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold text-gray-900">RTO Record Details</h2><button onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><div className="grid gap-3 text-sm sm:grid-cols-2">{[['Vehicle Number', vehicleNumberDisplay(selected.vehicleNumber)], ['Vehicle Type', selected.vehicleType], ['Vehicle Model', selected.vehicleModel], ['Customer', `${selected.customerName} (${selected.customerNumber || '—'})`], ['Seller', `${selected.sellerName} (${selected.sellerNumber || '—'})`], ['Purchaser', `${selected.purchaserName} (${selected.purchaserNumber || '—'})`], ['RTO Office', selected.rtoOffice], ['Agent', `${selected.rtoAgentName}, ${selected.rtoAgentCity}, ${selected.rtoAgentState}`], ['Agent Number', selected.rtoAgentNumber || '—'], ['RTO Status', label(selected.rtoStatus)], ['RTO Balance', `₹${selected.rtoExpensesBalance.toLocaleString('en-IN')}`], ['Maintenance Cost', `₹${selected.vehicleMaintenanceCost.toLocaleString('en-IN')}`]].map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-3"><span className="block text-xs text-gray-500">{key}</span><span className="font-semibold text-gray-900">{value}</span></div>)}</div></div></div> : null}
+    {selected ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold text-gray-900">RTO Record Details</h2><button onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><div className="grid gap-3 text-sm sm:grid-cols-2">{[['Vehicle Number', vehicleNumberDisplay(selected.vehicleNumber)], ['Vehicle Type', selected.vehicleType], ['Vehicle Model', selected.vehicleModel], ['Customer', `${selected.customerName} (${selected.customerNumber || 'â€”'})`], ['Seller', `${selected.sellerName} (${selected.sellerNumber || 'â€”'})`], ['Purchaser', `${selected.purchaserName} (${selected.purchaserNumber || 'â€”'})`], ['RTO Office', selected.rtoOffice], ['Agent', `${selected.rtoAgentName}, ${selected.rtoAgentCity}, ${selected.rtoAgentState}`], ['Agent Number', selected.rtoAgentNumber || 'â€”'], ['RTO Status', label(selected.rtoStatus)], ['RTO Balance', `â‚¹${selected.rtoExpensesBalance.toLocaleString('en-IN')}`], ['Maintenance Cost', `â‚¹${selected.vehicleMaintenanceCost.toLocaleString('en-IN')}`]].map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-3"><span className="block text-xs text-gray-500">{key}</span><span className="font-semibold text-gray-900">{value}</span></div>)}</div></div></div> : null}
 
     {modalOpen ? <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"><div className="mx-auto my-4 max-w-6xl rounded-2xl bg-white shadow-xl"><div className="flex items-center justify-between border-b border-gray-100 p-5"><div><h2 className="text-xl font-bold text-gray-900">{editingId ? 'Edit RTO Record' : 'Add RTO Record'}</h2><p className="text-xs text-gray-500">All fields match the RTO work status sheet.</p></div><button onClick={() => setModalOpen(false)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><form onSubmit={save} className="space-y-6 p-5">
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Vehicle Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field><Field label="Brand *"><SearchableSelect options={brands} value={form.brandName} displayValue={form.brandName} onChange={(option) => update('brandName', option.name)} placeholder="Select vehicle brand" className="w-full" /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={getValidityOptions(form[statusKey], statusKey === 'taxStatus')} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (nextStatus !== 'VALID' && nextStatus !== 'EXPIRED') update(dateKey, null); }} />{(form[statusKey] === 'VALID' || form[statusKey] === 'EXPIRED') ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid *"><StyledSelect value={form.hsrpStatus} options={(['YES', 'NO'] as HsrpStatus[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hsrpStatus', value as HsrpStatus)} /></Field><Field label="RTO Status *"><StyledSelect value={form.rtoStatus} options={getRtoStatusOptions()} onChange={(value) => update('rtoStatus', normalizeRtoStatus(value) as Status)} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Seller, Purchaser & RTO Agent</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Seller Name *"><input className={inputClass} value={form.sellerName} onChange={(e) => update('sellerName', e.target.value.toUpperCase())} /></Field><Field label="Seller Number"><input className={inputClass} inputMode="numeric" value={form.sellerNumber} onChange={(e) => update('sellerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Purcheser Name *"><input className={inputClass} value={form.purchaserName} onChange={(e) => update('purchaserName', e.target.value.toUpperCase())} /></Field><Field label="Purcheser Number"><input className={inputClass} inputMode="numeric" value={form.purchaserNumber} onChange={(e) => update('purchaserNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="RTO Office *"><input className={inputClass} value={form.rtoOffice} onChange={(e) => update('rtoOffice', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent Name *"><input className={inputClass} value={form.rtoAgentName} onChange={(e) => update('rtoAgentName', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent State *"><StyledSelect searchable value={form.rtoAgentState} placeholder="Select state" options={[{ value: '', label: 'Select state' }, ...states.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => void changeState(value)} /></Field><Field label="RTO Agent City *"><StyledSelect searchable value={form.rtoAgentCity} placeholder="Select city" disabled={!form.rtoAgentState} options={[{ value: '', label: 'Select city' }, ...cities.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('rtoAgentCity', value)} /></Field><Field label="RTO Agent Number"><input className={inputClass} inputMode="numeric" value={form.rtoAgentNumber} onChange={(e) => update('rtoAgentNumber', e.target.value.replace(/\D/g, ''))} /></Field></div></section>
-      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">RTO Expense</h3><div className="grid gap-4 md:grid-cols-3"><Field label="RTO Expenses (₹) *"><input className={inputClass} type="text" min="0" step="0.01" inputMode="decimal" placeholder="0" value={rtoExpensesInput} onChange={(e) => updateRtoExpenses(e.target.value)} /></Field></div><p className="mt-2 text-xs text-gray-500">Enter the total RTO expense as a non-negative number.</p></section>
+      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">RTO Expense</h3><div className="grid gap-4 md:grid-cols-3"><Field label="RTO Expenses (â‚¹) *"><input className={inputClass} type="text" min="0" step="0.01" inputMode="decimal" placeholder="0" value={rtoExpensesInput} onChange={(e) => updateRtoExpenses(e.target.value)} /></Field></div><p className="mt-2 text-xs text-gray-500">Enter the total RTO expense as a non-negative number.</p></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Remark</h3><Field label="Remark / Note"><textarea className={`${inputClass} min-h-28 resize-y`} value={form.noteSheet || ''} maxLength={5000} placeholder="Add RTO follow-up notes, document updates, or other remarks..." onChange={(e) => update('noteSheet', e.target.value)} /></Field><p className="mt-1 text-xs text-gray-500">Optional. This remark will be saved and shown on the RTO detail page.</p></section>
       <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-4">
         <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -599,7 +617,7 @@ export default function RTOWorkStatusPage() {
   </div>;
 }
 
-// ─── Terms & Conditions Modal ────────────────────────────────────────────────
+// â”€â”€â”€ Terms & Conditions Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Dynamically fetches content from /master/footer API (legalPages.termsConditions)
 // Same source as the frontend /terms-and-conditions page (LegalPageContent).
 // Falls back to a platform-specific default when nothing has been configured yet.
@@ -619,7 +637,7 @@ function TermsModal({ onClose }: { onClose: () => void }) {
           setCustomHtml(html.trim());
         }
       } catch {
-        // Network error — show fallback below
+        // Network error â€” show fallback below
       } finally {
         if (active) setLoading(false);
       }
@@ -630,116 +648,115 @@ function TermsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="relative mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative flex w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[90vh] sm:max-w-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Sticky Header ── */}
-        <div className="flex shrink-0 items-center justify-between border-b border-amber-100 bg-white px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100">
-              <FileText className="h-5 w-5 text-amber-700" />
+        {/* â”€â”€ Dark Header matching sidebar â”€â”€ */}
+        <div className="relative shrink-0 overflow-hidden bg-[#1A1A1A] px-6 pb-5 pt-5">
+          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[#FFC107]/15 blur-2xl" />
+          <div className="pointer-events-none absolute bottom-0 left-1/2 h-px w-3/4 -translate-x-1/2 bg-gradient-to-r from-transparent via-[#FFC107]/40 to-transparent" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFC107]/10 ring-1 ring-[#FFC107]/30">
+                <FileText className="h-5 w-5 text-[#FFC107]" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold leading-tight text-white">Terms &amp; Conditions</h2>
+                <p className="mt-0.5 text-xs font-medium text-gray-400">JCB Exchange â€” Official Platform Agreement</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Terms &amp; Conditions</h2>
-              <p className="text-xs text-gray-500">JCB Exchange Platform Agreement</p>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Terms and Conditions"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-gray-300 transition hover:bg-white/20 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close Terms and Conditions"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
-        {/* ── Scrollable Content ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        {/* â”€â”€ Scrollable Content â”€â”€ */}
+        <div className="flex-1 overflow-y-auto bg-gray-50/40">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-              <p className="mt-3 text-xs font-semibold text-gray-500">Loading Terms &amp; Conditions…</p>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[#FFC107]/10">
+                <Loader2 className="h-6 w-6 animate-spin text-[#FFC107]" />
+              </div>
+              <p className="mt-4 text-xs font-semibold text-gray-400">Loading Terms &amp; Conditionsâ€¦</p>
             </div>
           ) : customHtml ? (
-            /* Dynamic HTML saved by admin via Footer Content Settings */
-            <div
-              className="prose max-w-none text-sm leading-relaxed text-gray-700 sm:text-base prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:font-semibold prose-a:text-amber-700 prose-a:underline hover:prose-a:text-amber-800 prose-strong:text-gray-900 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1"
-              dangerouslySetInnerHTML={{ __html: customHtml }}
-            />
+            <div className="px-6 py-6">
+              <div
+                className="prose max-w-none text-sm leading-relaxed text-gray-700 prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-600 prose-a:font-semibold prose-a:text-amber-700 prose-a:no-underline hover:prose-a:underline prose-strong:text-gray-900 prose-ul:my-3 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-3 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-li:text-gray-600 prose-hr:border-gray-200"
+                dangerouslySetInnerHTML={{ __html: customHtml }}
+              />
+            </div>
           ) : (
-            /* Default fallback when no content is configured yet */
-            <div className="space-y-6 text-sm leading-relaxed text-gray-700">
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-gray-900">1. Acceptance of Terms &amp; Platform Guidelines</h3>
-                <p>
-                  By accessing JCB Exchange, managing vehicle listings, or updating RTO records, you agree to
-                  comply with all terms and conditions set forth herein. If you do not agree with any part of
-                  these terms, you must refrain from using the platform.
-                </p>
-                <ul className="list-disc space-y-2 pl-5 text-gray-600">
-                  <li>All submitted vehicle and customer records must be accurate and legally verified.</li>
-                  <li>Authorized employees and partner dealers must maintain strict confidentiality of user data.</li>
-                </ul>
-              </section>
-
-              <hr className="border-gray-100" />
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-gray-900">2. RTO Record Management &amp; Accuracy</h3>
-                <p>
-                  Users and administrative operators updating RTO Work Status records certify that all tax
-                  validity, fitness certificates, insurance details, and hire purchase agreements conform to
-                  official regional transport office standards in India.
-                </p>
-              </section>
-
-              <hr className="border-gray-100" />
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-gray-900">3. Compliance &amp; Legal Verification</h3>
-                <p>
-                  Misrepresentation of machinery serial numbers, engine details, ownership documents, or
-                  fraudulent financial advances will lead to immediate record revocation and legal review under
-                  applicable Indian commerce and transport laws.
-                </p>
-              </section>
-
-              <hr className="border-gray-100" />
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-gray-900">4. Support &amp; Regulatory Contact</h3>
-                <div className="mt-2 space-y-2 rounded-xl border border-gray-200/80 bg-gray-50 p-4 text-xs text-gray-700">
-                  <p className="font-bold text-gray-900">JCB Exchange Official Operations</p>
-                  <p className="flex items-center gap-2">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                    Plot No. 3033, Currency Tower, Raipur, Chhattisgarh, India
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <Mail className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                    <a href="mailto:jcbexchange@gmail.com" className="font-semibold text-amber-700 underline hover:text-amber-800">
-                      jcbexchange@gmail.com
-                    </a>
-                  </p>
+            <div className="divide-y divide-gray-100">
+              <div className="flex gap-4 px-6 py-5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFC107]/15 text-xs font-black text-amber-700">1</div>
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-900">Acceptance of Terms &amp; Platform Guidelines</h3>
+                  <p className="text-xs leading-relaxed text-gray-600">By accessing JCB Exchange, managing vehicle listings, or updating RTO records, you agree to comply with all terms and conditions set forth herein.</p>
+                  <ul className="space-y-1.5">
+                    <li className="flex items-start gap-2 text-xs text-gray-600"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#FFC107]" />All submitted vehicle and customer records must be accurate and legally verified.</li>
+                    <li className="flex items-start gap-2 text-xs text-gray-600"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#FFC107]" />Authorized employees and partner dealers must maintain strict confidentiality of user data.</li>
+                  </ul>
                 </div>
-              </section>
+              </div>
+              <div className="flex gap-4 px-6 py-5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFC107]/15 text-xs font-black text-amber-700">2</div>
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-900">RTO Record Management &amp; Accuracy</h3>
+                  <p className="text-xs leading-relaxed text-gray-600">Users and administrative operators updating RTO Work Status records certify that all tax validity, fitness certificates, insurance details, and hire purchase agreements conform to official regional transport office standards in India.</p>
+                </div>
+              </div>
+              <div className="flex gap-4 px-6 py-5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFC107]/15 text-xs font-black text-amber-700">3</div>
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-900">Compliance &amp; Legal Verification</h3>
+                  <p className="text-xs leading-relaxed text-gray-600">Misrepresentation of machinery serial numbers, engine details, ownership documents, or fraudulent financial advances will lead to immediate record revocation and legal review under applicable Indian commerce and transport laws.</p>
+                </div>
+              </div>
+              <div className="flex gap-4 px-6 py-5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFC107]/15 text-xs font-black text-amber-700">4</div>
+                <div className="w-full space-y-3">
+                  <h3 className="text-sm font-bold text-gray-900">Support &amp; Regulatory Contact</h3>
+                  <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <p className="mb-2.5 text-xs font-bold text-gray-900">JCB Exchange Official Operations</p>
+                    <p className="flex items-start gap-2 text-xs text-gray-600 mb-1.5">
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FFC107]" />
+                      Plot No. 3033, Currency Tower, Raipur, Chhattisgarh, India
+                    </p>
+                    <p className="flex items-center gap-2 text-xs">
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-[#FFC107]" />
+                      <a href="mailto:jcbexchange@gmail.com" className="font-semibold text-amber-700 hover:underline">jcbexchange@gmail.com</a>
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {/* ── Sticky Footer ── */}
-        <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gray-950 transition hover:bg-amber-600"
-          >
-            I Understand — Close
-          </button>
+        {/* â”€â”€ Footer â”€â”€ */}
+        <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-400">By closing, you acknowledge reading the terms.</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#FFC107] px-6 py-2.5 text-sm font-bold text-[#1A1A1A] shadow-sm transition hover:bg-[#E5AD06] active:scale-[0.98]"
+            >
+              <Check className="h-4 w-4" />
+              I Understand
+            </button>
+          </div>
         </div>
       </div>
     </div>

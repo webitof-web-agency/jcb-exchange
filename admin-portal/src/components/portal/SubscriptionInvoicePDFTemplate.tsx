@@ -233,7 +233,7 @@ export const SubscriptionInvoicePDFTemplate = ({
       <Page size="A4" style={styles.page}>
         
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Subscription Invoice</Text>
+          <Text style={styles.headerTitle}>BILL / PAYMENT RECEIPT</Text>
           {logoUrl ? (
             <Image src={logoUrl} style={styles.logo} />
           ) : (
@@ -241,12 +241,12 @@ export const SubscriptionInvoicePDFTemplate = ({
           )}
         </View>
 
-        {/* 1. Invoice Details */}
+        {/* 1. Bill / Payment Receipt Details */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>1. INVOICE Details</Text>
+          <Text style={styles.sectionHeader}>1. BILL / PAYMENT RECEIPT DETAILS</Text>
           <View style={styles.row}>
             <View style={styles.cell}>
-              <Text><Text style={styles.cellLabel}>Invoice No: </Text>{invoiceNumber}</Text>
+              <Text><Text style={styles.cellLabel}>Receipt / Bill No: </Text>{invoiceNumber}</Text>
             </View>
             <View style={styles.cell}>
               <Text><Text style={styles.cellLabel}>Generated Date: </Text>{formattedDate}</Text>
@@ -323,7 +323,7 @@ export const SubscriptionInvoicePDFTemplate = ({
           {/* Totals Sub-table */}
           <View style={styles.subTableContainer}>
             <View style={styles.subTableHeader}>
-              <Text style={[styles.th, { width: '14.28%' }]}>Tot. Tax'ble Amt</Text>
+              <Text style={[styles.th, { width: '14.28%' }]}>Tot. Tax&apos;ble Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>CGST Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>SGST Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>IGST Amt</Text>

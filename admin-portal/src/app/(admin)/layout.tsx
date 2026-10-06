@@ -16,7 +16,8 @@ import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, BookOpen } from 'lucide-react';
+import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import {
   employeeBrandsPermissions,
@@ -45,6 +46,7 @@ const navItems = [
   { href: '/superadmin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
   { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/superadmin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
   { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
   { href: '/superadmin/blogs', labelKey: 'admin.blog', icon: BookOpen },
   { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
@@ -53,6 +55,7 @@ const navItems = [
 const adminNavItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
   { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
 ];
 
 const employeeModuleNavItems = [
@@ -68,6 +71,7 @@ const employeeModuleNavItems = [
   { href: '/employee/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee, permissions: ['brands.read'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
+  { href: '/employee/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards, permissions: ['finance.read', 'finance.manage'] },
   { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
@@ -509,10 +513,13 @@ export default function AdminLayout({
     '/superadmin/analytics': t('admin.analytics'),
     '/superadmin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
     '/superadmin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/superadmin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/admin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
     '/admin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/admin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/employee/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
     '/employee/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
@@ -573,6 +580,7 @@ export default function AdminLayout({
   };
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
+    if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
     if (pathname.startsWith('/superadmin/analytics/') || pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');
     }

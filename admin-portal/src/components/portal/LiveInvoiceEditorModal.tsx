@@ -7,7 +7,10 @@ import { toast } from 'react-toastify';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import type { InvoiceSettings } from './SubscriptionInvoicePDFTemplate';
 
-const INVOICE_LOGO_FALLBACK = '/frontheadlogo.png';
+// The invoice is rendered on a white background, so use the existing dark
+// JCB mark as the last-resort fallback. The old frontheadlogo asset belongs
+// to the separate frontend app and is not available in this portal bundle.
+const INVOICE_LOGO_FALLBACK = '/loadinglogo.png';
 
 export type LiveInvoicePaymentData = {
   id: string;
@@ -469,7 +472,7 @@ export default function LiveInvoiceEditorModal({
           <div className="flex justify-between items-start border-b border-slate-200 pb-6 mb-6">
             <div>
               <div className="inline-block bg-slate-900 text-white px-3.5 py-1 text-xs font-black tracking-widest uppercase rounded-lg mb-2 shadow-xs">
-                {invoiceType === 'NON_TAX' ? 'BILL / PAYMENT RECEIPT' : 'TAX INVOICE'}
+                BILL / PAYMENT RECEIPT
               </div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">{invoiceSettings.companyName}</h1>
               <p className="text-slate-500 text-[11px] max-w-sm mt-1 leading-relaxed">
@@ -485,7 +488,12 @@ export default function LiveInvoiceEditorModal({
                 src={logoUrl}
                 alt="Company Logo"
                 className="h-12 w-auto object-contain mb-2"
-                onError={() => setLogoUrl(INVOICE_LOGO_FALLBACK)}
+                onError={(event) => {
+                  // Do not keep retrying the same missing fallback asset.
+                  if (!event.currentTarget.src.endsWith(INVOICE_LOGO_FALLBACK)) {
+                    setLogoUrl(INVOICE_LOGO_FALLBACK);
+                  }
+                }}
               />
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
                 {invoiceType === 'NON_TAX' ? 'No Tax Charged' : 'GST Compliant'}
@@ -498,7 +506,7 @@ export default function LiveInvoiceEditorModal({
             <div>
               <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 <Hash className="h-3 w-3 text-amber-500" />
-                <span>{invoiceType === 'NON_TAX' ? 'Receipt / Bill No.' : 'Invoice No.'}</span>
+                <span>Receipt / Bill No.</span>
               </label>
               <input
                 type="text"
