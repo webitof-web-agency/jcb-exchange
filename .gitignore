@@ -181,5 +181,12 @@ whatsappfront/
 !backend/src/services/whatsappCampaign.service.ts
 !backend/src/services/whatsappCampaign.service.test.ts
 
+# These WhatsApp recipient helpers are imported by auth/admin controllers and
+# must be included in clean production checkouts.
+!backend/src/utils/whatsappRecipient.ts
+!backend/src/utils/whatsappRecipient.test.ts
+!backend/src/utils/customerPrimeWhatsApp.ts
+!backend/src/utils/customerPrimeWhatsApp.test.ts
+
 # Local Codex handoff/audit documents; do not commit or push.
 /docs/
