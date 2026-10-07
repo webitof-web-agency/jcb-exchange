@@ -1,12 +1,12 @@
 import cron from 'node-cron';
 import zlib from 'zlib';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import prisma from '../lib/prisma';
 import { uploadDatabaseBackupToDrive } from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const DB_BACKUP_MAX_RETENTION = 30;
 
@@ -33,19 +33,30 @@ const getISTTimestamp = (): string => {
   return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}${parts.second}`;
 };
 
+export const redactDatabaseUrl = (message: string, dbUrl: string): string => {
+  try {
+    const parsed = new URL(dbUrl);
+    if (parsed.password) parsed.password = 'REDACTED';
+    return message.split(dbUrl).join(parsed.toString());
+  } catch {
+    return message.split(dbUrl).join('[REDACTED_DATABASE_URL]');
+  }
+};
+
 /**
  * Attempts a full PostgreSQL dump using pg_dump (native SQL format, gzip compressed).
  * Returns null if pg_dump is not available or fails.
  */
 const tryPgDump = async (dbUrl: string): Promise<{ buffer: Buffer; filename: string; mimeType: string } | null> => {
   try {
-    const { stdout, stderr } = await execAsync(
-      `pg_dump --clean --if-exists --no-owner --no-acl "${dbUrl}"`,
+    const { stdout, stderr } = await execFileAsync(
+      'pg_dump',
+      ['--clean', '--if-exists', '--no-owner', '--no-acl', dbUrl],
       { maxBuffer: 100 * 1024 * 1024 }, // 100 MB max
     );
 
     if (stderr && !stderr.toLowerCase().includes('warning')) {
-      console.warn('[backup] pg_dump produced stderr output:', stderr.slice(0, 500));
+      console.warn('[backup] pg_dump produced stderr output:', redactDatabaseUrl(stderr.slice(0, 500), dbUrl));
     }
 
     if (!stdout || stdout.trim().length === 0) {
@@ -59,7 +70,7 @@ const tryPgDump = async (dbUrl: string): Promise<{ buffer: Buffer; filename: str
   } catch (error) {
     console.warn(
       '[backup] pg_dump not available or failed — falling back to Prisma full-data export.',
-      error instanceof Error ? error.message : error,
+      error instanceof Error ? redactDatabaseUrl(error.message, dbUrl) : 'pg_dump failed',
     );
     return null;
   }

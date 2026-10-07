@@ -12,6 +12,7 @@ import {
   normalizeWhatsAppRecipientPhone,
   assertWhatsAppTemplatePurpose,
   isWhatsAppTemplatePurposeAllowed,
+  resolveWhatsAppTemplatePurpose,
   getWhatsAppPublishedBroadcastAudience,
   getWhatsAppPublishedBroadcastConsentCategory,
   getWhatsAppPublishedBroadcastRecipientType,
@@ -69,7 +70,7 @@ const getWhatsAppAutomationConfiguration = async (
     }).then((items) => items
       .map((template) => ({
         ...template,
-        category: template.category || mapMetaCategoryToPurpose(template.name),
+        category: resolveWhatsAppTemplatePurpose(template.name, template.category),
       }))
       .filter((template) => isWhatsAppTemplatePurposeAllowed(template.category, allowedTemplatePurposes))),
     prisma.whatsAppAutomationRule.findMany({
@@ -97,7 +98,7 @@ export const getWhatsAppMetaTemplates = async (purpose?: WhatsAppTemplatePurpose
 }).then((templates) => templates
   .map((template) => ({
     ...template,
-    category: template.category || mapMetaCategoryToPurpose(template.name),
+    category: resolveWhatsAppTemplatePurpose(template.name, template.category),
   }))
   .filter((template) => !purpose || template.category === purpose));
 
@@ -108,13 +109,6 @@ type MetaMessageTemplate = {
   status?: string;
   category?: string;
   components?: unknown;
-};
-
-const mapMetaCategoryToPurpose = (name: string, category?: string) => {
-  const normalizedName = name.toLowerCase();
-  if (normalizedName.startsWith('marketplace_')) return 'MARKETPLACE';
-  if (normalizedName.startsWith('recruitment_')) return 'RECRUITMENT';
-  return category?.toUpperCase() === 'MARKETING' ? 'MARKETING' : null;
 };
 
 /** Pulls the current WhatsApp Manager templates into the local catalogue. */
@@ -155,13 +149,13 @@ export const syncWhatsAppMetaTemplates = async () => {
       where: { OR: [{ metaTemplateId: remote.id }, { name: remote.name, language: remote.language }] },
       select: { id: true, category: true },
     });
-    const inferredCategory = mapMetaCategoryToPurpose(remote.name, remote.category);
+    const inferredCategory = resolveWhatsAppTemplatePurpose(remote.name, remote.category);
     const data = {
       name: remote.name,
       language: remote.language,
       metaTemplateId: remote.id,
       status: (remote.status || 'PENDING').toUpperCase(),
-      category: inferredCategory || existing?.category || null,
+      category: inferredCategory || resolveWhatsAppTemplatePurpose(remote.name, existing?.category) || null,
       ...(remote.components === undefined ? {} : { components: remote.components as Prisma.InputJsonValue }),
       lastSyncedAt: syncedAt,
     };
@@ -235,7 +229,7 @@ const saveWhatsAppAutomationRule = async ({
   const selectedTemplate = templateId
     ? await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, name: true, status: true, metaTemplateId: true, category: true } })
     : null;
-  if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(selectedTemplate.category || mapMetaCategoryToPurpose(selectedTemplate.name), allowedTemplatePurposes)) {
+  if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(resolveWhatsAppTemplatePurpose(selectedTemplate.name, selectedTemplate.category), allowedTemplatePurposes)) {
     throw new Error('Selected template does not belong to this WhatsApp module.');
   }
   if (enabled && (!selectedTemplate || selectedTemplate.status !== 'APPROVED' || !selectedTemplate.metaTemplateId)) {

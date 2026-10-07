@@ -91,6 +91,57 @@ export const resolveYearMonthUploadFolder = async (
   return findOrCreateChildFolder(drive, month, yearFolderId);
 };
 
+type DriveBackupFile = {
+  id?: string | null;
+  name?: string | null;
+  mimeType?: string | null;
+  createdTime?: string | null;
+};
+
+const listDriveChildren = async (drive: DriveClient, parentFolderId: string): Promise<DriveBackupFile[]> => {
+  const files: DriveBackupFile[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await drive.files.list({
+      q: `'${escapeDriveQueryValue(parentFolderId)}' in parents and trashed = false`,
+      pageSize: 1000,
+      fields: 'nextPageToken,files(id,name,mimeType,createdTime)',
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    files.push(...((response.data.files || []) as DriveBackupFile[]));
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return files;
+};
+
+export const listBackupFilesRecursively = async (drive: DriveClient, rootFolderId: string): Promise<DriveBackupFile[]> => {
+  const pendingFolders = [rootFolderId];
+  const visitedFolders = new Set<string>();
+  const backupFiles: DriveBackupFile[] = [];
+
+  while (pendingFolders.length > 0) {
+    const folderId = pendingFolders.shift();
+    if (!folderId || visitedFolders.has(folderId)) continue;
+    visitedFolders.add(folderId);
+
+    const children = await listDriveChildren(drive, folderId);
+    for (const child of children) {
+      if (!child.id) continue;
+      if (child.mimeType === DRIVE_FOLDER_MIME_TYPE) {
+        pendingFolders.push(child.id);
+      } else {
+        backupFiles.push(child);
+      }
+    }
+  }
+
+  return backupFiles.sort((left, right) => (left.createdTime || '').localeCompare(right.createdTime || ''));
+};
+
 export const uploadFileToDrive = async (
   buffer: Buffer,
   mimeType: string,
@@ -251,17 +302,7 @@ export const uploadDatabaseBackupToDrive = async (
   // List all non-folder files anywhere inside backup-db (across year/month sub-folders)
   let deletedCount = 0;
   try {
-    // Drive search: files whose ancestor is backupDbFolderId, ordered oldest first
-    const listResponse = await drive.files.list({
-      q: `'${escapeDriveQueryValue(backupDbFolderId)}' in ancestors and mimeType != '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
-      orderBy: 'createdTime asc',
-      pageSize: 100,
-      fields: 'files(id, name, createdTime)',
-      includeItemsFromAllDrives: true,
-      supportsAllDrives: true,
-    });
-
-    const allBackupFiles = listResponse.data.files || [];
+    const allBackupFiles = await listBackupFilesRecursively(drive, backupDbFolderId);
     const excessCount = allBackupFiles.length - maxBackups;
 
     if (excessCount > 0) {

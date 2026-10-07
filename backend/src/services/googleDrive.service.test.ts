@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveYearMonthUploadFolder } from './googleDrive.service';
+import { listBackupFilesRecursively, resolveYearMonthUploadFolder } from './googleDrive.service';
 
 test('reuses the existing year and month folders under the configured root', async () => {
   const listCalls: Array<Record<string, unknown>> = [];
@@ -59,4 +59,35 @@ test('creates missing year and month folders below the configured root', async (
     { name: '2026', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder-id'] },
     { name: '09-September', mimeType: 'application/vnd.google-apps.folder', parents: ['created-year-id'] },
   ]);
+});
+
+test('lists backup files recursively without using the unsupported ancestors query', async () => {
+  const queries: string[] = [];
+  const drive = {
+    files: {
+      list: async (params: Record<string, unknown>) => {
+        const query = String(params.q);
+        queries.push(query);
+        if (query.includes("'backup-root' in parents")) {
+          return { data: { files: [{ id: 'year-folder', mimeType: 'application/vnd.google-apps.folder' }] } };
+        }
+        if (query.includes("'year-folder' in parents")) {
+          return { data: { files: [{ id: 'month-folder', mimeType: 'application/vnd.google-apps.folder' }] } };
+        }
+        return {
+          data: {
+            files: [
+              { id: 'new-backup', name: 'new.json.gz', mimeType: 'application/gzip', createdTime: '2026-10-07T00:00:00.000Z' },
+              { id: 'old-backup', name: 'old.json.gz', mimeType: 'application/gzip', createdTime: '2026-10-01T00:00:00.000Z' },
+            ],
+          },
+        };
+      },
+    },
+  } as never;
+
+  const files = await listBackupFilesRecursively(drive, 'backup-root');
+
+  assert.deepEqual(files.map((file) => file.id), ['old-backup', 'new-backup']);
+  assert.equal(queries.some((query) => query.includes('ancestors')), false);
 });

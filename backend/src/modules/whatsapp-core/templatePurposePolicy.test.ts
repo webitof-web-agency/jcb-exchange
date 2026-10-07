@@ -4,6 +4,7 @@ import {
   assertWhatsAppTemplatePurpose,
   getWhatsAppReminderTemplatePurpose,
   isWhatsAppTemplatePurposeAllowed,
+  resolveWhatsAppTemplatePurpose,
 } from './templatePurposePolicy';
 
 test('allows dropdown templates only for the matching WhatsApp module purpose', () => {
@@ -20,4 +21,14 @@ test('maps reminder dropdowns to the right template purpose', () => {
 test('rejects unknown WhatsApp template purpose values', () => {
   assert.equal(assertWhatsAppTemplatePurpose('RECRUITMENT'), 'RECRUITMENT');
   assert.throws(() => assertWhatsAppTemplatePurpose('UTILITY'), /valid WhatsApp template purpose/);
+});
+
+test('infers automation purpose from prefixed template names when Meta returns GENERAL', () => {
+  assert.equal(resolveWhatsAppTemplatePurpose('marketplace_payment_update', 'GENERAL'), 'MARKETPLACE');
+  assert.equal(resolveWhatsAppTemplatePurpose('recruitment_offer_sent', 'GENERAL'), 'RECRUITMENT');
+});
+
+test('keeps valid explicit campaign purposes for non-prefixed templates', () => {
+  assert.equal(resolveWhatsAppTemplatePurpose('prime_offer', 'MARKETING'), 'MARKETING');
+  assert.equal(resolveWhatsAppTemplatePurpose('unknown_template', 'GENERAL'), null);
 });
