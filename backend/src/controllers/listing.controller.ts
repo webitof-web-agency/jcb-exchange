@@ -24,6 +24,7 @@ import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
 import { canCreateListing, canEditListing } from '../utils/listingAccess';
 import { getListingPaymentOutcome, type ListingPaymentMethod } from '../utils/listingPaymentPolicy';
+import { buildCustomerListingNotificationText } from '../utils/listingNotificationText';
 
 const prismaAny = prisma as any;
 const latestListingRtoRecords = {
@@ -563,15 +564,6 @@ const getOwnedListingForUser = async (listingId: string, userId: string) => {
   };
 };
 
-const formatListingPriceInLakhs = (price: Prisma.Decimal | number | string) => {
-  const numericPrice = Number(price);
-  if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
-    return 'Price on request';
-  }
-
-  return `Rs ${ (numericPrice / 100000).toFixed(2) } Lakh`;
-};
-
 const createCustomerListingNotifications = async ({
   listingId,
   creatorUserId,
@@ -581,6 +573,9 @@ const createCustomerListingNotifications = async ({
   locationCity,
   locationState,
   categoryName,
+  brandName,
+  modelName,
+  manufacturingYear,
 }: {
   listingId: string;
   creatorUserId: string;
@@ -590,6 +585,9 @@ const createCustomerListingNotifications = async ({
   locationCity: string;
   locationState: string;
   categoryName?: string | null;
+  brandName?: string | null;
+  modelName?: string | null;
+  manufacturingYear?: number | null;
 }) => {
   const recipients = await prisma.user.findMany({
     where: {
@@ -606,13 +604,18 @@ const createCustomerListingNotifications = async ({
     return;
   }
 
-  const notificationTitle = `New ${categoryName || 'vehicle'} listed: ${title}`;
-  const notificationMessage = [
-    formatListingPriceInLakhs(price),
-    [locationCity, locationState].filter(Boolean).join(', '),
-  ]
-    .filter(Boolean)
-    .join(' Ã¢â‚¬Â¢ ');
+  const formattedNotification = buildCustomerListingNotificationText({
+    title,
+    categoryName,
+    brandName,
+    modelName,
+    manufacturingYear,
+    price,
+    locationCity,
+    locationState,
+  });
+  const notificationTitle = formattedNotification.title;
+  const notificationMessage = formattedNotification.message;
 
   await prisma.notification.createMany({
     data: recipients.map((recipient) => ({
@@ -1417,6 +1420,9 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
         locationCity: updatedListing.locationCity,
         locationState: updatedListing.locationState,
         categoryName: updatedListing.category?.name,
+        brandName: updatedListing.brand?.name,
+        modelName: updatedListing.model?.name,
+        manufacturingYear: updatedListing.manufacturingYear,
       });
     }
 

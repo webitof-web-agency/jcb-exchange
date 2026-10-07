@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, ChevronRight, Tag, Smartphone, Briefcase, BookOpen } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, Tag, Briefcase, BookOpen } from 'lucide-react';
 import SellVehicleModal from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
@@ -15,6 +15,7 @@ import { getPortalMenuLabel, getPortalTarget, getPublicRoleLabel, PORTAL_ROLES }
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
+import { getNotificationHref } from '@/lib/notificationNavigation';
 import { isReactNativeWebView } from '@/lib/nativeApp';
 import { getAuthDisplayName } from '@/lib/authDisplayName';
 
@@ -87,6 +88,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileNotificationsRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const lastScrollYRef = useRef(0);
   const tickingRef = useRef(false);
@@ -229,7 +231,11 @@ export default function Navbar() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const clickedInsideNotificationSurface =
+        dropdownRef.current?.contains(target) || mobileNotificationsRef.current?.contains(target);
+
+      if (!clickedInsideNotificationSurface) {
         setIsDropdownOpen(false);
       }
 
@@ -243,7 +249,27 @@ export default function Navbar() {
   }, []);
 
   const handleToggleDropdown = () => {
-    setIsDropdownOpen((current) => !current);
+    const nextOpen = !isDropdownOpen;
+    setIsDropdownOpen(nextOpen);
+
+    if (nextOpen && hasHydrated && isAuthenticated && user?.role === 'CUSTOMER') {
+      void fetchNotifications();
+    }
+  };
+
+  const handleNotificationClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    notification: { id: string; link?: string | null },
+  ) => {
+    event.preventDefault();
+    setIsDropdownOpen(false);
+    void markNotificationAsRead(notification.id);
+    router.push(getNotificationHref(notification.link));
+  };
+
+  const handleNotificationLogin = () => {
+    setIsDropdownOpen(false);
+    window.setTimeout(() => setAuthModalOpen(true), 0);
   };
 
   const displayName = getAuthDisplayName(user);
@@ -389,7 +415,7 @@ export default function Navbar() {
                             <p className="text-sm font-semibold text-gray-800 mb-1">{t('common.loginToViewNotifications')}</p>
                             <p className="text-xs text-gray-500">Login as a customer to see your notifications</p>
                           </div>
-                          <button type="button" onClick={() => { setIsDropdownOpen(false); setAuthModalOpen(true); }} className="rounded-lg bg-jcb-yellow px-5 py-2 text-sm font-bold text-black transition-all hover:bg-yellow-400">
+                          <button type="button" onClick={handleNotificationLogin} className="rounded-lg bg-jcb-yellow px-5 py-2 text-sm font-bold text-black transition-all hover:bg-yellow-400">
                             Login / Sign Up
                           </button>
                         </div>
@@ -400,8 +426,8 @@ export default function Navbar() {
                         </div>
                       ) : (
                         notifications.map((notification) => (
-                          <Link href={notification.link || '/machines'} key={notification.id}
-                            onClick={() => { void markNotificationAsRead(notification.id); setIsDropdownOpen(false); }}
+                          <Link href={getNotificationHref(notification.link)} key={notification.id}
+                            onClick={(event) => handleNotificationClick(event, notification)}
                             className="flex items-start gap-3 border-b border-gray-50 bg-[#FFF9E6] p-3 transition-colors hover:bg-amber-50/60">
                             <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]"><Package size={15} /></div>
                             <div className="flex-1 min-w-0">
@@ -422,7 +448,7 @@ export default function Navbar() {
                     {/* Backdrop */}
                     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm" onClick={() => setIsDropdownOpen(false)} />
                     {/* Sheet */}
-                    <div className="fixed bottom-0 left-0 right-0 z-[10000] flex flex-col rounded-t-2xl bg-white text-gray-800 shadow-2xl" style={{ maxHeight: '82vh' }}>
+                    <div ref={mobileNotificationsRef} className="fixed bottom-0 left-0 right-0 z-[10000] flex flex-col rounded-t-2xl bg-white text-gray-800 shadow-2xl" style={{ maxHeight: '82vh' }}>
                       {/* Drag handle */}
                       <div className="flex flex-shrink-0 justify-center pt-3 pb-1">
                         <div className="h-1 w-10 rounded-full bg-gray-300" />
@@ -443,7 +469,7 @@ export default function Navbar() {
                               {t('common.markAllRead')}
                             </button>
                           )}
-                          <button type="button" onClick={() => setIsDropdownOpen(false)} className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Close">
+                          <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsDropdownOpen(false); }} className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Close">
                             <X size={18} />
                           </button>
                         </div>
@@ -457,7 +483,7 @@ export default function Navbar() {
                               <p className="text-sm font-semibold text-gray-800 mb-1">{t('common.loginToViewNotifications')}</p>
                               <p className="text-xs text-gray-500">Login as a customer to see your notifications</p>
                             </div>
-                            <button type="button" onClick={() => { setIsDropdownOpen(false); setAuthModalOpen(true); }} className="rounded-lg bg-jcb-yellow px-5 py-2.5 text-sm font-bold text-black transition-all hover:bg-yellow-400 active:scale-95">
+                            <button type="button" onClick={handleNotificationLogin} className="rounded-lg bg-jcb-yellow px-5 py-2.5 text-sm font-bold text-black transition-all hover:bg-yellow-400 active:scale-95">
                               Login / Sign Up
                             </button>
                           </div>
@@ -468,8 +494,8 @@ export default function Navbar() {
                           </div>
                         ) : (
                           notifications.map((notification) => (
-                            <Link href={notification.link || '/machines'} key={notification.id}
-                              onClick={() => { void markNotificationAsRead(notification.id); setIsDropdownOpen(false); }}
+                            <Link href={getNotificationHref(notification.link)} key={notification.id}
+                              onClick={(event) => handleNotificationClick(event, notification)}
                               className="flex items-start gap-3 border-b border-gray-50 bg-[#FFF9E6] p-4 transition-colors hover:bg-amber-50/60 active:bg-amber-100">
                               <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]"><Package size={16} /></div>
                               <div className="flex-1 min-w-0">

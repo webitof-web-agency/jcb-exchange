@@ -4,22 +4,32 @@ import React, { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Package, ArrowLeft } from 'lucide-react';
+import { Package } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatDateTime } from '@/lib/i18n/formatters';
+import { getNotificationHref } from '@/lib/notificationNavigation';
 
 export default function NotificationsPageClient() {
   const { t, locale } = useTranslation();
   const { isAuthenticated } = useAuthStore();
   const router = useRouter();
-  const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useNotificationStore();
+  const { notifications, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } = useNotificationStore();
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/');
+      return;
     }
-  }, [isAuthenticated, router]);
+
+    void fetchNotifications();
+  }, [fetchNotifications, isAuthenticated, router]);
+
+  const handleNotificationClick = (event: React.MouseEvent<HTMLAnchorElement>, notification: { id: string; link?: string | null }) => {
+    event.preventDefault();
+    void markNotificationAsRead(notification.id);
+    router.push(getNotificationHref(notification.link));
+  };
 
   if (!isAuthenticated) return null;
 
@@ -45,9 +55,9 @@ export default function NotificationsPageClient() {
           <div className="bg-white sm:rounded-lg shadow-sm overflow-hidden border border-gray-100">
             {notifications.map((notification) => (
               <Link
-                href={notification.link || '/machines'}
+                href={getNotificationHref(notification.link)}
                 key={notification.id}
-                onClick={() => markNotificationAsRead(notification.id)}
+                onClick={(event) => handleNotificationClick(event, notification)}
                 className="flex items-start gap-4 border-b border-gray-100 p-4 transition-colors hover:bg-gray-50 bg-[#FFF9E6] last:border-0"
               >
                 <div className="mt-1 flex h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#FFF3CD] text-[#9A7600]">
