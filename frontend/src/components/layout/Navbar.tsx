@@ -407,7 +407,7 @@ export default function Navbar() {
                       </div>
                     </div>
                     {/* Body */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                       {!isAuthenticated || user?.role !== 'CUSTOMER' ? (
                         <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
                           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Package className="h-6 w-6" /></div>
@@ -475,7 +475,7 @@ export default function Navbar() {
                         </div>
                       </div>
                       {/* Body */}
-                      <div className="flex-1 overflow-y-auto overscroll-contain">
+                      <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                         {!isAuthenticated || user?.role !== 'CUSTOMER' ? (
                           <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Package className="h-7 w-7" /></div>

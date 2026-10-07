@@ -34,7 +34,7 @@ interface NotificationState {
   lastSeenTimestamp: number;
   unreadCount: number;
   fetchRecentListings: () => Promise<void>;
-  fetchNotifications: () => Promise<void>;
+  fetchNotifications: (status?: 'all' | 'unread') => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
   markAsSeen: () => void;
@@ -104,16 +104,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }
   },
 
-  fetchNotifications: async () => {
+  fetchNotifications: async (status: 'all' | 'unread' = 'unread') => {
     try {
       const res = await api.get<{ success: boolean; data: UserNotification[] }>('/notifications', {
-        params: { status: 'unread' },
+        params: { status },
       });
       const notifications = res.data?.data || [];
+      const unreadCount = notifications.filter((item) => !item.isRead).length;
 
       set({
         notifications,
-        unreadCount: notifications.length,
+        unreadCount,
       });
     } catch {
       set({
