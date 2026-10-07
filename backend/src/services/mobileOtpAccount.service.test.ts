@@ -31,6 +31,7 @@ test('creates only an active customer for a previously unknown verified mobile',
   assert.equal(result.user.role, 'CUSTOMER');
   assert.equal(result.user.status, 'ACTIVE');
   assert.equal(result.user.mobile, '9876543210');
+  assert.equal((created as MobileOtpAccountUser & { whatsappNumber?: string }).whatsappNumber, '9876543210');
   assert.equal(result.user.isMobileVerified, true);
 });
 

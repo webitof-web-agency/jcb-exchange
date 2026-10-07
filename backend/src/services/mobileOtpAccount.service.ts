@@ -15,6 +15,7 @@ export type MobileOtpAccountRepository = {
 
 export const getNewMobileOtpCustomerData = (mobile: string) => ({
   mobile,
+  whatsappNumber: mobile,
   name: null,
   email: null,
   authProvider: 'MOBILE_OTP',

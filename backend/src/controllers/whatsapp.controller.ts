@@ -11,7 +11,9 @@ import {
 import {
   getWhatsAppMessageLogs,
   getWhatsAppMetaTemplates,
+  syncWhatsAppMetaTemplates,
   getWhatsAppSettings,
+  revealWhatsAppCredentials,
   getMarketplaceWhatsAppAutomationConfiguration,
   getRecruitmentWhatsAppAutomationConfiguration,
   marketplaceWhatsAppEvents,
@@ -48,6 +50,15 @@ const asOptionalString = (value: unknown, field: string, maxLength = 500) => {
 export const getWhatsAppConfiguration = async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json({ settings: await getWhatsAppSettings(), webhookUrl: getWebhookUrl(req) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const revealWhatsAppConfigurationCredentials = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.set('Cache-Control', 'no-store, private');
+    res.json({ credentials: await revealWhatsAppCredentials() });
   } catch (error) {
     next(error);
   }
@@ -165,6 +176,14 @@ export const getWhatsAppTemplates = async (req: Request, res: Response, next: Ne
       return res.status(400).json({ error: 'Invalid WhatsApp template purpose.' });
     }
     res.json({ templates: await getWhatsAppMetaTemplates(purpose as WhatsAppTemplatePurpose | undefined) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const syncWhatsAppTemplates = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ message: 'Meta WhatsApp templates synced.', ...(await syncWhatsAppMetaTemplates()) });
   } catch (error) {
     next(error);
   }

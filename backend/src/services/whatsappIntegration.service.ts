@@ -64,10 +64,14 @@ const getWhatsAppAutomationConfiguration = async (
 ) => {
   const [templates, existingRules] = await Promise.all([
     prisma.whatsAppMetaTemplate.findMany({
-      where: { category: { in: [...allowedTemplatePurposes] } },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, language: true, metaTemplateId: true, category: true, status: true, components: true, updatedAt: true },
-    }),
+    }).then((items) => items
+      .map((template) => ({
+        ...template,
+        category: template.category || mapMetaCategoryToPurpose(template.name),
+      }))
+      .filter((template) => isWhatsAppTemplatePurposeAllowed(template.category, allowedTemplatePurposes))),
     prisma.whatsAppAutomationRule.findMany({
       where: { eventCode: { in: [...eventCodes] } },
       select: { id: true, eventCode: true, enabled: true, templateId: true, recipientPolicy: true, updatedAt: true },
@@ -88,10 +92,87 @@ const getWhatsAppAutomationConfiguration = async (
 };
 
 export const getWhatsAppMetaTemplates = async (purpose?: WhatsAppTemplatePurpose) => prisma.whatsAppMetaTemplate.findMany({
-  ...(purpose ? { where: { category: purpose } } : {}),
   orderBy: [{ category: 'asc' }, { status: 'asc' }, { name: 'asc' }],
   select: { id: true, name: true, language: true, metaTemplateId: true, category: true, status: true, components: true, updatedAt: true },
-});
+}).then((templates) => templates
+  .map((template) => ({
+    ...template,
+    category: template.category || mapMetaCategoryToPurpose(template.name),
+  }))
+  .filter((template) => !purpose || template.category === purpose));
+
+type MetaMessageTemplate = {
+  id: string;
+  name: string;
+  language?: string;
+  status?: string;
+  category?: string;
+  components?: unknown;
+};
+
+const mapMetaCategoryToPurpose = (name: string, category?: string) => {
+  const normalizedName = name.toLowerCase();
+  if (normalizedName.startsWith('marketplace_')) return 'MARKETPLACE';
+  if (normalizedName.startsWith('recruitment_')) return 'RECRUITMENT';
+  return category?.toUpperCase() === 'MARKETING' ? 'MARKETING' : null;
+};
+
+/** Pulls the current WhatsApp Manager templates into the local catalogue. */
+export const syncWhatsAppMetaTemplates = async () => {
+  const settings = await prisma.whatsAppIntegrationSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: { businessAccountId: true, graphApiVersion: true, encryptedAccessToken: true },
+  });
+  if (!settings?.businessAccountId || !settings.encryptedAccessToken) {
+    throw new Error('Save Business Account ID and Access Token before syncing Meta templates.');
+  }
+
+  const accessToken = decryptWhatsAppCredential(settings.encryptedAccessToken, credentialSecret());
+  const version = graphApiVersion(settings.graphApiVersion);
+  let nextUrl = `https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(settings.businessAccountId)}/message_templates?fields=id,name,status,category,language,components&limit=100`;
+  const remoteTemplates: MetaMessageTemplate[] = [];
+
+  for (let page = 0; nextUrl && page < 20; page += 1) {
+    const response = await fetch(nextUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const result = await response.json().catch(() => ({})) as {
+      data?: MetaMessageTemplate[];
+      paging?: { next?: string };
+      error?: { message?: string };
+    };
+    if (!response.ok) throw new Error(result.error?.message || 'Meta rejected the template sync request.');
+    remoteTemplates.push(...(result.data || []));
+    const candidate = result.paging?.next;
+    if (!candidate) break;
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'graph.facebook.com') break;
+    nextUrl = parsed.toString();
+  }
+
+  const syncedAt = new Date();
+  for (const remote of remoteTemplates) {
+    if (!remote.id || !remote.name || !remote.language) continue;
+    const existing = await prisma.whatsAppMetaTemplate.findFirst({
+      where: { OR: [{ metaTemplateId: remote.id }, { name: remote.name, language: remote.language }] },
+      select: { id: true, category: true },
+    });
+    const inferredCategory = mapMetaCategoryToPurpose(remote.name, remote.category);
+    const data = {
+      name: remote.name,
+      language: remote.language,
+      metaTemplateId: remote.id,
+      status: (remote.status || 'PENDING').toUpperCase(),
+      category: inferredCategory || existing?.category || null,
+      ...(remote.components === undefined ? {} : { components: remote.components as Prisma.InputJsonValue }),
+      lastSyncedAt: syncedAt,
+    };
+    if (existing) {
+      await prisma.whatsAppMetaTemplate.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.whatsAppMetaTemplate.create({ data: { ...data, components: data.components || Prisma.JsonNull } });
+    }
+  }
+  return { synced: remoteTemplates.length, templates: await getWhatsAppMetaTemplates() };
+};
 
 export const getMarketplaceWhatsAppAutomationConfiguration = () =>
   getWhatsAppAutomationConfiguration(marketplaceWhatsAppEvents, ['MARKETPLACE']);
@@ -152,9 +233,9 @@ const saveWhatsAppAutomationRule = async ({
   allowedTemplatePurposes: readonly WhatsAppTemplatePurpose[];
 }) => {
   const selectedTemplate = templateId
-    ? await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, status: true, metaTemplateId: true, category: true } })
+    ? await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, name: true, status: true, metaTemplateId: true, category: true } })
     : null;
-  if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(selectedTemplate.category, allowedTemplatePurposes)) {
+  if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(selectedTemplate.category || mapMetaCategoryToPurpose(selectedTemplate.name), allowedTemplatePurposes)) {
     throw new Error('Selected template does not belong to this WhatsApp module.');
   }
   if (enabled && (!selectedTemplate || selectedTemplate.status !== 'APPROVED' || !selectedTemplate.metaTemplateId)) {
@@ -269,6 +350,34 @@ export const getWhatsAppSettings = async () => {
     create: { id: SETTINGS_ID },
   });
   return serializeSettings(settings);
+};
+
+export const revealWhatsAppCredentials = async () => {
+  const settings = await prisma.whatsAppIntegrationSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: {
+      encryptedAccessToken: true,
+      encryptedWebhookVerifyToken: true,
+      encryptedAppSecret: true,
+    },
+  });
+
+  if (!settings) {
+    return { accessToken: '', webhookVerifyToken: '', appSecret: '' };
+  }
+
+  const encryptedCredentials = [
+    settings.encryptedAccessToken,
+    settings.encryptedWebhookVerifyToken,
+    settings.encryptedAppSecret,
+  ];
+  const secret = encryptedCredentials.some(Boolean) ? credentialSecret() : null;
+
+  return {
+    accessToken: settings.encryptedAccessToken && secret ? decryptWhatsAppCredential(settings.encryptedAccessToken, secret) : '',
+    webhookVerifyToken: settings.encryptedWebhookVerifyToken && secret ? decryptWhatsAppCredential(settings.encryptedWebhookVerifyToken, secret) : '',
+    appSecret: settings.encryptedAppSecret && secret ? decryptWhatsAppCredential(settings.encryptedAppSecret, secret) : '',
+  };
 };
 
 export const updateWhatsAppSettings = async (input: SettingsInput) => {

@@ -24,6 +24,7 @@ import {
 } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
 import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
+import { getPreferredWhatsAppNumber } from '../utils/whatsappRecipient';
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import {
@@ -990,7 +991,7 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
       relatedEntityType: 'CUSTOMER_PRIME_SUBSCRIPTION',
       relatedEntityId: subscription.id,
       recipientType: 'CUSTOMER',
-      recipientPhone: subscription.user?.mobile,
+      recipientPhone: getPreferredWhatsAppNumber(subscription.user?.whatsappNumber, subscription.user?.mobile),
       payloadSnapshot: { subscriptionId: subscription.id, status, customerName: subscription.user?.name || null },
     });
 

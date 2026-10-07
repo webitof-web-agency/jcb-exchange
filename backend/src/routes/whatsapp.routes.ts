@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import {
   getWhatsAppConfiguration,
+  revealWhatsAppConfigurationCredentials,
   getWhatsAppCampaigns,
   getWhatsAppDashboard,
   getWhatsAppLogs,
   getWhatsAppTemplates,
+  syncWhatsAppTemplates,
   getMarketplaceWhatsAppAutomations,
   getRecruitmentWhatsAppAutomations,
   saveWhatsAppConfiguration,
@@ -27,11 +29,13 @@ const canManageWhatsApp = requireSuperAdminOrEmployeePermissions(['whatsapp.mana
 router.use(requireAuth);
 router.get('/dashboard', canReadWhatsApp, getWhatsAppDashboard);
 router.get('/settings', canReadWhatsApp, getWhatsAppConfiguration);
+router.get('/settings/credentials', canManageWhatsApp, revealWhatsAppConfigurationCredentials);
 router.put('/settings', canManageWhatsApp, saveWhatsAppConfiguration);
 router.post('/settings/test-message', canManageWhatsApp, sendWhatsAppConfigurationTest);
 router.get('/logs', canReadWhatsApp, getWhatsAppLogs);
 router.post('/logs/:id/retry', canManageWhatsApp, retryWhatsAppLog);
 router.get('/templates', canReadWhatsApp, getWhatsAppTemplates);
+router.post('/templates/sync', canManageWhatsApp, syncWhatsAppTemplates);
 router.get('/campaigns', canReadWhatsApp, getWhatsAppCampaigns);
 router.post('/campaign-consents', canManageWhatsApp, saveWhatsAppCampaignConsent);
 router.post('/campaigns', canManageWhatsApp, createWhatsAppCampaignDraft);

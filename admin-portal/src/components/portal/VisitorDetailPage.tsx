@@ -21,6 +21,9 @@ import { formatPortalCurrency, formatPortalDate } from '@/lib/partnerPortal';
 import { resolveVisitorId } from '@/lib/routeResolvers';
 import { generateAdminListingDetailPath, generateAdminVisitorDetailPath } from '@/lib/routePaths';
 
+const getInvoiceNumber = (id: string) =>
+  `INV-${id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+
 type VisitorRecord = {
   id: string;
   name: string;
@@ -279,7 +282,7 @@ export default function VisitorDetailPage({
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{getVisitorName(visitor)}</h2>
-                <div className="mt-1 flex items-center gap-2">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
                       visitor.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
@@ -289,6 +292,10 @@ export default function VisitorDetailPage({
                   </span>
                   <span className="h-1 w-1 rounded-full bg-gray-300"></span>
                   <span className="text-sm font-medium text-gray-600">{formatLabel(visitor.role)}</span>
+                  <span className="h-1 w-1 rounded-full bg-gray-300"></span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-semibold tracking-tight text-gray-600 select-all">
+                    {getInvoiceNumber(visitor.id)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -344,6 +351,12 @@ export default function VisitorDetailPage({
                       {t('visitorDetails.prime')}
                     </span>
                   ) : null}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Invoice No</p>
+                <p className="mt-0.5 font-mono text-sm font-semibold tracking-tight text-gray-900 select-all">
+                  {getInvoiceNumber(visitor.id)}
                 </p>
               </div>
             </div>

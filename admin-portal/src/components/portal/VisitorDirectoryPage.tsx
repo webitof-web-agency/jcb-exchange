@@ -69,6 +69,9 @@ const formatLabel = (value?: string | null) =>
         .join(' ')
     : 'Not set';
 
+const getInvoiceNumber = (id: string) =>
+  `INV-${id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+
 const getVisitorName = (visitor: VisitorRecord) =>
   visitor.fullName || visitor.name || visitor.email || 'Unnamed visitor';
 
@@ -196,6 +199,8 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
 
       const typeStrings = [formatLabel(visitor.role), visitor.isPrimeCustomer ? 'Prime Customer' : ''];
 
+      const invoiceNo = getInvoiceNumber(visitor.id).toLowerCase();
+
       const matchesSearch =
         query.length === 0 ||
         getVisitorName(visitor).toLowerCase().includes(query) ||
@@ -206,6 +211,7 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
         (visitor.createdBy?.name || '').toLowerCase().includes(query) ||
         (visitor.createdBy?.email || '').toLowerCase().includes(query) ||
         visitor.authProvider.toLowerCase().includes(query) ||
+        invoiceNo.includes(query) ||
         typeStrings.some((t) => t.toLowerCase().includes(query));
 
       return matchesStatus && matchesType && matchesSearch;
@@ -593,10 +599,11 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
         ) : (
           <>
             <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[620px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              <table className="w-full min-w-[980px] border-collapse text-left">
+              <table className="w-full min-w-[1060px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500">
                     <th className="p-4 font-semibold">Visitor</th>
+                    <th className="p-4 font-semibold">Invoice No</th>
                     <th className="p-4 font-semibold">Email</th>
                     <th className="p-4 font-semibold">Type</th>
                     <th className="p-4 font-semibold">Source</th>
@@ -642,6 +649,11 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/superadmin/vis
                               )}
                             </div>
                           </div>
+                        </td>
+                        <td className="p-4">
+                          <span className="inline-block rounded-md bg-gray-100 px-2 py-1 font-mono text-xs font-semibold tracking-tight text-gray-700 select-all">
+                            {getInvoiceNumber(visitor.id)}
+                          </span>
                         </td>
                         <td className="p-4 text-sm text-gray-700">{visitor.email || 'No email'}</td>
                         <td className="p-4">

@@ -25,6 +25,12 @@ import { useAuthStore } from '@/store/authStore';
 import { hasPermission } from '@/lib/permissionUtils';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { useTranslation } from '@/hooks/useTranslation';
+import {
+  getWhatsAppCredentialFieldState,
+  mergeRevealedWhatsAppCredentials,
+  preserveWhatsAppCredentialsAfterSave,
+  type WhatsAppCredentialValues,
+} from '@/lib/credentialFieldState';
 
 type WhatsAppSettings = {
   enabled: boolean;
@@ -97,6 +103,14 @@ type MarketplaceTemplate = {
   status: string;
   components: unknown;
   updatedAt: string;
+};
+
+const getMetaTemplateBody = (components: unknown) => {
+  if (!Array.isArray(components)) return '';
+  const body = components.find((component): component is { type?: string; text?: string } => (
+    typeof component === 'object' && component !== null && 'type' in component && (component as { type?: unknown }).type === 'BODY'
+  ));
+  return typeof body?.text === 'string' ? body.text : '';
 };
 
 type MarketplaceRule = {
@@ -222,6 +236,7 @@ function WhatsAppPhonePreview({
   status,
   bodyText,
   metaTemplateId,
+  components,
 }: {
   title: string;
   category: string;
@@ -229,14 +244,17 @@ function WhatsAppPhonePreview({
   status: string;
   bodyText?: string;
   metaTemplateId?: string;
+  components?: unknown;
 }) {
   const { t } = useTranslation();
   const wt: WhatsAppCopy = (key, defaultText, params) => t(`whatsappModule.${key}`, defaultText, params);
   const { logoUrl, darkLogoUrl } = useSiteLogo();
   const displayLogo = logoUrl || darkLogoUrl || '/icon.png';
+  const metaBodyText = getMetaTemplateBody(components);
 
   const getSampleBody = () => {
     if (bodyText && bodyText.trim()) return bodyText;
+    if (metaBodyText) return metaBodyText;
     switch (category) {
       case 'MARKETPLACE':
         return `Hello {{1}},\n\nYour JCB Machine Listing status (#{{2}}) has been updated on JCB Exchange.\n\nStatus: Approved & Live ✅\n\nThank you for choosing JCB Exchange.`;
@@ -447,6 +465,9 @@ function Field({
   placeholder,
   type = 'text',
   secret = false,
+  configured = false,
+  onReveal,
+  revealing = false,
   inputMode,
 }: {
   label: string;
@@ -455,11 +476,16 @@ function Field({
   placeholder: string;
   type?: string;
   secret?: boolean;
+  configured?: boolean;
+  onReveal?: () => void;
+  revealing?: boolean;
   inputMode?: 'text' | 'numeric';
 }) {
   const { t } = useTranslation();
   const [show, setShow] = useState(false);
-  const inputType = secret ? (show ? 'text' : 'password') : type;
+  const credentialState = getWhatsAppCredentialFieldState(value, configured);
+  const showEffective = show && Boolean(value);
+  const inputType = secret ? (showEffective ? 'text' : 'password') : type;
 
   return (
     <div>
@@ -471,15 +497,33 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+          className={`w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-200 ${secret ? 'pr-24' : ''}`}
         />
-        {secret && (
+        {secret && credentialState.showConfigured && onReveal && (
           <button
             type="button"
-            onClick={() => setShow(!show)}
+            onClick={onReveal}
+            disabled={revealing}
+            aria-label={t('whatsappModule.common.showSavedSecret', 'Show saved secret')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700 hover:text-emerald-900 disabled:cursor-wait disabled:opacity-60"
+          >
+            {revealing ? t('whatsappModule.common.loading', 'Loading...') : t('whatsappModule.common.show', 'Show')}
+          </button>
+        )}
+        {secret && credentialState.showConfigured && !onReveal && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">
+            {t('whatsappModule.common.configured', 'Configured')}
+          </span>
+        )}
+        {secret && credentialState.showToggle && (
+          <button
+            type="button"
+            onClick={() => setShow(!showEffective)}
+            aria-label={showEffective ? t('whatsappModule.common.hideSecret', 'Hide secret') : t('whatsappModule.common.showSecret', 'Show secret')}
+            aria-pressed={showEffective}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500 hover:text-gray-900"
           >
-            {show ? t('whatsappModule.common.hide', 'Hide') : t('whatsappModule.common.show', 'Show')}
+            {showEffective ? t('whatsappModule.common.hide', 'Hide') : t('whatsappModule.common.show', 'Show')}
           </button>
         )}
       </div>
@@ -499,9 +543,11 @@ export default function SuperAdminWhatsAppPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [revealingCredentials, setRevealingCredentials] = useState(false);
   const [marketplace, setMarketplace] = useState<MarketplaceAutomationResponse | null>(null);
   const [recruitment, setRecruitment] = useState<MarketplaceAutomationResponse | null>(null);
   const [templates, setTemplates] = useState<MarketplaceTemplate[]>([]);
+  const [syncingTemplates, setSyncingTemplates] = useState(false);
   const [marketplaceSaving, setMarketplaceSaving] = useState<string | null>(null);
   const [templateForm, setTemplateForm] = useState({
     name: '',
@@ -651,6 +697,22 @@ export default function SuperAdminWhatsAppPage() {
     setTemplates(response.data.templates);
   }, []);
 
+  const syncTemplates = async () => {
+    setSyncingTemplates(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await api.post<{ message: string; templates: MarketplaceTemplate[] }>('/whatsapp/templates/sync');
+      setTemplates(response.data.templates);
+      setNotice(`${response.data.message} ${response.data.templates.length} templates available.`);
+      await Promise.all([loadMarketplace(), loadRecruitment()]);
+    } catch (requestError) {
+      setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to sync Meta templates.' : 'Unable to sync Meta templates.');
+    } finally {
+      setSyncingTemplates(false);
+    }
+  };
+
   const loadLogs = useCallback(
     async (filters?: { status?: string; eventCode?: string }) => {
       setLogsLoading(true);
@@ -764,13 +826,29 @@ export default function SuperAdminWhatsAppPage() {
       if (!form.testRecipientPhone.trim()) delete payload.testRecipientPhone;
       const response = await api.put<{ message: string; settings: WhatsAppSettings }>('/whatsapp/settings', payload);
       setDashboard((current) => (current ? { ...current, settings: response.data.settings } : current));
-      setForm((current) => ({ ...current, accessToken: '', webhookVerifyToken: '', appSecret: '', testRecipientPhone: '' }));
+      setForm((current) => preserveWhatsAppCredentialsAfterSave(current));
       setNotice(response.data.message);
-      await loadDashboard();
     } catch (requestError) {
       setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to save WhatsApp settings.' : 'Unable to save WhatsApp settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const revealCredentials = async () => {
+    setRevealingCredentials(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await api.get<{ credentials: WhatsAppCredentialValues }>('/whatsapp/settings/credentials', {
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      setForm((current) => mergeRevealedWhatsAppCredentials(current, response.data.credentials));
+      setNotice('Saved WhatsApp credentials loaded into the form.');
+    } catch (requestError) {
+      setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to load saved WhatsApp credentials.' : 'Unable to load saved WhatsApp credentials.');
+    } finally {
+      setRevealingCredentials(false);
     }
   };
 
@@ -1124,6 +1202,9 @@ export default function SuperAdminWhatsAppPage() {
                     onChange={(value) => updateField('accessToken', value)}
                     placeholder={configuredCredentials?.accessTokenConfigured ? wt('settings.configuredReplaceOnly', 'Configured - add only to replace') : wt('settings.permanentAccessTokenPlaceholder', 'Meta permanent access token')}
                     secret
+                    configured={configuredCredentials?.accessTokenConfigured}
+                    onReveal={canManageWhatsApp ? () => void revealCredentials() : undefined}
+                    revealing={revealingCredentials}
                   />
                   <Field
                     label={wt('settings.webhookVerifyToken', 'Webhook verify token')}
@@ -1131,6 +1212,9 @@ export default function SuperAdminWhatsAppPage() {
                     onChange={(value) => updateField('webhookVerifyToken', value)}
                     placeholder={configuredCredentials?.webhookVerifyTokenConfigured ? wt('settings.configuredReplaceOnly', 'Configured - add only to replace') : wt('settings.webhookVerifyTokenPlaceholder', 'Create a secure verification token')}
                     secret
+                    configured={configuredCredentials?.webhookVerifyTokenConfigured}
+                    onReveal={canManageWhatsApp ? () => void revealCredentials() : undefined}
+                    revealing={revealingCredentials}
                   />
                   <div className="sm:col-span-2">
                     <Field
@@ -1139,6 +1223,9 @@ export default function SuperAdminWhatsAppPage() {
                       onChange={(value) => updateField('appSecret', value)}
                       placeholder={configuredCredentials?.appSecretConfigured ? wt('settings.configuredReplaceOnly', 'Configured - add only to replace') : wt('settings.metaAppSecretPlaceholder', 'Meta App Secret')}
                       secret
+                      configured={configuredCredentials?.appSecretConfigured}
+                      onReveal={canManageWhatsApp ? () => void revealCredentials() : undefined}
+                      revealing={revealingCredentials}
                     />
                   </div>
                 </div>
@@ -1300,7 +1387,18 @@ export default function SuperAdminWhatsAppPage() {
               <section className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-bold text-gray-900 text-sm">{wt('templates.allRegisteredTemplates', 'All Registered Templates ({count})', { count: templates.length })}</h4>
-                  <p className="text-xs text-gray-500">{wt('templates.clickPreviewHelp', 'Click Preview to view on side phone.')}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="hidden sm:block text-xs text-gray-500">{wt('templates.clickPreviewHelp', 'Click Preview to view on side phone.')}</p>
+                    <button
+                      type="button"
+                      onClick={() => void syncTemplates()}
+                      disabled={syncingTemplates || !canManageWhatsApp}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${syncingTemplates ? 'animate-spin' : ''}`} />
+                      {syncingTemplates ? 'Syncing...' : 'Sync from Meta'}
+                    </button>
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {templates.length ? (
@@ -1858,6 +1956,7 @@ export default function SuperAdminWhatsAppPage() {
               status={activePreviewTemplate ? activePreviewTemplate.status : templateForm.status}
               bodyText={customPreviewText || (activePreviewTemplate ? undefined : (activeTab === 'SETTINGS' ? testMessage : templateForm.bodyText))}
               metaTemplateId={activePreviewTemplate ? (activePreviewTemplate.metaTemplateId || undefined) : templateForm.metaTemplateId}
+              components={activePreviewTemplate?.components}
             />
 
             {activePreviewTemplate || customPreviewText ? (

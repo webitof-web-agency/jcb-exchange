@@ -78,6 +78,8 @@ import {
   type MobileOtpAccountUser,
 } from '../services/mobileOtpAccount.service';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
+import { getPreferredWhatsAppNumber } from '../utils/whatsappRecipient';
+import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsApp';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
 const prismaAny = prisma as any;
@@ -940,13 +942,38 @@ export const saveOnboardingData = async ({
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, name, mobile } = req.body;
+    const { email, password, name, mobile, whatsappNumber } = req.body as {
+      email?: string;
+      password?: string;
+      name?: string;
+      mobile?: string;
+      whatsappNumber?: string;
+    };
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Please fill in all fields (Name, Email, Password).' });
     }
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    }
+
+    if (mobile !== undefined && typeof mobile !== 'string') {
+      return res.status(400).json({ error: 'Mobile number must be a string.' });
+    }
+    if (whatsappNumber !== undefined && typeof whatsappNumber !== 'string') {
+      return res.status(400).json({ error: 'WhatsApp number must be a string.' });
+    }
+
+    const rawMobile = typeof mobile === 'string' ? mobile : '';
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
+    const normalizedWhatsapp = whatsappNumber === undefined
+      ? normalizedMobile
+      : normalizeProfileMobile(whatsappNumber);
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+    if (whatsappNumber && !normalizedWhatsapp) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit WhatsApp number.' });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -963,7 +990,8 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           email,
           password: hashedPassword,
           name,
-          mobile: mobile || undefined,
+          mobile: normalizedMobile || undefined,
+          whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
           authProvider: 'LOCAL',
           role: 'CUSTOMER',
           status: 'ACTIVE' as any,
@@ -974,7 +1002,8 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           email,
           password: hashedPassword,
           name,
-          mobile: mobile || undefined,
+          mobile: normalizedMobile || undefined,
+          whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
           authProvider: 'LOCAL',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE' as any,
@@ -1436,12 +1465,13 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
           isMobileVerified: true,
         } as any,
       });
-    } else if (user.authProvider !== 'GOOGLE') {
+    } else if (user.authProvider !== 'GOOGLE' || (user.mobile && !user.whatsappNumber)) {
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
           authProvider: 'GOOGLE',
           ...(user.name ? {} : { name: googleProfile.name }),
+          ...(user.mobile && !user.whatsappNumber ? { whatsappNumber: user.mobile } : {}),
         },
       });
     }
@@ -1637,6 +1667,17 @@ export const submitCustomerPrimeSubscription = async (req: Request, res: Respons
       city: String(req.body?.city || '').trim(),
       state: String(req.body?.state || '').trim(),
     });
+
+    const whatsappDispatch = buildCustomerPrimeWhatsAppDispatch({
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      customerName: subscription.user?.name,
+      whatsappNumber: subscription.user?.whatsappNumber,
+      mobile: subscription.user?.mobile,
+    });
+    if (whatsappDispatch) {
+      void dispatchMarketplaceWhatsApp(whatsappDispatch);
+    }
 
     await prisma.user.update({
       where: { id: req.user.id },

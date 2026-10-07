@@ -487,6 +487,8 @@
     "createAccount": "Create an Account",
     "fullName": "Full Name",
     "mobileNumber": "Mobile Number",
+    "whatsappNumber": "WhatsApp Number",
+    "whatsappSameAsMobile": "This mobile number is also my WhatsApp number",
     "otp": "OTP",
     "emailAddress": "Email Address",
     "password": "Password",

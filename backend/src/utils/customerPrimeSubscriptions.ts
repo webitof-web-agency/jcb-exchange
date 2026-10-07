@@ -38,6 +38,7 @@ type PrimeDbRecord = {
     name?: string | null;
     email?: string | null;
     mobile?: string | null;
+    whatsappNumber?: string | null;
   } | null;
 };
 
@@ -317,6 +318,7 @@ export const createCustomerPrimeSubscriptionRequest = async ({
           name: true,
           email: true,
           mobile: true,
+          whatsappNumber: true,
         },
       },
     },
@@ -377,6 +379,7 @@ export const approveCustomerPrimeSubscription = async ({
           name: true,
           email: true,
           mobile: true,
+          whatsappNumber: true,
         },
       },
     },
@@ -403,6 +406,7 @@ export const rejectCustomerPrimeSubscription = async ({
           name: true,
           email: true,
           mobile: true,
+          whatsappNumber: true,
         },
       },
     },
@@ -431,6 +435,7 @@ export const rejectCustomerPrimeSubscription = async ({
           name: true,
           email: true,
           mobile: true,
+          whatsappNumber: true,
         },
       },
     },

@@ -55,6 +55,8 @@ export default function AuthModal() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappSameAsMobile, setWhatsappSameAsMobile] = useState(true);
   const [otp, setOtp] = useState('');
   const [emailOtp, setEmailOtp] = useState('');
   const [error, setError] = useState('');
@@ -289,7 +291,13 @@ export default function AuthModal() {
           return;
         }
 
-        const response = await api.post('/auth/register', { email, password, name, mobile });
+        const response = await api.post('/auth/register', {
+          email,
+          password,
+          name,
+          mobile,
+          ...(whatsappSameAsMobile ? {} : { whatsappNumber }),
+        });
         const { token, user } = response.data as { token: string; user: AuthResponseUser };
         completeAuth(token, user);
       }
@@ -481,7 +489,7 @@ export default function AuthModal() {
         onLoad={() => setIsGoogleScriptReady(true)}
       />
       <div className="flex w-full items-center justify-center">
-        <div className="my-auto w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white shadow-2xl animate-in slide-in-from-bottom-4 zoom-in duration-200">
+        <div className="my-auto w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white shadow-2xl animate-in slide-in-from-bottom-4 zoom-in duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div className="relative flex min-h-[64px] items-center justify-center bg-[#1A1A1A] px-6 py-3 sm:py-4">
             <div className="flex items-center justify-center w-full">
               <Image src="/frontloginlogo.png" alt="JCB Exchange" width={300} height={80} priority className="h-auto w-full max-w-[240px] object-contain" />
@@ -621,6 +629,33 @@ export default function AuthModal() {
                       />
                       <Smartphone className="absolute left-3 top-2.5 text-gray-400" size={18} />
                     </div>
+                  </div>
+                ) : null}
+
+                {!isLogin ? (
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={whatsappSameAsMobile}
+                        onChange={(event) => setWhatsappSameAsMobile(event.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-jcb-yellow focus:ring-jcb-yellow"
+                      />
+                      <span>{t('auth.whatsappSameAsMobile', 'This mobile number is also my WhatsApp number')}</span>
+                    </label>
+                    {!whatsappSameAsMobile ? (
+                      <div className="relative">
+                        <input
+                          type="tel"
+                          value={whatsappNumber}
+                          onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                          placeholder={t('auth.whatsappNumber', 'WhatsApp Number')}
+                          required
+                        />
+                        <Smartphone className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
