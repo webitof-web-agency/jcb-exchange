@@ -1,0 +1,258 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: App version shown in iOS (for example 1.1.0)
+        required: true
+        default: 1.1.0
+        type: string
+      build_number:
+        description: Incrementing App Store build number
+        required: true
+        default: "1"
+        type: string
+      build_output:
+        description: Build output type
+        required: true
+        default: ipa
+        type: choice
+        options:
+          - ipa
+      export_method:
+        description: Provisioning profile type used for export
+        required: true
+        default: ad-hoc
+        type: choice
+        options:
+          - ad-hoc
+          - app-store
+      web_url:
+        description: Web app URL bundled into the app
+        required: true
+        default: https://jcbexchange.com
+        type: string
+      api_url:
+        description: API base URL bundled into the app
+        required: true
+        default: https://api.jcbexchange.com
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: JCB-Exchange
+  IOS_BUNDLE_ID: com.webitof.jcbexchange
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+
+    defaults:
+      run:
+        working-directory: JCB-Exchange
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate iOS project and workflow configuration
+        run: node scripts/ios-build-config.test.mjs
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: JCB-Exchange/package-lock.json
+
+      - name: Set up Ruby and CocoaPods
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: JCB-Exchange
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Check required iOS signing and Firebase secrets
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          FIREBASE_IOS_PLIST_BASE64: ${{ secrets.FIREBASE_IOS_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          for required_name in \
+            IOS_CERTIFICATE_BASE64 \
+            IOS_CERTIFICATE_PASSWORD \
+            IOS_PROVISIONING_PROFILE_BASE64 \
+            IOS_TEAM_ID \
+            FIREBASE_IOS_PLIST_BASE64; do
+            if [[ -z "${!required_name}" ]]; then
+              echo "::error::GitHub secret $required_name is required for a production IPA build."
+              exit 1
+            fi
+          done
+
+      - name: Create release environment file
+        env:
+          WEB_URL: ${{ inputs.web_url }}
+          API_URL: ${{ inputs.api_url }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'WEB_APP_URL=%s\n' "$WEB_URL"
+            printf 'API_BASE_URL=%s\n' "$API_URL"
+            printf 'SUPPORT_EMAIL=support@jcbexchange.com\n'
+            printf 'BUSINESS_EMAIL=business@jcbexchange.com\n'
+            printf 'WHATSAPP_SUPPORT_NUMBER=917451965755\n'
+          } > .env
+
+      - name: Add Firebase iOS configuration
+        env:
+          FIREBASE_IOS_PLIST_BASE64: ${{ secrets.FIREBASE_IOS_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_IOS_PLIST_BASE64" | base64 --decode > ios/JCBExchange/GoogleService-Info.plist
+          plutil -lint ios/JCBExchange/GoogleService-Info.plist
+
+      - name: Install CocoaPods dependencies
+        env:
+          COCOAPODS_DISABLE_STATS: "true"
+        run: bundle exec pod install --project-directory=ios
+
+      - name: Import signing certificate and provisioning profile
+        id: signing
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/jcbexchange_distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/jcbexchange.mobileprovision"
+          PROFILE_PLIST_PATH="$RUNNER_TEMP/jcbexchange-profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/jcbexchange-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$IOS_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST_PATH"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST_PATH")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST_PATH")"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          {
+            printf 'IOS_PROFILE_NAME=%s\n' "$PROFILE_NAME"
+            printf 'IOS_PROFILE_UUID=%s\n' "$PROFILE_UUID"
+            printf 'IOS_KEYCHAIN_PATH=%s\n' "$KEYCHAIN_PATH"
+          } >> "$GITHUB_ENV"
+
+          if [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST_PATH")" != "$IOS_TEAM_ID.$IOS_BUNDLE_ID" ]]; then
+            echo "::error::The provisioning profile does not match $IOS_TEAM_ID.$IOS_BUNDLE_ID."
+            exit 1
+          fi
+
+      - name: Archive signed iOS app
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ARCHIVE_PATH="$RUNNER_TEMP/JCBExchange.xcarchive"
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/JCBExchange.xcworkspace \
+            -scheme JCBExchange \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>destination</key>
+            <string>export</string>
+            <key>method</key>
+            <string>${{ inputs.export_method }}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${IOS_PROFILE_NAME}</string>
+            </dict>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          PLIST
+
+          rm -rf "$RUNNER_TEMP/JCBExchange-export"
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/JCBExchange-export"
+
+          IPA_PATH="$(find "$RUNNER_TEMP/JCBExchange-export" -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [[ -z "$IPA_PATH" ]]; then
+            echo '::error::xcodebuild completed without producing an IPA.'
+            exit 1
+          fi
+          cp "$IPA_PATH" "artifacts/JCB-Exchange-v${VERSION_NAME}-build${BUILD_NUMBER}.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JCB-Exchange-iOS-${{ inputs.version_name }}-${{ inputs.build_number }}
+          path: JCB-Exchange/artifacts/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean signing keychain
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${IOS_KEYCHAIN_PATH:-}" && -e "$IOS_KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$IOS_KEYCHAIN_PATH"
+          fi

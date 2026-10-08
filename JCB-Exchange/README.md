@@ -53,3 +53,36 @@ The APK will be in:
 - `android/app/google-services.json` is already placed for the Android build
 - The web session posts the FCM token to `POST /api/users/fcm-token`
 - The request uses the web app auth token from `localStorage` (`rto_customer_token`)
+
+## iPhone IPA through GitHub Actions
+
+The repository includes a manual GitHub Actions workflow at
+`.github/workflows/build-ios-ipa.yml`. It runs on a macOS runner, installs the
+React Native 0.87 iOS dependencies, archives the app with manual signing, and
+uploads the generated IPA as an artifact.
+
+Run it from GitHub Actions → **Build iOS IPA** → **Run workflow**. The form
+provides version, build number, IPA output, export method, web URL, and API URL
+inputs.
+
+Add these repository secrets before running the workflow:
+
+- `IOS_CERTIFICATE_BASE64`: base64 of the Apple Distribution `.p12` file
+- `IOS_CERTIFICATE_PASSWORD`: password for that `.p12` file
+- `IOS_PROVISIONING_PROFILE_BASE64`: base64 of the matching `.mobileprovision`
+- `IOS_TEAM_ID`: Apple Developer Team ID
+- `FIREBASE_IOS_PLIST_BASE64`: base64 of the Firebase iOS
+  `GoogleService-Info.plist` for bundle ID `com.webitof.jcbexchange`
+
+On macOS, base64 values can be created with:
+
+```bash
+base64 -i certificate.p12 | pbcopy
+base64 -i JCBExchange.mobileprovision | pbcopy
+base64 -i GoogleService-Info.plist | pbcopy
+```
+
+The certificate must be an Apple Distribution certificate. The provisioning
+profile must match both the bundle ID `com.webitof.jcbexchange` and the
+selected export method. The Firebase plist is injected only during the build
+and is not committed to the repository.
