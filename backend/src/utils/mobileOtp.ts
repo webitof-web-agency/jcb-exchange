@@ -18,6 +18,7 @@ export const MOBILE_OTP_COOLDOWN_SECONDS = 45;
 export const MOBILE_OTP_RESEND_WINDOW_SECONDS = 10 * 60;
 export const MOBILE_OTP_MAX_RESENDS = 5;
 export const MOBILE_OTP_MAX_VERIFY_ATTEMPTS = 5;
+export const MOBILE_OTP_GENERIC_LOGIN_MESSAGE = 'If this number is registered, an OTP has been sent.';
 
 export const defaultMobileOtpSettings: MobileOtpSettings = {
   enabled: false,

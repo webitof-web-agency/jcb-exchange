@@ -18,6 +18,7 @@ import {
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import {
   getLoginMobileCandidates,
+  MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
   normalizeLoginMobileNumber,
   maskMobileNumber,
 } from '../utils/mobileOtp';
@@ -73,8 +74,7 @@ import {
 } from '../utils/customerPrimeSubscriptions';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import {
-  findOrCreateMobileOtpAccount,
-  getNewMobileOtpCustomerData,
+  findMobileOtpAccount,
   type MobileOtpAccountUser,
 } from '../services/mobileOtpAccount.service';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
@@ -102,14 +102,10 @@ const mobileOtpAccountRepository = {
     });
     return user as MobileOtpAccountUser | null;
   },
-  createCustomer: async (mobile: string) => {
-    const user = await prisma.user.create({
-      data: getNewMobileOtpCustomerData(mobile) as any,
-      select: mobileOtpAccountSelect,
-    });
-    return user as MobileOtpAccountUser;
-  },
 };
+
+const isPrismaUniqueConstraintError = (error: unknown) =>
+  !!error && typeof error === 'object' && 'code' in error && error.code === 'P2002';
 
 const businessPartnerTypes = new Set(['SHOWROOM']);
 
@@ -950,7 +946,14 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       whatsappNumber?: string;
     };
 
-    if (!email || !password || !name) {
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      typeof name !== 'string' ||
+      !email.trim() ||
+      !password ||
+      !name.trim()
+    ) {
       return res.status(400).json({ error: 'Please fill in all fields (Name, Email, Password).' });
     }
     if (password.length < 8) {
@@ -969,16 +972,25 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const normalizedWhatsapp = whatsappNumber === undefined
       ? normalizedMobile
       : normalizeProfileMobile(whatsappNumber);
-    if (rawMobile && !normalizedMobile) {
+    if (!normalizedMobile) {
       return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
     }
     if (whatsappNumber && !normalizedWhatsapp) {
       return res.status(400).json({ error: 'Enter a valid 10-digit WhatsApp number.' });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedName = name.trim();
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+    }
+
+    if (normalizedMobile) {
+      const existingMobileUser = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+      if (existingMobileUser) {
+        return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -987,9 +999,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const newUser = hasSuperAdmin
       ? await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           password: hashedPassword,
-          name,
+          name: normalizedName,
           mobile: normalizedMobile || undefined,
           whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
           authProvider: 'LOCAL',
@@ -999,9 +1011,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       })
       : await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           password: hashedPassword,
-          name,
+          name: normalizedName,
           mobile: normalizedMobile || undefined,
           whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
           authProvider: 'LOCAL',
@@ -1027,6 +1039,10 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       user: authUser,
     });
   } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+    }
+
     next(error);
   }
 };
@@ -1103,13 +1119,17 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
     }
 
-    const account = await mobileOtpAccountRepository.findByMobile(normalizedMobile);
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
 
-    if (account) {
-      const currentUser = await fetchAuthenticatedUserById(account.id);
-      if (assertAccountAccessOrRespond(res, currentUser)) {
-        return;
-      }
+    if (!account) {
+      return res.json({
+        message: MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
+      });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(account.id);
+    if (assertAccountAccessOrRespond(res, currentUser)) {
+      return;
     }
 
     const cooldownSeconds = await getMobileOtpCooldownSeconds(normalizedMobile);
@@ -1123,17 +1143,16 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
 
     const challenge = await createMobileOtpChallenge({
       mobile: normalizedMobile,
-      userId: account?.id ?? null,
+      userId: account.id,
       expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
     });
 
     return res.json({
-      message: 'OTP sent successfully.',
+      message: MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
       challengeId: challenge.id,
       expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
       otpLength: settings.mobileOtp.otpLength,
       maskedMobile: maskMobileNumber(normalizedMobile),
-      isNewAccount: !account,
     });
   } catch (error) {
     if (error instanceof FlowitofOtpError) {
@@ -1381,23 +1400,25 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       throw error;
     }
 
-    const account = await findOrCreateMobileOtpAccount(
-      normalizedMobile,
-      mobileOtpAccountRepository,
-    );
-    const currentUser = await fetchAuthenticatedUserById(account.user.id);
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+    if (!account || challenge.userId !== account.id) {
+      await expireMobileOtpChallenge(challenge.id);
+      return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+    }
+
+    const currentUser = await fetchAuthenticatedUserById(account.id);
     if (assertAccountAccessOrRespond(res, currentUser)) {
       return;
     }
 
-    if (!account.user.isMobileVerified) {
+    if (!account.isMobileVerified) {
       await prisma.user.update({
-        where: { id: account.user.id },
+        where: { id: account.id },
         data: { isMobileVerified: true },
       });
     }
 
-    await markMobileOtpChallengeVerified(challenge.id, account.user.id);
+    await markMobileOtpChallengeVerified(challenge.id, account.id);
 
     const authUser = await buildAuthUserPayload(currentUser as any);
     const token = signAuthToken(authUser);

@@ -58,6 +58,7 @@ export default function AuthModal() {
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [whatsappSameAsMobile, setWhatsappSameAsMobile] = useState(true);
   const [otp, setOtp] = useState('');
+  const [otpRequestMessage, setOtpRequestMessage] = useState('');
   const [emailOtp, setEmailOtp] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -316,6 +317,7 @@ export default function AuthModal() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setOtpRequestMessage('');
     setIsOtpSending(true);
 
     try {
@@ -326,13 +328,20 @@ export default function AuthModal() {
       }
 
       const response = await api.post('/auth/login/mobile-otp/send', { mobile });
-      setOtpChallengeId(response.data.challengeId || '');
+      const challengeId = response.data.challengeId || '';
+      setOtpChallengeId(challengeId);
       setOtpMaskedMobile(response.data.maskedMobile || '');
+      setOtpRequestMessage(challengeId ? '' : response.data.message || t('auth.sendOtpFailed'));
       setOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || otpLength)));
       setOtpExpirySeconds(Number(response.data.expiresInSeconds) || otpExpirySeconds);
       setOtpResendNow(Date.now());
-      setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
-      setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
+      if (challengeId) {
+        setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
+        setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
+      } else {
+        setOtpExpiresAt(0);
+        setOtpResendAvailableAt(0);
+      }
     } catch (err: unknown) {
       const errorMessage =
         err && typeof err === 'object' && 'response' in err
@@ -347,6 +356,7 @@ export default function AuthModal() {
 
   const handleResendOtp = async () => {
     setError('');
+    setOtpRequestMessage('');
     setIsOtpResending(true);
 
     try {
@@ -550,7 +560,16 @@ export default function AuthModal() {
                     <input
                       type="tel"
                       value={mobile}
-                      onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onChange={(e) => {
+                        const nextMobile = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setMobile(nextMobile);
+                        setOtpChallengeId('');
+                        setOtpMaskedMobile('');
+                        setOtp('');
+                        setOtpExpiresAt(0);
+                        setOtpResendAvailableAt(0);
+                        setOtpRequestMessage('');
+                      }}
                       className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                       placeholder={t('auth.mobileNumber')}
                       required
@@ -558,6 +577,12 @@ export default function AuthModal() {
                     <Smartphone className="absolute left-3 top-2.5 text-gray-400" size={18} />
                   </div>
                 </div>
+
+                {otpRequestMessage ? (
+                  <p className="rounded-md border border-blue-100 bg-blue-50 p-3 text-center text-xs font-medium text-blue-700">
+                    {otpRequestMessage}
+                  </p>
+                ) : null}
 
                 {otpChallengeId ? (
                   <div>
@@ -761,6 +786,7 @@ export default function AuthModal() {
                   onClick={() => {
                     setOtpChallengeId('');
                     setOtpMaskedMobile('');
+                    setOtpRequestMessage('');
                     setOtp('');
                     setOtpExpiresAt(0);
                     setOtpResendAvailableAt(0);
@@ -798,6 +824,7 @@ export default function AuthModal() {
                     if (loginMethod === 'mobileOtp') {
                       setOtpChallengeId('');
                       setOtpMaskedMobile('');
+                      setOtpRequestMessage('');
                       setOtp('');
                       setOtpExpiresAt(0);
                       setOtpResendAvailableAt(0);
