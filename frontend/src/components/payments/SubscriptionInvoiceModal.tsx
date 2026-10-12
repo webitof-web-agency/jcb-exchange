@@ -321,7 +321,7 @@ export default function SubscriptionInvoiceModal({ isOpen, onClose, payment }: S
             {/* Totals Sub-Table */}
             <div className="bg-gray-50/50">
               <div className="flex border-b border-black font-bold text-[9px] sm:text-[10px]">
-                <div className="flex-1 p-1 border-r border-black">Tot. Tax'ble Amt</div>
+                <div className="flex-1 p-1 border-r border-black">Tot. Tax&apos;ble Amt</div>
                 <div className="flex-1 p-1 border-r border-black">CGST Amt</div>
                 <div className="flex-1 p-1 border-r border-black">SGST Amt</div>
                 <div className="flex-1 p-1 border-r border-black">IGST Amt</div>

@@ -323,7 +323,7 @@ export const SubscriptionInvoicePDFTemplate = ({
           {/* Totals Sub-table */}
           <View style={styles.subTableContainer}>
             <View style={styles.subTableHeader}>
-              <Text style={[styles.th, { width: '14.28%' }]}>Tot. Tax'ble Amt</Text>
+              <Text style={[styles.th, { width: '14.28%' }]}>Tot. Tax&apos;ble Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>CGST Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>SGST Amt</Text>
               <Text style={[styles.th, { width: '14.28%' }]}>IGST Amt</Text>

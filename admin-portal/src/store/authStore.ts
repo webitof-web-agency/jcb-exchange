@@ -88,6 +88,7 @@ export const useAuthStore = create<AuthState>((set) => {
     setAuth: (token, user) => {
       localStorage.setItem('portal_token', token);
       localStorage.setItem('portal_user', JSON.stringify(user));
+      localStorage.removeItem('portal_token:last_activity');
       set({ token, user, isAuthenticated: true, hasHydrated: true });
     },
     updateUser: (user) => {
@@ -100,6 +101,7 @@ export const useAuthStore = create<AuthState>((set) => {
     logout: () => {
       localStorage.removeItem('portal_token');
       localStorage.removeItem('portal_user');
+      localStorage.removeItem('portal_token:last_activity');
       set({ token: null, user: null, isAuthenticated: false, hasHydrated: true });
     },
   };

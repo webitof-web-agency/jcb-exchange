@@ -74,3 +74,9 @@ export const sanitizeListingFormData = <T extends Record<string, unknown>>(form:
       typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value,
     ]),
   ) as T;
+
+export const isValidYearValue = (value: string) => value.length === 0 || /^\d{4}$/.test(value);
+
+export const isValidPinCodeValue = (value: string) => value.length === 0 || /^\d{6}$/.test(value);
+
+export const isValidDigitsOnlyValue = (value: string) => value.length === 0 || /^\d+$/.test(value);

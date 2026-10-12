@@ -17,7 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { FileUploadField } from '@/components/upload/FileUploadField';
 import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
 import { createEmptySellAccountDocuments, normalizeSellAccountDocuments, SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
-import { calculateSellAccountNetProfit, createNextSellAccountId, getSellAccountValidationErrors, normalizeAmountInput, replaceSellAccountRecord, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
+import { calculateSellAccountNetProfit, createNextSellAccountId, getSellAccountValidationErrors, normalizeAmountInput, normalizeSellAccountChassisNumber, omitSellAccountEngineNumber, removeSellAccountRecord, replaceSellAccountRecord, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
 import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
 import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from 'react-toastify';
@@ -49,7 +49,7 @@ export interface SellAccountRecord {
   ownerName: string;
   ownerNumber: string;
   vehicleNumber: string;
-  engineNumber?: string;
+  chassisNumber?: string;
   sellDate: string;
   vehicleType: string;
   brandName: string;
@@ -148,9 +148,9 @@ type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealSta
 type ExportFormat = 'csv' | 'xls';
 
 const normalizeSellAccountRecord = (record: StoredSellAccountRecord): SellAccountRecord => ({
-  ...record,
+  ...(omitSellAccountEngineNumber(record) as Omit<StoredSellAccountRecord, 'engineNumber'>),
   brandName: record.brandName || '',
-  engineNumber: record.engineNumber || '',
+  chassisNumber: normalizeSellAccountChassisNumber(record.chassisNumber),
   documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
   dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CANCELLED'
     ? 'CLOSE'
@@ -168,12 +168,11 @@ const DEAL_STATUS_CONFIG: Record<SellAccountRecord['dealStatus'], { label: strin
 // Input Sanitization Helpers
 const sanitizePhoneNumber = (val: string) => val.replace(/\D/g, '').slice(0, 10);
 const sanitizeVehicleNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15);
-const sanitizeEngineNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9./\s-]/g, '').replace(/\s+/g, ' ').trimStart().slice(0, 40);
 const initialFormState: Omit<SellAccountRecord, 'id' | 'createdAt'> = {
   ownerName: '',
   ownerNumber: '',
   vehicleNumber: '',
-  engineNumber: '',
+  chassisNumber: '',
   sellDate: new Date().toISOString().split('T')[0],
   vehicleType: 'Backhoe Loader',
   brandName: '',
@@ -341,8 +340,8 @@ export default function SellAccountsPage() {
       value = sanitizePhoneNumber(String(rawValue));
     } else if (field === 'vehicleNumber') {
       value = sanitizeVehicleNumber(String(rawValue));
-    } else if (field === 'engineNumber') {
-      value = sanitizeEngineNumber(String(rawValue));
+    } else if (field === 'chassisNumber') {
+      value = normalizeSellAccountChassisNumber(rawValue);
     } else if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses' || field === 'balanceAmount') {
       // Keep raw string so user can type "0" — parse numeric for formData
       const normalizedAmount = normalizeAmountInput(String(rawValue));
@@ -453,7 +452,7 @@ export default function SellAccountsPage() {
       ownerName: record.ownerName,
       ownerNumber: record.ownerNumber,
       vehicleNumber: record.vehicleNumber,
-      engineNumber: record.engineNumber || '',
+      chassisNumber: record.chassisNumber || '',
       sellDate: record.sellDate,
       vehicleType: record.vehicleType,
       brandName: record.brandName || '',
@@ -545,7 +544,7 @@ export default function SellAccountsPage() {
     if (!deletingRecordId) return;
     const recordToDelete = records.find((record) => record.id === deletingRecordId);
     await deleteDocumentFiles(recordToDelete ? Object.values(getDocuments(recordToDelete)) : []);
-    setRecords(records.filter((r) => r.id !== deletingRecordId));
+    setRecords(removeSellAccountRecord(records, deletingRecordId));
     setDeletingRecordId(null);
   };
 
@@ -557,6 +556,7 @@ export default function SellAccountsPage() {
         item.ownerName.toLowerCase().includes(q) ||
         item.ownerNumber.includes(q) ||
         item.vehicleNumber.toLowerCase().includes(q) ||
+        (item.chassisNumber || '').toLowerCase().includes(q) ||
         item.sellerName.toLowerCase().includes(q) ||
         item.sellerNumber.includes(q) ||
         item.purchaserName.toLowerCase().includes(q) ||
@@ -577,6 +577,7 @@ export default function SellAccountsPage() {
     { header: 'Owner Name', value: (record: SellAccountRecord) => record.ownerName },
     { header: 'Owner Number', value: (record: SellAccountRecord) => record.ownerNumber },
     { header: 'Vehicle Number', value: (record: SellAccountRecord) => record.vehicleNumber },
+    { header: 'Chassis Number', value: (record: SellAccountRecord) => record.chassisNumber || '' },
     { header: 'Sell Date', value: (record: SellAccountRecord) => formatDate(record.sellDate) },
     { header: 'Vehicle Type', value: (record: SellAccountRecord) => record.vehicleType },
     { header: 'Brand', value: (record: SellAccountRecord) => record.brandName },
@@ -1000,14 +1001,14 @@ export default function SellAccountsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Engine Number</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Chassis Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. JCB-ENG-12345"
+                      placeholder="e.g. JCB3DX2026CHASSIS"
                       maxLength={40}
-                      value={formData.engineNumber || ''}
-                      onChange={(e) => handleInputChange('engineNumber', e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm uppercase focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      value={formData.chassisNumber || ''}
+                      onChange={(e) => handleInputChange('chassisNumber', e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 

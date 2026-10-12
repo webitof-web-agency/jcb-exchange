@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   defaultMobileOtpSettings,
+  matchesMobileOtpChallengeMobile,
   normalizeLoginMobileNumber,
   normalizeMobileOtpSettings,
 } from './mobileOtp';
@@ -43,4 +44,10 @@ test('accepts legacy mobile formats but returns the Flowitof 10-digit format', (
   assert.equal(normalizeLoginMobileNumber('09876543210'), '9876543210');
   assert.equal(normalizeLoginMobileNumber('+91 98765 43210'), '9876543210');
   assert.equal(normalizeLoginMobileNumber('9876543210'), '9876543210');
+});
+
+test('matches a stored OTP challenge even when its mobile uses a legacy Indian format', () => {
+  assert.equal(matchesMobileOtpChallengeMobile('+91 98765 43210', '9876543210'), true);
+  assert.equal(matchesMobileOtpChallengeMobile('09876543210', '9876543210'), true);
+  assert.equal(matchesMobileOtpChallengeMobile('9876543211', '9876543210'), false);
 });

@@ -17,8 +17,10 @@ import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen, ScanLine } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
+import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
+import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
   employeeBrandsPermissions,
   employeeBlogPermissions,
@@ -31,11 +33,20 @@ import {
   resolveEmployeeRouteRedirect,
 } from '@/lib/portalRoutes';
 import { hasAnyPermission } from '@/lib/permissionUtils';
+import {
+  IDENTITY_HUB_VIEW_PERMISSIONS,
+  VEHICLE_TRANSPORT_VIEW_PERMISSIONS,
+  PAN_VIEW_PERMISSIONS,
+  GST_VIEW_PERMISSIONS,
+  DRIVING_LICENSE_VIEW_PERMISSIONS,
+} from '@/lib/featurePermissions';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
 
 const navItems = [
   { href: '/superadmin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
   { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
+  { href: '/superadmin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
+  { href: '/superadmin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
   { href: '/superadmin/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare },
   { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
   { href: '/superadmin/partners', labelKey: 'admin.partners', icon: List },
@@ -54,6 +65,8 @@ const navItems = [
 
 const adminNavItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
+  { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
+  { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
   { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
 ];
@@ -61,6 +74,8 @@ const adminNavItems = [
 const employeeModuleNavItems = [
   { href: '/employee/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard, permissions: ['dashboard.view'] },
   { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage'] },
+  { href: '/employee/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
+  { href: '/employee/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/employee/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare, permissions: ['enquiries.manage'] },
   { href: '/employee/listings', labelKey: 'admin.listings', icon: Truck, permissions: ['listings.read'] },
   { href: '/employee/partners', labelKey: 'admin.partners', icon: List, permissions: ['partners.read'] },
@@ -101,6 +116,18 @@ const getRequiredPermissionsForPath = (pathname: string) => {
     return employeeBrandsPermissions;
   }
 
+  const directVerificationRoutes = [
+    { paths: ['/admin/pan-verification', '/employee/pan-verification', '/superadmin/pan-verification'], permissions: PAN_VIEW_PERMISSIONS },
+    { paths: ['/admin/gst-verification', '/employee/gst-verification', '/superadmin/gst-verification'], permissions: GST_VIEW_PERMISSIONS },
+    { paths: ['/admin/driving-license-verification', '/employee/driving-license-verification', '/superadmin/driving-license-verification'], permissions: DRIVING_LICENSE_VIEW_PERMISSIONS },
+  ];
+  const matchedDirectVerificationRoute = directVerificationRoutes.find((route) =>
+    route.paths.some((path) => pathname === path || pathname.startsWith(`${path}/`)),
+  );
+  if (matchedDirectVerificationRoute) {
+    return matchedDirectVerificationRoute.permissions;
+  }
+
   const matchedAccount = accountsNavItems.find((item) =>
     pathname === `/employee/accounts/${item.key}` ||
     pathname.startsWith(`/employee/accounts/${item.key}/`) ||
@@ -112,7 +139,12 @@ const getRequiredPermissionsForPath = (pathname: string) => {
   }
 
   const matchedModule = employeeModuleNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  return matchedModule?.permissions || null;
+  if (matchedModule) {
+    return matchedModule.permissions;
+  }
+
+  const matchedAdminModule = adminNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  return matchedAdminModule?.permissions || null;
 };
 
 const formatPortalLabel = (value?: string | null) =>
@@ -134,6 +166,7 @@ export default function AdminLayout({
   const pathname = usePathname();
   const { customHeader } = useHeaderStore();
   const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
+  const billing = useApiBillingSummary();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [usersMenuExpansion, setUsersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
@@ -298,6 +331,14 @@ export default function AdminLayout({
     if (isAdmin && pathname.startsWith('/superadmin')) {
       router.replace('/admin/dashboard');
       return;
+    }
+
+    if (isAdmin && !isEmployee) {
+      const requiredPermissions = getRequiredPermissionsForPath(pathname);
+      if (requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
+        router.replace('/admin/dashboard');
+        return;
+      }
     }
 
     if (isAdmin && !isEmployee && pathname === '/employee/dashboard') {
@@ -484,7 +525,11 @@ export default function AdminLayout({
     );
   }
 
-  const baseVisibleNavItems = isSuperAdmin ? navItems : isEmployee ? employeeNavItems : adminNavItems;
+  const baseVisibleNavItems = isSuperAdmin
+    ? navItems
+    : isEmployee
+      ? employeeNavItems
+      : adminNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions));
   const uniqueBaseVisibleNavItems = baseVisibleNavItems.filter(
     (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
   );
@@ -521,6 +566,9 @@ export default function AdminLayout({
     '/employee/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
+    '/superadmin/identity-hub': t('admin.identityHub', 'Identity Hub'),
+    '/superadmin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
+    '/superadmin/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
     '/superadmin/enquiries': t('admin.enquiryManagement'),
@@ -549,6 +597,9 @@ export default function AdminLayout({
     '/superadmin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
     '/admin/dashboard': isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard'),
     '/admin/analytics': t('admin.analytics'),
+    '/admin/identity-hub': t('admin.identityHub', 'Identity Hub'),
+    '/admin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
+    '/admin/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
     '/admin/profile': t('admin.myProfilePage'),
     '/employee/dashboard': t('admin.employeeDashboard'),
     '/employee/analytics': t('admin.analytics'),
@@ -556,6 +607,9 @@ export default function AdminLayout({
     '/employee/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/employee/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/employee/verifications': t('admin.partnerVerifications'),
+    '/employee/identity-hub': t('admin.identityHub', 'Identity Hub'),
+    '/employee/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
+    '/employee/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
     '/employee/partners': t('admin.partnerDirectory'),
     '/employee/visitors': t('admin.visitors'),
     '/employee/categories': t('admin.categoryManagement'),
@@ -930,6 +984,7 @@ export default function AdminLayout({
             {customHeader || <h1 className="font-bold text-[17px] sm:text-xl text-gray-900 truncate">{pageTitle}</h1>}
           </div>
           <div className="ml-2 flex items-center gap-3 shrink-0">
+            <ApiWalletHeader {...billing} />
             <LanguageSwitcher />
 
             {/* Profile Dropdown Container */}

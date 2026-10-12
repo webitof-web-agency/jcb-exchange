@@ -1,5 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getIdleSessionState } from '@/lib/idleSession.mjs';
+import {
+  getActivityStorageKey,
+  getIdleSessionState,
+  getStoredActivityAt,
+  shouldAcceptActivityAt,
+} from '@/lib/idleSession.mjs';
+
+const ACTIVITY_PERSIST_INTERVAL_MS = 1_000;
 
 /**
  * useIdleAutoLogout
@@ -23,9 +30,11 @@ export function useIdleAutoLogout({
   const checkTimer = useRef<number | null>(null);
   const warningInterval = useRef<number | null>(null);
   const lastActivityAtRef = useRef(0);
+  const lastPersistedActivityAtRef = useRef(0);
   const warningShownRef = useRef(false);
   const resetTimersRef = useRef<() => void>(() => undefined);
   const onLogoutRef = useRef(onLogout);
+  const activityStorageKey = getActivityStorageKey(storageKey);
 
   useEffect(() => {
     onLogoutRef.current = onLogout;
@@ -128,9 +137,19 @@ export function useIdleAutoLogout({
   }, [dismissWarning]);
 
   const resetIdleSession = useCallback(() => {
-    lastActivityAtRef.current = Date.now();
+    const now = Date.now();
+    lastActivityAtRef.current = now;
     dismissWarning();
-  }, [dismissWarning]);
+
+    if (now - lastPersistedActivityAtRef.current < ACTIVITY_PERSIST_INTERVAL_MS) return;
+
+    try {
+      localStorage.setItem(activityStorageKey, String(now));
+      lastPersistedActivityAtRef.current = now;
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+  }, [activityStorageKey, dismissWarning]);
 
   const checkIdleState = useCallback(() => {
     const state = getIdleSessionState(lastActivityAtRef.current, Date.now(), timeoutMs, warningMs);
@@ -157,18 +176,39 @@ export function useIdleAutoLogout({
       return;
     }
 
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    const events = [
+      'mousemove', 'pointermove', 'mousedown', 'pointerdown', 'keydown', 'input',
+      'touchstart', 'wheel', 'scroll', 'click',
+    ];
 
     const handleActivity = () => resetIdleSession();
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') checkIdleState();
+      if (document.visibilityState === 'visible') {
+        const state = getIdleSessionState(lastActivityAtRef.current, Date.now(), timeoutMs, warningMs);
+        if (state.shouldLogout) checkIdleState();
+        else resetIdleSession();
+      }
     };
-    const handleWindowFocus = () => checkIdleState();
+    const handleWindowFocus = () => {
+      const state = getIdleSessionState(lastActivityAtRef.current, Date.now(), timeoutMs, warningMs);
+      if (state.shouldLogout) checkIdleState();
+      else resetIdleSession();
+    };
     const handleStorage = (event: StorageEvent) => {
       if (event.key === storageKey && event.newValue === null) {
         clearTimers();
         dismissWarning();
         onLogoutRef.current();
+        return;
+      }
+
+      if (event.key === activityStorageKey) {
+        const incomingActivityAt = getStoredActivityAt(event.newValue, 0);
+        if (shouldAcceptActivityAt(lastActivityAtRef.current, incomingActivityAt)) {
+          lastActivityAtRef.current = incomingActivityAt;
+          lastPersistedActivityAtRef.current = incomingActivityAt;
+          dismissWarning();
+        }
       }
     };
 
@@ -178,7 +218,23 @@ export function useIdleAutoLogout({
     window.addEventListener('focus', handleWindowFocus);
     resetTimersRef.current = resetIdleSession;
 
-    lastActivityAtRef.current = Date.now();
+    const now = Date.now();
+    let sharedActivityAt = 0;
+    try {
+      sharedActivityAt = getStoredActivityAt(localStorage.getItem(activityStorageKey), 0);
+    } catch {
+      sharedActivityAt = 0;
+    }
+    lastActivityAtRef.current = sharedActivityAt || now;
+    lastPersistedActivityAtRef.current = sharedActivityAt || 0;
+    if (!sharedActivityAt) {
+      try {
+        localStorage.setItem(activityStorageKey, String(now));
+        lastPersistedActivityAtRef.current = now;
+      } catch {
+        // Storage can be unavailable in privacy-restricted browser contexts.
+      }
+    }
     checkIdleState();
     checkTimer.current = window.setInterval(checkIdleState, 1000);
 
@@ -191,5 +247,5 @@ export function useIdleAutoLogout({
       resetTimersRef.current = () => undefined;
       dismissWarning();
     };
-  }, [checkIdleState, clearTimers, dismissWarning, enabled, resetIdleSession, storageKey]);
+  }, [activityStorageKey, checkIdleState, clearTimers, dismissWarning, enabled, resetIdleSession, storageKey, timeoutMs, warningMs]);
 }

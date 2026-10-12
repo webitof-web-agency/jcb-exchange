@@ -32,6 +32,8 @@ import {
   Camera,
   Play,
   Trash2,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -64,6 +66,7 @@ import {
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
 
 type ListingDetail = {
   id: string;
@@ -77,6 +80,13 @@ type ListingDetail = {
   brand?: { id?: string; name: string };
   model?: { id?: string; name: string };
   category?: { id: string; name: string };
+  vehicleVerification?: {
+    verificationRecordId?: string | null;
+    status?: string | null;
+    changedFields?: string[];
+    lastVerifiedAt?: string | null;
+    lastModifiedAt?: string | null;
+  } | null;
   condition?: string;
   operatingHours?: string;
   description?: string;
@@ -131,8 +141,27 @@ type ListingDetail = {
   }>;
 };
 
+type ChassisVerificationResponse = {
+  success: boolean;
+  record?: { id?: string };
+  result?: Record<string, unknown> | null;
+};
+
 const normalizeListingResponse = (payload: unknown) =>
   normalizeListingPayload(payload) as unknown as ListingDetail;
+
+const verificationStatusMeta = (status?: string | null) => {
+  switch (String(status || 'NOT_VERIFIED').toUpperCase()) {
+    case 'API_VERIFIED':
+      return { label: 'API Verified', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
+    case 'MANUALLY_MODIFIED':
+      return { label: 'Manually Modified', className: 'border-amber-200 bg-amber-50 text-amber-800' };
+    case 'REVERIFICATION_REQUIRED':
+      return { label: 'Re-verification Required', className: 'border-rose-200 bg-rose-50 text-rose-700' };
+    default:
+      return { label: 'Not Verified', className: 'border-gray-200 bg-gray-50 text-gray-600' };
+  }
+};
 
 type ParsedListingDetails = {
   rawDescription: string;
@@ -472,18 +501,28 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     engineNumber: parsed.engineNumber || '',
     registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
     registrationYear: parsed.registrationYear || '',
-    insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsed.insuranceExpiry || '',
+    insuranceExpiry: linkedRto
+      ? linkedRto.insuranceStatus === 'VALID' && linkedRto.insuranceValidUntil
+        ? String(linkedRto.insuranceValidUntil).split('T')[0]
+        : ''
+      : parsed.insuranceExpiry || '',
     previousOwners: parsed.previousOwners || '',
     rtoDetails: {
       hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
-      taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.taxStatus === 'LIFETIME' ? 'LIFETIME' : 'VALID',
-      taxValidUntil: linkedRto?.taxStatus === 'LIFETIME' ? '' : (linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : ''),
-      fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-      fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
-      insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-      pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-      pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
-      hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+      taxStatus: linkedRto?.taxStatus === 'EXPIRED'
+        ? 'EXPIRED'
+        : linkedRto?.taxStatus === 'LIFETIME'
+          ? 'LIFETIME'
+          : linkedRto?.taxStatus === 'VALID'
+            ? 'VALID'
+            : 'NOT_AVAILABLE',
+      taxValidUntil: linkedRto?.taxStatus === 'VALID' && linkedRto.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+      fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.fitnessStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+      fitnessValidUntil: linkedRto?.fitnessStatus === 'VALID' && linkedRto.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+      insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.insuranceStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+      pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.pucStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+      pucValidUntil: linkedRto?.pucStatus === 'VALID' && linkedRto.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+      hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : linkedRto?.hsrpStatus === 'NO' ? 'NO' : linkedRto?.hsrpStatus === 'NOT_APPLICABLE' || linkedRto?.hsrpStatus === 'NOT_REQUIRED' ? 'NOT_APPLICABLE' : 'PENDING',
       rtoOffice: linkedRto?.rtoOffice || '',
       rtoAgentName: linkedRto?.rtoAgentName || '',
       rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
@@ -545,6 +584,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingSection, setSavingSection] = useState<DetailSection | null>(null);
+  const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
+  const [chassisVerificationId, setChassisVerificationId] = useState('');
   const [categories, setCategories] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
   const [states, setStates] = useState<Option[]>([]);
@@ -591,6 +632,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         const normalizedListing = normalizeListingResponse(res.data);
         setListing(normalizedListing);
         setForm(createEditForm(normalizedListing));
+        setChassisVerificationId(normalizedListing.vehicleVerification?.verificationRecordId || '');
+        setChassisVerificationStatus(normalizedListing.vehicleVerification?.status === 'API_VERIFIED' ? 'VERIFIED' : 'UNVERIFIED');
         setUnavailableMediaIds([]);
         setActiveMediaIndex(0);
       } catch (err: unknown) {
@@ -764,6 +807,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   );
 
   const updateForm = useCallback(<K extends keyof ListingEditForm>(field: K, value: ListingEditForm[K]) => {
+    if (field === 'chassisOrSerialNo' || field === 'engineNumber') {
+      setChassisVerificationId('');
+      setChassisVerificationStatus('UNVERIFIED');
+    }
     setForm((current) =>
       current
         ? {
@@ -773,6 +820,73 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         : current
     );
   }, []);
+
+  const handleChassisVerification = useCallback(async () => {
+    if (!form) return;
+    const chassisNumber = form.chassisOrSerialNo.trim();
+    if (!chassisNumber) {
+      setChassisVerificationStatus('FAILED');
+      setError('Enter a chassis number before verification.');
+      return;
+    }
+
+    setChassisVerificationStatus('VERIFYING');
+    setError(null);
+    try {
+      const response = await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber });
+      const recordId = response.data.record?.id || '';
+      if (!response.data.success || !recordId) throw new Error('Vehicle verification did not return a usable verification record.');
+      const mapped = mapChassisToRcVehicle(response.data.result || {});
+      const normalizeIdentity = (value: string) => value.toUpperCase().replace(/\s+/g, '');
+      if (normalizeIdentity(mapped.chassisOrSerialNo || chassisNumber) !== normalizeIdentity(chassisNumber)) {
+        throw new Error('The verified chassis number does not match the entered chassis number.');
+      }
+
+      const categoryMatch = findMasterOption(categories, mapped.categoryName);
+      const brandMatch = findMasterOption(brands, mapped.brandName);
+      const categoryId = categoryMatch?.id
+        ? String(categoryMatch.id)
+        : mapped.categoryName
+          ? `__provider_category__${normalizeMasterName(mapped.categoryName)}`
+          : form.categoryId;
+      if (mapped.categoryName && !categoryMatch) {
+        setCategories((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.categoryName))
+          ? current
+          : [...current, { id: categoryId, name: mapped.categoryName }]);
+      }
+      if (mapped.brandName && !brandMatch) {
+        setBrands((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.brandName))
+          ? current
+          : [...current, { id: `__provider_brand__${normalizeMasterName(mapped.brandName)}`, name: mapped.brandName }]);
+      }
+
+      setForm((current) => current ? {
+        ...current,
+        categoryId,
+        categoryName: categoryMatch?.name || mapped.categoryName || current.categoryName,
+        brandName: brandMatch?.name || mapped.brandName || current.brandName,
+        modelName: mapped.model || current.modelName,
+        variant: mapped.variant || current.variant,
+        manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
+        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationNo: mapped.registrationNo || current.registrationNo,
+        chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
+        engineNumber: mapped.engineNumber || current.engineNumber,
+        previousOwners: mapped.previousOwners || current.previousOwners,
+        fuelType: mapped.fuelType || current.fuelType,
+        title: current.title.trim() || mapped.titleSuggestion,
+        insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
+        rtoDetails: { ...current.rtoDetails, ...mapped.rtoDetails },
+      } : current);
+      setChassisVerificationId(recordId);
+      setChassisVerificationStatus('VERIFIED');
+      setMessage('Vehicle verified. Available details have been auto-filled.');
+    } catch (verificationError: unknown) {
+      setChassisVerificationId('');
+      setChassisVerificationStatus('FAILED');
+      setError(getErrorMessage(verificationError, 'Vehicle verification failed. Please check the chassis number and try again.'));
+    }
+  }, [brands, categories, form]);
 
   const markMediaUnavailable = useCallback((mediaId: string) => {
     setUnavailableMediaIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));
@@ -865,6 +979,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
     const sanitizedForm = sanitizeListingFormData(form);
     const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    if (sanitizedRto.insuranceStatus !== 'VALID') {
+      sanitizedForm.insuranceExpiry = '';
+    }
     const shouldSyncRto = Boolean(listing.rtoRecords?.length) || hasListingRtoInput(sanitizedRto);
     const rtoValidationError = section === 'technical' && shouldSyncRto
       ? validateListingRtoForm(sanitizedRto, {
@@ -905,7 +1022,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     if (section === 'pricing') {
       payload.price = sanitizedForm.price.trim();
       payload.isNegotiable = sanitizedForm.isNegotiable;
-      payload.categoryId = sanitizedForm.categoryId;
+      if (sanitizedForm.categoryId.startsWith('__provider_category__')) {
+        payload.categoryName = sanitizedForm.categoryName.trim();
+      } else {
+        payload.categoryId = sanitizedForm.categoryId;
+      }
       payload.brandName = sanitizedForm.brandName.trim();
       payload.modelName = sanitizedForm.modelName.trim();
       payload.manufacturingYear = sanitizedForm.manufacturingYear.trim();
@@ -932,6 +1053,15 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         });
       }
       payload.description = buildListingDescription(sanitizedForm);
+      if (chassisVerificationId) {
+        payload.chassisVerificationId = chassisVerificationId;
+      }
+      payload.chassisOrSerialNo = sanitizedForm.chassisOrSerialNo.trim();
+    }
+
+    if (chassisVerificationId) {
+      payload.chassisVerificationId = chassisVerificationId;
+      payload.chassisOrSerialNo = sanitizedForm.chassisOrSerialNo.trim();
     }
 
     try {
@@ -950,7 +1080,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     } finally {
       setSavingSection(null);
     }
-  }, [baseForm, form, listing, t, uploadingMedia]);
+  }, [baseForm, chassisVerificationId, form, listing, t, uploadingMedia]);
 
   const savePartnerMedia = async () => {
     if (!listing) {
@@ -1183,6 +1313,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     );
   }
 
+  const verificationMeta = verificationStatusMeta(listing.vehicleVerification?.status);
+
   return (
     <div className="pb-12">
 
@@ -1193,6 +1325,15 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       {error ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
       ) : null}
+      <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-sm ${verificationMeta.className}`}>
+        <div className="flex items-center gap-2 font-semibold">
+          <ShieldCheck className="h-4 w-4" />
+          Vehicle verification: {verificationMeta.label}
+        </div>
+        {listing.vehicleVerification?.changedFields?.length ? (
+          <span className="text-xs font-medium">Changed fields: {listing.vehicleVerification.changedFields.join(', ')}</span>
+        ) : null}
+      </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
@@ -1912,7 +2053,24 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   </div>
                 </Field>
                 <Field label={t('listingDetails.chassisSerialNo')}>
-                  <input value={form.chassisOrSerialNo} onChange={(event) => updateForm('chassisOrSerialNo', event.target.value)} className={inputClassName} />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input value={form.chassisOrSerialNo} onChange={(event) => updateForm('chassisOrSerialNo', event.target.value)} className={inputClassName} />
+                    <button
+                      type="button"
+                      onClick={() => void handleChassisVerification()}
+                      disabled={chassisVerificationStatus === 'VERIFYING' || !form.chassisOrSerialNo.trim()}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-3 py-2.5 text-xs font-bold text-gray-900 shadow-sm transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {chassisVerificationStatus === 'VERIFYING'
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking...</>
+                        : chassisVerificationStatus === 'VERIFIED'
+                          ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-800" />Verified</>
+                          : <><Sparkles className="h-3.5 w-3.5" />Verify</>}
+                    </button>
+                  </div>
+                  <p className={`mt-1 text-[11px] ${chassisVerificationStatus === 'FAILED' ? 'text-rose-600' : chassisVerificationStatus === 'VERIFIED' ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {chassisVerificationStatus === 'VERIFIED' ? 'API details loaded. You may still edit fields; changes are audited.' : chassisVerificationStatus === 'FAILED' ? 'Verification failed. Correct the chassis number and try again.' : 'Changing chassis or engine requires verification before saving.'}
+                  </p>
                 </Field>
                 <Field label={t('listingDetails.engineNumber', 'Engine Number')}>
                   <input value={form.engineNumber} onChange={(event) => updateForm('engineNumber', event.target.value)} className={inputClassName} maxLength={40} />
@@ -1930,9 +2088,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     searchable={false}
                   />
                 </Field>
-                <Field label={t('listingDetails.insuranceExpiry')}>
-                  <input type="date" value={form.insuranceExpiry} onChange={(event) => updateForm('insuranceExpiry', event.target.value)} className={inputClassName} />
-                </Field>
+                {form.rtoDetails.insuranceStatus === 'VALID' && (
+                  <Field label={t('listingDetails.insuranceExpiry')}>
+                    <input type="date" value={form.insuranceExpiry} onChange={(event) => updateForm('insuranceExpiry', event.target.value)} className={inputClassName} />
+                  </Field>
+                )}
                 <Field label={t('listingDetails.numberOfOwners')}>
                   <input value={form.previousOwners} onChange={(event) => updateForm('previousOwners', event.target.value)} className={inputClassName} />
                 </Field>
@@ -1984,7 +2144,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><ShieldCheck className="h-4 w-4 text-gray-400" /> {t('listingDetails.insuranceExpiry')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.insuranceExpiry ? formatPortalDate(parsedDetails.insuranceExpiry) : t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{listing.rtoRecords?.[0] && listing.rtoRecords[0].insuranceStatus !== 'VALID' ? t('listingDetails.na') : parsedDetails.insuranceExpiry ? formatPortalDate(parsedDetails.insuranceExpiry) : t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Info className="h-4 w-4 text-gray-400" /> {t('listingDetails.numberOfOwners')}</span>
@@ -2021,10 +2181,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       </div>
                       {([
                         ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
-                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxValidUntil && rto.taxStatus !== 'LIFETIME' && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
-                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
-                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],
-                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],
+                        ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxStatus === 'VALID' && rto.taxValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
+                        ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessStatus === 'VALID' && rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
+                        ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceStatus === 'VALID' && rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],
+                        ['PUC Validity', <span key="pv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.pucStatus, 'validity')}{rto.pucStatus === 'VALID' && rto.pucValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.pucValidUntil)}</span>}</span>],
                         ['HSRP', statusBadge(rto.hsrpStatus, 'hsrp')],
                         rto.rtoOffice ? ['RTO Office', <span key="ro" className="text-sm font-semibold text-gray-900">{rto.rtoOffice}</span>] : null,
                         rto.rtoAgentName ? ['RTO Agent Name', <span key="ra" className="text-sm font-semibold text-gray-900">{rto.rtoAgentName}</span>] : null,

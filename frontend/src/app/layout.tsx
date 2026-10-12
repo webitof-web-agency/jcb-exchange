@@ -27,6 +27,11 @@ import {
 
 export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
 };
 
 const getIconType = (url: string) => {
@@ -143,6 +148,11 @@ export default async function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof window==='undefined')return;document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});document.addEventListener('gesturechange',function(e){e.preventDefault();},{passive:false});document.addEventListener('gestureend',function(e){e.preventDefault();},{passive:false});})();`,
+          }}
         />
         <LocaleSync />
         <Navbar />

@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Truck, X, Upload, ImagePlus, PlayCircle, Trash2, UserCheck } from 'lucide-react';
+import { Truck, X, Upload, ImagePlus, PlayCircle, Trash2, UserCheck, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -11,7 +11,16 @@ import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
 import ListingRtoFields from '@/components/sell/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
-import { normalizeSellVehicleAvailability, sanitizeListingFieldValue, sanitizeListingFormData, SELL_VEHICLE_AVAILABILITY_OPTIONS } from '@/lib/listingFormSanitizers';
+import {
+  isValidDigitsOnlyValue,
+  isValidPinCodeValue,
+  isValidYearValue,
+  normalizeSellVehicleAvailability,
+  sanitizeListingFieldValue,
+  sanitizeListingFormData,
+  SELL_VEHICLE_AVAILABILITY_OPTIONS,
+} from '@/lib/listingFormSanitizers';
+import { getChassisSubmitValidationError, mapChassisToRcVehicle } from '@/lib/sellVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import {
@@ -78,8 +87,8 @@ type ListingRecord = {
   locationCity: string;
   status: string;
   createdAt: string;
-  brand?: { name: string };
-  model?: { name: string };
+  brand?: { id?: string; name: string };
+  model?: { id?: string; name: string };
   category?: { id: string; name: string };
   condition?: string;
   operatingHours?: string;
@@ -103,6 +112,15 @@ type ListingRecord = {
     rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
 };
+
+type ChassisVerificationResponse = {
+  success: boolean;
+  record?: { id?: string | null };
+  result?: Record<string, unknown>;
+  cacheHit?: boolean;
+};
+
+type ChassisVerificationStatus = 'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED';
 
 type MediaSlotKey =
   | 'front-view'
@@ -359,6 +377,15 @@ const buildMediaPreviewState = (
 const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
+const normalizeMasterName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normalizeChassisValue = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
+
+const findMasterOption = <T extends { id: string | number; name: string }>(options: T[], value: string) => {
+  const normalized = normalizeMasterName(value);
+  if (!normalized) return null;
+  return options.find((option) => normalizeMasterName(option.name) === normalized) || null;
+};
+
 const formatCurrency = (value: string | number) => {
   const numericValue = typeof value === 'number' ? value : Number(value || 0);
   return new Intl.NumberFormat('en-IN', {
@@ -592,6 +619,11 @@ export default function SellVehicleModal({
   const [uploadingCount, setUploadingCount] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [chassisVerificationStatus, setChassisVerificationStatus] = useState<ChassisVerificationStatus>('UNVERIFIED');
+  const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
+  const [chassisVerificationId, setChassisVerificationId] = useState('');
+  const chassisVerificationRequestRef = useRef(0);
+  const originalChassisNumberRef = useRef('');
   const [viewListing, setViewListing] = useState<ListingRecord | null>(null);
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
   const showToast = useToastStore((state) => state.showToast);
@@ -742,19 +774,26 @@ export default function SellVehicleModal({
 
 
   function resetFormState() {
+    chassisVerificationRequestRef.current += 1;
+    originalChassisNumberRef.current = '';
     setMessage('');
     setError('');
     setForm(initialForm);
     setMediaState(createEmptyMediaState());
     setPreviewState(createEmptyPreviewState());
     setEditingListingId(null);
+    setChassisVerificationStatus('UNVERIFIED');
+    setVerifiedChassisNumber('');
+    setChassisVerificationId('');
   }
 
   const openEditModal = useCallback((listing: EditableListing) => {
+    chassisVerificationRequestRef.current += 1;
     setMessage('');
     setError('');
 
     const parsedDetails = parseListingDescription(listing.description);
+    originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const initialBuyerStateId =
@@ -788,7 +827,11 @@ export default function SellVehicleModal({
       additionalDescription: listing.additionalDescription || '',
       grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
       isNegotiable: Boolean(listing.isNegotiable),
-      insuranceExpiry: linkedRto?.insuranceValidUntil ? String(linkedRto.insuranceValidUntil).split('T')[0] : parsedDetails.insuranceExpiry,
+      insuranceExpiry: linkedRto
+        ? linkedRto.insuranceStatus === 'VALID' && linkedRto.insuranceValidUntil
+          ? String(linkedRto.insuranceValidUntil).split('T')[0]
+          : ''
+        : parsedDetails.insuranceExpiry,
       selectedStateId: '', // To be handled optimally if we only have names
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
@@ -801,20 +844,30 @@ export default function SellVehicleModal({
       selectedBuyerCityId: '',
       rtoDetails: {
         hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
-        taxStatus: linkedRto?.taxStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.taxStatus === 'LIFETIME' ? 'LIFETIME' : 'VALID',
-        taxValidUntil: linkedRto?.taxStatus === 'LIFETIME' ? '' : (linkedRto?.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : ''),
-        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-        fitnessValidUntil: linkedRto?.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
-        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : 'VALID',
-        pucValidUntil: linkedRto?.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
-        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : 'NO',
+        taxStatus: linkedRto?.taxStatus === 'EXPIRED'
+          ? 'EXPIRED'
+          : linkedRto?.taxStatus === 'LIFETIME'
+            ? 'LIFETIME'
+            : linkedRto?.taxStatus === 'VALID'
+              ? 'VALID'
+              : 'NOT_AVAILABLE',
+        taxValidUntil: linkedRto?.taxStatus === 'VALID' && linkedRto.taxValidUntil ? String(linkedRto.taxValidUntil).split('T')[0] : '',
+        fitnessStatus: linkedRto?.fitnessStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.fitnessStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+        fitnessValidUntil: linkedRto?.fitnessStatus === 'VALID' && linkedRto.fitnessValidUntil ? String(linkedRto.fitnessValidUntil).split('T')[0] : '',
+        insuranceStatus: linkedRto?.insuranceStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.insuranceStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+        pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.pucStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
+        pucValidUntil: linkedRto?.pucStatus === 'VALID' && linkedRto.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
+        hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : linkedRto?.hsrpStatus === 'NO' ? 'NO' : linkedRto?.hsrpStatus === 'NOT_APPLICABLE' ? 'NOT_APPLICABLE' : 'PENDING',
         rtoOffice: linkedRto?.rtoOffice || '',
         rtoAgentName: linkedRto?.rtoAgentName || '',
         rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
         vehicleMaintenanceCost: linkedRto?.vehicleMaintenanceCost != null ? String(linkedRto.vehicleMaintenanceCost) : '',
       },
     });
+
+    setChassisVerificationStatus('UNVERIFIED');
+    setVerifiedChassisNumber('');
+    setChassisVerificationId('');
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
 
@@ -870,6 +923,12 @@ export default function SellVehicleModal({
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
+    if (key === 'chassisOrSerialNo') {
+      chassisVerificationRequestRef.current += 1;
+      setChassisVerificationStatus('UNVERIFIED');
+      setVerifiedChassisNumber('');
+      setChassisVerificationId('');
+    }
     setForm((current) => ({
       ...current,
       [key]: typeof value === 'string' ? sanitizeListingFieldValue(String(key), value) : value,
@@ -878,6 +937,93 @@ export default function SellVehicleModal({
 
   const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
     setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
+  };
+
+  const handleChassisVerification = async () => {
+    const chassisNumber = form.chassisOrSerialNo.trim();
+    if (!chassisNumber) {
+      setChassisVerificationStatus('FAILED');
+      setError('Enter a chassis number before verification.');
+      return;
+    }
+
+    const requestId = ++chassisVerificationRequestRef.current;
+    setChassisVerificationStatus('VERIFYING');
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', {
+        chassis_number: chassisNumber,
+      });
+      if (requestId !== chassisVerificationRequestRef.current) {
+        return;
+      }
+
+      const verificationRecordId = response.data.record?.id || '';
+      if (!response.data.success || !verificationRecordId) {
+        throw new Error('Vehicle verification did not return a usable verification record.');
+      }
+
+      const result = response.data.result || {};
+      const mapped = mapChassisToRcVehicle(result);
+      const normalizedReturnedChassis = (mapped.chassisOrSerialNo || chassisNumber).toUpperCase().replace(/\s+/g, '');
+      const normalizedRequestedChassis = chassisNumber.toUpperCase().replace(/\s+/g, '');
+
+      if (normalizedReturnedChassis !== normalizedRequestedChassis) {
+        throw new Error('The verified chassis number does not match the entered chassis number.');
+      }
+
+      const categoryMatch = findMasterOption(categories, mapped.categoryName);
+      const brandMatch = findMasterOption(brands, mapped.brandName);
+      const categoryId = categoryMatch?.id ? String(categoryMatch.id) : mapped.categoryName ? `__provider_category__${normalizeMasterName(mapped.categoryName)}` : '';
+      const brandName = brandMatch?.name || mapped.brandName;
+
+      if (mapped.categoryName && !categoryMatch) {
+        setCategories((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.categoryName))
+          ? current
+          : [...current, { id: categoryId, name: mapped.categoryName }]);
+      }
+      if (mapped.brandName && !brandMatch) {
+        setBrands((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.brandName))
+          ? current
+          : [...current, { id: `__provider_brand__${normalizeMasterName(mapped.brandName)}`, name: mapped.brandName }]);
+      }
+
+      setForm((current) => ({
+        ...current,
+        category: categoryId || current.category,
+        brand: brandName || current.brand,
+        model: mapped.model || current.model,
+        variant: mapped.variant || current.variant,
+        manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
+        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationNo: mapped.registrationNo || current.registrationNo,
+        chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
+        engineNumber: mapped.engineNumber || current.engineNumber,
+        previousOwners: mapped.previousOwners || current.previousOwners,
+        fuelType: mapped.fuelType || current.fuelType,
+        title: current.title.trim() || mapped.titleSuggestion,
+        insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
+        rtoDetails: {
+          ...current.rtoDetails,
+          ...mapped.rtoDetails,
+        },
+      }));
+      setVerifiedChassisNumber(mapped.chassisOrSerialNo || chassisNumber);
+      setChassisVerificationId(verificationRecordId);
+      setChassisVerificationStatus('VERIFIED');
+      setMessage(response.data.cacheHit ? 'Vehicle verification loaded from the recent secure result.' : 'Vehicle verified. Available details have been auto-filled.');
+    } catch (verificationError) {
+      if (requestId !== chassisVerificationRequestRef.current) {
+        return;
+      }
+
+      setChassisVerificationStatus('FAILED');
+      setVerifiedChassisNumber('');
+      setChassisVerificationId('');
+      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the chassis number and try again.'));
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -897,11 +1043,42 @@ export default function SellVehicleModal({
       return;
     }
 
-    const validationError = form.pinCode.trim() && !/^\d{6}$/.test(form.pinCode.trim())
-      ? t('sellModal.pinValidation')
-      : null;
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(user.role || '');
+    const currentChassis = normalizeChassisValue(form.chassisOrSerialNo);
+    const savedChassis = normalizeChassisValue(originalChassisNumberRef.current);
+    const canReuseSavedVerification = Boolean(editingListingId && currentChassis && currentChassis === savedChassis);
+    const chassisVerificationError = canReuseSavedVerification
+      ? null
+      : getChassisSubmitValidationError(form.chassisOrSerialNo, verifiedChassisNumber, isAdmin);
+    if (chassisVerificationError || (!isAdmin && !chassisVerificationId && !canReuseSavedVerification)) {
+      const safeError = chassisVerificationError || 'Verify the chassis number before posting this vehicle.';
+      setError(safeError);
+      showToast({
+        title: t('sellModal.notSubmitted'),
+        description: safeError,
+        variant: 'error',
+      });
+      return;
+    }
+
+    const sanitizedForm = sanitizeListingFormData(form);
+
+    const validationError = !isValidDigitsOnlyValue(sanitizedForm.price)
+      ? 'Price must contain digits only.'
+      : !isValidYearValue(sanitizedForm.manufacturingYear)
+        ? 'Manufacturing year must be a 4-digit year.'
+        : !isValidDigitsOnlyValue(sanitizedForm.operatingHours)
+          ? 'Operating hours must contain digits only.'
+          : !isValidYearValue(sanitizedForm.registrationYear)
+            ? 'Registration year must be a 4-digit year.'
+            : !isValidDigitsOnlyValue(sanitizedForm.previousOwners)
+              ? 'Previous owners must contain digits only.'
+              : !isValidPinCodeValue(sanitizedForm.pinCode)
+                ? t('sellModal.pinValidation')
+                : null;
     if (validationError) {
       setError(validationError);
+      setForm(sanitizedForm);
       showToast({
         title: t('sellModal.notSubmitted'),
         description: validationError,
@@ -910,8 +1087,10 @@ export default function SellVehicleModal({
       return;
     }
 
-    const sanitizedForm = sanitizeListingFormData(form);
     const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
+    if (sanitizedRto.insuranceStatus !== 'VALID') {
+      sanitizedForm.insuranceExpiry = '';
+    }
     const rtoBase = {
       registrationNo: sanitizedForm.registrationNo,
       vehicleType: categories.find((item) => item.id === sanitizedForm.category)?.name || '',
@@ -946,9 +1125,13 @@ export default function SellVehicleModal({
         .filter(Boolean);
 
       const payload: Record<string, unknown> = {
-        categoryId: sanitizedForm.category,
+        categoryId: sanitizedForm.category.startsWith('__provider_category__') ? undefined : sanitizedForm.category,
+        ...(sanitizedForm.category.startsWith('__provider_category__')
+          ? { categoryName: categories.find((item) => item.id === sanitizedForm.category)?.name || '' }
+          : {}),
         brandName: sanitizedForm.brand,
         modelName: sanitizedForm.model,
+        chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
         title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
         price: sanitizedForm.price,
         manufacturingYear: sanitizedForm.manufacturingYear,
@@ -962,6 +1145,7 @@ export default function SellVehicleModal({
         grossPower: sanitizedForm.grossPower,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
+        ...(chassisVerificationId ? { chassisVerificationId } : {}),
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
@@ -981,12 +1165,12 @@ export default function SellVehicleModal({
         }
 
         payload.buyerDetails = {
-          buyerName: form.buyerName.trim(),
-          buyerPhone: form.buyerPhone.trim(),
-          buyerCity: form.buyerCity.trim() || undefined,
-          buyerState: form.buyerState.trim() || undefined,
-          soldPrice: form.soldPrice,
-          soldAt: form.soldAt || new Date().toISOString().split('T')[0],
+          buyerName: sanitizedForm.buyerName.trim(),
+          buyerPhone: sanitizedForm.buyerPhone.trim(),
+          buyerCity: sanitizedForm.buyerCity.trim() || undefined,
+          buyerState: sanitizedForm.buyerState.trim() || undefined,
+          soldPrice: sanitizedForm.soldPrice,
+          soldAt: sanitizedForm.soldAt || new Date().toISOString().split('T')[0],
         };
       }
 
@@ -999,7 +1183,7 @@ export default function SellVehicleModal({
 
         if (shouldSyncAvailability) {
           availabilityResponse = await api.patch<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}/availability`, {
-            status: availabilityToListingStatus(form.currentAvailability),
+            status: availabilityToListingStatus(sanitizedForm.currentAvailability),
             buyerDetails: payload.buyerDetails,
           });
         }
@@ -1014,6 +1198,19 @@ export default function SellVehicleModal({
           ? current.map((item) => (item.id === editingListingId ? response.data.listing : item))
           : [response.data.listing, ...current]
       );
+      const savedCategory = response.data.listing.category;
+      const savedBrand = response.data.listing.brand;
+      if (savedCategory?.id && savedCategory.name) {
+        setCategories((current) => current.some((item) => item.id === savedCategory.id)
+          ? current
+          : [...current, { id: savedCategory.id, name: savedCategory.name }]);
+      }
+      if (savedBrand?.id && savedBrand.name) {
+        const savedBrandId = savedBrand.id;
+        setBrands((current) => current.some((item) => String(item.id) === String(savedBrandId))
+          ? current
+          : [...current, { id: savedBrandId, name: savedBrand.name }]);
+      }
       const successMessage =
         response.data.message || (editingListingId ? t('sellModal.updatedSuccessfully') : t('sellModal.postedSuccessfully'));
       setMessage(successMessage);
@@ -1099,18 +1296,69 @@ export default function SellVehicleModal({
                     <Truck className="h-4 w-4" />
                     <h3 className="text-base font-semibold">{t('sellModal.equipmentDetails')}</h3>
                   </div>
-                  <div className="mb-4">
-                    <Field label={t('sellModal.vehicleName')}>
-                      <input
-                        value={form.title}
-                        onChange={(event) => updateField('title', event.target.value)}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.vehicleNamePlaceholder')}
-                      />
+                  <div className="mb-4 grid gap-4 md:grid-cols-2">
+                    <Field label={t('sellModal.chassisSerialNumber')}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                          value={form.chassisOrSerialNo}
+                          onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
+                          className={fieldClassName}
+                          aria-describedby="chassis-verification-status"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleChassisVerification()}
+                          disabled={chassisVerificationStatus === 'VERIFYING' || !form.chassisOrSerialNo.trim()}
+                          className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
+                        >
+                          {chassisVerificationStatus === 'VERIFYING' ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
+                              <span>Checking…</span>
+                            </>
+                          ) : chassisVerificationStatus === 'VERIFIED' ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 text-emerald-800" />
+                              <span>Verified</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4 text-gray-900" />
+                              <span>Verify & Auto-fill</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p
+                        id="chassis-verification-status"
+                        className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${
+                          chassisVerificationStatus === 'VERIFIED'
+                            ? 'text-emerald-600'
+                            : chassisVerificationStatus === 'FAILED'
+                              ? 'text-red-600'
+                              : 'text-gray-500'
+                        }`}
+                      >
+                        {chassisVerificationStatus === 'VERIFIED'
+                          ? '✓ Verified successfully. API-backed vehicle details were filled.'
+                          : chassisVerificationStatus === 'FAILED'
+                            ? '✕ Verification failed. Correct the chassis number and try again.'
+                            : 'Verification is required before posting this vehicle.'}
+                      </p>
                     </Field>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {t('sellModal.vehicleNameHelp')}
-                    </p>
+                    <div>
+                      <Field label={t('sellModal.vehicleName')}>
+                        <input
+                          value={form.title}
+                          onChange={(event) => updateField('title', event.target.value)}
+                          className={fieldClassName}
+                          placeholder={t('sellModal.vehicleNamePlaceholder')}
+                        />
+                      </Field>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {t('sellModal.vehicleNameHelp')}
+                      </p>
+                    </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label={t('sellModal.category')}>
@@ -1165,12 +1413,11 @@ export default function SellVehicleModal({
                     <Field label={t('sellModal.vehicleNumber', 'Vehicle Number')}>
                       <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label={t('sellModal.insuranceExpiryDate')}>
-                      <input type="date" value={form.insuranceExpiry} onChange={(event) => updateField('insuranceExpiry', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.chassisSerialNumber')}>
-                      <input value={form.chassisOrSerialNo} onChange={(event) => updateField('chassisOrSerialNo', event.target.value)} className={fieldClassName} />
-                    </Field>
+                    {form.rtoDetails.insuranceStatus === 'VALID' && (
+                      <Field label={t('sellModal.insuranceExpiryDate')}>
+                        <input type="date" value={form.insuranceExpiry} onChange={(event) => updateField('insuranceExpiry', event.target.value)} className={fieldClassName} />
+                      </Field>
+                    )}
                     <Field label={t('sellModal.engineNumber', 'Engine Number')}>
                       <input value={form.engineNumber} onChange={(event) => updateField('engineNumber', event.target.value)} className={fieldClassName} maxLength={40} />
                     </Field>
@@ -1551,7 +1798,7 @@ export default function SellVehicleModal({
                           <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.engineNumber', 'Engine Number')} value={parsedDetails.engineNumber || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.insuranceExpiry')} value={parsedDetails.insuranceExpiry || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.insuranceExpiry')} value={viewListing.rtoRecords?.[0] && viewListing.rtoRecords[0].insuranceStatus !== 'VALID' ? t('sellModal.na') : parsedDetails.insuranceExpiry || t('sellModal.na')} />
                         </div>
                       </section>
 

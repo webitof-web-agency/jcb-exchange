@@ -32,10 +32,11 @@ interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isAuthModalOpen: boolean;
+  authMode: 'login' | 'signup';
   hasHydrated: boolean;
   hydrateAuth: () => void;
   setAuth: (token: string, user: AuthUser) => void;
-  setAuthModalOpen: (isOpen: boolean) => void;
+  setAuthModalOpen: (isOpen: boolean, mode?: 'login' | 'signup') => void;
   logout: () => void;
 }
 
@@ -73,6 +74,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isAuthModalOpen: false,
+  authMode: 'login',
   hasHydrated: false,
   hydrateAuth: () => {
     const token = getLocalStorage('frontend_portal_token');
@@ -110,6 +112,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setAuth: (token, user) => {
     localStorage.setItem('frontend_portal_token', token);
     localStorage.setItem('frontend_portal_user', JSON.stringify(user));
+    localStorage.removeItem('frontend_portal_token:last_activity');
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('jcbexchange-auth-change'));
     }
@@ -121,10 +124,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       isAuthModalOpen: false,
     });
   },
-  setAuthModalOpen: (isOpen) => set({ isAuthModalOpen: isOpen }),
+  setAuthModalOpen: (isOpen, mode = 'login') => set({ isAuthModalOpen: isOpen, authMode: mode }),
   logout: () => {
     localStorage.removeItem('frontend_portal_token');
     localStorage.removeItem('frontend_portal_user');
+    localStorage.removeItem('frontend_portal_token:last_activity');
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('jcbexchange-auth-change'));
     }

@@ -50,6 +50,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

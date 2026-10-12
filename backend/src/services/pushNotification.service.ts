@@ -105,6 +105,11 @@ export class PushNotificationService {
           priority: 'high',
           collapseKey: 'jcb_notification_group',
           notification: {
+            // Android small notification icons must be monochrome drawable
+            // resources. Keep this explicit so FCM never falls back to an
+            // OEM/default bell when the app is in the background.
+            icon: 'ic_notification',
+            color: '#FFB800',
             sound: 'default',
             tag: 'jcb_notification',
             clickAction: 'FLUTTER_NOTIFICATION_CLICK',

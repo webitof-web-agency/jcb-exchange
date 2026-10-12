@@ -13,6 +13,17 @@ import whatsappRoutes from './whatsapp.routes';
 import smsRoutes from './sms.routes';
 import blogRoutes from './blog.routes';
 import financeRoutes from './finance.routes';
+import panVerificationRoutes from './panVerification.routes';
+import gstVerificationRoutes from './gstVerification.routes';
+import drivingLicenseVerificationRoutes from './drivingLicenseVerification.routes';
+import rcOwnerHistoryRoutes from './rcOwnerHistory.routes';
+import rcChallanVerificationRoutes from './rcChallanVerification.routes';
+import chassisToRcVerificationRoutes from './chassisToRcVerification.routes';
+import rcToMobileVerificationRoutes from './rcToMobileVerification.routes';
+import mobileToRcLookupRoutes from './mobileToRcLookup.routes';
+import rcMobileNumberCheckRoutes from './rcMobileNumberCheck.routes';
+import mobileToPanLookupRoutes from './mobileToPanLookup.routes';
+import apiWalletBillingRoutes from './apiWalletBilling.routes';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -32,6 +43,17 @@ router.use('/whatsapp', whatsappRoutes);
 router.use('/sms', smsRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/finance', financeRoutes);
+router.use('/pan-verification', panVerificationRoutes);
+router.use('/gst-verification', gstVerificationRoutes);
+router.use('/driving-license-verification', drivingLicenseVerificationRoutes);
+router.use('/rc-owner-history', rcOwnerHistoryRoutes);
+router.use('/rc-challan-verification', rcChallanVerificationRoutes);
+router.use('/chassis-to-rc', chassisToRcVerificationRoutes);
+router.use('/rc-to-mobile', rcToMobileVerificationRoutes);
+router.use('/mobile-to-rc', mobileToRcLookupRoutes);
+router.use('/rc-mobile-number-check', rcMobileNumberCheckRoutes);
+router.use('/mobile-to-pan', mobileToPanLookupRoutes);
+router.use('/api-billing', apiWalletBillingRoutes);
 
 router.post('/users/fcm-token', requireAuth, saveFcmToken);
 

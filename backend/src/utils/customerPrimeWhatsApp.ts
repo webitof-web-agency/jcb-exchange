@@ -32,7 +32,6 @@ export const buildCustomerPrimeWhatsAppDispatch = ({
     templateComponents: [{
       type: 'body' as const,
       parameters: [
-        { type: 'text' as const, text: subscriptionId },
         { type: 'text' as const, text: status },
         { type: 'text' as const, text: customerName?.trim() || 'Customer' },
       ],

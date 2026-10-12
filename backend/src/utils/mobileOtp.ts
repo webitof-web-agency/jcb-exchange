@@ -76,6 +76,20 @@ export const normalizeLoginMobileNumber = (value?: string | null) => {
   return null;
 };
 
+export const matchesMobileOtpChallengeMobile = (
+  challengeMobile: string | null | undefined,
+  requestedMobile: string | null | undefined,
+) => {
+  const normalizedChallengeMobile = normalizeLoginMobileNumber(challengeMobile);
+  const normalizedRequestedMobile = normalizeLoginMobileNumber(requestedMobile);
+
+  return Boolean(
+    normalizedChallengeMobile &&
+      normalizedRequestedMobile &&
+      normalizedChallengeMobile === normalizedRequestedMobile,
+  );
+};
+
 export const getLoginMobileCandidates = (normalizedMobile: string) => [
   normalizedMobile,
   `91${normalizedMobile}`,

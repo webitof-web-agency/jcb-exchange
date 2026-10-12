@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.routes';
+import apiWalletBillingWebhookRoutes from './routes/apiWalletBillingWebhook.routes';
 import { publicUploadDir } from './utils/documentUpload';
 
 dotenv.config();
@@ -13,6 +14,9 @@ const app: Application = express();
 app.use(cors());
 // Meta signs the unparsed webhook payload. This route must remain before express.json().
 app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
+// Wallet webhook signatures cover the exact raw JSON payload, so this route must also
+// remain before express.json().
+app.use('/api/api-billing/webhook', express.raw({ type: 'application/json', limit: '64kb' }), apiWalletBillingWebhookRoutes);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 // Serve branding images (hero, logo, certification) stored on the server's

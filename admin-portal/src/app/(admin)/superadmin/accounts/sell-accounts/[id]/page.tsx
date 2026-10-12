@@ -15,7 +15,7 @@ import { FileUploadField } from '@/components/upload/FileUploadField';
 import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import { normalizeSellAccountDocuments, SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
-import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
+import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, normalizeSellAccountChassisNumber, omitSellAccountEngineNumber, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
 import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
 import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from 'react-toastify';
@@ -39,8 +39,6 @@ const formatDate = (dateStr: string) => {
 
 const sanitizePhoneNumber = (val: string) => val.replace(/\D/g, '').slice(0, 10);
 const sanitizeVehicleNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15);
-const sanitizeEngineNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9./\s-]/g, '').replace(/\s+/g, ' ').trimStart().slice(0, 40);
-
 type EditFormData = Omit<SellAccountRecord, 'id' | 'createdAt'>;
 type SellAccountDocumentKey = keyof SellAccountDocuments;
 
@@ -227,8 +225,9 @@ export default function SellAccountDetailView() {
             const found = parsed.find((r) => r.id === id);
             if (found) {
                 const migrated: SellAccountRecord = {
-                  ...found,
+                  ...(omitSellAccountEngineNumber(found) as Omit<StoredSellAccountRecord, 'engineNumber'>),
                   brandName: found.brandName || '',
+                  chassisNumber: normalizeSellAccountChassisNumber(found.chassisNumber),
                   documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
                 dealStatus: found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' ? 'CLOSE' : found.dealStatus === 'PENDING' ? 'OPEN' : found.dealStatus
               };
@@ -249,7 +248,7 @@ export default function SellAccountDetailView() {
       ownerName: record.ownerName,
       ownerNumber: record.ownerNumber,
       vehicleNumber: record.vehicleNumber,
-      engineNumber: record.engineNumber || '',
+      chassisNumber: record.chassisNumber || '',
       sellDate: record.sellDate,
       vehicleType: record.vehicleType,
       brandName: record.brandName || '',
@@ -289,8 +288,8 @@ export default function SellAccountDetailView() {
       value = sanitizePhoneNumber(String(rawValue));
     } else if (field === 'vehicleNumber') {
       value = sanitizeVehicleNumber(String(rawValue));
-    } else if (field === 'engineNumber') {
-      value = sanitizeEngineNumber(String(rawValue));
+    } else if (field === 'chassisNumber') {
+      value = normalizeSellAccountChassisNumber(rawValue);
     } else if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses' || field === 'balanceAmount') {
       const normalizedAmount = normalizeAmountInput(String(rawValue));
       setRawInputs((prev) => ({ ...prev, [field]: normalizedAmount.raw }));
@@ -465,8 +464,8 @@ export default function SellAccountDetailView() {
                 <p className="font-bold text-gray-900 text-lg mt-0.5">{record.vehicleNumber}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Engine Number</p>
-                <p className="font-bold text-gray-900 mt-0.5">{record.engineNumber || '—'}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Chassis Number</p>
+                <p className="font-bold text-gray-900 mt-0.5">{record.chassisNumber || '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Model</p>
@@ -675,14 +674,14 @@ export default function SellAccountDetailView() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Engine Number</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Chassis Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. JCB-ENG-12345"
+                      placeholder="e.g. JCB3DX2026CHASSIS"
                       maxLength={40}
-                      value={editData.engineNumber || ''}
-                      onChange={(e) => handleEditChange('engineNumber', e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm uppercase focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      value={editData.chassisNumber || ''}
+                      onChange={(e) => handleEditChange('chassisNumber', e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 

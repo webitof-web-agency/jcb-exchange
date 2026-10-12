@@ -13,6 +13,7 @@ type PrimePaymentHistoryItem = {
   memberName: string;
   planName: string;
   amount: number;
+  transactionRef?: string | null;
   status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
   submittedAt: string;
   startedAt?: string | null;
@@ -254,6 +255,7 @@ export default function PaymentHistoryTab() {
                             planName: payment.planName,
                             amount: payment.amount,
                             submittedAt: payment.submittedAt,
+                            transactionRef: payment.transactionRef,
                             customerEmail: user?.email,
                             customerMobile: user?.mobile,
                             customerCity: payment.customerCity || user?.city || null,

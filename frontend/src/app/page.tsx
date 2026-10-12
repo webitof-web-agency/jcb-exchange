@@ -813,26 +813,19 @@ export default function Home() {
             <div className="flex flex-row items-center gap-4">
               {/* Play Store Button */}
               <a href={playStoreLink || 'https://play.google.com/store/apps'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-900 rounded-full px-6 py-3.5 transition-colors font-bold text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                  <path d="M3 20.5V3.5C3 2.91 3.34 2.39 3.84 2.15L13.69 12L3.84 21.85C3.34 21.61 3 21.09 3 20.5ZM4.53 2.76L14.6 12.83L19.46 10.4C20.19 10 20.19 8.94 19.46 8.54L4.53 2.76ZM20.44 11.26L15.67 13.65L14.47 12.45L20.44 11.26ZM15.67 10.35L19.46 11.83C20.48 12.23 20.48 13.72 19.46 14.12L15.67 15.6L14.47 14.4L15.67 10.35ZM4.53 21.24L14.6 11.17L15.67 12.24L4.53 21.24Z" fill="url(#paint1_linear)" />
-                  <defs>
-                    <linearGradient id="paint1_linear" x1="18.9141" y1="2.78125" x2="6.60156" y2="21.1406" gradientUnits="userSpaceOnUse">
-                      <stop stopColor="#00A0FF" />
-                      <stop offset="0.0066" stopColor="#00A1FF" />
-                      <stop offset="0.2601" stopColor="#00BEFF" />
-                      <stop offset="0.5122" stopColor="#00D2FF" />
-                      <stop offset="0.7604" stopColor="#00DFFF" />
-                      <stop offset="1" stopColor="#00E3FF" />
-                    </linearGradient>
-                  </defs>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 shrink-0">
+                  <path d="M3.609 1.814L13.791 12 3.61 22.186c-.368-.381-.61-.926-.61-1.545V3.359c0-.62.242-1.164.609-1.545z" fill="#00D2FF" />
+                  <path d="M17.156 8.635l-3.365 3.365 3.365 3.365 3.823-2.178c.87-.496.87-1.306 0-1.802l-3.823-2.75z" fill="#FFD000" />
+                  <path d="M13.791 12L3.609 1.814C4.04 1.377 4.72 1.258 5.37 1.628l11.786 7.007L13.791 12z" fill="#00F076" />
+                  <path d="M13.791 12l3.365 3.365L5.37 22.372c-.65.37-1.33.251-1.761-.186L13.791 12z" fill="#FF3A44" />
                 </svg>
                 Play Store
               </a>
 
               {/* App Store Button */}
               <a href={appStoreLink || 'https://apps.apple.com/app'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-900 rounded-full px-6 py-3.5 transition-colors font-bold text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                  <path d="M16.365 14.402C16.388 11.391 18.825 9.946 18.938 9.876C17.489 7.76 15.195 7.42 14.417 7.375C12.474 7.18 10.584 8.52 9.588 8.52C8.591 8.52 7.042 7.399 5.437 7.414C3.393 7.444 1.503 8.604 0.457 10.428C-1.666 14.116 0.283 19.569 2.35 22.564C3.363 24.032 4.568 25.688 6.136 25.613C7.659 25.538 8.243 24.619 10.089 24.619C11.935 24.619 12.474 25.613 14.043 25.583C15.657 25.553 16.697 24.093 17.693 22.624C18.857 20.912 19.336 19.245 19.359 19.155C19.314 19.14 16.342 18.016 16.365 14.402ZM12.723 4.887C13.565 3.869 14.135 2.449 13.981 1.029C12.756 1.079 11.238 1.849 10.372 2.852C9.594 3.739 8.922 5.187 9.106 6.574C10.472 6.679 11.881 5.901 12.723 4.887Z" />
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 shrink-0">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.93c.66-.8 1.11-1.92.99-3.04-.96.04-2.12.64-2.81 1.44-.61.71-1.15 1.86-1.01 2.97 1.08.08 2.17-.57 2.83-1.37z" />
                 </svg>
                 App Store
               </a>

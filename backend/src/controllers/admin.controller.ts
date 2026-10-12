@@ -13,6 +13,7 @@ import {
 import {
   FinanceSupportItem,
   FooterSocialLink,
+  ListingCreationAccessSettings,
   ListingPaymentSettings,
   getAppSettings,
   updatePlatformRuntimeSettings,
@@ -25,6 +26,7 @@ import {
 import { PushNotificationService } from '../services/pushNotification.service';
 import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
 import { getPreferredWhatsAppNumber } from '../utils/whatsappRecipient';
+import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsApp';
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import {
@@ -45,6 +47,8 @@ import { allowedAdminPermissions } from '../utils/adminPermissions';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretReveal';
 import { getCustomerDeletionBlockers, type CustomerDeletionCounts } from '../services/customerDeletion.service';
+import { resolveListingContactNumber } from '../utils/listingContact';
+import { canCreateListing } from '../utils/listingAccess';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -667,6 +671,7 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
         ...settings.customerPrime,
         recentPayments: recentPrimePayments,
       },
+      listingCreationAccess: settings.listingCreationAccess,
       financeSupport: {
         items: settings.financeSupport.items,
       },
@@ -712,7 +717,7 @@ export const revealPlatformSecret = async (req: Request, res: Response, next: Ne
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingPayment, companyInvoice, mobileApp, googleDrive } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingCreationAccess, listingPayment, companyInvoice, mobileApp, googleDrive } = req.body as {
       googleClientId?: string;
       googleAuthEnabled?: boolean;
       mobileOtp?: {
@@ -741,6 +746,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         validityValue?: number;
         validityUnit?: 'DAYS' | 'MONTHS' | 'days' | 'months';
       };
+      listingCreationAccess?: Partial<Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>>;
       listingPayment?: Partial<ListingPaymentSettings>;
       companyInvoice?: {
         companyName?: string;
@@ -770,6 +776,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       !emailOtp &&
       !publicLeadRouting &&
       !customerPrime &&
+      !listingCreationAccess &&
       !listingPayment &&
       !companyInvoice &&
       !mobileApp &&
@@ -847,6 +854,17 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       };
     }
 
+    if (listingCreationAccess) {
+      settingsPayload.listingCreationAccess = {
+        ...(listingCreationAccess.allowAdmin !== undefined
+          ? { allowAdmin: listingCreationAccess.allowAdmin === true }
+          : {}),
+        ...(listingCreationAccess.allowEmployee !== undefined
+          ? { allowEmployee: listingCreationAccess.allowEmployee === true }
+          : {}),
+      };
+    }
+
     if (listingPayment) {
       const currentSettings = await getAppSettings();
       settingsPayload.listingPayment = {
@@ -915,6 +933,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         ...settings.customerPrime,
         recentPayments: recentPrimePayments,
       },
+      listingCreationAccess: settings.listingCreationAccess,
       listingPayment: serializeListingPaymentSettingsForAdmin(settings.listingPayment),
       companyInvoice: settings.companyInvoice,
     });
@@ -986,6 +1005,16 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
       link: '/profile',
     });
 
+    const primeApprovalDispatch = status === 'ACTIVE'
+      ? buildCustomerPrimeWhatsAppDispatch({
+        subscriptionId: subscription.id,
+        status,
+        customerName: subscription.user?.name,
+        whatsappNumber: subscription.user?.whatsappNumber,
+        mobile: subscription.user?.mobile,
+      })
+      : null;
+
     void dispatchMarketplaceWhatsApp({
       eventCode: status === 'ACTIVE' ? 'CUSTOMER_PRIME_APPROVED' : 'CUSTOMER_PRIME_REJECTED',
       relatedEntityType: 'CUSTOMER_PRIME_SUBSCRIPTION',
@@ -993,6 +1022,7 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
       recipientType: 'CUSTOMER',
       recipientPhone: getPreferredWhatsAppNumber(subscription.user?.whatsappNumber, subscription.user?.mobile),
       payloadSnapshot: { subscriptionId: subscription.id, status, customerName: subscription.user?.name || null },
+      ...(primeApprovalDispatch ? { templateComponents: primeApprovalDispatch.templateComponents } : {}),
     });
 
     res.json({
@@ -2093,6 +2123,7 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
     const requestedId = req.query.id ? String(req.query.id).trim() : '';
     const requestedPrefix = req.query.prefix ? String(req.query.prefix).trim() : '';
     const compact = String(req.query.compact || '').toLowerCase() === 'true';
+    const platformSettings = await getAppSettings();
     const where: Record<string, string | { startsWith: string }> = {};
     if (partnerId) {
       where.partnerId = partnerId;
@@ -2111,11 +2142,14 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
             id: true,
             name: true,
             email: true,
+            mobile: true,
+            whatsappNumber: true,
             role: true,
             partnerProfile: {
               select: {
                 businessName: true,
                 partnerType: true,
+                alternateMobile: true,
               },
             },
             customerPrimeSubscriptions: {
@@ -2153,12 +2187,16 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
             { createdAt: 'asc' },
           ],
         },
+        vehicleVerification: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
 
     res.json({
+      canCreateListing: req.user?.role
+        ? canCreateListing(req.user.role, [], platformSettings.listingCreationAccess)
+        : false,
       // Prisma's inferred relation type for this query is too narrow here, so we normalize it locally.
       // This keeps the API payload strongly shaped without leaking `any` into the response contract.
       listings: listings.map((listing) => {
@@ -2172,6 +2210,7 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
             listing.partner?.name ||
             listing.partner?.email ||
             'Unknown partner',
+          dealerPhone: resolveListingContactNumber(listing.partner),
           dealerCategory: getDealerCategoryLabel(listing.partner),
           price: Number(listing.price),
           status: listing.status,
@@ -2191,6 +2230,23 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
           isNegotiable: listing.isNegotiable,
           imageUrl: listingMedia.find((m: any) => String(m.type || '').toUpperCase() === 'IMAGE')?.url || null,
           media: listingMedia,
+          vehicleVerification: (listing as any).vehicleVerification
+            ? {
+                verificationRecordId: (listing as any).vehicleVerification.verificationRecordId || null,
+                status: (listing as any).vehicleVerification.status || 'NOT_VERIFIED',
+                changedFields: Array.isArray((listing as any).vehicleVerification.changedFields)
+                  ? (listing as any).vehicleVerification.changedFields
+                  : [],
+                lastVerifiedAt: (listing as any).vehicleVerification.lastVerifiedAt || null,
+                lastModifiedAt: (listing as any).vehicleVerification.lastModifiedAt || null,
+              }
+            : {
+                verificationRecordId: null,
+                status: 'NOT_VERIFIED',
+                changedFields: [],
+                lastVerifiedAt: null,
+                lastModifiedAt: null,
+              },
         };
       }),
     });

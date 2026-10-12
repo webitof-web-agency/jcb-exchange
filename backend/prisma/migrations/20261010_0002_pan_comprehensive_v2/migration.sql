@@ -1,0 +1,1 @@
+ALTER TYPE "PanVerificationOperation" ADD VALUE 'PAN_COMPREHENSIVE_V2';

@@ -4,11 +4,30 @@ import {
   filterSelectOptions,
   getValidityOptions,
   normalizeValidityForEdit,
+  isValidityDateRequired,
+  getHsrpStatusOptions,
+  normalizeHsrpStatus,
   getRtoStatusOptions,
   normalizeRtoStatus,
   normalizeRemark,
   getInitialTermsAccepted,
 } from './rtoWorkStatusForm.mjs';
+
+test('offers Not Required in HSRP options and normalizes HSRP status', () => {
+  const options = getHsrpStatusOptions();
+  assert.equal(options.some((opt) => opt.value === 'NOT_APPLICABLE' && opt.label === 'Not Required'), true);
+  assert.equal(normalizeHsrpStatus('NOT_REQUIRED'), 'NOT_APPLICABLE');
+  assert.equal(normalizeHsrpStatus('NOT_APPLICABLE'), 'NOT_APPLICABLE');
+  assert.equal(normalizeHsrpStatus('YES'), 'YES');
+  assert.equal(normalizeHsrpStatus('NO'), 'NO');
+});
+
+test('requires validity date only when status is VALID', () => {
+  assert.equal(isValidityDateRequired('VALID'), true);
+  assert.equal(isValidityDateRequired('EXPIRED'), false);
+  assert.equal(isValidityDateRequired('LIFETIME'), false);
+  assert.equal(isValidityDateRequired('NOT_AVAILABLE'), false);
+});
 
 test('keeps LLT mapped to the persisted LIFETIME status', () => {
   const options = getValidityOptions('LIFETIME');

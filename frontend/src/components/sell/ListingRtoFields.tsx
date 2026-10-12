@@ -8,13 +8,12 @@ const inputClass = 'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 p
 const hirePurchaseOptions = [
   ['PENDING', 'Pending'],
   ['ACTIVE', 'Active'],
-  ['TERMINATED', 'Terminated'],
   ['NOT_APPLICABLE', 'Not Applicable'],
 ] as const;
-const validityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired']] as const;
+const validityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired'], ['NOT_AVAILABLE', 'Not available']] as const;
 // Tax validity has an extra LLT (Lifetime) option — backend value is LIFETIME
-const taxValidityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired'], ['LIFETIME', 'LLT']] as const;
-const hsrpOptions = [['YES', 'Yes'], ['NO', 'No']] as const;
+const taxValidityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired'], ['LIFETIME', 'LLT'], ['NOT_AVAILABLE', 'Not available']] as const;
+const hsrpOptions = [['YES', 'Yes'], ['NO', 'No'], ['NOT_APPLICABLE', 'Not required'], ['PENDING', 'Pending']] as const;
 
 function Field({ label, children, required }: { label: string; children: ReactNode; required: boolean }) {
   return (
@@ -51,6 +50,9 @@ export default function ListingRtoFields({
       }
       className={inputClass}
     >
+      {key === 'hirePurchaseStatus' && value[key] === 'TERMINATED' ? (
+        <option value="TERMINATED" hidden>Existing value: Terminated</option>
+      ) : null}
       {items.map(([v, l]) => (
         <option key={v} value={v}>{l}</option>
       ))}
@@ -64,14 +66,30 @@ export default function ListingRtoFields({
   ) => (
     <Field label={label} required={required}>
       <div className="space-y-2">
-        {makeSelect(statusKey, validityOptions)}
-        <input
-          type="date"
-          required={required}
-          value={String(value[dateKey] || '')}
-          onChange={(e) => onChange(dateKey, e.target.value as ListingRtoFormState[D])}
+        <select
+          value={String(value[statusKey])}
+          onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+            const next = e.target.value as ListingRtoFormState[S];
+            onChange(statusKey, next);
+            if (next !== 'VALID') onChange(dateKey, '' as ListingRtoFormState[D]);
+          }}
           className={inputClass}
-        />
+        >
+          {validityOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        {value[statusKey] === 'VALID' ? (
+          <input
+            type="date"
+            required={required}
+            value={String(value[dateKey] || '')}
+            onChange={(e) => onChange(dateKey, e.target.value as ListingRtoFormState[D])}
+            className={inputClass}
+          />
+        ) : value[statusKey] === 'NOT_AVAILABLE' ? (
+          <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
+            No valid date was returned by the verification provider. You may enter it manually by selecting a status.
+          </p>
+        ) : null}
       </div>
     </Field>
   );
@@ -96,7 +114,7 @@ export default function ListingRtoFields({
               onChange={(e: ChangeEvent<HTMLSelectElement>) => {
                 const next = e.target.value as ListingRtoFormState['taxStatus'];
                 onChange('taxStatus', next);
-                if (next === 'LIFETIME') {
+                if (next !== 'VALID') {
                   onChange('taxValidUntil', '');
                 }
               }}
@@ -106,7 +124,7 @@ export default function ListingRtoFields({
                 <option key={v} value={v}>{l}</option>
               ))}
             </select>
-            {!isLlt && (
+            {value.taxStatus === 'VALID' && (
               <input
                 type="date"
                 required={required}
@@ -120,6 +138,11 @@ export default function ListingRtoFields({
                 LLT — Lifetime Tax. No expiry date required.
               </p>
             )}
+            {value.taxStatus === 'NOT_AVAILABLE' && (
+              <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
+                No valid tax date was returned by the verification provider. You may enter it manually by selecting a status.
+              </p>
+            )}
           </div>
         </Field>
 
@@ -127,20 +150,36 @@ export default function ListingRtoFields({
 
         <Field label="Insurance Validity" required={required}>
           <div className="space-y-2">
-            {makeSelect('insuranceStatus', validityOptions)}
-            <input
-              type="date"
-              required={required}
-              value={insuranceExpiry}
-              onChange={(e) => onInsuranceExpiryChange(e.target.value)}
+            <select
+              value={value.insuranceStatus}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                const next = e.target.value as ListingRtoFormState['insuranceStatus'];
+                onChange('insuranceStatus', next);
+                if (next !== 'VALID') onInsuranceExpiryChange('');
+              }}
               className={inputClass}
-            />
+            >
+              {validityOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            {value.insuranceStatus === 'VALID' ? (
+              <input
+                type="date"
+                required={required}
+                value={insuranceExpiry}
+                onChange={(e) => onInsuranceExpiryChange(e.target.value)}
+                className={inputClass}
+              />
+            ) : value.insuranceStatus === 'NOT_AVAILABLE' ? (
+              <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
+                No valid insurance date was returned by the verification provider. You may enter it manually by selecting a status.
+              </p>
+            ) : null}
           </div>
         </Field>
 
         {dateField('pucStatus', 'pucValidUntil', 'PUC Validity')}
 
-        <Field label="HSRP Valid" required={required}>
+        <Field label="HSRP Valid" required={false}>
           {makeSelect('hsrpStatus', hsrpOptions)}
         </Field>
 
@@ -152,19 +191,17 @@ export default function ListingRtoFields({
             className={inputClass}
           />
         </Field>
-        <Field label="RTO Agent Name" required={required}>
+        <Field label="RTO Agent Name" required={false}>
           <input
-            required={required}
             value={value.rtoAgentName}
             onChange={(e) => onChange('rtoAgentName', e.target.value)}
             className={inputClass}
           />
         </Field>
-        <Field label="RTO Expenses" required={required}>
+        <Field label="RTO Expenses" required={false}>
           <input
-            required={required}
             type="number"
-            min={1}
+            min={0}
             step={1}
             inputMode="numeric"
             value={value.rtoExpenses}

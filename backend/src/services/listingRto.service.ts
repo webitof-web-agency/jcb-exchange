@@ -60,6 +60,8 @@ const money = (value: unknown) => {
 };
 const validEnum = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
   allowed.includes(String(value) as T) ? String(value) as T : fallback;
+const dateForValidity = (status: unknown, value: unknown) =>
+  String(status) === RtoValidityStatus.VALID ? dateOrNull(value) : null;
 
 export const validateListingRtoDetails = (input: ListingRtoDetailsInput) => {
   const required: Array<[keyof ListingRtoDetailsInput, string]> = [
@@ -67,7 +69,6 @@ export const validateListingRtoDetails = (input: ListingRtoDetailsInput) => {
     ['vehicleType', 'Vehicle Type'],
     ['vehicleModel', 'Vehicle Model'],
     ['rtoOffice', 'RTO Office'],
-    ['rtoAgentName', 'RTO Agent Name'],
   ];
   const missing = required.find(([key]) => !text(input[key]));
   if (missing) return `${missing[1]} is required.`;
@@ -86,14 +87,10 @@ export const validateListingRtoDetails = (input: ListingRtoDetailsInput) => {
   const missingValidity = validityChecks.find(([name, status, date]) => {
     const normalizedStatus = String(status || '');
     return !Object.values(RtoValidityStatus).includes(normalizedStatus as RtoValidityStatus)
-      || ((normalizedStatus === RtoValidityStatus.VALID || normalizedStatus === RtoValidityStatus.EXPIRED) && !dateOrNull(date));
+      || (normalizedStatus === RtoValidityStatus.VALID && !dateOrNull(date));
   });
   if (missingValidity) return `${missingValidity[0]} status and date are required.`;
 
-  if (!Object.values(RtoHsrpStatus).includes(String(input.hsrpStatus) as RtoHsrpStatus)) {
-    return 'HSRP Valid is required.';
-  }
-  if (Number(input.rtoExpenses) <= 0) return 'RTO Expenses is required.';
   if (Number(input.vehicleMaintenanceCost) <= 0) return 'Vehicle Maintenance Cost is required.';
   if (Number(input.operatingHours) <= 0) return 'Hours Running is required.';
   return null;
@@ -112,13 +109,13 @@ export const buildListingRtoData = (
   vehicleModel: text(input.vehicleModel),
   hirePurchaseStatus: validEnum(input.hirePurchaseStatus, Object.values(RtoHirePurchaseStatus), RtoHirePurchaseStatus.PENDING),
   taxStatus: validEnum(input.taxStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
-  taxValidUntil: dateOrNull(input.taxValidUntil),
+  taxValidUntil: dateForValidity(input.taxStatus, input.taxValidUntil),
   fitnessStatus: validEnum(input.fitnessStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
-  fitnessValidUntil: dateOrNull(input.fitnessValidUntil),
+  fitnessValidUntil: dateForValidity(input.fitnessStatus, input.fitnessValidUntil),
   insuranceStatus: validEnum(input.insuranceStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
-  insuranceValidUntil: dateOrNull(input.insuranceValidUntil || input.insuranceExpiry),
+  insuranceValidUntil: dateForValidity(input.insuranceStatus, input.insuranceValidUntil || input.insuranceExpiry),
   pucStatus: validEnum(input.pucStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
-  pucValidUntil: dateOrNull(input.pucValidUntil),
+  pucValidUntil: dateForValidity(input.pucStatus, input.pucValidUntil),
   hsrpStatus: validEnum(input.hsrpStatus, Object.values(RtoHsrpStatus), RtoHsrpStatus.PENDING),
   sellerName: existing?.sellerName || text(context.ownerName),
   sellerNumber: existing?.sellerNumber || digits(context.ownerNumber),

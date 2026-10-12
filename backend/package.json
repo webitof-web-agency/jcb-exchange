@@ -26,6 +26,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.23.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -40,6 +41,7 @@
     "multer": "^2.2.0",
     "node-cron": "^4.6.0",
     "nodemailer": "^10.0.10",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "prisma": "^7.9.1",
     "web-push": "^3.6.7"

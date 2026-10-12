@@ -23,6 +23,7 @@ import {
 import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
+import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -521,6 +522,21 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
         {
           type: 'header',
           parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: offerLetterFileName || 'Offer_Letter.pdf' } }],
+        },
+        ...(Array.isArray(templateComponents) ? templateComponents : []),
+      ];
+    } else if (eventCode === 'CUSTOMER_PRIME_APPROVED') {
+      if (!messageLog.relatedEntityId) throw new Error('Prime subscription is missing for invoice delivery.');
+      const invoice = await buildCustomerPrimeInvoicePdfForSubscription(messageLog.relatedEntityId);
+      const uploadedMedia = await uploadWhatsAppDocument({
+        accessToken,
+        phoneNumberId: settings.phoneNumberId!,
+        graphApiVersion: graphApiVersion(settings.graphApiVersion),
+      }, invoice.buffer, invoice.fileName);
+      deliveryComponents = [
+        {
+          type: 'header',
+          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: invoice.fileName } }],
         },
         ...(Array.isArray(templateComponents) ? templateComponents : []),
       ];

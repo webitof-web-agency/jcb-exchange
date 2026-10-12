@@ -5,6 +5,10 @@ import {
   createNextSellAccountId,
   getSellAccountValidationErrors,
   normalizeAmountInput,
+  normalizeSellAccountChassisNumber,
+  omitSellAccountEngineNumber,
+  removeSellAccountRecord,
+  replaceSellAccountRecord,
   toEditableAmount,
   upsertSellAccountRecord,
 } from './sellAccountForm.mjs';
@@ -67,4 +71,27 @@ test('does not block editing legacy records that predate the brand field', () =>
 test('requires a brand when creating a new sell account', () => {
   const errors = getSellAccountValidationErrors({ brandName: '' }, { isEditing: false });
   assert.equal(errors.brandName, 'Brand is required');
+});
+
+test('removes engine number from existing sell account data before display', () => {
+  const record = { id: 'SA-2026-001', vehicleNumber: 'MH-12-AB-4592', engineNumber: 'PRIVATE-ENGINE' };
+
+  assert.deepEqual(omitSellAccountEngineNumber(record), {
+    id: 'SA-2026-001',
+    vehicleNumber: 'MH-12-AB-4592',
+  });
+  assert.equal(Object.hasOwn(omitSellAccountEngineNumber(record), 'engineNumber'), false);
+});
+
+test('normalizes chassis numbers for create and edit form handling', () => {
+  assert.equal(normalizeSellAccountChassisNumber(' ma3j-mtb1 spb851591! '), 'MA3J-MTB1 SPB851591');
+  assert.equal(normalizeSellAccountChassisNumber(''), '');
+});
+
+test('updates and deletes records without losing chassis number lifecycle handling', () => {
+  const existing = { id: 'SA-2026-001', chassisNumber: 'OLD-CHASSIS' };
+  const updated = replaceSellAccountRecord([existing], { ...existing, chassisNumber: 'NEW-CHASSIS' });
+
+  assert.deepEqual(updated, [{ id: 'SA-2026-001', chassisNumber: 'NEW-CHASSIS' }]);
+  assert.deepEqual(removeSellAccountRecord(updated, 'SA-2026-001'), []);
 });

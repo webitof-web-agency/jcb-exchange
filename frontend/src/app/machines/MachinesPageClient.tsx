@@ -85,12 +85,12 @@ const getAvailabilityBadge = (
 ) => {
   const upperStatus = (status || '').toUpperCase();
   if (upperStatus === 'SOLD') {
-    return <span className="bg-red-600 text-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.sold}</span>;
+    return <span className="bg-red-600 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.sold}</span>;
   }
   if (upperStatus === 'RESERVED') {
-    return <span className="bg-amber-500 text-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.reserved}</span>;
+    return <span className="bg-amber-500 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.reserved}</span>;
   }
-  return <span className="bg-green-600 text-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.available}</span>;
+  return <span className="bg-green-600 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.available}</span>;
 };
 
 export default function MachinesPageClient() {
@@ -645,7 +645,7 @@ function MachinesPageContent({
 
           <div className="flex-1 min-w-0">
             {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <div key={index} className="h-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
                     <div className="h-44 animate-pulse bg-gray-100 lg:h-56" />
@@ -670,7 +670,7 @@ function MachinesPageContent({
               </div>
             ) : (
               <>
-                <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+                <div className="grid w-full min-w-0 grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
                   {paginatedMachines.map((machine) => {
                     const imageUrl = getMediaUrl(machine.featuredImage);
                     const locationLabel = formatListingLocation(machine, {
@@ -679,15 +679,15 @@ function MachinesPageContent({
                     });
 
                     return (
-                      <Link key={machine.id} href={generateMachineSlugPath(machine)} className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-gray-200 hover:shadow-md">
-                        <div className="relative h-44 shrink-0 overflow-hidden bg-gray-50 lg:h-56">
-                          <div className="absolute top-3 right-3 z-10">{getAvailabilityBadge(machine.status, availabilityLabels)}</div>
+                      <Link key={machine.id} href={generateMachineSlugPath(machine)} className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl sm:rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-gray-200 hover:shadow-md">
+                        <div className="relative h-32 sm:h-44 shrink-0 overflow-hidden bg-gray-50 lg:h-56">
+                          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">{getAvailabilityBadge(machine.status, availabilityLabels)}</div>
                           {imageUrl ? (
                             <Image
                               src={imageUrl}
                               alt={`${machine.title} machine listing${locationLabel ? ` in ${locationLabel}` : ''}`}
                               fill
-                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 33vw"
                               className="object-cover transition-transform duration-500 group-hover:scale-105"
                             />
                           ) : (
@@ -698,12 +698,12 @@ function MachinesPageContent({
                           )}
                         </div>
 
-                        <div className="flex flex-1 flex-col p-4 lg:p-5">
-                          <h3 className="line-clamp-2 break-words text-sm font-bold leading-snug text-gray-900 transition-colors group-hover:text-yellow-600 lg:text-[15px]">{machine.title}</h3>
-                          <p className="mt-2 text-base font-extrabold text-[#b48900] lg:text-lg">{formatPrice(machine.price)}</p>
+                        <div className="flex flex-1 flex-col p-2.5 sm:p-4 lg:p-5">
+                          <h3 className="line-clamp-2 break-words text-xs font-bold leading-tight sm:leading-snug text-gray-900 transition-colors group-hover:text-yellow-600 sm:text-sm lg:text-[15px]">{machine.title}</h3>
+                          <p className="mt-1 sm:mt-2 text-sm sm:text-base font-extrabold text-[#b48900] lg:text-lg">{formatPrice(machine.price)}</p>
 
-                          <div className="mt-auto flex items-center gap-1.5 border-t border-gray-100 pt-3 text-xs text-gray-500 lg:pt-4">
-                            <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          <div className="mt-auto flex items-center gap-1 sm:gap-1.5 border-t border-gray-100 pt-2 sm:pt-3 text-[10px] sm:text-xs text-gray-500 lg:pt-4">
+                            <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-gray-400" />
                             <span className="truncate">{locationLabel}</span>
                           </div>
                         </div>

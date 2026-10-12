@@ -52,3 +52,46 @@ test('validateListingRtoDetails uses the RTO required validity rules', () => {
     'Vehicle Maintenance Cost is required.',
   );
 });
+
+test('does not require or persist expiry dates for expired validity statuses', () => {
+  const expiredInput = {
+    ...validInput,
+    taxStatus: RtoValidityStatus.EXPIRED,
+    taxValidUntil: '',
+    fitnessStatus: RtoValidityStatus.EXPIRED,
+    fitnessValidUntil: '',
+    insuranceStatus: RtoValidityStatus.EXPIRED,
+    insuranceValidUntil: '',
+    pucStatus: RtoValidityStatus.EXPIRED,
+    pucValidUntil: '',
+  };
+
+  assert.equal(validateListingRtoDetails(expiredInput), null);
+
+  const data = buildListingRtoData(expiredInput, { ownerName: 'Partner One' });
+  assert.equal(data.taxValidUntil, null);
+  assert.equal(data.fitnessValidUntil, null);
+  assert.equal(data.insuranceValidUntil, null);
+  assert.equal(data.pucValidUntil, null);
+});
+
+test('allows optional HSRP, RTO agent name, and RTO expenses', () => {
+  const optionalInput = {
+    ...validInput,
+    hsrpStatus: '',
+    rtoAgentName: '',
+    rtoExpenses: '',
+  };
+
+  assert.equal(validateListingRtoDetails(optionalInput), null);
+  const data = buildListingRtoData(optionalInput, { ownerName: 'Partner One' });
+  assert.equal(data.hsrpStatus, RtoHsrpStatus.PENDING);
+  assert.equal(data.rtoAgentName, '');
+  assert.equal(data.rtoExpenses.toString(), '0');
+});
+
+test('persists HSRP Not required as the API enum value', () => {
+  const input = { ...validInput, hsrpStatus: RtoHsrpStatus.NOT_APPLICABLE };
+  assert.equal(validateListingRtoDetails(input), null);
+  assert.equal(buildListingRtoData(input, {}).hsrpStatus, RtoHsrpStatus.NOT_APPLICABLE);
+});

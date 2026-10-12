@@ -75,3 +75,75 @@ test('requires a brand for RTO records', () => {
     'Brand is required.',
   );
 });
+
+test('allows RTO records without RTO Agent Name, State, City, or Expenses', () => {
+  assert.equal(
+    validateRtoPayload({
+      ...validPayload,
+      rtoAgentName: '',
+      rtoAgentState: '',
+      rtoAgentCity: '',
+      rtoExpenses: new Prisma.Decimal(0),
+    }),
+    null,
+  );
+});
+
+test('does not require validity date when status is EXPIRED', () => {
+  assert.equal(
+    validateRtoPayload({
+      ...validPayload,
+      taxStatus: RtoValidityStatus.EXPIRED,
+      taxValidUntil: null,
+      fitnessStatus: RtoValidityStatus.EXPIRED,
+      fitnessValidUntil: null,
+      insuranceStatus: RtoValidityStatus.EXPIRED,
+      insuranceValidUntil: null,
+      pucStatus: RtoValidityStatus.EXPIRED,
+      pucValidUntil: null,
+    }),
+    null,
+  );
+});
+
+test('requires validity date only when status is VALID', () => {
+  assert.equal(
+    validateRtoPayload({
+      ...validPayload,
+      fitnessStatus: RtoValidityStatus.VALID,
+      fitnessValidUntil: null,
+    }),
+    'Fitness Validity date is required when marked as Valid.',
+  );
+});
+
+test('clears validity dates in buildPayload when status is EXPIRED', () => {
+  const payload = buildPayload({
+    ...validPayload,
+    taxStatus: RtoValidityStatus.EXPIRED,
+    taxValidUntil: '2027-01-01',
+    fitnessStatus: RtoValidityStatus.EXPIRED,
+    fitnessValidUntil: '2027-01-01',
+  });
+  assert.equal(payload.taxValidUntil, null);
+  assert.equal(payload.fitnessValidUntil, null);
+});
+
+test('allows RTO records without hsrpStatus', () => {
+  const payload = buildPayload({
+    ...validPayload,
+    hsrpStatus: '',
+  });
+  assert.equal(validateRtoPayload(payload), null);
+});
+
+test('maps NOT_REQUIRED to NOT_APPLICABLE for hsrpStatus', () => {
+  const payload = buildPayload({
+    ...validPayload,
+    hsrpStatus: 'NOT_REQUIRED',
+  });
+  assert.equal(payload.hsrpStatus, RtoHsrpStatus.NOT_APPLICABLE);
+});
+
+
+

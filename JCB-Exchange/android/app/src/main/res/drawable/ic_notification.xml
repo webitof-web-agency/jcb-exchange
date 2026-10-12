@@ -4,7 +4,15 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- JCB Exchange monochrome mark. Android applies the accent colour. -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M12,22a2.5,2.5 0,0 0,2.45 -2h-4.9A2.5,2.5 0,0 0,12 22zM18,16v-5c0,-3.07 -1.63,-5.64 -4.5,-6.32V4a1.5,1.5 0,0 0,-3 0v0.68C7.62,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2zM12,6c2.21,0 4,1.79 4,4v6H8v-6c0,-2.21 1.79,-4 4,-4z" />
+        android:pathData="M1,3H3V13C3,16 3.7,17 5,17C6.3,17 7,16 7,13V3H9V13C9,18 7.6,21 5,21C2.3,21 1,18 1,13Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,3H15V6H11V18H15V21H8Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M16,3H20C22.2,3 24,4.8 24,7V9C24,10.2 23.5,11.2 22.6,12C23.5,12.8 24,13.8 24,15V17C24,19.2 22.2,21 20,21H16V3ZM19,6V10H20C20.6,10 21,9.6 21,9V7C21,6.4 20.6,6 20,6H19ZM19,14V18H20C20.6,18 21,17.6 21,17V15C21,14.4 20.6,14 20,14H19Z" />
 </vector>

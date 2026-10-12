@@ -21,6 +21,23 @@ export const upsertSellAccountRecord = (records, record) => [
   ...records.filter((current) => current.id !== record.id),
 ];
 
+export const removeSellAccountRecord = (records, recordId) =>
+  records.filter((record) => record.id !== recordId);
+
+export const normalizeSellAccountChassisNumber = (value) =>
+  String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9./\s-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+
+export const omitSellAccountEngineNumber = (record = {}) => {
+  const safeRecord = { ...record };
+  delete safeRecord.engineNumber;
+  return safeRecord;
+};
+
 export const createNextSellAccountId = (records, year = new Date().getFullYear()) => {
   const prefix = `SA-${year}-`;
   const highestSequence = records.reduce((highest, record) => {

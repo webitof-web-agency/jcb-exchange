@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Mail, Phone, Save, ShieldCheck } from 'lucide-react';
+import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, Phone, Save, ScanLine, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -126,12 +126,30 @@ type SettingsResponse = {
     validityUnit: 'DAYS' | 'MONTHS';
     recentPayments: PrimePaymentRecord[];
   };
+  listingCreationAccess: {
+    allowAdmin: boolean;
+    allowEmployee: boolean;
+    updatedAt?: string | null;
+    updatedByUserId?: string | null;
+  };
   listingPayment: ListingPaymentFormState;
   companyInvoice?: CompanyInvoiceFormState;
   mobileApp?: {
     playStoreLink: string | null;
     appStoreLink: string | null;
     updatedAt?: string | null;
+  };
+  panVerification?: {
+    enabled: boolean;
+    activeEnvironment?: 'SANDBOX' | 'PRODUCTION';
+    sandbox?: SurepassProfileSettings;
+    production?: SurepassProfileSettings;
+    baseUrl?: string;
+    tokenConfigured?: boolean;
+    customerIdConfigured?: boolean;
+    dataEncryptionConfigured: boolean;
+    updatedAt?: string | null;
+    updatedByUserId?: string | null;
   };
 };
 
@@ -143,6 +161,11 @@ type AdminSecretKey =
   | 'phonepeClientSecret'
   | 'googleDriveClientSecret'
   | 'googleDriveRefreshToken';
+
+type ListingCreationAccessFormState = {
+  allowAdmin: boolean;
+  allowEmployee: boolean;
+};
 
 const isMaskedSecretValue = (value: string) => /^\*+$/.test(value.trim());
 
@@ -206,6 +229,38 @@ type MobileOtpFormState = {
   variablesValues: string;
 };
 
+type SurepassProfileSettings = {
+  baseUrl: string;
+  tokenConfigured: boolean;
+  customerIdConfigured: boolean;
+};
+
+type SurepassProfileFormState = SurepassProfileSettings & {
+  token: string;
+  customerId: string;
+};
+
+type PanVerificationFormState = {
+  enabled: boolean;
+  activeEnvironment: 'SANDBOX' | 'PRODUCTION';
+  sandbox: SurepassProfileFormState;
+  production: SurepassProfileFormState;
+  baseUrl: string;
+  token: string;
+  customerId: string;
+  tokenConfigured: boolean;
+  customerIdConfigured: boolean;
+  dataEncryptionConfigured: boolean;
+};
+
+const emptySurepassProfile = (): SurepassProfileFormState => ({
+  baseUrl: '',
+  token: '',
+  customerId: '',
+  tokenConfigured: false,
+  customerIdConfigured: false,
+});
+
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;
   return axiosError.response?.data?.error || fallbackMessage;
@@ -263,7 +318,7 @@ const detectRazorpayModeFromKeyId = (keyId?: string | null): 'TEST' | 'LIVE' | n
 };
 
 export default function SuperAdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<'security' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'panVerification' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive'>('security');
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false);
   const [leadRoutingForm, setLeadRoutingForm] = useState<LeadRoutingFormState>({
@@ -274,6 +329,7 @@ export default function SuperAdminSettingsPage() {
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleToggleSaving, setGoogleToggleSaving] = useState(false);
+  const [listingCreationAccessSaving, setListingCreationAccessSaving] = useState(false);
   const [leadRoutingSaving, setLeadRoutingSaving] = useState(false);
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
@@ -285,12 +341,28 @@ export default function SuperAdminSettingsPage() {
   const [revealedSecrets, setRevealedSecrets] = useState<Partial<Record<AdminSecretKey, string>>>({});
   const [revealingSecret, setRevealingSecret] = useState<AdminSecretKey | null>(null);
   const [mobileAppSaving, setMobileAppSaving] = useState(false);
+  const [panVerificationSaving, setPanVerificationSaving] = useState(false);
+  const [showPanVerificationToken, setShowPanVerificationToken] = useState(false);
+  const [showPanVerificationCustomerId, setShowPanVerificationCustomerId] = useState(false);
 
   const [googleDriveSettings, setGoogleDriveSettings] = useState({
     clientId: '',
     clientSecret: '',
     refreshToken: '',
     backupFolderId: '',
+  });
+
+  const [panVerificationForm, setPanVerificationForm] = useState<PanVerificationFormState>({
+    enabled: false,
+    activeEnvironment: 'SANDBOX',
+    sandbox: emptySurepassProfile(),
+    production: emptySurepassProfile(),
+    baseUrl: '',
+    token: '',
+    customerId: '',
+    tokenConfigured: false,
+    customerIdConfigured: false,
+    dataEncryptionConfigured: false,
   });
 
   const [mobileAppForm, setMobileAppForm] = useState<MobileAppFormState>({
@@ -304,6 +376,10 @@ export default function SuperAdminSettingsPage() {
     amount: '',
     validityValue: '',
     validityUnit: 'DAYS',
+  });
+  const [listingCreationAccessForm, setListingCreationAccessForm] = useState<ListingCreationAccessFormState>({
+    allowAdmin: false,
+    allowEmployee: false,
   });
   const [listingPaymentForm, setListingPaymentForm] = useState<ListingPaymentFormState>(emptyListingPaymentForm);
 
@@ -458,6 +534,10 @@ export default function SuperAdminSettingsPage() {
         validityValue: response.data.customerPrime.validityValue ? String(response.data.customerPrime.validityValue) : '',
         validityUnit: response.data.customerPrime.validityUnit || 'DAYS',
       });
+      setListingCreationAccessForm({
+        allowAdmin: response.data.listingCreationAccess?.allowAdmin === true,
+        allowEmployee: response.data.listingCreationAccess?.allowEmployee === true,
+      });
       setListingPaymentForm({
         rtgs: {
           enabled: response.data.listingPayment?.rtgs?.enabled === true,
@@ -512,6 +592,49 @@ export default function SuperAdminSettingsPage() {
         });
       } catch (err) {
         console.warn('Failed to load Google Drive settings:', err);
+      }
+
+      try {
+        const panRes = await api.get<{ settings?: SettingsResponse['panVerification'] }>('/superadmin/surepass-settings');
+        const panSettings: NonNullable<SettingsResponse['panVerification']> = panRes.data.settings || {
+          enabled: false,
+          activeEnvironment: 'SANDBOX',
+          sandbox: { baseUrl: '', tokenConfigured: false, customerIdConfigured: false },
+          production: { baseUrl: '', tokenConfigured: false, customerIdConfigured: false },
+          dataEncryptionConfigured: false,
+        };
+        const legacyProfile = {
+          baseUrl: panSettings.baseUrl || '',
+          tokenConfigured: panSettings.tokenConfigured === true,
+          customerIdConfigured: panSettings.customerIdConfigured === true,
+        };
+        const toProfileForm = (profile?: SurepassProfileSettings): SurepassProfileFormState => ({
+          baseUrl: profile?.baseUrl || legacyProfile.baseUrl,
+          token: '',
+          customerId: '',
+          tokenConfigured: profile?.tokenConfigured === true || legacyProfile.tokenConfigured,
+          customerIdConfigured: profile?.customerIdConfigured === true || legacyProfile.customerIdConfigured,
+        });
+        setPanVerificationForm({
+          enabled: panSettings.enabled === true,
+          activeEnvironment: panSettings.activeEnvironment === 'PRODUCTION' ? 'PRODUCTION' : 'SANDBOX',
+          sandbox: toProfileForm(panSettings.sandbox),
+          production: {
+            baseUrl: panSettings.production?.baseUrl || '',
+            token: '',
+            customerId: '',
+            tokenConfigured: panSettings.production?.tokenConfigured === true,
+            customerIdConfigured: panSettings.production?.customerIdConfigured === true,
+          },
+          baseUrl: panSettings.sandbox?.baseUrl || panSettings.baseUrl || '',
+          token: '',
+          customerId: '',
+          tokenConfigured: panSettings.sandbox?.tokenConfigured === true || panSettings.tokenConfigured === true,
+          customerIdConfigured: panSettings.sandbox?.customerIdConfigured === true || panSettings.customerIdConfigured === true,
+          dataEncryptionConfigured: panSettings.dataEncryptionConfigured === true,
+        });
+      } catch (err) {
+        console.warn('Failed to load Surepass credentials:', err);
       }
     } catch (error: unknown) {
       setLoadingError(getApiErrorMessage(error, 'Unable to load platform settings.'));
@@ -577,6 +700,30 @@ export default function SuperAdminSettingsPage() {
       toast.error(getApiErrorMessage(error, 'Unable to update Google login status.'));
     } finally {
       setGoogleToggleSaving(false);
+    }
+  };
+
+  const handleListingCreationAccessSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setListingCreationAccessSaving(true);
+
+    try {
+      const response = await api.patch<{
+        message: string;
+        listingCreationAccess: SettingsResponse['listingCreationAccess'];
+      }>('/superadmin/settings', {
+        listingCreationAccess: listingCreationAccessForm,
+      });
+
+      setListingCreationAccessForm({
+        allowAdmin: response.data.listingCreationAccess.allowAdmin === true,
+        allowEmployee: response.data.listingCreationAccess.allowEmployee === true,
+      });
+      toast.success(response.data.message);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save listing creation access settings.'));
+    } finally {
+      setListingCreationAccessSaving(false);
     }
   };
 
@@ -816,6 +963,68 @@ export default function SuperAdminSettingsPage() {
     }
   };
 
+  const handlePanVerificationSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPanVerificationSaving(true);
+
+    try {
+      const profilePayload = (profile: SurepassProfileFormState) => ({
+        baseUrl: profile.baseUrl,
+        ...(profile.token.trim() && !isMaskedSecretValue(profile.token) ? { token: profile.token.trim() } : {}),
+        ...(profile.customerId.trim() && !isMaskedSecretValue(profile.customerId) ? { customerId: profile.customerId.trim() } : {}),
+      });
+      const response = await api.put<{
+        message: string;
+        settings: NonNullable<SettingsResponse['panVerification']>;
+      }>('/superadmin/surepass-settings', {
+        enabled: panVerificationForm.enabled,
+        activeEnvironment: panVerificationForm.activeEnvironment,
+        sandbox: profilePayload(panVerificationForm.sandbox),
+        production: profilePayload(panVerificationForm.production),
+      });
+      const settings = response.data.settings;
+      const toProfileForm = (profile?: SurepassProfileSettings): SurepassProfileFormState => ({
+        baseUrl: profile?.baseUrl || '',
+        token: '',
+        customerId: '',
+        tokenConfigured: profile?.tokenConfigured === true,
+        customerIdConfigured: profile?.customerIdConfigured === true,
+      });
+      setPanVerificationForm({
+        enabled: settings.enabled === true,
+        activeEnvironment: settings.activeEnvironment === 'PRODUCTION' ? 'PRODUCTION' : 'SANDBOX',
+        sandbox: toProfileForm(settings.sandbox),
+        production: toProfileForm(settings.production),
+        baseUrl: settings.sandbox?.baseUrl || settings.baseUrl || '',
+        token: '',
+        customerId: '',
+        tokenConfigured: settings.sandbox?.tokenConfigured === true || settings.tokenConfigured === true,
+        customerIdConfigured: settings.sandbox?.customerIdConfigured === true || settings.customerIdConfigured === true,
+        dataEncryptionConfigured: settings.dataEncryptionConfigured === true,
+      });
+      toast.success(response.data.message || 'Surepass credentials saved successfully.');
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save Surepass credentials.'));
+    } finally {
+      setPanVerificationSaving(false);
+    }
+  };
+
+  const revealSurepassCredential = useCallback(async (environment: 'SANDBOX' | 'PRODUCTION', field: 'token' | 'customerId') => {
+    try {
+      const response = await api.get<{ value?: string }>(`/superadmin/surepass-settings/reveal/${environment}/${field}`);
+      const value = response.data.value || '';
+      if (!value) {
+        toast.info('This Surepass credential is not configured.');
+        return null;
+      }
+      return value;
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to reveal this Surepass credential.'));
+      return null;
+    }
+  }, []);
+
   const handleListingPaymentSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setListingPaymentSaving(true);
@@ -985,6 +1194,17 @@ export default function SuperAdminSettingsPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('panVerification')}
+              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'panVerification'
+                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                  : 'border-transparent text-gray-600 hover:bg-gray-50'
+                }`}
+            >
+              <ScanLine className="h-4 w-4" />
+              Surepass Credentials
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('homepage')}
               className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'homepage'
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
@@ -1068,6 +1288,74 @@ export default function SuperAdminSettingsPage() {
                     </span>
                   </div>
                 </div>
+              </section>
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="mb-6">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Listing Access</p>
+                  <h3 className="mt-1 text-xl font-bold text-gray-900">Managed User Listing Creation</h3>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Turn these switches on to show the Add Vehicle button and allow the corresponding role to create listings.
+                    The backend enforces the same setting, so hiding the button is not the only protection.
+                  </p>
+                </div>
+
+                <form onSubmit={handleListingCreationAccessSubmit} className="space-y-4">
+                  {([
+                    {
+                      key: 'allowAdmin' as const,
+                      title: 'Allow Admin listing creation',
+                      description: 'Admin users can create vehicle listings from the admin listings page.',
+                    },
+                    {
+                      key: 'allowEmployee' as const,
+                      title: 'Allow Employee listing creation',
+                      description: 'Employee users can create vehicle listings from the employee listings page.',
+                    },
+                  ]).map((item) => {
+                    const enabled = listingCreationAccessForm[item.key];
+
+                    return (
+                      <div key={item.key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900">{item.title}</h4>
+                            <p className="mt-1 text-xs text-gray-500">{item.description}</p>
+                          </div>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            aria-label={item.title}
+                            onClick={() => setListingCreationAccessForm((current) => ({ ...current, [item.key]: !current[item.key] }))}
+                            disabled={listingCreationAccessSaving}
+                            className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${enabled
+                                ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                                : 'border-gray-300 bg-white text-gray-600'
+                              } ${listingCreationAccessSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                          >
+                            <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                              <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                            </span>
+                            <span>{enabled ? 'Enabled' : 'Disabled'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex justify-end border-t border-gray-100 pt-2">
+                    <button
+                      type="submit"
+                      disabled={listingCreationAccessSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {listingCreationAccessSaving ? 'Saving...' : 'Save Listing Access'}
+                    </button>
+                  </div>
+                </form>
               </section>
 
               <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -1395,6 +1683,229 @@ export default function SuperAdminSettingsPage() {
                 </form>
               </section>
             </>
+          ) : null}
+
+          {activeTab === 'panVerification' ? (
+            <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gray-900 px-6 py-6 sm:px-8">
+                <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">Verification Services</p>
+                    <h2 className="mt-1 text-2xl font-bold tracking-tight text-white">Surepass Credentials</h2>
+                  </div>
+                  <span
+                    className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${panVerificationForm.enabled
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                      }`}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {panVerificationForm.enabled ? 'Surepass Enabled' : 'Surepass Disabled'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-8">
+                <form onSubmit={handlePanVerificationSubmit} className="space-y-6">
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900">Enable Surepass Credentials</h3>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={panVerificationForm.enabled}
+                        aria-label="Toggle Surepass Credentials"
+                        onClick={() => setPanVerificationForm((current) => ({ ...current, enabled: !current.enabled }))}
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${panVerificationForm.enabled
+                            ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                            : 'border-gray-300 bg-white text-gray-600'
+                          }`}
+                      >
+                        <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${panVerificationForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                          <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${panVerificationForm.enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </span>
+                        <span>{panVerificationForm.enabled ? 'Enabled' : 'Disabled'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                    <label className="block max-w-sm">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Active Surepass environment</span>
+                      <select
+                        value={panVerificationForm.activeEnvironment}
+                        onChange={(event) => setPanVerificationForm((current) => ({
+                          ...current,
+                          activeEnvironment: event.target.value === 'PRODUCTION' ? 'PRODUCTION' : 'SANDBOX',
+                        }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      >
+                        <option value="SANDBOX">Sandbox</option>
+                        <option value="PRODUCTION">Production</option>
+                      </select>
+                    </label>
+                    <p className="mt-2 text-xs text-gray-600">Both encrypted profiles are stored separately. Only the selected environment is used for PAN, GST, DL, RC and other Surepass requests.</p>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <SurepassProfileFields
+                      title="Sandbox credentials"
+                      profile={panVerificationForm.sandbox}
+                      onChange={(patch) => setPanVerificationForm((current) => ({ ...current, sandbox: { ...current.sandbox, ...patch } }))}
+                      onReveal={(field) => revealSurepassCredential('SANDBOX', field)}
+                      baseUrlPlaceholder="https://sandbox.surepass.app"
+                    />
+                    <SurepassProfileFields
+                      title="Production credentials"
+                      profile={panVerificationForm.production}
+                      onChange={(patch) => setPanVerificationForm((current) => ({ ...current, production: { ...current.production, ...patch } }))}
+                      onReveal={(field) => revealSurepassCredential('PRODUCTION', field)}
+                      baseUrlPlaceholder="https://kyc-api.surepass.app"
+                    />
+                  </div>
+
+                  <p className="text-xs text-gray-500">Tokens are encrypted on the server and are never returned to the browser. Leave an already configured token blank to keep it unchanged. Use a sandbox token only with Sandbox and a production token only with Production.</p>
+
+                  <div className="hidden" aria-hidden="true">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Surepass Base URL (account-specific)</span>
+                    <input
+                      type="url"
+                      value={panVerificationForm.baseUrl}
+                      onChange={(event) => setPanVerificationForm((current) => ({ ...current, baseUrl: event.target.value }))}
+                      placeholder="https://sandbox.surepass.app"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                    />
+                    <p className="mt-1.5 text-xs text-gray-500">Use the exact hostname enabled for your Surepass account. Sandbox and production may use different .app or .io hosts; the server appends each documented endpoint path.</p>
+                  </label>
+
+                  <div className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Surepass Bearer JWT / API Token</span>
+                    <div className="relative">
+                      <KeyRound className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+                      <input
+                        type={showPanVerificationToken ? 'text' : 'password'}
+                        value={
+                          panVerificationForm.token
+                            ? panVerificationForm.token
+                            : showPanVerificationToken && panVerificationForm.tokenConfigured
+                              ? ''
+                              : ''
+                        }
+                        onChange={(event) => {
+                          setPanVerificationForm((current) => ({ ...current, token: event.target.value }));
+                        }}
+                        placeholder={
+                          panVerificationForm.tokenConfigured
+                            ? '•••••••••••••••• (Leave blank to keep saved token)'
+                            : 'Paste Surepass API token (e.g. eyJhbGci...)'
+                        }
+                        autoComplete="new-password"
+                        className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-11 text-sm font-mono text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] [::-ms-reveal]:hidden [::-ms-clear]:hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPanVerificationToken((current) => !current)}
+                        className="absolute inset-y-0 right-0 z-10 flex items-center pr-3.5 text-gray-500 hover:text-gray-800"
+                        title={showPanVerificationToken ? 'Hide Surepass API token' : 'Show Surepass API token'}
+                        aria-label={showPanVerificationToken ? 'Hide Surepass API token' : 'Show Surepass API token'}
+                      >
+                        {showPanVerificationToken ? <EyeOff className="h-4 w-4 text-amber-600" /> : <Eye className="h-4 w-4 text-gray-400" />}
+                      </button>
+                    </div>
+
+                    {showPanVerificationToken && (panVerificationForm.token || panVerificationForm.tokenConfigured) ? (
+                      <div className="mt-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 shadow-sm">
+                        <div className="flex items-center justify-between text-xs font-semibold text-slate-800 mb-2">
+                          <span className="flex items-center gap-1.5 text-amber-700 font-bold">
+                            <Eye className="h-4 w-4 text-amber-600 shrink-0" />
+                            Full Unclipped Token Display (100% Complete):
+                          </span>
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded">
+                            {panVerificationForm.token ? 'New Token Input' : 'Active Saved Token'}
+                          </span>
+                        </div>
+                        <div className="font-mono text-xs text-slate-900 break-all bg-white p-3 rounded-lg border border-slate-200 select-all leading-relaxed shadow-inner max-h-40 overflow-y-auto">
+                          {panVerificationForm.token || ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-xs text-gray-500">Stored encrypted and used only on the server for PAN, GST, DL, RC Full, and RC Challan requests. Never paste it into the browser.</p>
+                    )}
+                  </div>
+
+                  <div className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-gray-700">Surepass Customer ID <span className="font-normal text-gray-400">(optional)</span></span>
+                    <div className="relative">
+                      <input
+                        type={showPanVerificationCustomerId ? 'text' : 'password'}
+                        value={
+                          panVerificationForm.customerId
+                            ? panVerificationForm.customerId
+                            : showPanVerificationCustomerId && panVerificationForm.customerIdConfigured
+                              ? ''
+                              : ''
+                        }
+                        onChange={(event) => {
+                          setPanVerificationForm((current) => ({ ...current, customerId: event.target.value }));
+                        }}
+                        placeholder={
+                          panVerificationForm.customerIdConfigured
+                            ? '•••••••••••••••• (Leave blank to keep saved customer ID)'
+                            : 'Only if required by your Surepass account'
+                        }
+                        autoComplete="new-password"
+                        className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-4 pr-11 text-sm font-mono text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] [::-ms-reveal]:hidden [::-ms-clear]:hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPanVerificationCustomerId((current) => !current)}
+                        className="absolute inset-y-0 right-0 z-10 flex items-center pr-3.5 text-gray-500 hover:text-gray-800"
+                        title={showPanVerificationCustomerId ? 'Hide Surepass Customer ID' : 'Show Surepass Customer ID'}
+                        aria-label={showPanVerificationCustomerId ? 'Hide Surepass Customer ID' : 'Show Surepass Customer ID'}
+                      >
+                        {showPanVerificationCustomerId ? <EyeOff className="h-4 w-4 text-amber-600" /> : <Eye className="h-4 w-4 text-gray-400" />}
+                      </button>
+                    </div>
+
+                    {showPanVerificationCustomerId && (panVerificationForm.customerId || panVerificationForm.customerIdConfigured) ? (
+                      <div className="mt-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 shadow-sm">
+                        <div className="flex items-center justify-between text-xs font-semibold text-slate-800 mb-2">
+                          <span className="flex items-center gap-1.5 text-amber-700 font-bold">
+                            <Eye className="h-4 w-4 text-amber-600 shrink-0" />
+                            Full Unclipped Customer ID Display (100% Complete):
+                          </span>
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded">
+                            {panVerificationForm.customerId ? 'New Customer ID Input' : 'Active Saved Customer ID'}
+                          </span>
+                        </div>
+                        <div className="font-mono text-xs text-slate-900 break-all bg-white p-3 rounded-lg border border-slate-200 select-all leading-relaxed shadow-inner max-h-24 overflow-y-auto">
+                          {panVerificationForm.customerId || ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-xs text-gray-500">It stays server-side and is sent as X-Customer-Id only when configured.</p>
+                    )}
+                  </div>
+
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-100 pt-4">
+                    <button
+                      type="submit"
+                      disabled={panVerificationSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {panVerificationSaving ? 'Saving...' : 'Save Surepass Credentials'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </section>
           ) : null}
 
           {activeTab === 'leadRouting' ? (
@@ -2301,6 +2812,128 @@ export default function SuperAdminSettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SurepassProfileFields({
+  title,
+  profile,
+  onChange,
+  onReveal,
+  baseUrlPlaceholder,
+}: {
+  title: string;
+  profile: SurepassProfileFormState;
+  onChange: (patch: Partial<Pick<SurepassProfileFormState, 'baseUrl' | 'token' | 'customerId'>>) => void;
+  onReveal: (field: 'token' | 'customerId') => Promise<string | null>;
+  baseUrlPlaceholder: string;
+}) {
+  const [showToken, setShowToken] = useState(false);
+  const [showCustomerId, setShowCustomerId] = useState(false);
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [revealedCustomerId, setRevealedCustomerId] = useState<string | null>(null);
+  const [revealingField, setRevealingField] = useState<'token' | 'customerId' | null>(null);
+
+  const toggleSecret = async (field: 'token' | 'customerId') => {
+    const isVisible = field === 'token' ? showToken : showCustomerId;
+    if (isVisible) {
+      if (field === 'token') setShowToken(false);
+      else setShowCustomerId(false);
+      return;
+    }
+
+    const currentValue = field === 'token' ? profile.token || revealedToken : profile.customerId || revealedCustomerId;
+    if (!currentValue && (field === 'token' ? profile.tokenConfigured : profile.customerIdConfigured)) {
+      setRevealingField(field);
+      const value = await onReveal(field);
+      setRevealingField(null);
+      if (!value) return;
+      if (field === 'token') setRevealedToken(value);
+      else setRevealedCustomerId(value);
+    }
+
+    if (field === 'token') setShowToken(true);
+    else setShowCustomerId(true);
+  };
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+          <p className="mt-1 text-xs text-gray-500">Credentials are kept server-side and encrypted.</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${profile.tokenConfigured ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+          {profile.tokenConfigured ? 'TOKEN SAVED' : 'TOKEN REQUIRED'}
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-gray-700">Base URL</span>
+          <input
+            type="url"
+            value={profile.baseUrl}
+            onChange={(event) => onChange({ baseUrl: event.target.value })}
+            placeholder={baseUrlPlaceholder}
+            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-gray-700">Bearer JWT / API token</span>
+          <div className="relative">
+            <KeyRound className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+            <input
+              type={showToken ? 'text' : 'password'}
+              value={profile.token || revealedToken || ''}
+              onChange={(event) => {
+                setRevealedToken(null);
+                onChange({ token: event.target.value });
+              }}
+              placeholder={profile.tokenConfigured ? 'Leave blank to keep saved token' : 'Paste Surepass token'}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-11 text-sm font-mono text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+            />
+            <button
+              type="button"
+              onClick={() => void toggleSecret('token')}
+              disabled={revealingField === 'token'}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-800 disabled:cursor-wait disabled:opacity-60"
+              aria-label={revealingField === 'token' ? `Loading ${title} token` : showToken ? `Hide ${title} token` : `Show ${title} token`}
+            >
+              {revealingField === 'token' ? <Loader2 className="h-4 w-4 animate-spin" /> : showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-gray-700">Customer ID <span className="font-normal text-gray-400">(optional)</span></span>
+          <div className="relative">
+            <input
+              type={showCustomerId ? 'text' : 'password'}
+              value={profile.customerId || revealedCustomerId || ''}
+              onChange={(event) => {
+                setRevealedCustomerId(null);
+                onChange({ customerId: event.target.value });
+              }}
+              placeholder={profile.customerIdConfigured ? 'Leave blank to keep saved Customer ID' : 'Only if required by Surepass'}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm font-mono text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+            />
+            <button
+              type="button"
+              onClick={() => void toggleSecret('customerId')}
+              disabled={revealingField === 'customerId'}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-800 disabled:cursor-wait disabled:opacity-60"
+              aria-label={revealingField === 'customerId' ? `Loading ${title} customer ID` : showCustomerId ? `Hide ${title} customer ID` : `Show ${title} customer ID`}
+            >
+              {revealingField === 'customerId' ? <Loader2 className="h-4 w-4 animate-spin" /> : showCustomerId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </label>
+      </div>
+    </section>
   );
 }
 

@@ -61,6 +61,11 @@ import { requireAuth, requireSuperAdmin, requireSuperAdminOrEmployeePermissions 
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
 import { deleteListingBill, getListingBills, saveListingBill } from '../controllers/listingBill.controller';
+import {
+  getPanVerificationSettingsController,
+  revealPanVerificationCredentialController,
+  updatePanVerificationSettingsController,
+} from '../controllers/panVerificationSettings.controller';
 
 const router = Router();
 
@@ -115,6 +120,11 @@ router.get('/site-logo', canManageSettings, getSiteLogoContent);
 router.put('/site-logo', canManageSettings, updateSiteLogoContent);
 router.get('/google-drive', canManageSettings, getGoogleDriveSettings);
 router.put('/google-drive', canManageSettings, updateGoogleDrive);
+router.get('/pan-verification-settings', canManageSettings, getPanVerificationSettingsController);
+router.put('/pan-verification-settings', canManageSettings, updatePanVerificationSettingsController);
+router.get('/surepass-settings', canManageSettings, getPanVerificationSettingsController);
+router.put('/surepass-settings', canManageSettings, updatePanVerificationSettingsController);
+router.get('/surepass-settings/reveal/:environment/:field', canManageSettings, revealPanVerificationCredentialController);
 router.get('/settings', canManageSettings, getPlatformSettings);
 router.get('/settings/secrets/:key', requireSuperAdmin, revealPlatformSecret);
 router.patch('/settings', canManageSettings, updatePlatformSettings);

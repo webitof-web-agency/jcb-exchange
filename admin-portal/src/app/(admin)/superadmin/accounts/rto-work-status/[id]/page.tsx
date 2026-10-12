@@ -59,7 +59,11 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; b
   CANCELLED: { label: 'Cancelled', bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', icon: X },
 };
 
-const label = (value: string) => value ? value.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : '—';
+const label = (value: string) => {
+  if (!value) return '—';
+  if (value === 'NOT_APPLICABLE' || value === 'NOT_REQUIRED') return 'Not Required';
+  return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+};
 const dateValue = (value: string | null) => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : '—';
 
 export default function RtoRecordDetailView() {

@@ -160,6 +160,16 @@ enum AuditEntityType {
   RECRUITMENT_JOB
   RECRUITMENT_APPLICATION
   RECRUITMENT_CANDIDATE
+  GST_VERIFICATION
+  DRIVING_LICENSE_VERIFICATION
+  RC_OWNER_HISTORY
+  RC_CHALLAN_VERIFICATION
+  CHASSIS_TO_RC_VERIFICATION
+  RC_TO_MOBILE_VERIFICATION
+  MOBILE_TO_RC_LOOKUP
+  RC_MOBILE_NUMBER_CHECK
+  MOBILE_TO_PAN_LOOKUP
+  LISTING_VERIFICATION
 }
 
 enum CustomerPrimeSubscriptionStatus {
@@ -289,6 +299,112 @@ enum EmailOtpChallengeStatus {
   EXPIRED
 }
 
+enum PanVerificationOperation {
+  PAN_VERIFY
+  PAN_TO_AADHAAR
+  PAN_CONTACT_LOOKUP
+  PAN_COMPREHENSIVE_V2
+}
+
+enum PanVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SurepassEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum MobileToPanLookupStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum GstVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum DrivingLicenseVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum RcOwnerHistoryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum RcChallanVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ChassisToRcVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum RcToMobileVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum MobileToRcLookupStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum RcMobileNumberCheckStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ApiBillingMode {
+  DISABLED
+  ACTIVE
+}
+
+enum ApiBillingLedgerType {
+  CREDIT
+  DEBIT
+}
+
+enum ApiBillingWebhookEventType {
+  WALLET_CREDIT
+  SERVICE_PRICE_SET
+  WALLET_MODE_SET
+}
+
+enum ApiBillingWebhookStatus {
+  PROCESSED
+  FAILED
+}
+
+enum ApiBillableService {
+  PAN_VERIFICATION
+  GST_VERIFICATION
+  MOBILE_TO_PAN
+  DRIVING_LICENSE_VERIFICATION
+  RC_OWNER_HISTORY
+  RC_CHALLAN
+  CHASSIS_TO_RC
+  RC_TO_MOBILE
+  MOBILE_TO_RC
+  RC_MOBILE_NUMBER_CHECK
+}
+
 enum BlogQuestionStatus {
   PENDING
   APPROVED
@@ -316,45 +432,57 @@ model User {
   fcmToken         String?
   pushSubscription Json?
 
-  createdBy                          User?                       @relation("UserCreation", fields: [createdById], references: [id])
-  createdUsers                       User[]                      @relation("UserCreation")
+  createdBy                          User?                              @relation("UserCreation", fields: [createdById], references: [id])
+  createdUsers                       User[]                             @relation("UserCreation")
   adminProfile                       AdminProfile?
   adminPermissions                   AdminPermission[]
-  customRole                         CustomRole?                 @relation("UserCustomRole", fields: [customRoleId], references: [id])
+  customRole                         CustomRole?                        @relation("UserCustomRole", fields: [customRoleId], references: [id])
   partnerProfile                     PartnerProfile?
   teamMemberships                    PartnerTeamMember[]
   listings                           Listing[]
-  leads                              Lead[]                      @relation("CustomerLeads")
-  assignedLeads                      Lead[]                      @relation("DealerLeads")
-  reviewedKycDocs                    KycDocument[]               @relation("KycReviewer")
-  kycReviewActions                   KycReviewLog[]              @relation("KycReviewActor")
-  verifiedDeposits                   PartnerDeposit[]            @relation("DepositVerifier")
-  acceptedAgreements                 PartnerAgreement[]          @relation("AgreementAcceptor")
-  approvedPartners                   PartnerProfile[]            @relation("PartnerApprover")
-  customerPrimeSubscriptions         CustomerPrimeSubscription[] @relation("CustomerPrimeSubscriptions")
-  approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeApprover")
-  rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[] @relation("CustomerPrimeRejector")
-  listingPaymentSubmissions          ListingPaymentSubmission[]  @relation("ListingPaymentBuyer")
-  listingPaymentSellerSubmissions    ListingPaymentSubmission[]  @relation("ListingPaymentSeller")
-  reviewedListingPaymentSubmissions  ListingPaymentSubmission[]  @relation("ListingPaymentReviewer")
-  createdListingBills                ListingBill[]               @relation("ListingBillCreator")
-  auditLogs                          AuditLog[]                  @relation("AuditActor")
-  leadActivities                     LeadActivity[]              @relation("LeadActivityActor")
+  leads                              Lead[]                             @relation("CustomerLeads")
+  assignedLeads                      Lead[]                             @relation("DealerLeads")
+  reviewedKycDocs                    KycDocument[]                      @relation("KycReviewer")
+  kycReviewActions                   KycReviewLog[]                     @relation("KycReviewActor")
+  verifiedDeposits                   PartnerDeposit[]                   @relation("DepositVerifier")
+  acceptedAgreements                 PartnerAgreement[]                 @relation("AgreementAcceptor")
+  approvedPartners                   PartnerProfile[]                   @relation("PartnerApprover")
+  customerPrimeSubscriptions         CustomerPrimeSubscription[]        @relation("CustomerPrimeSubscriptions")
+  approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[]        @relation("CustomerPrimeApprover")
+  rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[]        @relation("CustomerPrimeRejector")
+  listingPaymentSubmissions          ListingPaymentSubmission[]         @relation("ListingPaymentBuyer")
+  listingPaymentSellerSubmissions    ListingPaymentSubmission[]         @relation("ListingPaymentSeller")
+  reviewedListingPaymentSubmissions  ListingPaymentSubmission[]         @relation("ListingPaymentReviewer")
+  createdListingBills                ListingBill[]                      @relation("ListingBillCreator")
+  auditLogs                          AuditLog[]                         @relation("AuditActor")
+  drivingLicenseVerificationRecords  DrivingLicenseVerificationRecord[] @relation("DrivingLicenseVerificationRequester")
+  rcOwnerHistoryRecords              RcOwnerHistoryRecord[]             @relation("RcOwnerHistoryRequester")
+  rcChallanVerificationRecords       RcChallanVerificationRecord[]      @relation("RcChallanVerificationRequester")
+  chassisToRcVerificationRecords     ChassisToRcVerificationRecord[]    @relation("ChassisToRcVerificationRequester")
+  rcToMobileVerificationRecords      RcToMobileVerificationRecord[]     @relation("RcToMobileVerificationRequester")
+  mobileToRcLookupRecords            MobileToRcLookupRecord[]           @relation("MobileToRcLookupRequester")
+  rcMobileNumberCheckRecords         RcMobileNumberCheckRecord[]        @relation("RcMobileNumberCheckRequester")
+  leadActivities                     LeadActivity[]                     @relation("LeadActivityActor")
   notifications                      Notification[]
-  createdJobs                        Job[]                       @relation("JobCreator")
-  assignedApplications               JobApplication[]            @relation("AssignedRecruiter")
-  stageHistoryChanges                ApplicationStageHistory[]   @relation("StageHistoryChanger")
-  authoredCandidateNotes             CandidateNote[]             @relation("CandidateNoteAuthor")
-  submittedCandidateRatings          CandidateRating[]           @relation("CandidateRatingEvaluator")
-  scheduledInterviews                Interview[]                 @relation("InterviewScheduler")
-  conductedInterviews                Interview[]                 @relation("Interviewer")
-  submittedInterviewFeedbacks        InterviewFeedback[]         @relation("InterviewFeedbackAuthor")
-  createdOffers                      Offer[]                     @relation("OfferCreator")
-  recruitmentActivityLogs            RecruitmentActivityLog[]    @relation("RecruitmentActivityActor")
+  createdJobs                        Job[]                              @relation("JobCreator")
+  assignedApplications               JobApplication[]                   @relation("AssignedRecruiter")
+  stageHistoryChanges                ApplicationStageHistory[]          @relation("StageHistoryChanger")
+  authoredCandidateNotes             CandidateNote[]                    @relation("CandidateNoteAuthor")
+  submittedCandidateRatings          CandidateRating[]                  @relation("CandidateRatingEvaluator")
+  scheduledInterviews                Interview[]                        @relation("InterviewScheduler")
+  conductedInterviews                Interview[]                        @relation("Interviewer")
+  submittedInterviewFeedbacks        InterviewFeedback[]                @relation("InterviewFeedbackAuthor")
+  createdOffers                      Offer[]                            @relation("OfferCreator")
+  recruitmentActivityLogs            RecruitmentActivityLog[]           @relation("RecruitmentActivityActor")
   mobileOtpChallenges                MobileOtpChallenge[]
   emailOtpChallenges                 EmailOtpChallenge[]
-  blogQuestions                      BlogQuestion[]              @relation("BlogQuestionAuthor")
-  answeredBlogQuestions              BlogQuestion[]              @relation("BlogQuestionAnswerer")
+  panVerificationRecords             PanVerificationRecord[]            @relation("PanVerificationRequester")
+  apiBillingUsageRecords             ApiUsageRecord[]                   @relation("ApiBillingUsageRequester")
+  apiWalletLedgerEntries             ApiWalletLedger[]                  @relation("ApiWalletLedgerRequester")
+  mobileToPanLookupRecords           MobileToPanLookupRecord[]           @relation("MobileToPanLookupRequester")
+  gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
+  blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
+  answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
 }
 
 model MobileOtpChallenge {
@@ -441,6 +569,363 @@ model AdminPermission {
 
   @@unique([adminUserId, permission])
   @@index([adminUserId])
+}
+
+model PanVerificationRecord {
+  id                 String                   @id @default(uuid())
+  operation          PanVerificationOperation
+  status             PanVerificationStatus    @default(PENDING)
+  maskedPan          String
+  requestFingerprint String?                  @db.VarChar(64)
+  provider           String                   @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                  @db.Text
+  encryptedResult    String?                  @db.Text
+  requestedById      String
+  createdAt          DateTime                 @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("PanVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([operation, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedPan, createdAt])
+  @@index([operation, requestFingerprint, status, completedAt])
+}
+
+model PanVerificationSettings {
+  id                  String   @id @default("default")
+  enabled             Boolean  @default(false)
+  activeEnvironment   SurepassEnvironment @default(SANDBOX)
+  baseUrl             String?
+  encryptedToken      String?  @db.Text
+  encryptedCustomerId String?  @db.Text
+  sandboxBaseUrl      String?
+  encryptedSandboxToken String? @db.Text
+  encryptedSandboxCustomerId String? @db.Text
+  productionBaseUrl   String?
+  encryptedProductionToken String? @db.Text
+  encryptedProductionCustomerId String? @db.Text
+  encryptedDataSecret String?  @db.Text
+  updatedByUserId     String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model MobileToPanLookupRecord {
+  id                 String                    @id @default(uuid())
+  status             MobileToPanLookupStatus   @default(PENDING)
+  maskedName         String
+  maskedMobileNumber String
+  requestFingerprint String                    @unique @db.VarChar(64)
+  provider           String                    @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                   @db.Text
+  encryptedResult    String?                   @db.Text
+  requestedById      String
+  createdAt          DateTime                  @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("MobileToPanLookupRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedName, createdAt])
+  @@index([maskedMobileNumber, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model GstVerificationRecord {
+  id                 String                @id @default(uuid())
+  status             GstVerificationStatus @default(PENDING)
+  maskedGstin        String
+  requestFingerprint String?               @db.VarChar(64)
+  gstinStatus        String?
+  businessName       String?
+  legalName          String?
+  provider           String                @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?               @db.Text
+  encryptedResult    String?               @db.Text
+  requestedById      String
+  createdAt          DateTime              @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("GstVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedGstin, createdAt])
+  @@index([gstinStatus, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model DrivingLicenseVerificationRecord {
+  id                  String                           @id @default(uuid())
+  status              DrivingLicenseVerificationStatus @default(PENDING)
+  maskedLicenseNumber String
+  requestFingerprint  String?                          @db.VarChar(64)
+  currentStatus       String?
+  state               String?
+  holderName          String?
+  provider            String                           @default("SUREPASS")
+  providerClientId    String?
+  messageCode         String?
+  safeMessage         String?                          @db.Text
+  encryptedResult     String?                          @db.Text
+  requestedById       String
+  createdAt           DateTime                         @default(now())
+  completedAt         DateTime?
+
+  requestedBy User @relation("DrivingLicenseVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedLicenseNumber, createdAt])
+  @@index([currentStatus, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model RcOwnerHistoryRecord {
+  id                 String               @id @default(uuid())
+  status             RcOwnerHistoryStatus @default(PENDING)
+  maskedRcNumber     String
+  requestFingerprint String?              @db.VarChar(64)
+  ownerName          String?
+  rcStatus           String?
+  vehicleCategory    String?
+  registrationDate   String?
+  provider           String               @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?              @db.Text
+  encryptedResult    String?              @db.Text
+  requestedById      String
+  createdAt          DateTime             @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("RcOwnerHistoryRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedRcNumber, createdAt])
+  @@index([rcStatus, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model RcChallanVerificationRecord {
+  id                  String                      @id @default(uuid())
+  status              RcChallanVerificationStatus @default(PENDING)
+  maskedRcNumber      String
+  requestFingerprint  String                      @db.VarChar(64)
+  totalChallans       Int                         @default(0)
+  knownPendingCount   Int                         @default(0)
+  totalReturnedAmount Decimal                     @default(0) @db.Decimal(12, 2)
+  knownPendingAmount  Decimal                     @default(0) @db.Decimal(12, 2)
+  courtChallanCount   Int                         @default(0)
+  blacklistCount      Int                         @default(0)
+  provider            String                      @default("SUREPASS")
+  providerEnvironment String?
+  providerClientId    String?
+  messageCode         String?
+  safeMessage         String?                     @db.Text
+  encryptedResult     String?                     @db.Text
+  requestedById       String
+  createdAt           DateTime                    @default(now())
+  completedAt         DateTime?
+
+  requestedBy User @relation("RcChallanVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedRcNumber, createdAt])
+  @@index([requestedById, requestFingerprint, createdAt])
+  @@index([requestFingerprint, status, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model ChassisToRcVerificationRecord {
+  id                  String                        @id @default(uuid())
+  status              ChassisToRcVerificationStatus @default(PENDING)
+  maskedChassisNumber String
+  requestFingerprint  String                        @unique @db.VarChar(64)
+  rcNumber            String?
+  ownerName           String?
+  rcStatus            String?
+  vehicleCategory     String?
+  registrationDate    String?
+  provider            String                        @default("SUREPASS")
+  providerClientId    String?
+  messageCode         String?
+  safeMessage         String?                       @db.Text
+  encryptedResult     String?                       @db.Text
+  requestedById       String
+  createdAt           DateTime                      @default(now())
+  completedAt         DateTime?
+
+  requestedBy User @relation("ChassisToRcVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedChassisNumber, createdAt])
+  @@index([rcNumber, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model RcToMobileVerificationRecord {
+  id                 String                       @id @default(uuid())
+  status             RcToMobileVerificationStatus @default(PENDING)
+  maskedRcNumber     String
+  requestFingerprint String                       @unique @db.VarChar(64)
+  maskedMobileNumber String?
+  provider           String                       @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                      @db.Text
+  encryptedResult    String?                      @db.Text
+  requestedById      String
+  createdAt          DateTime                     @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("RcToMobileVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedRcNumber, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model MobileToRcLookupRecord {
+  id                 String                 @id @default(uuid())
+  status             MobileToRcLookupStatus @default(PENDING)
+  maskedMobileNumber String
+  requestFingerprint String                 @unique @db.VarChar(64)
+  rcNumbersCount     Int                    @default(0)
+  provider           String                 @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                @db.Text
+  encryptedResult    String?                @db.Text
+  requestedById      String
+  createdAt          DateTime               @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("MobileToRcLookupRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedMobileNumber, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model RcMobileNumberCheckRecord {
+  id                  String                    @id @default(uuid())
+  status              RcMobileNumberCheckStatus @default(PENDING)
+  maskedRcNumber      String
+  maskedMobileNumber  String
+  requestFingerprint  String                    @unique @db.VarChar(64)
+  isMobileNumberMatch Boolean?
+  provider            String                    @default("SUREPASS")
+  providerClientId    String?
+  messageCode         String?
+  safeMessage         String?                   @db.Text
+  encryptedResult     String?                   @db.Text
+  requestedById       String
+  createdAt           DateTime                  @default(now())
+  completedAt         DateTime?
+
+  requestedBy User @relation("RcMobileNumberCheckRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedRcNumber, createdAt])
+  @@index([maskedMobileNumber, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model ApiWallet {
+  id           String         @id @default("platform")
+  currency     String         @default("INR") @db.VarChar(3)
+  balancePaise Int            @default(0)
+  mode         ApiBillingMode @default(DISABLED)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  ledgerEntries ApiWalletLedger[]
+  usageRecords  ApiUsageRecord[]
+}
+
+model ApiServicePrice {
+  serviceKey      ApiBillableService @id
+  amountPaise     Int
+  active          Boolean            @default(false)
+  version         Int                @default(1)
+  updatedBySource String?            @db.VarChar(64)
+  updatedAt       DateTime           @updatedAt
+  createdAt       DateTime           @default(now())
+}
+
+model ApiUsageRecord {
+  id                   String             @id @default(uuid())
+  walletId             String
+  serviceKey           ApiBillableService
+  verificationRecordId String             @db.VarChar(100)
+  providerAttemptId    String             @unique @db.VarChar(100)
+  requestedById        String
+  amountPaise          Int
+  priceVersion         Int
+  currency             String             @default("INR") @db.VarChar(3)
+  createdAt            DateTime           @default(now())
+
+  wallet      ApiWallet       @relation(fields: [walletId], references: [id])
+  requestedBy User            @relation("ApiBillingUsageRequester", fields: [requestedById], references: [id])
+  ledger      ApiWalletLedger?
+
+  @@index([serviceKey, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([verificationRecordId, createdAt])
+}
+
+model ApiWalletLedger {
+  id                    String               @id @default(uuid())
+  walletId              String
+  type                  ApiBillingLedgerType
+  amountPaise           Int
+  balanceBeforePaise    Int
+  balanceAfterPaise     Int
+  serviceKey            ApiBillableService?
+  usageId               String?              @unique
+  externalTransactionId String?              @unique @db.VarChar(150)
+  idempotencyKey        String               @unique @db.VarChar(200)
+  requestedById         String?
+  metadata              Json?
+  createdAt             DateTime             @default(now())
+
+  wallet      ApiWallet       @relation(fields: [walletId], references: [id])
+  usage       ApiUsageRecord? @relation(fields: [usageId], references: [id])
+  requestedBy User?           @relation("ApiWalletLedgerRequester", fields: [requestedById], references: [id])
+
+  @@index([walletId, createdAt])
+  @@index([serviceKey, createdAt])
+  @@index([requestedById, createdAt])
+}
+
+model ApiBillingWebhookEvent {
+  id              String                      @id @default(uuid())
+  eventId         String                      @unique @db.VarChar(150)
+  eventType       ApiBillingWebhookEventType
+  occurredAt      DateTime
+  payloadChecksum String                      @db.VarChar(64)
+  status          ApiBillingWebhookStatus
+  outcome         Json?
+  processedAt     DateTime?
+  createdAt       DateTime                    @default(now())
+
+  @@index([eventType, createdAt])
 }
 
 model PartnerProfile {
@@ -581,8 +1066,36 @@ model Listing {
   saleRecord         SaleRecord?
   paymentSubmissions ListingPaymentSubmission[]
   rtoRecords         VehicleRtoRecord[]
+  vehicleVerification ListingVehicleVerification?
 
   @@index([status, soldAt])
+}
+
+enum ListingVerificationStatus {
+  NOT_VERIFIED
+  API_VERIFIED
+  MANUALLY_MODIFIED
+  REVERIFICATION_REQUIRED
+}
+
+model ListingVehicleVerification {
+  id                    String                    @id @default(uuid())
+  listingId             String                    @unique
+  verificationRecordId  String?
+  status                ListingVerificationStatus @default(NOT_VERIFIED)
+  verifiedChassisNumber String?
+  verifiedEngineNumber  String?
+  verifiedFieldHashes   Json?
+  changedFields         Json?
+  lastVerifiedAt        DateTime?
+  lastModifiedAt        DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+  @@index([verificationRecordId])
 }
 
 enum RtoHirePurchaseStatus {

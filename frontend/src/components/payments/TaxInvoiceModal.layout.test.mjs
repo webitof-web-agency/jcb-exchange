@@ -6,8 +6,8 @@ const modalSource = readFileSync(new URL('./SubscriptionInvoiceModal.tsx', impor
 const pdfSource = readFileSync(new URL('./SubscriptionInvoicePDFTemplate.tsx', import.meta.url), 'utf8');
 
 test('tax invoice preview uses the sample layout without replacing dynamic invoice data', () => {
-  assert.match(modalSource, /w-full max-w-2xl max-h-\[92vh\]/);
-  assert.match(modalSource, /className="p-6 sm:p-8[^\"]*" id="tax-invoice-content"/);
+  assert.match(modalSource, /w-full max-w-3xl max-h-\[92vh\]/);
+  assert.match(modalSource, /className="p-4 sm:p-6[^\"]*" id="tax-invoice-content"/);
   assert.match(modalSource, /invoiceSettings\.companyName/);
   assert.match(modalSource, /payment\.memberName/);
   assert.match(modalSource, /payment\.planName/);

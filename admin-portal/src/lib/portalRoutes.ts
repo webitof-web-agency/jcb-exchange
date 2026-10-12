@@ -11,6 +11,11 @@ import {
   recruitmentAnyPermissions,
 } from './recruitmentPermissions';
 import { blogAnyPermissions } from './blogPermissions';
+import {
+  IDENTITY_HUB_VIEW_PERMISSIONS,
+  VEHICLE_TRANSPORT_VIEW_PERMISSIONS,
+  DRIVING_LICENSE_VIEW_PERMISSIONS,
+} from './featurePermissions';
 
 export type EmployeeRoutePermission = {
   superadminPath: string;
@@ -118,6 +123,21 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/settings',
     employeePath: '/employee/settings',
     permissions: ['settings.manage'],
+  },
+  {
+    superadminPath: '/superadmin/identity-hub',
+    employeePath: '/employee/identity-hub',
+    permissions: IDENTITY_HUB_VIEW_PERMISSIONS,
+  },
+  {
+    superadminPath: '/superadmin/driving-license-verification',
+    employeePath: '/employee/driving-license-verification',
+    permissions: DRIVING_LICENSE_VIEW_PERMISSIONS,
+  },
+  {
+    superadminPath: '/superadmin/vehicle-transport',
+    employeePath: '/employee/vehicle-transport',
+    permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS,
   },
 ];
 

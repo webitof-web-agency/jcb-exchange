@@ -25,7 +25,6 @@ test('builds the approved Prime WhatsApp event for an active subscription', () =
       templateComponents: [{
         type: 'body',
         parameters: [
-          { type: 'text', text: 'subscription-1' },
           { type: 'text', text: 'ACTIVE' },
           { type: 'text', text: 'Test Customer' },
         ],

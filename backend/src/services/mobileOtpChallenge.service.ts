@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma';
 import {
   MOBILE_OTP_COOLDOWN_SECONDS,
+  getLoginMobileCandidates,
   MOBILE_OTP_MAX_RESENDS,
   MOBILE_OTP_MAX_VERIFY_ATTEMPTS,
   MOBILE_OTP_RESEND_WINDOW_SECONDS,
@@ -10,7 +11,7 @@ const prismaAny = prisma as any;
 
 export const getLatestMobileOtpChallenge = async (mobile: string) =>
   prismaAny.mobileOtpChallenge.findFirst({
-    where: { mobile },
+    where: { mobile: { in: getLoginMobileCandidates(mobile) } },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -104,3 +105,11 @@ export const canResendMobileOtpChallenge = (challenge: {
   challenge.status === 'PENDING' &&
   new Date(challenge.createdAt).getTime() + MOBILE_OTP_RESEND_WINDOW_SECONDS * 1000 > Date.now() &&
   challenge.resendCount < MOBILE_OTP_MAX_RESENDS;
+
+export const getMobileOtpResendAction = (
+  challenge: {
+    status: string;
+    resendCount: number;
+    createdAt: Date | string;
+  } | null | undefined,
+) => (challenge && canResendMobileOtpChallenge(challenge) ? 'RESEND' : 'SEND') as 'RESEND' | 'SEND';

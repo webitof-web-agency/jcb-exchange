@@ -21,6 +21,9 @@ node_modules/
 !.env.example
 !*/.env.example
 
+# Firebase Admin SDK private credentials
+backend/serviceAccountKey.json
+
 # Next.js Build Outputs
 .next/
 */.next/

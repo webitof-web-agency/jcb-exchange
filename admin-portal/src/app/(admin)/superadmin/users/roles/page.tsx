@@ -235,6 +235,30 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'Identity Hub': [
+    {
+      groupName: 'Identity Hub',
+      permissions: [
+        { id: 'pan.verification.read', label: 'View PAN Verification' },
+        { id: 'gst.verification.read', label: 'View GST Verification' },
+        { id: 'pan.mobile-to-pan.read', label: 'View Mobile To PAN' },
+      ],
+    },
+  ],
+  'Vehicle & Transport': [
+    {
+      groupName: 'Vehicle & Transport',
+      permissions: [
+        { id: 'driving-license.verification.read', label: 'View Driving License Verification' },
+        { id: 'rc.owner-history.read', label: 'View RC Owner History' },
+        { id: 'rc.challan.verification.read', label: 'View RC Challan' },
+        { id: 'rc.chassis-to-rc.read', label: 'View Chassis to RC Verification' },
+        { id: 'rc.to-mobile.read', label: 'View RC to Mobile' },
+        { id: 'rc.mobile-to-rc.read', label: 'View Mobile To RC' },
+        { id: 'rc.mobile-number-check.read', label: 'View RC Mobile Number Check' },
+      ],
+    },
+  ],
   'Recurrence': [
     {
       groupName: 'Recurrence',

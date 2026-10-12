@@ -8,6 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import PortalBrand from '@/components/layout/PortalBrand';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -90,13 +91,11 @@ export default function SignupPage() {
       {/* Main Box */}
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden flex flex-col">
         
-        {/* Header Bar */}
-        <div className="flex justify-between items-center px-6 py-4 bg-[#1A1A1A]">
-          <div className="flex items-center">
-            <h2 className="text-xl font-bold italic tracking-wider text-white">
-              JCB<span className="text-[#FFC107]">EXCHANGE</span>
-            </h2>
-            <span className={`ml-3 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-sm ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
+        {/* Keep signup branding identical to the signin portal header. */}
+        <div className="flex justify-center items-center px-6 py-4 bg-[#1A1A1A] border-b border-white/10">
+          <div className="flex flex-col items-center justify-center gap-0.5 text-center">
+            <PortalBrand href="/signup" showSubtitle={false} logoSrc="/adminloginlogo.png" />
+            <span className={`px-2 py-0.5 text-[8px] sm:text-[9px] leading-none uppercase tracking-widest font-extrabold rounded-sm shadow-sm whitespace-nowrap ${isFirstSetup ? 'bg-red-500 text-white' : 'bg-[#FFC107] text-black'}`}>
               {badgeLabel}
             </span>
           </div>

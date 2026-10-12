@@ -21,6 +21,24 @@ const rtoStatusOptions = [
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
 
+const hsrpStatusOptions = [
+  { value: 'YES', label: 'Yes' },
+  { value: 'NO', label: 'No' },
+  { value: 'NOT_APPLICABLE', label: 'Not Required' },
+  { value: 'PENDING', label: 'Pending' },
+];
+
+export const getHsrpStatusOptions = () => hsrpStatusOptions;
+
+export const normalizeHsrpStatus = (value) => {
+  const normalized = String(value || '').toUpperCase();
+  if (normalized === 'NOT_REQUIRED' || normalized === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
+  if (normalized === 'YES') return 'YES';
+  if (normalized === 'NO') return 'NO';
+  if (normalized === 'PENDING') return 'PENDING';
+  return 'NO';
+};
+
 export const getRtoStatusOptions = () => rtoStatusOptions;
 
 export const normalizeRtoStatus = (value) =>
@@ -58,6 +76,8 @@ export const normalizeValidityForEdit = (value) => {
   const options = getValidityOptions(value);
   return options.some((option) => option.value === value) ? value : 'VALID';
 };
+
+export const isValidityDateRequired = (status) => status === 'VALID';
 
 export const filterSelectOptions = (options, query) => {
   const normalizedQuery = String(query || '').trim().toLowerCase();

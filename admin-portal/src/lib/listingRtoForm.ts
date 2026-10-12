@@ -1,13 +1,13 @@
 export type ListingRtoFormState = {
   hirePurchaseStatus: 'PENDING' | 'ACTIVE' | 'TERMINATED' | 'NOT_APPLICABLE';
-  taxStatus: 'VALID' | 'EXPIRED' | 'LIFETIME';
+  taxStatus: 'VALID' | 'EXPIRED' | 'LIFETIME' | 'NOT_AVAILABLE';
   taxValidUntil: string;
-  fitnessStatus: 'VALID' | 'EXPIRED';
+  fitnessStatus: 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE';
   fitnessValidUntil: string;
-  insuranceStatus: 'VALID' | 'EXPIRED';
-  pucStatus: 'VALID' | 'EXPIRED';
+  insuranceStatus: 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE';
+  pucStatus: 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE';
   pucValidUntil: string;
-  hsrpStatus: 'YES' | 'NO';
+  hsrpStatus: 'YES' | 'NO' | 'PENDING' | 'NOT_APPLICABLE';
   rtoOffice: string;
   rtoAgentName: string;
   rtoExpenses: string;
@@ -16,14 +16,14 @@ export type ListingRtoFormState = {
 
 export const emptyListingRtoForm: ListingRtoFormState = {
   hirePurchaseStatus: 'PENDING',
-  taxStatus: 'VALID',
+  taxStatus: 'NOT_AVAILABLE',
   taxValidUntil: '',
-  fitnessStatus: 'VALID',
+  fitnessStatus: 'NOT_AVAILABLE',
   fitnessValidUntil: '',
-  insuranceStatus: 'VALID',
-  pucStatus: 'VALID',
+  insuranceStatus: 'NOT_AVAILABLE',
+  pucStatus: 'NOT_AVAILABLE',
   pucValidUntil: '',
-  hsrpStatus: 'NO',
+  hsrpStatus: 'PENDING',
   rtoOffice: '',
   rtoAgentName: '',
   rtoExpenses: '',
@@ -35,10 +35,10 @@ const uppercaseText = (value: string) => value.toUpperCase().trimStart();
 
 export const sanitizeListingRtoForm = (form: ListingRtoFormState): ListingRtoFormState => ({
   ...form,
-  taxValidUntil: form.taxValidUntil.trim(),
-  fitnessValidUntil: form.fitnessValidUntil.trim(),
+  taxValidUntil: form.taxStatus === 'VALID' ? form.taxValidUntil.trim() : '',
+  fitnessValidUntil: form.fitnessStatus === 'VALID' ? form.fitnessValidUntil.trim() : '',
   insuranceStatus: form.insuranceStatus,
-  pucValidUntil: form.pucValidUntil.trim(),
+  pucValidUntil: form.pucStatus === 'VALID' ? form.pucValidUntil.trim() : '',
   rtoOffice: uppercaseText(form.rtoOffice),
   rtoAgentName: uppercaseText(form.rtoAgentName),
   rtoExpenses: digitsOnly(form.rtoExpenses),
@@ -59,17 +59,14 @@ export const validateListingRtoForm = (
   if (!base.vehicleModel.trim()) return 'Vehicle Model is required.';
   if (!form.hirePurchaseStatus) return 'Hire Purchase is required.';
   const validityChecks: Array<[string, string, string]> = [
-    ['Tax Validity', form.taxStatus, form.taxStatus === 'LIFETIME' ? 'skip' : form.taxValidUntil],
-    ['Fitness Validity', form.fitnessStatus, form.fitnessValidUntil],
-    ['Insurance Validity', form.insuranceStatus, base.insuranceExpiry],
-    ['PUC Validity', form.pucStatus, form.pucValidUntil],
+    ['Tax Validity', form.taxStatus, form.taxStatus === 'VALID' ? form.taxValidUntil : 'skip'],
+    ['Fitness Validity', form.fitnessStatus, form.fitnessStatus === 'VALID' ? form.fitnessValidUntil : 'skip'],
+    ['Insurance Validity', form.insuranceStatus, form.insuranceStatus === 'VALID' ? base.insuranceExpiry : 'skip'],
+    ['PUC Validity', form.pucStatus, form.pucStatus === 'VALID' ? form.pucValidUntil : 'skip'],
   ];
-  const missingValidity = validityChecks.find(([, status, date]) => !status || !date.trim());
+  const missingValidity = validityChecks.find(([, status, date]) => !status || (status !== 'NOT_AVAILABLE' && !date.trim()));
   if (missingValidity) return `${missingValidity[0]} status and date are required.`;
-  if (!form.hsrpStatus) return 'HSRP Valid is required.';
   if (!form.rtoOffice.trim()) return 'RTO Office is required.';
-  if (!form.rtoAgentName.trim()) return 'RTO Agent Name is required.';
-  if (Number(form.rtoExpenses) <= 0) return 'RTO Expenses is required.';
   if (Number(form.vehicleMaintenanceCost) <= 0) return 'Vehicle Maintenance Cost is required.';
   if (Number(base.operatingHours) <= 0) return 'Hours Running is required.';
   return null;
@@ -79,10 +76,10 @@ export const buildListingRtoDetails = (
   form: ListingRtoFormState,
   base: { registrationNo: string; vehicleType: string; vehicleModel: string; operatingHours: string; insuranceExpiry: string },
 ) => ({
-  ...form,
+  ...sanitizeListingRtoForm(form),
   registrationNo: base.registrationNo,
   vehicleType: base.vehicleType,
   vehicleModel: base.vehicleModel,
   operatingHours: base.operatingHours,
-  insuranceValidUntil: base.insuranceExpiry,
+  insuranceValidUntil: form.insuranceStatus === 'VALID' ? base.insuranceExpiry : '',
 });

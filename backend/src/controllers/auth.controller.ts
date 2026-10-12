@@ -18,7 +18,9 @@ import {
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import {
   getLoginMobileCandidates,
+  MOBILE_OTP_COOLDOWN_SECONDS,
   MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
+  matchesMobileOtpChallengeMobile,
   normalizeLoginMobileNumber,
   maskMobileNumber,
 } from '../utils/mobileOtp';
@@ -30,6 +32,7 @@ import {
   getLatestMobileOtpChallenge,
   getMobileOtpChallenge,
   getMobileOtpCooldownSeconds,
+  getMobileOtpResendAction,
   markMobileOtpChallengeVerified,
   recordMobileOtpAttempt,
   updateMobileOtpChallengeAfterResend,
@@ -1094,7 +1097,7 @@ export const getMobileOtpConfig = async (req: Request, res: Response, next: Next
       enabled: settings.mobileOtp.enabled && Boolean(settings.mobileOtp.apiKey && settings.mobileOtp.otpId),
       otpLength: settings.mobileOtp.otpLength,
       otpExpirySeconds: settings.mobileOtp.otpExpiry * 60,
-      resendCooldownSeconds: 45,
+      resendCooldownSeconds: MOBILE_OTP_COOLDOWN_SECONDS,
     });
   } catch (error) {
     next(error);
@@ -1152,6 +1155,7 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
       challengeId: challenge.id,
       expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
       otpLength: settings.mobileOtp.otpLength,
+      resendCooldownSeconds: MOBILE_OTP_COOLDOWN_SECONDS,
       maskedMobile: maskMobileNumber(normalizedMobile),
     });
   } catch (error) {
@@ -1366,7 +1370,7 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
     }
 
     const challenge = await getMobileOtpChallenge(challengeId);
-    if (!challenge || challenge.mobile !== normalizedMobile) {
+    if (!challenge || !matchesMobileOtpChallengeMobile(challenge.mobile, normalizedMobile)) {
       return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
     }
 
@@ -1573,7 +1577,7 @@ export const getCustomerPrimeAccess = async (req: Request, res: Response, next: 
 
 export const resendLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { mobile } = req.body as { mobile?: string };
+    const { challengeId, mobile } = req.body as { challengeId?: string; mobile?: string };
     const settings = await getAppSettings();
 
     if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
@@ -1593,22 +1597,55 @@ export const resendLoginOtp = async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    const challenge = await getLatestMobileOtpChallenge(normalizedMobile);
-    if (!challenge || !canResendMobileOtpChallenge(challenge)) {
-      return res.status(404).json({ error: 'No active OTP request is available to resend.' });
+    const requestedChallengeId = typeof challengeId === 'string' ? challengeId.trim() : '';
+    let challenge = requestedChallengeId
+      ? await getMobileOtpChallenge(requestedChallengeId)
+      : await getLatestMobileOtpChallenge(normalizedMobile);
+    if (!challenge || !matchesMobileOtpChallengeMobile(challenge.mobile, normalizedMobile)) {
+      challenge = await getLatestMobileOtpChallenge(normalizedMobile);
     }
 
-    await resendFlowitofOtp(normalizedMobile, settings.mobileOtp);
-    const updatedChallenge = await updateMobileOtpChallengeAfterResend(
-      challenge.id,
-      settings.mobileOtp.otpExpiry * 60,
-    );
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+    if (!account) {
+      return res.status(404).json({
+        error: 'OTP session expired or is no longer available. Please request a new OTP.',
+        code: 'OTP_CHALLENGE_NOT_FOUND',
+      });
+    }
+
+    const expiresInSeconds = settings.mobileOtp.otpExpiry * 60;
+    let responseChallenge = challenge;
+    if (getMobileOtpResendAction(challenge) === 'SEND') {
+      await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+      responseChallenge = await createMobileOtpChallenge({
+        mobile: normalizedMobile,
+        userId: account.id,
+        expiresInSeconds,
+      });
+    } else {
+      try {
+        await resendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+        responseChallenge = await updateMobileOtpChallengeAfterResend(challenge.id, expiresInSeconds);
+      } catch (error) {
+        if (!(error instanceof FlowitofOtpError) || error.status !== 404) {
+          throw error;
+        }
+
+        await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+        responseChallenge = await createMobileOtpChallenge({
+          mobile: normalizedMobile,
+          userId: account.id,
+          expiresInSeconds,
+        });
+      }
+    }
 
     return res.json({
       message: 'OTP resent successfully.',
-      challengeId: updatedChallenge.id,
-      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
+      challengeId: responseChallenge.id,
+      expiresInSeconds,
       otpLength: settings.mobileOtp.otpLength,
+      resendCooldownSeconds: MOBILE_OTP_COOLDOWN_SECONDS,
       maskedMobile: maskMobileNumber(normalizedMobile),
     });
   } catch (error) {
@@ -1649,6 +1686,7 @@ export const getCustomerPrimeHistory = async (req: Request, res: Response, next:
         memberName: displayName,
         planName: `JCB Exchange Prime - ${planDurationLabel}`,
         amount: Number(subscription.paidAmount || 0),
+        transactionRef: subscription.transactionRef || null,
         status: subscription.status,
         submittedAt: subscription.submittedAt,
         startedAt: subscription.startedAt,

@@ -25,7 +25,11 @@ import {
   getWhatsappSupportUrl,
 } from '../config/appConfig';
 import { buildFcmSyncScript } from '../lib/fcmBridge';
-import { shouldHideWebViewLoading } from '../lib/webViewLoading';
+import {
+  shouldHideWebViewLoading,
+  shouldShowWebViewLoading,
+  WEBVIEW_LOADING_TIMEOUT_MS,
+} from '../lib/webViewLoading';
 
 interface Props {
   onWebLoaded?: () => void;
@@ -43,6 +47,8 @@ function HybridWebView({ onWebLoaded }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fcmToken, setFcmToken] = useState<string>('');
   const [webReady, setWebReady] = useState(false);
+  const hasVisiblePageRef = useRef(false);
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webAppUrl = getWebAppUrl();
   const apiBaseUrl = getApiBaseUrl();
   const supportEmail = getSupportEmail();
@@ -56,6 +62,34 @@ function HybridWebView({ onWebLoaded }: Props) {
       ? 'API_BASE_URL is not configured for the mobile shell.'
       : null;
   const [currentUrl, setCurrentUrl] = useState(webAppUrl || 'about:blank');
+
+  const clearLoadingTimeout = useCallback(() => {
+    if (loadingTimeoutRef.current !== null) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const completeWebViewLoading = useCallback(() => {
+    hasVisiblePageRef.current = true;
+    clearLoadingTimeout();
+    setLoading(false);
+  }, [clearLoadingTimeout]);
+
+  const beginWebViewLoading = useCallback((force = false) => {
+    if (!shouldShowWebViewLoading(hasVisiblePageRef.current, force)) {
+      return;
+    }
+
+    clearLoadingTimeout();
+    setLoading(true);
+    loadingTimeoutRef.current = setTimeout(() => {
+      loadingTimeoutRef.current = null;
+      setLoading(false);
+      setWebReady(false);
+      setErrorMessage('The web app is taking too long to respond. Please try again.');
+    }, WEBVIEW_LOADING_TIMEOUT_MS);
+  }, [clearLoadingTimeout]);
 
   const syncFcmToken = useCallback(
     (token: string) => {
@@ -75,11 +109,12 @@ function HybridWebView({ onWebLoaded }: Props) {
 
   const retry = useCallback(() => {
     setErrorMessage(null);
-    setLoading(true);
+    hasVisiblePageRef.current = false;
+    beginWebViewLoading(true);
     setCanGoBack(false);
     setWebReady(false);
     setReloadKey((value) => value + 1);
-  }, []);
+  }, [beginWebViewLoading]);
 
   const openExternalLink = useCallback((url: string) => {
     Linking.openURL(url).catch(() => undefined);
@@ -126,6 +161,15 @@ function HybridWebView({ onWebLoaded }: Props) {
   useEffect(() => {
     syncFcmToken(fcmToken);
   }, [fcmToken, syncFcmToken]);
+
+  useEffect(() => {
+    hasVisiblePageRef.current = false;
+    beginWebViewLoading(true);
+
+    return clearLoadingTimeout;
+  }, [beginWebViewLoading, clearLoadingTimeout, currentUrl]);
+
+  useEffect(() => clearLoadingTimeout, [clearLoadingTimeout]);
 
   useEffect(() => {
     if (webReady && fcmToken) {
@@ -322,24 +366,28 @@ function HybridWebView({ onWebLoaded }: Props) {
         thirdPartyCookiesEnabled
         mixedContentMode="always"
         setSupportMultipleWindows={false}
+        scalesPageToFit={false}
+        setBuiltInZoomControls={false}
+        setDisplayZoomControls={false}
         allowsInlineMediaPlayback
         cacheEnabled
         onLoadStart={() => {
-          setLoading(true);
+          beginWebViewLoading();
           setErrorMessage(null);
         }}
+        onLoad={completeWebViewLoading}
         onLoadEnd={() => {
-          setLoading(false);
+          completeWebViewLoading();
           setWebReady(true);
           if (onWebLoaded) onWebLoaded();
         }}
         onLoadProgress={({ nativeEvent }) => {
           if (shouldHideWebViewLoading(nativeEvent)) {
-            setLoading(false);
+            completeWebViewLoading();
           }
         }}
         onError={(event) => {
-          setLoading(false);
+          completeWebViewLoading();
           setWebReady(false);
           setErrorMessage(
             event.nativeEvent.description ||
@@ -349,7 +397,7 @@ function HybridWebView({ onWebLoaded }: Props) {
         onNavigationStateChange={(navState) => {
           setCanGoBack(navState.canGoBack);
           if (!navState.loading) {
-            setLoading(false);
+            completeWebViewLoading();
           }
         }}
         onShouldStartLoadWithRequest={(request) => {

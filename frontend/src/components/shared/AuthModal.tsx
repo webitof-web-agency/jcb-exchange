@@ -48,9 +48,9 @@ type EmailOtpConfigResponse = MobileOtpConfigResponse;
 
 export default function AuthModal() {
   const { t } = useTranslation();
-  const { isAuthModalOpen, setAuthModalOpen, setAuth } = useAuthStore();
+  const { isAuthModalOpen, authMode, setAuthModalOpen, setAuth } = useAuthStore();
   const showToast = useToastStore((state) => state.showToast);
-  const [isLogin, setIsLogin] = useState(true);
+  const isLogin = authMode === 'login';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -125,13 +125,29 @@ export default function AuthModal() {
     });
   }, [showToast]);
 
+  const resetOtpState = useCallback(() => {
+    setOtp('');
+    setOtpRequestMessage('');
+    setOtpChallengeId('');
+    setOtpMaskedMobile('');
+    setOtpExpiresAt(0);
+    setOtpResendAvailableAt(0);
+    setEmailOtp('');
+    setEmailOtpChallengeId('');
+    setEmailOtpMaskedEmail('');
+    setEmailOtpExpiresAt(0);
+    setEmailOtpResendAvailableAt(0);
+    setLoginMethod('password');
+  }, []);
+
   const completeAuth = useCallback((token: string, user: AuthResponseUser, shouldNotify = true) => {
+    resetOtpState();
     setAuth(token, user);
     setAuthModalOpen(false);
     if (shouldNotify) {
       showLoginSuccessToast(user.name, user.email, user.mobile);
     }
-  }, [setAuth, setAuthModalOpen, showLoginSuccessToast]);
+  }, [resetOtpState, setAuth, setAuthModalOpen, showLoginSuccessToast]);
 
   const handleGoogleCredential = useCallback(async (credential?: string) => {
     if (!credential) {
@@ -212,13 +228,22 @@ export default function AuthModal() {
   }, []);
 
   useEffect(() => {
-    if (!otpChallengeId && !emailOtpChallengeId) {
+    if (!isAuthModalOpen || (!otpChallengeId && !emailOtpChallengeId)) {
       return;
     }
 
     const timer = window.setInterval(() => setOtpResendNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [otpChallengeId, emailOtpChallengeId]);
+  }, [emailOtpChallengeId, isAuthModalOpen, otpChallengeId]);
+
+  useEffect(() => {
+    if (!isAuthModalOpen) {
+      const resetTimer = window.setTimeout(resetOtpState, 0);
+      return () => window.clearTimeout(resetTimer);
+    }
+
+    return undefined;
+  }, [isAuthModalOpen, resetOtpState]);
 
   useEffect(() => {
     if (
@@ -334,10 +359,15 @@ export default function AuthModal() {
       setOtpRequestMessage(challengeId ? '' : response.data.message || t('auth.sendOtpFailed'));
       setOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || otpLength)));
       setOtpExpirySeconds(Number(response.data.expiresInSeconds) || otpExpirySeconds);
+      const resendCooldownSeconds = Math.max(
+        1,
+        Number(response.data.resendCooldownSeconds) || otpResendCooldownSeconds,
+      );
+      setOtpResendCooldownSeconds(resendCooldownSeconds);
       setOtpResendNow(Date.now());
       if (challengeId) {
         setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
-        setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
+        setOtpResendAvailableAt(Date.now() + resendCooldownSeconds * 1000);
       } else {
         setOtpExpiresAt(0);
         setOtpResendAvailableAt(0);
@@ -360,21 +390,46 @@ export default function AuthModal() {
     setIsOtpResending(true);
 
     try {
-      const response = await api.post('/auth/login/mobile-otp/resend', { mobile });
+      const response = await api.post('/auth/login/mobile-otp/resend', {
+        challengeId: otpChallengeId,
+        mobile,
+      });
       setOtpChallengeId(response.data.challengeId || otpChallengeId);
       setOtpMaskedMobile(response.data.maskedMobile || otpMaskedMobile);
       setOtpLength(Math.min(10, Math.max(4, Number(response.data.otpLength) || otpLength)));
       setOtpExpirySeconds(Number(response.data.expiresInSeconds) || otpExpirySeconds);
+      const resendCooldownSeconds = Math.max(
+        1,
+        Number(response.data.resendCooldownSeconds) || otpResendCooldownSeconds,
+      );
+      setOtpResendCooldownSeconds(resendCooldownSeconds);
       setOtpResendNow(Date.now());
       setOtpExpiresAt(Date.now() + (Number(response.data.expiresInSeconds) || otpExpirySeconds) * 1000);
-      setOtpResendAvailableAt(Date.now() + otpResendCooldownSeconds * 1000);
+      setOtpResendAvailableAt(Date.now() + resendCooldownSeconds * 1000);
       setOtp('');
     } catch (err: unknown) {
+      const responseData = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { status?: number; data?: { error?: string; code?: string; retryAfterSeconds?: number } } }).response
+        : undefined;
+      const responseBody = responseData?.data;
       const errorMessage =
         err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+          ? responseBody?.error ||
             t('auth.resendOtpFailed')
           : t('auth.resendOtpFailed');
+      const retryAfterSeconds = Number(responseBody?.retryAfterSeconds);
+      if (responseData?.status === 429 && Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        setOtpResendAvailableAt(Date.now() + retryAfterSeconds * 1000);
+      }
+      if (responseBody?.code === 'OTP_CHALLENGE_NOT_FOUND') {
+        setOtpChallengeId('');
+        setOtpMaskedMobile('');
+        setOtp('');
+        setOtpExpiresAt(0);
+        setOtpResendAvailableAt(0);
+        setOtpRequestMessage(errorMessage);
+        return;
+      }
       setError(errorMessage);
     } finally {
       setIsOtpResending(false);
@@ -492,27 +547,31 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex flex-col md:items-center md:justify-center overflow-y-auto bg-white md:bg-black/60 p-0 md:p-4 md:backdrop-blur-sm">
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setIsGoogleScriptReady(true)}
       />
-      <div className="flex w-full items-center justify-center">
-        <div className="my-auto w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white shadow-2xl animate-in slide-in-from-bottom-4 zoom-in duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <div className="relative flex min-h-[64px] items-center justify-center bg-[#1A1A1A] px-6 py-3 sm:py-4">
+      <div className="flex min-h-full md:min-h-0 w-full flex-col md:flex-row md:items-center md:justify-center">
+        <div className="w-full flex-1 md:flex-none md:max-w-md min-h-full md:min-h-0 md:max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-y-auto bg-white rounded-none md:rounded-xl shadow-none md:shadow-2xl animate-in fade-in md:zoom-in duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="relative flex min-h-[52px] sm:min-h-[56px] shrink-0 items-center justify-center bg-[#1A1A1A] px-4 sm:px-6 py-2.5 sm:py-3">
             <div className="flex items-center justify-center w-full">
-              <Image src="/frontloginlogo.png" alt="JCB Exchange" width={300} height={80} priority className="h-auto w-full max-w-[240px] object-contain" />
+              <Image src="/frontloginlogo.png" alt="JCB Exchange" width={260} height={70} priority className="h-9 sm:h-10 w-auto max-w-[185px] sm:max-w-[215px] object-contain" />
             </div>
-            <button
-              onClick={() => setAuthModalOpen(false)}
-              className="absolute top-3 right-3 md:top-1/2 md:-translate-y-1/2 md:right-6 text-gray-600 md:text-gray-400 transition-colors hover:text-gray-900 md:hover:text-white"
+              <button
+              onClick={() => {
+                resetOtpState();
+                setAuthModalOpen(false);
+              }}
+              className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-4 text-gray-400 transition-colors hover:text-white flex items-center justify-center p-1.5 rounded-full hover:bg-white/10"
+              aria-label="Close"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
           </div>
 
-          <div className="flex flex-col p-5 sm:p-6">
+          <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 md:p-6 my-auto">
             <div className="mb-4 -mt-2 md:mt-0 text-center">
               <h4 className="text-2xl font-bold text-gray-900">
                 {isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}
@@ -888,7 +947,7 @@ export default function AuthModal() {
             {isLogin ? `${t('auth.dontHaveAccount')} ` : `${t('auth.alreadyHaveAccount')} `}
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => setAuthModalOpen(true, isLogin ? 'signup' : 'login')}
               className="font-bold text-jcb-dark hover:underline focus:outline-none"
             >
               {isLogin ? t('auth.signUp') : t('auth.logIn')}

@@ -111,6 +111,22 @@ export type ListingPaymentSettings = {
   updatedByUserId: string | null;
 };
 
+export type ListingCreationAccessSettings = {
+  allowAdmin: boolean;
+  allowEmployee: boolean;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export const normalizeListingCreationAccessSettings = (
+  settings?: Partial<ListingCreationAccessSettings> | null,
+): ListingCreationAccessSettings => ({
+  allowAdmin: settings?.allowAdmin !== false,
+  allowEmployee: settings?.allowEmployee !== false,
+  updatedAt: settings?.updatedAt || null,
+  updatedByUserId: settings?.updatedByUserId || null,
+});
+
 export const detectRazorpayModeFromKeyId = (keyId?: string | null): 'TEST' | 'LIVE' | null => {
   const normalizedKeyId = keyId?.trim();
   if (!normalizedKeyId) {
@@ -236,6 +252,7 @@ type AppSettings = {
   mobileOtp: MobileOtpSettings;
   publicLeadRouting: PublicLeadRoutingSettings;
   customerPrime: CustomerPrimeSettings;
+  listingCreationAccess: ListingCreationAccessSettings;
   listingPayment: ListingPaymentSettings;
   companyInvoice: CompanyInvoiceSettings;
   googleDrive: GoogleDriveSettings;
@@ -286,6 +303,7 @@ const defaultSettings: AppSettings = {
     updatedAt: null,
     updatedByUserId: null,
   },
+  listingCreationAccess: normalizeListingCreationAccessSettings(),
   listingPayment: {
     rtgs: {
       enabled: false,
@@ -387,6 +405,7 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
     updatedByUserId: parsed?.publicLeadRouting?.updatedByUserId || null,
   },
   customerPrime: normalizeCustomerPrimeSettings(parsed?.customerPrime),
+  listingCreationAccess: normalizeListingCreationAccessSettings(parsed?.listingCreationAccess),
   listingPayment: normalizeListingPaymentSettings(parsed?.listingPayment),
   companyInvoice: normalizeCompanyInvoiceSettings(parsed?.companyInvoice),
   googleDrive: normalizeGoogleDriveSettings(parsed?.googleDrive),
@@ -642,6 +661,7 @@ export const updatePlatformRuntimeSettings = async ({
   mobileOtp,
   publicLeadRouting,
   customerPrime,
+  listingCreationAccess,
   listingPayment,
   companyInvoice,
   googleDrive,
@@ -671,6 +691,9 @@ export const updatePlatformRuntimeSettings = async ({
       | 'requireForSellListing'
     >
   > | null;
+  listingCreationAccess?: Partial<
+    Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>
+  > | null;
   listingPayment?: Partial<ListingPaymentSettings> | null;
   companyInvoice?: Partial<CompanyInvoiceSettings> | null;
   googleDrive?: Partial<GoogleDriveSettings> | null;
@@ -683,6 +706,7 @@ export const updatePlatformRuntimeSettings = async ({
   const hasMobileOtpUpdate = mobileOtp !== undefined;
   const hasPublicLeadRoutingUpdate = publicLeadRouting !== undefined;
   const hasCustomerPrimeUpdate = customerPrime !== undefined;
+  const hasListingCreationAccessUpdate = listingCreationAccess !== undefined;
   const hasListingPaymentUpdate = listingPayment !== undefined;
   const hasCompanyInvoiceUpdate = companyInvoice !== undefined;
   const hasGoogleDriveUpdate = googleDrive !== undefined;
@@ -733,6 +757,16 @@ export const updatePlatformRuntimeSettings = async ({
         updatedByUserId: updatedByUserId || null,
       }
       : currentSettings.customerPrime,
+    listingCreationAccess: hasListingCreationAccessUpdate
+      ? {
+        ...normalizeListingCreationAccessSettings({
+          ...currentSettings.listingCreationAccess,
+          ...listingCreationAccess,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.listingCreationAccess,
     listingPayment: hasListingPaymentUpdate
       ? {
         ...normalizeListingPaymentSettings({

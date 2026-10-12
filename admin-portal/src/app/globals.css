@@ -14,6 +14,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: #f3f4f6;
   color: var(--foreground);

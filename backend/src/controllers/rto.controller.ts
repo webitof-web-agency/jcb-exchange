@@ -26,6 +26,11 @@ const serialize = (record: any) => ({
 
 const buildPayload = (body: any, existing?: any) => {
   const value = (key: string) => body[key] !== undefined ? body[key] : existing?.[key];
+  const taxStatus = validEnum(value('taxStatus'), Object.values(RtoValidityStatus), existing?.taxStatus || RtoValidityStatus.NOT_AVAILABLE);
+  const fitnessStatus = validEnum(value('fitnessStatus'), Object.values(RtoValidityStatus), existing?.fitnessStatus || RtoValidityStatus.NOT_AVAILABLE);
+  const insuranceStatus = validEnum(value('insuranceStatus'), Object.values(RtoValidityStatus), existing?.insuranceStatus || RtoValidityStatus.NOT_AVAILABLE);
+  const pucStatus = validEnum(value('pucStatus'), Object.values(RtoValidityStatus), existing?.pucStatus || RtoValidityStatus.NOT_AVAILABLE);
+
   return {
     customerName: text(value('customerName')),
     customerNumber: phone(value('customerNumber')),
@@ -34,15 +39,19 @@ const buildPayload = (body: any, existing?: any) => {
     vehicleType: text(value('vehicleType')),
     vehicleModel: text(value('vehicleModel')),
     hirePurchaseStatus: validEnum(value('hirePurchaseStatus'), Object.values(RtoHirePurchaseStatus), existing?.hirePurchaseStatus || RtoHirePurchaseStatus.PENDING),
-    taxStatus: validEnum(value('taxStatus'), Object.values(RtoValidityStatus), existing?.taxStatus || RtoValidityStatus.NOT_AVAILABLE),
-    taxValidUntil: body.taxValidUntil !== undefined ? dateOrNull(body.taxValidUntil) : existing?.taxValidUntil,
-    fitnessStatus: validEnum(value('fitnessStatus'), Object.values(RtoValidityStatus), existing?.fitnessStatus || RtoValidityStatus.NOT_AVAILABLE),
-    fitnessValidUntil: body.fitnessValidUntil !== undefined ? dateOrNull(body.fitnessValidUntil) : existing?.fitnessValidUntil,
-    insuranceStatus: validEnum(value('insuranceStatus'), Object.values(RtoValidityStatus), existing?.insuranceStatus || RtoValidityStatus.NOT_AVAILABLE),
-    insuranceValidUntil: body.insuranceValidUntil !== undefined ? dateOrNull(body.insuranceValidUntil) : existing?.insuranceValidUntil,
-    pucStatus: validEnum(value('pucStatus'), Object.values(RtoValidityStatus), existing?.pucStatus || RtoValidityStatus.NOT_AVAILABLE),
-    pucValidUntil: body.pucValidUntil !== undefined ? dateOrNull(body.pucValidUntil) : existing?.pucValidUntil,
-    hsrpStatus: validEnum(value('hsrpStatus'), Object.values(RtoHsrpStatus), existing?.hsrpStatus || RtoHsrpStatus.PENDING),
+    taxStatus,
+    taxValidUntil: taxStatus === RtoValidityStatus.VALID ? (body.taxValidUntil !== undefined ? dateOrNull(body.taxValidUntil) : existing?.taxValidUntil) : null,
+    fitnessStatus,
+    fitnessValidUntil: fitnessStatus === RtoValidityStatus.VALID ? (body.fitnessValidUntil !== undefined ? dateOrNull(body.fitnessValidUntil) : existing?.fitnessValidUntil) : null,
+    insuranceStatus,
+    insuranceValidUntil: insuranceStatus === RtoValidityStatus.VALID ? (body.insuranceValidUntil !== undefined ? dateOrNull(body.insuranceValidUntil) : existing?.insuranceValidUntil) : null,
+    pucStatus,
+    pucValidUntil: pucStatus === RtoValidityStatus.VALID ? (body.pucValidUntil !== undefined ? dateOrNull(body.pucValidUntil) : existing?.pucValidUntil) : null,
+    hsrpStatus: validEnum(
+      String(value('hsrpStatus') || '').toUpperCase() === 'NOT_REQUIRED' ? 'NOT_APPLICABLE' : value('hsrpStatus'),
+      Object.values(RtoHsrpStatus),
+      existing?.hsrpStatus || RtoHsrpStatus.PENDING,
+    ),
     sellerName: text(value('sellerName')),
     sellerNumber: phone(value('sellerNumber')),
     purchaserName: text(value('purchaserName')),
@@ -68,8 +77,7 @@ export const validateRtoPayload = (payload: ReturnType<typeof buildPayload>) => 
   const required: Array<[string, string]> = [
     ['customerName', 'Customer Name'], ['vehicleNumber', 'Vehicle Number'], ['brandName', 'Brand'], ['vehicleType', 'Vehicle Type'],
     ['vehicleModel', 'Vehicle Model'], ['sellerName', 'Seller Name'], ['purchaserName', 'Purchaser Name'],
-    ['rtoOffice', 'RTO Office'], ['rtoAgentName', 'RTO Agent Name'], ['rtoAgentState', 'RTO Agent State'],
-    ['rtoAgentCity', 'RTO Agent City'],
+    ['rtoOffice', 'RTO Office'],
   ];
   const missing = required.find(([key]) => !payload[key as keyof typeof payload]);
   if (missing) return `${missing[1]} is required.`;
@@ -80,9 +88,8 @@ export const validateRtoPayload = (payload: ReturnType<typeof buildPayload>) => 
     ['Insurance Validity', payload.insuranceStatus, payload.insuranceValidUntil],
     ['PUC Validity', payload.pucStatus, payload.pucValidUntil],
   ];
-  const missingValidity = validityChecks.find(([, status, date]) => !status || ((status === RtoValidityStatus.VALID || status === RtoValidityStatus.EXPIRED) && !date));
-  if (missingValidity) return `${missingValidity[0]} status and date are required.`;
-  if (!payload.hsrpStatus) return 'HSRP Valid is required.';
+  const missingValidity = validityChecks.find(([, status, date]) => !status || (status === RtoValidityStatus.VALID && !date));
+  if (missingValidity) return `${missingValidity[0]} date is required when marked as Valid.`;
   if (Number(payload.rtoExpensesAdvance) > Number(payload.rtoExpenses)) return 'RTO Expenses Advance cannot exceed RTO Expenses.';
   return null;
 };
