@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
+import { hasAuthorizationHeader, isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -74,9 +75,17 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
+    const authStore = useAuthStore.getState();
+    const token = authStore.token;
     const locale = useLanguageStore.getState().locale;
-    if (token) {
+    const isAuthEndpoint = /\/auth\/(?:login|register|google|.*otp)/i.test(String(config.url || ''));
+
+    if (token && !isUsableAuthToken(token)) {
+      authStore.logout();
+      if (!isAuthEndpoint) {
+        authStore.setAuthModalOpen(true, 'login');
+      }
+    } else if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     config.headers['Accept-Language'] = locale;
@@ -91,13 +100,9 @@ api.interceptors.response.use(
   (error) => {
     const requestUrl = String(error?.config?.url || '');
     const requestHeaders = error?.config?.headers;
-    const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
+    const sentAuthHeader = hasAuthorizationHeader(requestHeaders);
 
-    const responseCode = error?.response?.data?.code;
-    const revokedSession = responseCode === 'ACCOUNT_REVOKED' || responseCode === 'ACCOUNT_INACTIVE';
-    const isAuthenticationFailure = error?.response?.status === 401 || (error?.response?.status === 403 && revokedSession);
-
-    if (axios.isAxiosError(error) && isAuthenticationFailure && sentAuthHeader) {
+    if (axios.isAxiosError(error) && isAuthenticationFailure(error) && sentAuthHeader) {
       const authStore = useAuthStore.getState();
       authStore.logout();
 

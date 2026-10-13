@@ -49,6 +49,7 @@ import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretRevea
 import { getCustomerDeletionBlockers, type CustomerDeletionCounts } from '../services/customerDeletion.service';
 import { resolveListingContactNumber } from '../utils/listingContact';
 import { canCreateListing } from '../utils/listingAccess';
+import type { VehicleListingVerificationSettings } from '../utils/listingVerificationPolicy';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -672,6 +673,7 @@ export const getPlatformSettings = async (req: Request, res: Response, next: Nex
         recentPayments: recentPrimePayments,
       },
       listingCreationAccess: settings.listingCreationAccess,
+      vehicleListingVerification: settings.vehicleListingVerification,
       financeSupport: {
         items: settings.financeSupport.items,
       },
@@ -717,7 +719,7 @@ export const revealPlatformSecret = async (req: Request, res: Response, next: Ne
 
 export const updatePlatformSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingCreationAccess, listingPayment, companyInvoice, mobileApp, googleDrive } = req.body as {
+    const { googleClientId, googleAuthEnabled, mobileOtp, emailOtp, publicLeadRouting, customerPrime, listingCreationAccess, vehicleListingVerification, listingPayment, companyInvoice, mobileApp, googleDrive } = req.body as {
       googleClientId?: string;
       googleAuthEnabled?: boolean;
       mobileOtp?: {
@@ -747,6 +749,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         validityUnit?: 'DAYS' | 'MONTHS' | 'days' | 'months';
       };
       listingCreationAccess?: Partial<Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>>;
+      vehicleListingVerification?: Partial<Pick<VehicleListingVerificationSettings, 'enabled'>>;
       listingPayment?: Partial<ListingPaymentSettings>;
       companyInvoice?: {
         companyName?: string;
@@ -777,6 +780,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       !publicLeadRouting &&
       !customerPrime &&
       !listingCreationAccess &&
+      !vehicleListingVerification &&
       !listingPayment &&
       !companyInvoice &&
       !mobileApp &&
@@ -865,6 +869,14 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       };
     }
 
+    if (vehicleListingVerification) {
+      settingsPayload.vehicleListingVerification = {
+        ...(vehicleListingVerification.enabled !== undefined
+          ? { enabled: vehicleListingVerification.enabled === true }
+          : {}),
+      };
+    }
+
     if (listingPayment) {
       const currentSettings = await getAppSettings();
       settingsPayload.listingPayment = {
@@ -934,6 +946,7 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         recentPayments: recentPrimePayments,
       },
       listingCreationAccess: settings.listingCreationAccess,
+      vehicleListingVerification: settings.vehicleListingVerification,
       listingPayment: serializeListingPaymentSettingsForAdmin(settings.listingPayment),
       companyInvoice: settings.companyInvoice,
     });

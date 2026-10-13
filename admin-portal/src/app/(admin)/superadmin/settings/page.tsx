@@ -132,6 +132,11 @@ type SettingsResponse = {
     updatedAt?: string | null;
     updatedByUserId?: string | null;
   };
+  vehicleListingVerification: {
+    enabled: boolean;
+    updatedAt?: string | null;
+    updatedByUserId?: string | null;
+  };
   listingPayment: ListingPaymentFormState;
   companyInvoice?: CompanyInvoiceFormState;
   mobileApp?: {
@@ -165,6 +170,10 @@ type AdminSecretKey =
 type ListingCreationAccessFormState = {
   allowAdmin: boolean;
   allowEmployee: boolean;
+};
+
+type VehicleListingVerificationFormState = {
+  enabled: boolean;
 };
 
 const isMaskedSecretValue = (value: string) => /^\*+$/.test(value.trim());
@@ -330,6 +339,7 @@ export default function SuperAdminSettingsPage() {
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleToggleSaving, setGoogleToggleSaving] = useState(false);
   const [listingCreationAccessSaving, setListingCreationAccessSaving] = useState(false);
+  const [vehicleListingVerificationSaving, setVehicleListingVerificationSaving] = useState(false);
   const [leadRoutingSaving, setLeadRoutingSaving] = useState(false);
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
@@ -380,6 +390,9 @@ export default function SuperAdminSettingsPage() {
   const [listingCreationAccessForm, setListingCreationAccessForm] = useState<ListingCreationAccessFormState>({
     allowAdmin: false,
     allowEmployee: false,
+  });
+  const [vehicleListingVerificationForm, setVehicleListingVerificationForm] = useState<VehicleListingVerificationFormState>({
+    enabled: false,
   });
   const [listingPaymentForm, setListingPaymentForm] = useState<ListingPaymentFormState>(emptyListingPaymentForm);
 
@@ -537,6 +550,9 @@ export default function SuperAdminSettingsPage() {
       setListingCreationAccessForm({
         allowAdmin: response.data.listingCreationAccess?.allowAdmin === true,
         allowEmployee: response.data.listingCreationAccess?.allowEmployee === true,
+      });
+      setVehicleListingVerificationForm({
+        enabled: response.data.vehicleListingVerification?.enabled === true,
       });
       setListingPaymentForm({
         rtgs: {
@@ -724,6 +740,33 @@ export default function SuperAdminSettingsPage() {
       toast.error(getApiErrorMessage(error, 'Unable to save listing creation access settings.'));
     } finally {
       setListingCreationAccessSaving(false);
+    }
+  };
+
+  const handleVehicleListingVerificationSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setVehicleListingVerificationSaving(true);
+
+    try {
+      const response = await api.patch<{
+        message: string;
+        vehicleListingVerification: SettingsResponse['vehicleListingVerification'];
+      }>('/superadmin/settings', {
+        vehicleListingVerification: vehicleListingVerificationForm,
+      });
+
+      setVehicleListingVerificationForm({
+        enabled: response.data.vehicleListingVerification.enabled === true,
+      });
+      toast.success(
+        response.data.vehicleListingVerification.enabled
+          ? 'Vehicle listing verification enabled successfully.'
+          : 'Vehicle listing verification disabled. Listings can now be submitted manually.',
+      );
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to save vehicle listing verification settings.'));
+    } finally {
+      setVehicleListingVerificationSaving(false);
     }
   };
 
@@ -1686,6 +1729,64 @@ export default function SuperAdminSettingsPage() {
           ) : null}
 
           {activeTab === 'panVerification' ? (
+            <>
+              <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Vehicle Listings</p>
+                    <h3 className="mt-1 text-xl font-bold text-gray-900">Vehicle Listing Verification</h3>
+                    <p className="mt-2 max-w-3xl text-sm text-gray-500">
+                      Require chassis verification to auto-fill vehicle RC details when creating listings.
+                    </p>
+                  </div>
+                  <span className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${vehicleListingVerificationForm.enabled
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-gray-200 bg-gray-50 text-gray-600'
+                  }`}>
+                    <ScanLine className="h-4 w-4" />
+                    {vehicleListingVerificationForm.enabled ? 'Verification required' : 'Manual listing mode'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleVehicleListingVerificationSubmit} className="space-y-4">
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900">Require chassis verification for vehicle listings</h4>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={vehicleListingVerificationForm.enabled}
+                        aria-label="Toggle vehicle listing verification"
+                        onClick={() => setVehicleListingVerificationForm((current) => ({ ...current, enabled: !current.enabled }))}
+                        disabled={vehicleListingVerificationSaving}
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${vehicleListingVerificationForm.enabled
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                          : 'border-gray-300 bg-white text-gray-600'
+                        } ${vehicleListingVerificationSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${vehicleListingVerificationForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                          <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${vehicleListingVerificationForm.enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </span>
+                        <span>{vehicleListingVerificationForm.enabled ? 'Enabled' : 'Disabled'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-100 pt-2">
+                    <button
+                      type="submit"
+                      disabled={vehicleListingVerificationSaving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {vehicleListingVerificationSaving ? 'Saving...' : 'Save Listing Verification'}
+                    </button>
+                  </div>
+                </form>
+              </section>
+
             <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gray-900 px-6 py-6 sm:px-8">
                 <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
@@ -1906,6 +2007,7 @@ export default function SuperAdminSettingsPage() {
                 </form>
               </div>
             </section>
+            </>
           ) : null}
 
           {activeTab === 'leadRouting' ? (

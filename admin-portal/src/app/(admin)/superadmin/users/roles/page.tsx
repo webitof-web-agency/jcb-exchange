@@ -8,6 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
 
 interface EmployeeRole {
   id: string;
@@ -67,13 +68,7 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
   'Listings': [
     {
       groupName: 'Listings',
-      permissions: [
-        { id: 'listings.read', label: 'View All Listings' },
-        { id: 'listings.update', label: 'Edit Listing' },
-        { id: 'listings.approve', label: 'Approve Listing' },
-        { id: 'listings.verify_payment', label: 'Payment Verification' },
-        { id: 'listings.delete', label: 'Delete Listing' },
-      ],
+      permissions: LISTING_PERMISSION_DEFINITIONS,
     },
   ],
   'Accounts': [

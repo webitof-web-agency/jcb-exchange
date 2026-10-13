@@ -120,6 +120,13 @@ type ChassisVerificationResponse = {
   result?: Record<string, unknown> | null;
 };
 
+type ListingVerificationPolicyResponse = {
+  vehicleListingVerification: {
+    enabled: boolean;
+    required: boolean;
+  };
+};
+
 type ListingRecord = {
   id: string;
   title: string;
@@ -1012,6 +1019,7 @@ export default function PartnerListingsPage() {
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
   const [chassisVerificationId, setChassisVerificationId] = useState('');
+  const [listingVerificationPolicy, setListingVerificationPolicy] = useState<ListingVerificationPolicyResponse['vehicleListingVerification'] | null>(null);
   const chassisVerificationRequestRef = useRef(0);
   const originalChassisNumberRef = useRef('');
   const [message, setMessage] = useState('');
@@ -1109,9 +1117,10 @@ export default function PartnerListingsPage() {
 
     const loadPageData = async () => {
       try {
-        const [listingResponse, paymentsResult] = await Promise.allSettled([
+        const [listingResponse, paymentsResult, verificationPolicyResult] = await Promise.allSettled([
           api.get<{ listings: ListingRecord[]; canCreateListing?: boolean }>('/superadmin/listings?compact=true'),
           api.get<{ count?: number }>('/superadmin/listing-payments?status=PENDING_VERIFICATION&summary=true'),
+          api.get<ListingVerificationPolicyResponse>('/listings/verification-policy'),
         ]);
 
         if (cancelled) {
@@ -1128,6 +1137,12 @@ export default function PartnerListingsPage() {
 
         if (paymentsResult.status === 'fulfilled') {
           setPendingPaymentVerificationsCount(paymentsResult.value.data.count || 0);
+        }
+
+        if (verificationPolicyResult.status === 'fulfilled') {
+          setListingVerificationPolicy(verificationPolicyResult.value.data.vehicleListingVerification);
+        } else {
+          setListingVerificationPolicy(null);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -1628,9 +1643,14 @@ export default function PartnerListingsPage() {
 
     setMediaState(nextMediaState);
     setPreviewState(nextPreviewState);
-    setChassisVerificationStatus('UNVERIFIED');
-    setVerifiedChassisNumber('');
-    setChassisVerificationId('');
+    const savedVerification = listing.vehicleVerification;
+    const hasReusableVerification = Boolean(
+      savedVerification?.verificationRecordId
+      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || ''),
+    );
+    setChassisVerificationStatus(hasReusableVerification ? 'VERIFIED' : 'UNVERIFIED');
+    setVerifiedChassisNumber(hasReusableVerification ? parsedDetails.chassisOrSerialNo : '');
+    setChassisVerificationId(hasReusableVerification ? savedVerification?.verificationRecordId || '' : '');
     setIsModalOpen(true);
   };
 
@@ -1703,6 +1723,11 @@ export default function PartnerListingsPage() {
   };
 
   const handleChassisVerification = async () => {
+    if (listingVerificationPolicy?.enabled !== true) {
+      setError('Vehicle listing verification is currently disabled. Enter the vehicle details manually.');
+      return;
+    }
+
     const chassisNumber = form.chassisOrSerialNo.trim();
     if (!chassisNumber) {
       setChassisVerificationStatus('FAILED');
@@ -1793,13 +1818,13 @@ export default function PartnerListingsPage() {
     const sanitizedForm = sanitizeListingFormData(form);
     const currentChassis = sanitizedForm.chassisOrSerialNo.trim().toUpperCase().replace(/\s+/g, '');
     const savedChassis = originalChassisNumberRef.current.trim().toUpperCase().replace(/\s+/g, '');
-    const canReuseSavedVerification = Boolean(editingListingId && currentChassis && currentChassis === savedChassis);
+    const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
+    const canReuseSavedVerification = Boolean(editingListingId && currentChassis && currentChassis === savedChassis && chassisVerificationId);
     const verifiedChassis = verifiedChassisNumber.trim().toUpperCase().replace(/\s+/g, '');
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(user?.role || '');
-    const chassisVerificationError = canReuseSavedVerification
+    const chassisVerificationError = !vehicleVerificationRequired || canReuseSavedVerification
       ? null
-      : getChassisSubmitValidationError(sanitizedForm.chassisOrSerialNo, verifiedChassis, isAdmin);
-    if (chassisVerificationError || (!isAdmin && !chassisVerificationId && !canReuseSavedVerification)) {
+      : getChassisSubmitValidationError(sanitizedForm.chassisOrSerialNo, verifiedChassis, false);
+    if (chassisVerificationError || (vehicleVerificationRequired && !chassisVerificationId && !canReuseSavedVerification)) {
       setError(chassisVerificationError || 'Verify the chassis number before posting this vehicle.');
       return;
     }
@@ -2791,15 +2816,17 @@ export default function PartnerListingsPage() {
                     <h3 className="text-base font-semibold">Equipment Details</h3>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label="Chassis / Serial No.">
+                    <Field label={`Chassis / Serial No.${listingVerificationPolicy?.required ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.chassisOrSerialNo}
                           onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
                           className={fieldClassName}
-                          aria-describedby="admin-chassis-verification-status"
+                          aria-describedby={listingVerificationPolicy?.enabled ? 'admin-chassis-verification-status' : undefined}
+                          aria-required={listingVerificationPolicy?.required === true}
                           placeholder="Enter chassis number first"
                         />
+                        {listingVerificationPolicy?.enabled ? (
                         <button
                           type="button"
                           onClick={() => void handleChassisVerification()}
@@ -2808,13 +2835,18 @@ export default function PartnerListingsPage() {
                         >
                           {chassisVerificationStatus === 'VERIFYING' ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisVerificationStatus === 'VERIFIED' ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : <><Sparkles className="h-4 w-4" />Verify &amp; Auto-fill</>}
                         </button>
+                        ) : null}
                       </div>
+                      {listingVerificationPolicy?.enabled ? (
                       <p
                         id="admin-chassis-verification-status"
                         className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisVerificationStatus === 'VERIFIED' ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}
                       >
-                        {chassisVerificationStatus === 'VERIFIED' ? '✓ Verified successfully. API-backed vehicle details were filled.' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : 'Verification is required before posting this vehicle.'}
+                        {chassisVerificationStatus === 'VERIFIED' ? '✓ Verified successfully. API-backed vehicle details were filled.' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy.required ? 'Verification is required before posting this vehicle.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
                       </p>
+                      ) : (
+                        <p className="mt-1.5 text-xs font-medium text-gray-500">Manual listing mode is active. Chassis verification and auto-fill are disabled.</p>
+                      )}
                     </Field>
                     <div>
                     <Field label="Vehicle Name">

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isUsableAuthToken } from '@/lib/authSession.mjs';
 
 export interface AuthUser {
   id: string;
@@ -46,27 +47,6 @@ const getLocalStorage = (key: string) => {
   }
 
   return null;
-};
-
-const isUsableAuthToken = (token: string | null) => {
-  if (!token) {
-    return false;
-  }
-
-  try {
-    const payloadPart = token.split('.')[1];
-    if (!payloadPart) {
-      return false;
-    }
-
-    const normalizedPayload = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-    const paddedPayload = normalizedPayload.padEnd(normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4), '=');
-    const payload = JSON.parse(atob(paddedPayload)) as { exp?: unknown };
-
-    return typeof payload.exp === 'number' && Number.isFinite(payload.exp) && payload.exp * 1000 > Date.now();
-  } catch {
-    return false;
-  }
 };
 
 export const useAuthStore = create<AuthState>((set) => ({

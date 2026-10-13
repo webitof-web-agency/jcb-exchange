@@ -28,6 +28,10 @@ test('allowedAdminPermissions includes all blog permissions', () => {
   });
 });
 
+test('allowedAdminPermissions exposes the employee vehicle verification bypass permission', () => {
+  assert.equal(allowedAdminPermissions.has('listings.verification.bypass'), true);
+});
+
 test('allowedAdminPermissions exposes one view permission per vehicle service', () => {
   [
     'driving-license.verification.read',

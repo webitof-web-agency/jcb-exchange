@@ -23,6 +23,7 @@ import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl }
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
 import { canBypassListingVerification, canCreateListing, canEditListing } from '../utils/listingAccess';
+import { shouldRequireVehicleListingVerification } from '../utils/listingVerificationPolicy';
 import { getListingPaymentOutcome, type ListingPaymentMethod } from '../utils/listingPaymentPolicy';
 import { buildCustomerListingNotificationText } from '../utils/listingNotificationText';
 import { resolveListingContactNumber } from '../utils/listingContact';
@@ -607,6 +608,33 @@ const getEmployeePermissions = async (userId?: string) => {
   return userObj?.customRole?.permissions || [];
 };
 
+export const getListingVerificationPolicy = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    const [settings, employeePermissions] = await Promise.all([
+      getAppSettings(),
+      req.user.role === 'EMPLOYEE' ? getEmployeePermissions(req.user.id) : Promise.resolve([] as string[]),
+    ]);
+    const canBypassVerification = canBypassListingVerification(req.user.role, employeePermissions);
+    const required = shouldRequireVehicleListingVerification(
+      settings.vehicleListingVerification,
+      canBypassVerification,
+    );
+
+    return res.json({
+      vehicleListingVerification: {
+        enabled: settings.vehicleListingVerification.enabled === true,
+        required,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const extractSaleRecordPayload = (body: any) => {
   const source = body?.buyerDetails || body || {};
   const buyerName = normalizeText(source.buyerName);
@@ -788,8 +816,16 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
 
     const isCustomer = req.user.role === 'CUSTOMER';
     const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
-    const canBypassVehicleVerification = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
     const platformSettings = await getAppSettings();
+    const employeePermissions = req.user.role === 'EMPLOYEE'
+      ? await getEmployeePermissions(authenticatedUserId)
+      : [];
+    const canBypassVehicleVerification = canBypassListingVerification(req.user.role, employeePermissions);
+    const vehicleListingVerificationEnabled = platformSettings.vehicleListingVerification.enabled === true;
+    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
+      platformSettings.vehicleListingVerification,
+      canBypassVehicleVerification,
+    );
     if (!canCreateListing(req.user.role, [], platformSettings.listingCreationAccess)) {
       return res.status(403).json({ error: 'Listing creation is not enabled for this account role.' });
     }
@@ -867,16 +903,20 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const parsedPrice = parseDecimal(price) || new Prisma.Decimal(0);
     const normalizedMedia = normalizeMedia(media);
 
-    const chassisVerification = await getChassisVerificationContext({
-      chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription),
-      verificationId: normalizedChassisVerificationId,
-      requestedById: authenticatedUserId,
-      canBypassVerification: canBypassVehicleVerification,
-    });
+    const chassisVerification = vehicleListingVerificationEnabled
+      ? await getChassisVerificationContext({
+        chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription),
+        verificationId: normalizedChassisVerificationId,
+        requestedById: authenticatedUserId,
+        canBypassVerification: !vehicleListingVerificationRequired,
+      })
+      : { record: null, error: null };
     if (chassisVerification.error) {
       return res.status(422).json({ error: chassisVerification.error, code: 'chassis_verification_required' });
     }
-    const providerVerificationSnapshot = await getProviderListingVerificationSnapshot(chassisVerification.record?.id);
+    const providerVerificationSnapshot = vehicleListingVerificationEnabled
+      ? await getProviderListingVerificationSnapshot(chassisVerification.record?.id)
+      : null;
     const soldAt = getSoldAtValueForStatus({ nextStatus: initialListingStatus });
     const payloadValidationError = validateListingPayload({
       categoryId: normalizedCategoryId,
@@ -941,10 +981,10 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       rtoDetails: rtoDetails && typeof rtoDetails === 'object' ? rtoDetails : null,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
-    if (!canBypassVehicleVerification && chassisVerification.record && !providerVerificationSnapshot) {
+    if (vehicleListingVerificationRequired && chassisVerification.record && !providerVerificationSnapshot) {
       return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the chassis number again.', code: 'chassis_verification_required' });
     }
-    if (!canBypassVehicleVerification && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
+    if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
       return res.status(422).json({ error: 'Chassis or engine number changed. Verify the current vehicle identity before saving.', code: 'chassis_reverification_required' });
     }
 
@@ -1214,6 +1254,12 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const listingId = String(req.params.id || '');
     const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
     const canBypassVehicleVerification = canBypassListingVerification(req.user.role, editPermissions);
+    const platformSettings = await getAppSettings();
+    const vehicleListingVerificationEnabled = platformSettings.vehicleListingVerification.enabled === true;
+    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
+      platformSettings.vehicleListingVerification,
+      canBypassVehicleVerification,
+    );
     const existingListing = isAdmin
       ? await prismaAny.listing.findUnique({
           where: { id: listingId },
@@ -1330,19 +1376,23 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           slot: (item as any).slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
           isFeatured: item.isFeatured,
         }));
-    const chassisVerification = await getChassisVerificationContext({
-      chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription || ''),
-      verificationId: normalizedChassisVerificationId,
-      requestedById: req.user.id,
-      canBypassVerification: canBypassVehicleVerification,
-    });
+    const chassisVerification = vehicleListingVerificationEnabled
+      ? await getChassisVerificationContext({
+        chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription || ''),
+        verificationId: normalizedChassisVerificationId,
+        requestedById: req.user.id,
+        canBypassVerification: !vehicleListingVerificationRequired,
+      })
+      : { record: null, error: null };
     if (chassisVerification.error) {
       return res.status(422).json({ error: chassisVerification.error, code: 'chassis_verification_required' });
     }
     const providerVerificationRecordId = chassisVerification.record?.id
       || existingListing.vehicleVerification?.verificationRecordId
       || null;
-    const providerVerificationSnapshot = await getProviderListingVerificationSnapshot(providerVerificationRecordId);
+    const providerVerificationSnapshot = vehicleListingVerificationEnabled
+      ? await getProviderListingVerificationSnapshot(providerVerificationRecordId)
+      : null;
     const nextIsNegotiable = hasOwnField('isNegotiable')
       ? Boolean(isNegotiable)
       : Boolean(existingListing.isNegotiable);
@@ -1439,10 +1489,10 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           : null,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
-    if (!canBypassVehicleVerification && chassisVerification.record && !providerVerificationSnapshot) {
+    if (vehicleListingVerificationRequired && chassisVerification.record && !providerVerificationSnapshot) {
       return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the chassis number again.', code: 'chassis_verification_required' });
     }
-    if (!canBypassVehicleVerification && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
+    if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
       return res.status(422).json({ error: 'Chassis or engine number changed. Verify the current vehicle identity before saving.', code: 'chassis_reverification_required' });
     }
 

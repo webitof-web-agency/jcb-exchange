@@ -23,6 +23,7 @@ import {
 import { getChassisSubmitValidationError, mapChassisToRcVehicle } from '@/lib/sellVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
+import { isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -120,6 +121,13 @@ type ChassisVerificationResponse = {
   cacheHit?: boolean;
 };
 
+type ListingVerificationPolicyResponse = {
+  vehicleListingVerification: {
+    enabled: boolean;
+    required: boolean;
+  };
+};
+
 type ChassisVerificationStatus = 'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED';
 
 type MediaSlotKey =
@@ -201,6 +209,10 @@ export type EditableListing = {
     isFeatured: boolean;
   }>;
   rtoRecords?: ListingRecord['rtoRecords'];
+  vehicleVerification?: {
+    verificationRecordId?: string | null;
+    status?: 'NOT_VERIFIED' | 'API_VERIFIED' | 'MANUALLY_MODIFIED' | 'REVERIFICATION_REQUIRED' | null;
+  } | null;
 };
 
 const initialForm: ListingFormState = {
@@ -622,6 +634,7 @@ export default function SellVehicleModal({
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<ChassisVerificationStatus>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
   const [chassisVerificationId, setChassisVerificationId] = useState('');
+  const [listingVerificationPolicy, setListingVerificationPolicy] = useState<ListingVerificationPolicyResponse['vehicleListingVerification'] | null>(null);
   const chassisVerificationRequestRef = useRef(0);
   const originalChassisNumberRef = useRef('');
   const [viewListing, setViewListing] = useState<ListingRecord | null>(null);
@@ -666,11 +679,12 @@ export default function SellVehicleModal({
 
     const loadPageData = async () => {
       try {
-        const [categoryResult, brandResult, listingResult, countriesResult] = await Promise.allSettled([
+        const [categoryResult, brandResult, listingResult, countriesResult, verificationPolicyResult] = await Promise.allSettled([
           api.get<{ data: CategoryOption[] }>('/master/categories'),
           api.get<{ data: Option[] }>('/master/brands'),
           token ? api.get<{ listings: ListingRecord[] }>('/listings') : Promise.resolve(null),
           api.get<Option[]>('/locations/countries'),
+          token ? api.get<ListingVerificationPolicyResponse>('/listings/verification-policy') : Promise.resolve(null),
         ]);
 
         if (cancelled) {
@@ -693,6 +707,12 @@ export default function SellVehicleModal({
           setListings(listingResult.value.data.listings || []);
         } else {
           setListings([]);
+        }
+
+        if (verificationPolicyResult.status === 'fulfilled' && verificationPolicyResult.value) {
+          setListingVerificationPolicy(verificationPolicyResult.value.data.vehicleListingVerification);
+        } else {
+          setListingVerificationPolicy(null);
         }
 
         if (countriesResult.status === 'fulfilled') {
@@ -865,9 +885,14 @@ export default function SellVehicleModal({
       },
     });
 
-    setChassisVerificationStatus('UNVERIFIED');
-    setVerifiedChassisNumber('');
-    setChassisVerificationId('');
+    const savedVerification = listing.vehicleVerification;
+    const hasReusableVerification = Boolean(
+      savedVerification?.verificationRecordId
+      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || ''),
+    );
+    setChassisVerificationStatus(hasReusableVerification ? 'VERIFIED' : 'UNVERIFIED');
+    setVerifiedChassisNumber(hasReusableVerification ? parsedDetails.chassisOrSerialNo : '');
+    setChassisVerificationId(hasReusableVerification ? savedVerification?.verificationRecordId || '' : '');
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
 
@@ -940,6 +965,11 @@ export default function SellVehicleModal({
   };
 
   const handleChassisVerification = async () => {
+    if (listingVerificationPolicy?.enabled !== true) {
+      setError('Vehicle listing verification is currently disabled. Enter the vehicle details manually.');
+      return;
+    }
+
     const chassisNumber = form.chassisOrSerialNo.trim();
     if (!chassisNumber) {
       setChassisVerificationStatus('FAILED');
@@ -1037,20 +1067,28 @@ export default function SellVehicleModal({
       return;
     }
 
-    if (!token || !user) {
+    if (!token || !user || !isUsableAuthToken(token)) {
+      if (token && !isUsableAuthToken(token)) {
+        useAuthStore.getState().logout();
+      }
       setError(t('sellModal.signInRequired'));
-      setAuthModalOpen(true);
+      setAuthModalOpen(true, 'login');
       return;
     }
 
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(user.role || '');
+    const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
     const currentChassis = normalizeChassisValue(form.chassisOrSerialNo);
     const savedChassis = normalizeChassisValue(originalChassisNumberRef.current);
-    const canReuseSavedVerification = Boolean(editingListingId && currentChassis && currentChassis === savedChassis);
-    const chassisVerificationError = canReuseSavedVerification
+    const canReuseSavedVerification = Boolean(
+      editingListingId
+      && currentChassis
+      && currentChassis === savedChassis
+      && chassisVerificationId,
+    );
+    const chassisVerificationError = !vehicleVerificationRequired || canReuseSavedVerification
       ? null
-      : getChassisSubmitValidationError(form.chassisOrSerialNo, verifiedChassisNumber, isAdmin);
-    if (chassisVerificationError || (!isAdmin && !chassisVerificationId && !canReuseSavedVerification)) {
+      : getChassisSubmitValidationError(form.chassisOrSerialNo, verifiedChassisNumber, false);
+    if (chassisVerificationError || (vehicleVerificationRequired && !chassisVerificationId && !canReuseSavedVerification)) {
       const safeError = chassisVerificationError || 'Verify the chassis number before posting this vehicle.';
       setError(safeError);
       showToast({
@@ -1222,7 +1260,11 @@ export default function SellVehicleModal({
       resetFormState();
       shouldCloseAfterSave = true;
     } catch (submitError) {
-      const isSessionExpired = axios.isAxiosError(submitError) && submitError.response?.status === 401;
+      const isSessionExpired = axios.isAxiosError(submitError) && isAuthenticationFailure(submitError);
+      if (isSessionExpired) {
+        useAuthStore.getState().logout();
+        setAuthModalOpen(true, 'login');
+      }
       const submitErrorMessage = isSessionExpired
         ? t('sellModal.signInRequired')
         : getApiErrorMessage(
@@ -1297,14 +1339,16 @@ export default function SellVehicleModal({
                     <h3 className="text-base font-semibold">{t('sellModal.equipmentDetails')}</h3>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label={t('sellModal.chassisSerialNumber')}>
+                    <Field label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.required ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.chassisOrSerialNo}
                           onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
                           className={fieldClassName}
-                          aria-describedby="chassis-verification-status"
+                          aria-describedby={listingVerificationPolicy?.enabled ? 'chassis-verification-status' : undefined}
+                          aria-required={listingVerificationPolicy?.required === true}
                         />
+                        {listingVerificationPolicy?.enabled ? (
                         <button
                           type="button"
                           onClick={() => void handleChassisVerification()}
@@ -1328,7 +1372,9 @@ export default function SellVehicleModal({
                             </>
                           )}
                         </button>
+                        ) : null}
                       </div>
+                      {listingVerificationPolicy?.enabled ? (
                       <p
                         id="chassis-verification-status"
                         className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${
@@ -1343,8 +1389,15 @@ export default function SellVehicleModal({
                           ? '✓ Verified successfully. API-backed vehicle details were filled.'
                           : chassisVerificationStatus === 'FAILED'
                             ? '✕ Verification failed. Correct the chassis number and try again.'
-                            : 'Verification is required before posting this vehicle.'}
+                            : listingVerificationPolicy.required
+                              ? 'Verification is required before posting this vehicle.'
+                              : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
                       </p>
+                      ) : (
+                        <p className="mt-1.5 text-xs font-medium text-gray-500">
+                          Manual listing mode is active. Chassis verification and auto-fill are disabled.
+                        </p>
+                      )}
                     </Field>
                     <div>
                       <Field label={t('sellModal.vehicleName')}>
@@ -1963,9 +2016,12 @@ function ListingMediaUploadBox({
       return;
     }
 
-    if (!token) {
+    if (!token || !isUsableAuthToken(token)) {
+      if (token && !isUsableAuthToken(token)) {
+        useAuthStore.getState().logout();
+      }
       setError(t('sellModal.signInToUpload'));
-      setAuthModalOpen(true);
+      setAuthModalOpen(true, 'login');
       return;
     }
 
@@ -1988,9 +2044,10 @@ function ListingMediaUploadBox({
         }
       }
     } catch (uploadError) {
-      if (axios.isAxiosError(uploadError) && (uploadError.response?.status === 401 || uploadError.response?.status === 403)) {
+      if (axios.isAxiosError(uploadError) && isAuthenticationFailure(uploadError)) {
         setError(t('sellModal.uploadSessionExpired'));
-        setAuthModalOpen(true);
+        useAuthStore.getState().logout();
+        setAuthModalOpen(true, 'login');
         return;
       }
 

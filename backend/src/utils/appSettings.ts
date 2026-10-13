@@ -11,6 +11,10 @@ import {
   defaultMobileOtpSettings,
   normalizeMobileOtpSettings,
 } from './mobileOtp';
+import {
+  type VehicleListingVerificationSettings,
+  normalizeVehicleListingVerificationSettings,
+} from './listingVerificationPolicy';
 
 type GoogleAuthSettings = {
   enabled: boolean;
@@ -253,6 +257,7 @@ type AppSettings = {
   publicLeadRouting: PublicLeadRoutingSettings;
   customerPrime: CustomerPrimeSettings;
   listingCreationAccess: ListingCreationAccessSettings;
+  vehicleListingVerification: VehicleListingVerificationSettings;
   listingPayment: ListingPaymentSettings;
   companyInvoice: CompanyInvoiceSettings;
   googleDrive: GoogleDriveSettings;
@@ -304,6 +309,7 @@ const defaultSettings: AppSettings = {
     updatedByUserId: null,
   },
   listingCreationAccess: normalizeListingCreationAccessSettings(),
+  vehicleListingVerification: normalizeVehicleListingVerificationSettings(),
   listingPayment: {
     rtgs: {
       enabled: false,
@@ -406,6 +412,7 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
   },
   customerPrime: normalizeCustomerPrimeSettings(parsed?.customerPrime),
   listingCreationAccess: normalizeListingCreationAccessSettings(parsed?.listingCreationAccess),
+  vehicleListingVerification: normalizeVehicleListingVerificationSettings(parsed?.vehicleListingVerification),
   listingPayment: normalizeListingPaymentSettings(parsed?.listingPayment),
   companyInvoice: normalizeCompanyInvoiceSettings(parsed?.companyInvoice),
   googleDrive: normalizeGoogleDriveSettings(parsed?.googleDrive),
@@ -662,6 +669,7 @@ export const updatePlatformRuntimeSettings = async ({
   publicLeadRouting,
   customerPrime,
   listingCreationAccess,
+  vehicleListingVerification,
   listingPayment,
   companyInvoice,
   googleDrive,
@@ -694,6 +702,7 @@ export const updatePlatformRuntimeSettings = async ({
   listingCreationAccess?: Partial<
     Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>
   > | null;
+  vehicleListingVerification?: Partial<Pick<VehicleListingVerificationSettings, 'enabled'>> | null;
   listingPayment?: Partial<ListingPaymentSettings> | null;
   companyInvoice?: Partial<CompanyInvoiceSettings> | null;
   googleDrive?: Partial<GoogleDriveSettings> | null;
@@ -707,6 +716,7 @@ export const updatePlatformRuntimeSettings = async ({
   const hasPublicLeadRoutingUpdate = publicLeadRouting !== undefined;
   const hasCustomerPrimeUpdate = customerPrime !== undefined;
   const hasListingCreationAccessUpdate = listingCreationAccess !== undefined;
+  const hasVehicleListingVerificationUpdate = vehicleListingVerification !== undefined;
   const hasListingPaymentUpdate = listingPayment !== undefined;
   const hasCompanyInvoiceUpdate = companyInvoice !== undefined;
   const hasGoogleDriveUpdate = googleDrive !== undefined;
@@ -767,6 +777,16 @@ export const updatePlatformRuntimeSettings = async ({
         updatedByUserId: updatedByUserId || null,
       }
       : currentSettings.listingCreationAccess,
+    vehicleListingVerification: hasVehicleListingVerificationUpdate
+      ? {
+        ...normalizeVehicleListingVerificationSettings({
+          ...currentSettings.vehicleListingVerification,
+          ...vehicleListingVerification,
+        }),
+        updatedAt: nextTimestamp,
+        updatedByUserId: updatedByUserId || null,
+      }
+      : currentSettings.vehicleListingVerification,
     listingPayment: hasListingPaymentUpdate
       ? {
         ...normalizeListingPaymentSettings({

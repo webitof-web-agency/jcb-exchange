@@ -3,6 +3,7 @@ import {
   createListing,
   deleteListing,
   getListingById,
+  getListingVerificationPolicy,
   getListings,
   getListingPaymentSettings,
   getCustomerListingPaymentSubmissions,
@@ -21,6 +22,7 @@ const router = Router();
 
 router.post('/', requireAuth, createListing);
 router.get('/', requireAuth, getListings);
+router.get('/verification-policy', requireAuth, getListingVerificationPolicy);
 router.get('/payment-submissions/customer', requireAuth, getCustomerListingPaymentSubmissions);
 router.get('/payment-submissions/partner', requireAuth, getPartnerListingPaymentSubmissions);
 router.get('/:id/payment-settings', requireAuth, getListingPaymentSettings);
