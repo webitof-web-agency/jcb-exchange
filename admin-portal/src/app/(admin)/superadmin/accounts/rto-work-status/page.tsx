@@ -19,6 +19,7 @@ import { filterSelectOptions, getHsrpStatusOptions, getInitialTermsAccepted, get
 import { normalizeAmountInput, toEditableAmount } from '@/lib/sellAccountForm.mjs';
 import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
 import { getRtoActionVisibility } from '@/lib/rtoWorkStatusPermissions.mjs';
+import { formatRtoCurrency } from '@/lib/rtoWorkStatusDisplay.mjs';
 import { toast } from 'react-toastify';
 
 type Status = 'PENDING' | 'IN_PROGRESS' | 'DOCUMENT_REQUIRED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
@@ -495,7 +496,6 @@ export default function RTOWorkStatusPage() {
     try { await api.delete(`/recruitment/admin/rto-records/${id}`); await loadRecords(); } catch { setError('Unable to delete RTO record.'); }
   };
 
-  const currency = (value: number) => `â‚¹${Number(value || 0).toLocaleString('en-IN')}`;
   const phoneLink = (phoneNumber: string) => phoneNumber ? <a href={`tel:${phoneNumber}`} onClick={(event) => event.stopPropagation()} className="mt-0.5 flex items-center gap-1 text-xs text-blue-600 hover:underline"><Phone className="h-3 w-3 text-blue-500" />{phoneNumber}</a> : <span className="mt-0.5 block text-xs text-gray-400">No number</span>;
   const validityCell = (status: Validity, date: string | null) => <span className="whitespace-nowrap">{label(status)}{date ? <small className="block text-gray-400">{dateValue(date)}</small> : null}</span>;
   const statusPill = (status: Status) => {
@@ -571,7 +571,7 @@ export default function RTOWorkStatusPage() {
                         </p>
                       ) : null}
                     </td>
-                    <td className="px-3 py-3.5 whitespace-nowrap"><p className="text-xs font-semibold text-gray-900">{currency(record.rtoExpenses)}</p></td>
+                    <td className="px-3 py-3.5 whitespace-nowrap"><p className="text-xs font-semibold text-gray-900">{formatRtoCurrency(record.rtoExpenses)}</p></td>
                     <td className="px-3 py-3.5 whitespace-nowrap">{statusPill(record.rtoStatus)}</td>
                     <td className="px-3.5 py-3.5 text-right">
                       <div onClick={(event) => event.stopPropagation()}>

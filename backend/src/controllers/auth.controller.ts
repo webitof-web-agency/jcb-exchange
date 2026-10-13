@@ -342,13 +342,19 @@ export const buildAuthUserPayload = async (user: any) => {
             : resolvedRole === 'CUSTOMER'
               ? '/profile'
               : null;
-  const primeAccessPayload =
-    resolvedRole === 'CUSTOMER'
-      ? await getCustomerPrimeAccessPayload({
-          userId: user.id,
-          role: resolvedRole,
-        })
-      : null;
+  let primeAccessPayload = null;
+  if (resolvedRole === 'CUSTOMER') {
+    try {
+      primeAccessPayload = await getCustomerPrimeAccessPayload({
+        userId: user.id,
+        role: resolvedRole,
+      });
+    } catch (error) {
+      // Prime access is enrichment data. A failure in this optional path must
+      // not turn a valid authenticated profile request into HTTP 500.
+      console.error('Customer prime access sync failed during profile load.', error);
+    }
+  }
   const baseUser = {
     id: user.id,
     email: user.email,
