@@ -1,3 +1,7 @@
+import { isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
+
+export { isDefinitiveSessionFailure };
+
 export const ACCOUNT_REVOKED_CODE = 'ACCOUNT_REVOKED';
 export const ACCOUNT_INACTIVE_CODE = 'ACCOUNT_INACTIVE';
 

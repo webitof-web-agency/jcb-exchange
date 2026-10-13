@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizeApiBaseUrl } from './apiBaseUrl.mjs';
+import { isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -24,11 +25,8 @@ api.interceptors.response.use(
   (error) => {
     const requestHeaders = error?.config?.headers;
     const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
-    const responseCode = error?.response?.data?.code;
-    const revokedSession = responseCode === 'ACCOUNT_REVOKED' || responseCode === 'ACCOUNT_INACTIVE';
-    const isAuthenticationFailure = error?.response?.status === 401 || (error?.response?.status === 403 && revokedSession);
 
-    if (axios.isAxiosError(error) && isAuthenticationFailure && sentAuthHeader) {
+    if (axios.isAxiosError(error) && isDefinitiveSessionFailure(error) && sentAuthHeader) {
       useAuthStore.getState().logout();
     }
 

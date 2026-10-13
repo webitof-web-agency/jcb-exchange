@@ -13,7 +13,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useIdleAutoLogout } from '@/hooks/useIdleAutoLogout';
 import { accountsNavItems } from '@/lib/accountsPermissions';
 import { insertAccountsNavItem } from '@/lib/adminNavigation';
-import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
+import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
@@ -240,10 +240,10 @@ export default function AdminLayout({
   const isRecruitmentDropdownExpanded = isRecruitmentMenuExpanded ?? isRecruitmentSectionActive;
 
   const visibleAccountsNavItems = useMemo(
-    () => (isSuperAdmin
+    () => (isSuperAdmin || user?.role === 'ADMIN'
       ? accountsNavItems
       : accountsNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions))),
-    [isSuperAdmin, userPermissions]
+    [isSuperAdmin, user?.role, userPermissions]
   );
   const isAccountsSectionActive = pathname.startsWith('/superadmin/accounts') || pathname.startsWith('/employee/accounts') || pathname.startsWith('/admin/accounts');
   const [accountsMenuExpansion, setAccountsMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
@@ -365,7 +365,10 @@ export default function AdminLayout({
 
     const verifySession = async () => {
       try {
-        const response = await api.get('/auth/profile');
+        // A health check must not hold the form hostage to a transient backend
+        // restart, network timeout, or database hiccup. Confirmed auth failures
+        // are handled separately below.
+        const response = await api.get('/auth/profile', { timeout: 10000 });
 
         if (!isMounted) {
           return;
@@ -400,8 +403,12 @@ export default function AdminLayout({
           return;
         }
 
-        logout();
-        router.replace('/login');
+        if (isDefinitiveSessionFailure(error)) {
+          logout();
+          router.replace('/login');
+        }
+        // Keep the current session and form state for transient failures. The
+        // next scheduled verification will retry without destroying local auth.
       }
     };
 

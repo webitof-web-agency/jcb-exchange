@@ -13,7 +13,7 @@ import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
-import { isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
+import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
@@ -263,7 +263,10 @@ export default function PartnerLayout({
 
     const verifySession = async () => {
       try {
-        const response = await api.get('/auth/profile');
+        // A health check must not hold the form hostage to a transient backend
+        // restart, network timeout, or database hiccup. Confirmed auth failures
+        // are handled separately below.
+        const response = await api.get('/auth/profile', { timeout: 10000 });
 
         if (!isMounted) {
           return;
@@ -302,8 +305,12 @@ export default function PartnerLayout({
           return;
         }
 
-        logout();
-        router.replace('/login');
+        if (isDefinitiveSessionFailure(error)) {
+          logout();
+          router.replace('/login');
+        }
+        // Keep the current session and form state for transient failures. The
+        // next scheduled verification will retry without destroying local auth.
       }
     };
 

@@ -49,7 +49,7 @@ import {
   updateAdminDepartment,
   deleteAdminDepartment,
 } from '../controllers/recruitment.controller';
-import { requireAuth, requireAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
+import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 import { createRtoRecord, deleteRtoRecord, listRtoRecords, updateRtoRecord } from '../controllers/rto.controller';
 
@@ -68,10 +68,10 @@ const canUpdateJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.
 const canDeleteJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.delete']);
 const canDuplicateJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.duplicate']);
 const canChangeJobStatus = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.change_status']);
-const canViewRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.read', 'accounts.rto.crud']);
-const canCreateRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.create']);
-const canUpdateRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.update']);
-const canDeleteRto = requireSuperAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.delete']);
+const canViewRto = requireAdminOrEmployeePermissions(['accounts.rto.read', 'accounts.rto.crud']);
+const canCreateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.create']);
+const canUpdateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.update']);
+const canDeleteRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.delete']);
 const canViewApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.read']);
 const canUpdateApplicationStage = requireSuperAdminOrEmployeePermissions(['recruitment.applications.update_stage']);
 const canAssignApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.assign']);
