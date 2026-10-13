@@ -5,8 +5,9 @@ import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUp
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
-export const MAX_LISTING_VIDEO_INPUT_SIZE = 15 * 1024 * 1024;
-export const MAX_LISTING_VIDEO_DURATION_SECONDS = 60;
+export const MAX_LISTING_VIDEO_INPUT_SIZE = 30 * 1024 * 1024;
+export const MAX_LISTING_VIDEO_DURATION_SECONDS = 120;
+const MAX_LISTING_VIDEO_UPLOAD_SIZE = 15 * 1024 * 1024;
 export const MAX_FINANCE_SUPPORT_IMAGE_INPUT_SIZE = 2 * 1024 * 1024;
 export const MAX_HERO_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_INSPECTION_SECTION_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
@@ -149,6 +150,138 @@ const loadVideoMetadata = (file: File) =>
     };
     video.src = objectUrl;
   });
+
+const supportedVideoMimeTypes = [
+  'video/webm;codecs=vp9',
+  'video/webm;codecs=vp8',
+  'video/webm',
+  'video/mp4',
+];
+
+const getSupportedVideoMimeType = () => {
+  if (typeof MediaRecorder === 'undefined') {
+    return null;
+  }
+
+  return supportedVideoMimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || null;
+};
+
+const loadVideoForCompression = (file: File) =>
+  new Promise<{ video: HTMLVideoElement; objectUrl: string }>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => resolve({ video, objectUrl });
+    video.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Unable to read the selected video.'));
+    };
+    video.src = objectUrl;
+  });
+
+const fitVideoWithinBounds = (width: number, height: number) => {
+  const maxWidth = 1280;
+  const maxHeight = 720;
+  const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+
+  return {
+    width: Math.max(2, Math.floor((width * ratio) / 2) * 2),
+    height: Math.max(2, Math.floor((height * ratio) / 2) * 2),
+  };
+};
+
+const recordCompressedVideo = async (
+  file: File,
+  mimeType: string,
+  videoBitsPerSecond: number,
+) => {
+  const { video, objectUrl } = await loadVideoForCompression(file);
+  const dimensions = fitVideoWithinBounds(video.videoWidth || 1280, video.videoHeight || 720);
+  const canvas = document.createElement('canvas');
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
+  const context = canvas.getContext('2d');
+
+  if (!context || typeof canvas.captureStream !== 'function') {
+    URL.revokeObjectURL(objectUrl);
+    throw new Error('This browser cannot compress video. Please use an up-to-date browser.');
+  }
+
+  const stream = canvas.captureStream(30);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
+  const chunks: Blob[] = [];
+
+  return new Promise<File>((resolve, reject) => {
+    let animationFrame = 0;
+    let settled = false;
+
+    const cleanup = () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      video.pause();
+      stream.getTracks().forEach((track) => track.stop());
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      const outputName = file.name.replace(/\.[^.]+$/, '') || 'vehicle-video';
+      const outputType = mimeType.split(';', 1)[0] || 'video/webm';
+      const outputExtension = outputType === 'video/mp4' ? 'mp4' : 'webm';
+      resolve(new File(chunks, `${outputName}.${outputExtension}`, { type: outputType, lastModified: Date.now() }));
+    };
+
+    const drawFrame = () => {
+      if (settled) return;
+      context.drawImage(video, 0, 0, dimensions.width, dimensions.height);
+      animationFrame = requestAnimationFrame(drawFrame);
+    };
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onerror = () => finish(new Error('Unable to compress the selected video.'));
+    recorder.onstop = () => finish();
+    video.onended = () => {
+      if (recorder.state !== 'inactive') recorder.stop();
+    };
+
+    void video.play()
+      .then(() => {
+        recorder.start(1000);
+        drawFrame();
+      })
+      .catch(() => finish(new Error('Unable to process the selected video.')));
+  });
+};
+
+export const compressVideoForUpload = async (file: File) => {
+  const mimeType = getSupportedVideoMimeType();
+  if (!mimeType) {
+    throw new Error('This browser cannot compress video. Please use an up-to-date browser.');
+  }
+
+  const bitrateOptions = [650_000, 500_000, 350_000];
+  let compressedFile: File | null = null;
+
+  for (const videoBitsPerSecond of bitrateOptions) {
+    compressedFile = await recordCompressedVideo(file, mimeType, videoBitsPerSecond);
+    if (compressedFile.size <= MAX_LISTING_VIDEO_UPLOAD_SIZE) {
+      return compressedFile;
+    }
+  }
+
+  throw new Error('The compressed video is still larger than 15MB. Please choose a shorter or lower-resolution video.');
+};
 
 const loadImage = (file: File) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -353,7 +486,7 @@ export const prepareListingMediaForUpload = async (file: File, kind: ListingMedi
     });
   }
 
-  return file;
+  return compressVideoForUpload(file);
 };
 
 export const prepareFinanceSupportImageForUpload = async (file: File) => {

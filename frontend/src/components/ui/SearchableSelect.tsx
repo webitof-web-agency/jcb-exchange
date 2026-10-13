@@ -24,6 +24,7 @@ type SearchableSelectProps = {
   searchPlaceholder?: string;
   noResultsText?: string;
   disabled?: boolean;
+  required?: boolean;
   className?: string;
   searchable?: boolean;
 };
@@ -37,6 +38,7 @@ export default function SearchableSelect({
   searchPlaceholder,
   noResultsText,
   disabled = false,
+  required = false,
   className,
   searchable = true,
 }: SearchableSelectProps) {
@@ -93,7 +95,16 @@ export default function SearchableSelect({
   const displayValue = selectedOption ? selectedOption.name : fallbackLabel;
 
   return (
-    <div className={cn("relative w-full", className)} ref={wrapperRef}>
+    <div className={cn("relative w-full", className)} ref={wrapperRef} aria-invalid={required && !displayValue}>
+      <input
+        type="text"
+        value={displayValue}
+        readOnly
+        required={required}
+        tabIndex={-1}
+        aria-label={resolvedPlaceholder}
+        className="sr-only"
+      />
       <button
         type="button"
         disabled={disabled}

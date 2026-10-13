@@ -33,6 +33,7 @@ import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, saniti
 import { getChassisSubmitValidationError, findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
+import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 
 type ListingFormState = {
   category: string;
@@ -411,7 +412,7 @@ const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
 const imageUploadHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
-const videoUploadHelper = `Auto-optimized MP4 (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
+const videoUploadHelper = `Auto-compressed video (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
 
 const formatCurrency = (value: string | number) => {
   const numericValue = typeof value === 'number' ? value : Number(value || 0);
@@ -1289,6 +1290,17 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     const sanitizedForm = sanitizeListingFormData(form);
+    const mediaRequirementError = getListingFormValidationError({
+      category: sanitizedForm.category,
+      brand: sanitizedForm.brand,
+      imageCount: mediaSlots.filter((slot) => slot.kind === 'image' && mediaState[slot.key]).length,
+      hasVideo: Boolean(mediaState['walkaround-video']),
+    });
+    if (mediaRequirementError) {
+      setError(mediaRequirementError);
+      return;
+    }
+
     const currentChassis = sanitizedForm.chassisOrSerialNo.trim().toUpperCase().replace(/\s+/g, '');
     const savedChassis = originalChassisNumberRef.current.trim().toUpperCase().replace(/\s+/g, '');
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
@@ -1882,8 +1894,8 @@ export default function PartnerListingsPage() {
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label="Category">
-                      <select value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
+                    <Field label="Category *">
+                      <select required value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
                         <option value="">Select category</option>
                         {categories.map((option) => (
                           <option key={option.id} value={option.id}>
@@ -1892,12 +1904,13 @@ export default function PartnerListingsPage() {
                         ))}
                       </select>
                     </Field>
-                    <Field label="Brand">
+                    <Field label="Brand *">
                       <SearchableSelect
                         options={brands}
                         value={form.brand}
                         displayValue={form.brand}
                         onChange={(option) => updateField('brand', option.name)}
+                        required
                         placeholder="Select brand"
                         className="bg-[#F8FAFC]"
                       />
@@ -2091,8 +2104,11 @@ export default function PartnerListingsPage() {
                 <section className="rounded-2xl border border-gray-200 p-5">
                   <div className="mb-4 flex items-center gap-2 text-gray-900">
                     <Upload className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">Media Uploads</h3>
+                    <h3 className="text-base font-semibold">Media Uploads *</h3>
                   </div>
+                  <p className="mb-4 text-xs font-medium text-gray-500">
+                    At least one vehicle image and one video are required. Each selected video is compressed before upload.
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {mediaSlots.map((slot) => (
                       <ListingMediaUploadBox

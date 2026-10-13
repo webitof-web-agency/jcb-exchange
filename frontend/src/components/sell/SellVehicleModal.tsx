@@ -24,6 +24,7 @@ import { getChassisSubmitValidationError, mapChassisToRcVehicle } from '@/lib/se
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
+import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -642,7 +643,7 @@ export default function SellVehicleModal({
   const showToast = useToastStore((state) => state.showToast);
   const { token, user, hasHydrated, setAuthModalOpen } = useAuthStore();
   const imageUploadHelper = `${t('sellModal.autoCompressed')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.inputMaxSuffix')}`;
-  const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-optimized MP4 (muted).')} ${t('sellModal.maxLabel')} ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.andLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`;
+  const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-compressed video (muted).')} ${t('sellModal.maxLabel')} ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.andLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`;
   const localizedMediaLabels: Record<MediaSlotKey, string> = {
     'front-view': t('sellModal.mediaSlots.frontView'),
     'rear-view': t('sellModal.mediaSlots.rearView'),
@@ -1101,6 +1102,22 @@ export default function SellVehicleModal({
 
     const sanitizedForm = sanitizeListingFormData(form);
 
+    const mediaRequirementError = getListingFormValidationError({
+      category: sanitizedForm.category,
+      brand: sanitizedForm.brand,
+      imageCount: mediaSlots.filter((slot) => slot.kind === 'image' && mediaState[slot.key]).length,
+      hasVideo: Boolean(mediaState['walkaround-video']),
+    });
+    if (mediaRequirementError) {
+      setError(mediaRequirementError);
+      showToast({
+        title: t('sellModal.notSubmitted'),
+        description: mediaRequirementError,
+        variant: 'error',
+      });
+      return;
+    }
+
     const validationError = !isValidDigitsOnlyValue(sanitizedForm.price)
       ? 'Price must contain digits only.'
       : !isValidYearValue(sanitizedForm.manufacturingYear)
@@ -1414,8 +1431,8 @@ export default function SellVehicleModal({
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label={t('sellModal.category')}>
-                      <select value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
+                    <Field label={`${t('sellModal.category')} *`}>
+                      <select required value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
                         <option value="">{t('sellModal.selectCategory')}</option>
                         {categories.map((option) => (
                           <option key={option.id} value={option.id}>
@@ -1424,12 +1441,13 @@ export default function SellVehicleModal({
                         ))}
                       </select>
                     </Field>
-                    <Field label={t('sellModal.brand')}>
+                    <Field label={`${t('sellModal.brand')} *`}>
                       <SearchableSelect
                         options={brands}
                         value={form.brand}
                         displayValue={form.brand}
                         onChange={(option) => updateField('brand', option.name)}
+                        required
                         placeholder={t('sellModal.selectBrand')}
                         searchPlaceholder={t('sellModal.searchOptions')}
                         noResultsText={t('sellModal.noResults')}
@@ -1625,8 +1643,11 @@ export default function SellVehicleModal({
                 <section className="rounded-2xl border border-gray-200 p-5">
                   <div className="mb-4 flex items-center gap-2 text-gray-900">
                     <Upload className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">{t('sellModal.mediaUploads')}</h3>
+                    <h3 className="text-base font-semibold">{t('sellModal.mediaUploads')} *</h3>
                   </div>
+                  <p className="mb-4 text-xs font-medium text-gray-500">
+                    At least one vehicle image and one video are required. Each selected video is compressed before upload.
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {mediaSlots.map((slot) => (
                       <ListingMediaUploadBox

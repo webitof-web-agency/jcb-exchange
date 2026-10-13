@@ -22,6 +22,7 @@ type SearchableSelectProps = {
   onChange: (option: Option) => void;
   placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
   className?: string;
   searchable?: boolean;
   highlighted?: boolean;
@@ -34,6 +35,7 @@ export default function SearchableSelect({
   onChange,
   placeholder,
   disabled = false,
+  required = false,
   className,
   searchable = true,
   highlighted = false,
@@ -89,7 +91,16 @@ export default function SearchableSelect({
   const displayValue = selectedOption ? String(selectedOption.name ?? '') : fallbackLabel;
 
   return (
-    <div className={cn("relative w-full", className)} ref={wrapperRef}>
+    <div className={cn("relative w-full", className)} ref={wrapperRef} aria-invalid={required && !displayValue}>
+      <input
+        type="text"
+        value={displayValue}
+        readOnly
+        required={required}
+        tabIndex={-1}
+        aria-label={resolvedPlaceholder}
+        className="sr-only"
+      />
       <button
         type="button"
         disabled={disabled}

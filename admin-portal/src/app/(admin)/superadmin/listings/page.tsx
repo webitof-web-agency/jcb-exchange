@@ -41,6 +41,7 @@ import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, saniti
 import { getChassisSubmitValidationError, findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
+import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import { getModerationStatus, getPendingModerationOptions } from '@/lib/listingModeration.mjs';
 
 type ListingFormState = {
@@ -494,7 +495,7 @@ const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
 const imageUploadHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
-const videoUploadHelper = `Auto-optimized MP4 (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
+const videoUploadHelper = `Auto-compressed video (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
 
 const formatCurrency = (value: string | number) => {
   const numericValue = typeof value === 'number' ? value : Number(value || 0);
@@ -920,10 +921,10 @@ function TableAvailabilityDropdown({
             setIsOpen(false);
           }
         }}
-        className={`flex items-center justify-between gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold shadow-xs outline-none transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${badgeClass}`}
+        className={`flex items-center justify-between gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-xs outline-none transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${badgeClass}`}
       >
         <span>{value}</span>
-        <ChevronDown size={11} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={10} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && coords && typeof window !== 'undefined' &&
@@ -1816,6 +1817,17 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     const sanitizedForm = sanitizeListingFormData(form);
+    const mediaRequirementError = getListingFormValidationError({
+      category: sanitizedForm.category,
+      brand: sanitizedForm.brand,
+      imageCount: mediaSlots.filter((slot) => slot.kind === 'image' && mediaState[slot.key]).length,
+      hasVideo: Boolean(mediaState['walkaround-video']),
+    });
+    if (mediaRequirementError) {
+      setError(mediaRequirementError);
+      return;
+    }
+
     const currentChassis = sanitizedForm.chassisOrSerialNo.trim().toUpperCase().replace(/\s+/g, '');
     const savedChassis = originalChassisNumberRef.current.trim().toUpperCase().replace(/\s+/g, '');
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
@@ -2479,33 +2491,46 @@ export default function PartnerListingsPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[620px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              <table className="w-full min-w-[1200px] border-collapse text-left text-sm text-gray-600">
+            <div className="overflow-x-auto overflow-y-auto flex-1 max-h-[620px]">
+              <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-xs sm:text-sm text-gray-600">
+                <colgroup>
+                  <col className="w-[15%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[5%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[4%]" />
+                </colgroup>
                 <thead className="sticky top-0 z-10 border-b border-gray-100 bg-gray-50 uppercase text-gray-500 shadow-2xs">
                   <tr>
                     <th
-                      className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
+                      className="truncate px-2.5 py-2.5 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
                       onClick={() => handleSort('title')}
                     >Vehicle Name<SortIcon col="title" sortKey={sortKey} sortDir={sortDir} /></th>
-                    <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide">Dealer/Owner</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide">Model</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide">Category</th>
+                    <th className="truncate px-2.5 py-2.5 text-[11px] font-semibold tracking-wide">Dealer/Owner</th>
+                    <th className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide">Model</th>
+                    <th className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide">Category</th>
                     <th
-                      className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
+                      className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
                       onClick={() => handleSort('price')}
                     >Price<SortIcon col="price" sortKey={sortKey} sortDir={sortDir} /></th>
                     <th
-                      className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
+                      className="truncate px-1 py-2.5 text-center text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
                       onClick={() => handleSort('year')}
                     >Year<SortIcon col="year" sortKey={sortKey} sortDir={sortDir} /></th>
                     <th
-                      className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
+                      className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
                       onClick={() => handleSort('location')}
                     >Location<SortIcon col="location" sortKey={sortKey} sortDir={sortDir} /></th>
-                    <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold tracking-wide">Fuel Type</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-center text-[11px] font-semibold tracking-wide">Availability</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-center text-[11px] font-semibold tracking-wide">Verification</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold tracking-wide">Actions</th>
+                    <th className="truncate px-1.5 py-2.5 text-[11px] font-semibold tracking-wide">Fuel Type</th>
+                    <th className="truncate px-1.5 py-2.5 text-center text-[11px] font-semibold tracking-wide">Availability</th>
+                    <th className="truncate px-1.5 py-2.5 text-center text-[11px] font-semibold tracking-wide">Verification</th>
+                    <th className="px-2 py-2.5 text-right text-[11px] font-semibold tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -2534,9 +2559,9 @@ export default function PartnerListingsPage() {
                         }}
                         className="cursor-pointer transition hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFC107]"
                       >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded border border-gray-200 bg-gray-100">
+                        <td className="px-2.5 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="relative h-8 w-10 shrink-0 overflow-hidden rounded border border-gray-200 bg-gray-100">
                               {cover ? (
                                 <SafeRemoteImage
                                   src={getAbsoluteFileUrl(cover.url)}
@@ -2544,58 +2569,73 @@ export default function PartnerListingsPage() {
                                   className="h-full w-full object-cover"
                                   fallback={
                                     <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                      <Truck className="h-5 w-5" />
+                                      <Truck className="h-3.5 w-3.5" />
                                     </div>
                                   }
                                 />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                  <Truck className="h-5 w-5" />
+                                  <Truck className="h-3.5 w-3.5" />
                                 </div>
                               )}
                             </div>
-                            <span className="max-w-[150px] truncate text-xs font-semibold leading-tight text-gray-900" title={listing.title}>
+                            <span className="truncate text-xs font-semibold leading-tight text-gray-900" title={listing.title}>
                               {listing.title}
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-xs font-semibold text-gray-900">
-                          <div className="flex flex-col">
-                            <span>{listing.dealer || 'Unknown'}</span>
+                        <td className="px-2.5 py-2 text-xs font-semibold text-gray-900">
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate" title={listing.dealer || 'Unknown'}>{listing.dealer || 'Unknown'}</span>
                             {listing.dealerPhone ? (
                               <a
                                 href={`tel:${listing.dealerPhone}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 transition hover:text-amber-950 hover:underline"
+                                className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-medium text-amber-800 transition hover:text-amber-950 hover:underline"
                                 title={`Click to call ${listing.dealerPhone}`}
                               >
-                                <Phone className="h-3 w-3 text-amber-600 shrink-0" />
-                                <span>{listing.dealerPhone}</span>
+                                <Phone className="h-2.5 w-2.5 text-amber-600 shrink-0" />
+                                <span className="truncate">{listing.dealerPhone}</span>
                               </a>
                             ) : null}
-                            <span className="mt-1 inline-flex w-fit rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                            <span className="mt-0.5 inline-flex w-fit rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-600">
                               {resolveDealerTypeLabel(listing)}
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-xs font-medium text-gray-600">
-                          {[listing.brand?.name, listing.model?.name].filter(Boolean).join(' ') || '-'}
+                        <td className="px-2 py-2 text-xs font-medium text-gray-600">
+                          <span className="truncate block" title={[listing.brand?.name, listing.model?.name].filter(Boolean).join(' ') || '-'}>
+                            {[listing.brand?.name, listing.model?.name].filter(Boolean).join(' ') || '-'}
+                          </span>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="rounded border border-gray-200 bg-gray-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                        <td className="px-2 py-2">
+                          <span className="inline-block truncate max-w-full rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-gray-600" title={listing.category?.name || '-'}>
                             {listing.category?.name || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs font-bold text-gray-900">{formatCurrency(listing.price)}</td>
-                        <td className="px-4 py-3 text-xs font-medium text-gray-600">{listing.manufacturingYear || '-'}</td>
-                        <td className="px-4 py-3 text-xs font-medium text-gray-600">
-                          {listing.locationCity ? `${listing.locationCity}, ${listing.locationState}` : '-'}
+                        <td className="whitespace-nowrap px-2 py-2 text-xs font-bold text-gray-900 truncate">
+                          {formatCurrency(listing.price)}
                         </td>
-                        <td className="px-4 py-3 text-xs font-medium text-gray-600">
+                        <td className="whitespace-nowrap px-1 py-2 text-center text-xs font-medium text-gray-600">
+                          {listing.manufacturingYear || '-'}
+                        </td>
+                        <td className="px-2 py-2 text-xs text-gray-600">
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate font-medium text-gray-800" title={listing.locationCity || '-'}>
+                              {listing.locationCity || '-'}
+                            </span>
+                            {listing.locationState ? (
+                              <span className="truncate text-[10px] text-gray-400" title={listing.locationState}>
+                                {listing.locationState}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-1.5 py-2 text-xs font-medium text-gray-600 truncate">
                           {parsedDetails.fuelType || '-'}
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex flex-col items-center gap-1">
+                        <td className="px-1.5 py-2 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
                             <TableAvailabilityDropdown
                               value={isPendingListing ? 'PENDING' : availability}
                               onChange={(val) => {
@@ -2614,29 +2654,31 @@ export default function PartnerListingsPage() {
                               disabled={isPendingListing ? isModeratingListing || !canApprove : isUpdatingAvailability || !canEdit}
                               openUpwards={isNearBottom}
                             />
-                            <span className="min-h-[14px] text-[10px] text-gray-400">
-                              {isPendingListing ? 'Awaiting approval' : isUpdatingAvailability ? 'Updating...' : ' '}
-                            </span>
+                            {(isPendingListing || isUpdatingAvailability) && (
+                              <span className="text-[10px] text-gray-400">
+                                {isPendingListing ? 'Awaiting approval' : 'Updating...'}
+                              </span>
+                            )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-1.5 py-2 text-center">
                           {(() => {
                             const verification = verificationStatusMeta(listing.vehicleVerification?.status);
                             return (
                               <span
-                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold whitespace-nowrap ${verification.className}`}
+                                className={`inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[9.5px] font-semibold whitespace-nowrap ${verification.className}`}
                                 title={listing.vehicleVerification?.changedFields?.length
                                   ? `Changed: ${listing.vehicleVerification.changedFields.join(', ')}`
                                   : verification.label}
                               >
-                                <ShieldCheck className="h-3 w-3" />
-                                {verification.label}
+                                <ShieldCheck className="h-2.5 w-2.5 shrink-0" />
+                                <span>{verification.label}</span>
                               </span>
                             );
                           })()}
                         </td>
-                        <td className="px-4 py-3 text-right sm:px-6 sm:py-4">
-                          <div onClick={(e) => e.stopPropagation()}>
+                        <td className="whitespace-nowrap px-2 py-2 text-right">
+                          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                             <PortalActionDropdown
                               align="right"
                               items={[
@@ -2863,8 +2905,8 @@ export default function PartnerListingsPage() {
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label="Category">
-                      <select value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
+                    <Field label="Category *">
+                      <select required value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
                         <option value="">Select category</option>
                         {categories.map((option) => (
                           <option key={option.id} value={option.id}>
@@ -2873,12 +2915,13 @@ export default function PartnerListingsPage() {
                         ))}
                       </select>
                     </Field>
-                    <Field label="Brand">
+                    <Field label="Brand *">
                       <SearchableSelect
                         options={brands}
                         value={form.brand}
                         displayValue={form.brand}
                         onChange={(option) => updateField('brand', option.name)}
+                        required
                         placeholder="Select brand"
                         className="bg-[#F8FAFC]"
                       />
@@ -3067,8 +3110,11 @@ export default function PartnerListingsPage() {
                 <section className="rounded-2xl border border-gray-200 p-5">
                   <div className="mb-4 flex items-center gap-2 text-gray-900">
                     <Upload className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">Media Uploads</h3>
+                    <h3 className="text-base font-semibold">Media Uploads *</h3>
                   </div>
+                  <p className="mb-4 text-xs font-medium text-gray-500">
+                    At least one vehicle image and one video are required. Each selected video is compressed before upload.
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {mediaSlots.map((slot) => (
                       <ListingMediaUploadBox
