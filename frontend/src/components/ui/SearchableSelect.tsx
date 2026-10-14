@@ -101,7 +101,7 @@ export default function SearchableSelect({
         value={displayValue}
         readOnly
         required={required}
-        tabIndex={-1}
+        tabIndex={required ? 0 : -1}
         aria-label={resolvedPlaceholder}
         className="sr-only"
       />

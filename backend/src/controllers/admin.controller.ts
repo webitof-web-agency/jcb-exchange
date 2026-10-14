@@ -749,7 +749,9 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
         validityUnit?: 'DAYS' | 'MONTHS' | 'days' | 'months';
       };
       listingCreationAccess?: Partial<Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>>;
-      vehicleListingVerification?: Partial<Pick<VehicleListingVerificationSettings, 'enabled'>>;
+      vehicleListingVerification?: Partial<
+        Pick<VehicleListingVerificationSettings, 'enabled' | 'chassisEnabled' | 'registrationEnabled'>
+      >;
       listingPayment?: Partial<ListingPaymentSettings>;
       companyInvoice?: {
         companyName?: string;
@@ -871,8 +873,15 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
 
     if (vehicleListingVerification) {
       settingsPayload.vehicleListingVerification = {
-        ...(vehicleListingVerification.enabled !== undefined
-          ? { enabled: vehicleListingVerification.enabled === true }
+        // Keep old clients compatible: their single `enabled` switch controls
+        // only the original chassis verification source.
+        ...(vehicleListingVerification.chassisEnabled !== undefined
+          ? { chassisEnabled: vehicleListingVerification.chassisEnabled === true }
+          : vehicleListingVerification.enabled !== undefined
+            ? { chassisEnabled: vehicleListingVerification.enabled === true }
+            : {}),
+        ...(vehicleListingVerification.registrationEnabled !== undefined
+          ? { registrationEnabled: vehicleListingVerification.registrationEnabled === true }
           : {}),
       };
     }

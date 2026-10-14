@@ -9,6 +9,7 @@ export const API_BILLABLE_SERVICES = [
   { serviceKey: 'MOBILE_TO_PAN', displayName: 'Mobile To PAN' },
   { serviceKey: 'DRIVING_LICENSE_VERIFICATION', displayName: 'Driving License Verification' },
   { serviceKey: 'RC_OWNER_HISTORY', displayName: 'RC Owner History' },
+  { serviceKey: 'RC_FULL', displayName: 'RC Full' },
   { serviceKey: 'RC_CHALLAN', displayName: 'RC Challan' },
   { serviceKey: 'CHASSIS_TO_RC', displayName: 'Chassis to RC Details' },
   { serviceKey: 'RC_TO_MOBILE', displayName: 'RC to Mobile' },

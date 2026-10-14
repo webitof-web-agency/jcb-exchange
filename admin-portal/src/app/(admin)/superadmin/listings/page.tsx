@@ -38,7 +38,7 @@ import {
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
-import { getChassisSubmitValidationError, findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
+import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
@@ -121,10 +121,16 @@ type ChassisVerificationResponse = {
   result?: Record<string, unknown> | null;
 };
 
+type VehicleVerificationResponse = ChassisVerificationResponse;
+
 type ListingVerificationPolicyResponse = {
   vehicleListingVerification: {
     enabled: boolean;
     required: boolean;
+    chassisEnabled: boolean;
+    registrationEnabled: boolean;
+    chassisRequired: boolean;
+    registrationRequired: boolean;
   };
 };
 
@@ -143,6 +149,9 @@ type ListingRecord = {
   category?: { id: string; name: string };
   vehicleVerification?: {
     verificationRecordId?: string | null;
+    verificationSource?: VehicleVerificationSource | null;
+    verifiedRegistrationNumber?: string | null;
+    verifiedChassisNumber?: string | null;
     status?: string | null;
     changedFields?: string[];
     lastVerifiedAt?: string | null;
@@ -1019,10 +1028,14 @@ export default function PartnerListingsPage() {
   const [uploadingCount, setUploadingCount] = useState(0);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
+  const [verifiedRegistrationNumber, setVerifiedRegistrationNumber] = useState('');
+  const [vehicleVerificationSource, setVehicleVerificationSource] = useState<VehicleVerificationSource | ''>('');
+  const [verificationLoadingSource, setVerificationLoadingSource] = useState<VehicleVerificationSource | ''>('');
   const [chassisVerificationId, setChassisVerificationId] = useState('');
   const [listingVerificationPolicy, setListingVerificationPolicy] = useState<ListingVerificationPolicyResponse['vehicleListingVerification'] | null>(null);
   const chassisVerificationRequestRef = useRef(0);
   const originalChassisNumberRef = useRef('');
+  const originalRegistrationNumberRef = useRef('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -1570,6 +1583,7 @@ export default function PartnerListingsPage() {
     const parsedDetails = parseListingDescription(listing.description);
     originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
+    originalRegistrationNumberRef.current = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
     const initialBuyerStateId =
       availableStates.find((option) => option.name.toLowerCase() === (listing.saleRecord?.buyerState || '').toLowerCase())?.id
         ? String(availableStates.find((option) => option.name.toLowerCase() === (listing.saleRecord?.buyerState || '').toLowerCase())?.id)
@@ -1647,10 +1661,13 @@ export default function PartnerListingsPage() {
     const savedVerification = listing.vehicleVerification;
     const hasReusableVerification = Boolean(
       savedVerification?.verificationRecordId
-      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || ''),
+      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || '')
+      && savedVerification.status !== 'REVERIFICATION_REQUIRED',
     );
     setChassisVerificationStatus(hasReusableVerification ? 'VERIFIED' : 'UNVERIFIED');
-    setVerifiedChassisNumber(hasReusableVerification ? parsedDetails.chassisOrSerialNo : '');
+    setVerifiedChassisNumber(hasReusableVerification ? savedVerification?.verifiedChassisNumber || parsedDetails.chassisOrSerialNo : '');
+    setVerifiedRegistrationNumber(hasReusableVerification ? savedVerification?.verifiedRegistrationNumber || linkedRto?.vehicleNumber || parsedDetails.registrationNo : '');
+    setVehicleVerificationSource(hasReusableVerification ? savedVerification?.verificationSource || 'CHASSIS' : '');
     setChassisVerificationId(hasReusableVerification ? savedVerification?.verificationRecordId || '' : '');
     setIsModalOpen(true);
   };
@@ -1658,6 +1675,7 @@ export default function PartnerListingsPage() {
   const openModal = () => {
     chassisVerificationRequestRef.current += 1;
     originalChassisNumberRef.current = '';
+    originalRegistrationNumberRef.current = '';
     setMessage('');
     setError('');
     setForm(initialForm);
@@ -1666,6 +1684,9 @@ export default function PartnerListingsPage() {
     setEditingListingId(null);
     setChassisVerificationStatus('UNVERIFIED');
     setVerifiedChassisNumber('');
+    setVerifiedRegistrationNumber('');
+    setVehicleVerificationSource('');
+    setVerificationLoadingSource('');
     setChassisVerificationId('');
     setIsModalOpen(true);
     void ensureFormDependencies().catch(() => {
@@ -1701,16 +1722,22 @@ export default function PartnerListingsPage() {
     setEditingListingId(null);
     chassisVerificationRequestRef.current += 1;
     originalChassisNumberRef.current = '';
+    originalRegistrationNumberRef.current = '';
     setChassisVerificationStatus('UNVERIFIED');
     setVerifiedChassisNumber('');
+    setVerifiedRegistrationNumber('');
+    setVehicleVerificationSource('');
     setChassisVerificationId('');
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
-    if (key === 'chassisOrSerialNo') {
+    if (key === 'chassisOrSerialNo' || key === 'registrationNo' || key === 'engineNumber') {
       chassisVerificationRequestRef.current += 1;
       setChassisVerificationStatus('UNVERIFIED');
       setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
+      setVerificationLoadingSource('');
       setChassisVerificationId('');
     }
     setForm((current) => ({
@@ -1724,8 +1751,8 @@ export default function PartnerListingsPage() {
   };
 
   const handleChassisVerification = async () => {
-    if (listingVerificationPolicy?.enabled !== true) {
-      setError('Vehicle listing verification is currently disabled. Enter the vehicle details manually.');
+    if (listingVerificationPolicy?.chassisEnabled !== true) {
+      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use vehicle number verification.');
       return;
     }
 
@@ -1737,6 +1764,7 @@ export default function PartnerListingsPage() {
     }
 
     const requestId = ++chassisVerificationRequestRef.current;
+    setVerificationLoadingSource('CHASSIS');
     setChassisVerificationStatus('VERIFYING');
     setError('');
     setMessage('');
@@ -1752,11 +1780,10 @@ export default function PartnerListingsPage() {
         throw new Error('Vehicle verification did not return a usable verification record.');
       }
 
-      const mapped = mapChassisToRcVehicle(response.data.result || {});
-      const normalizedReturnedChassis = (mapped.chassisOrSerialNo || chassisNumber).toUpperCase().replace(/\s+/g, '');
-      const normalizedRequestedChassis = chassisNumber.toUpperCase().replace(/\s+/g, '');
-      if (normalizedReturnedChassis !== normalizedRequestedChassis) {
-        throw new Error('The verified chassis number does not match the entered chassis number.');
+      const mapped = mapProviderVehicleToListing(response.data.result || {});
+      const identityMismatch = getProviderVehicleIdentityMismatch('CHASSIS', form.registrationNo, chassisNumber, mapped);
+      if (identityMismatch || !mapped.chassisOrSerialNo) {
+        throw new Error(identityMismatch || 'The provider did not return a usable chassis number.');
       }
 
       const categoryMatch = findMasterOption(categories, mapped.categoryName);
@@ -1797,6 +1824,8 @@ export default function PartnerListingsPage() {
         rtoDetails: { ...current.rtoDetails, ...mapped.rtoDetails },
       }));
       setVerifiedChassisNumber(mapped.chassisOrSerialNo || chassisNumber);
+      setVerifiedRegistrationNumber(mapped.registrationNo);
+      setVehicleVerificationSource('CHASSIS');
       setChassisVerificationId(verificationRecordId);
       setChassisVerificationStatus('VERIFIED');
       setMessage(response.data.cacheHit
@@ -1806,8 +1835,110 @@ export default function PartnerListingsPage() {
       if (requestId !== chassisVerificationRequestRef.current) return;
       setChassisVerificationStatus('FAILED');
       setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
       setChassisVerificationId('');
       setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the chassis number and try again.'));
+    } finally {
+      if (requestId === chassisVerificationRequestRef.current) {
+        setVerificationLoadingSource('');
+      }
+    }
+  };
+
+  const handleVehicleNumberVerification = async () => {
+    if (listingVerificationPolicy?.registrationEnabled !== true) {
+      setError('Vehicle number verification is currently disabled. Enter the vehicle details manually or use chassis verification.');
+      return;
+    }
+
+    const registrationNumber = form.registrationNo.trim();
+    if (!registrationNumber) {
+      setChassisVerificationStatus('FAILED');
+      setError('Enter a vehicle number before verification.');
+      return;
+    }
+
+    const requestId = ++chassisVerificationRequestRef.current;
+    setVerificationLoadingSource('RC_FULL');
+    setChassisVerificationStatus('VERIFYING');
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await api.post<VehicleVerificationResponse>('/listings/vehicle-verification/rc-full', {
+        id_number: registrationNumber,
+      });
+      if (requestId !== chassisVerificationRequestRef.current) return;
+
+      const verificationRecordId = response.data.record?.id || '';
+      if (!response.data.success || !verificationRecordId) {
+        throw new Error('Vehicle verification did not return a usable verification record.');
+      }
+
+      const mapped = mapProviderVehicleToListing(response.data.result || {});
+      const identityMismatch = getProviderVehicleIdentityMismatch('RC_FULL', registrationNumber, form.chassisOrSerialNo, mapped);
+      if (identityMismatch || !mapped.registrationNo || !mapped.chassisOrSerialNo) {
+        throw new Error(identityMismatch || 'The provider did not return complete vehicle identity details.');
+      }
+
+      const categoryMatch = findMasterOption(categories, mapped.categoryName);
+      const brandMatch = findMasterOption(brands, mapped.brandName);
+      const categoryId = categoryMatch?.id
+        ? String(categoryMatch.id)
+        : mapped.categoryName
+          ? `__provider_category__${normalizeMasterName(mapped.categoryName)}`
+          : '';
+      const brandName = brandMatch?.name || mapped.brandName;
+
+      if (mapped.categoryName && !categoryMatch) {
+        setCategories((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.categoryName))
+          ? current
+          : [...current, { id: categoryId, name: mapped.categoryName }]);
+      }
+      if (mapped.brandName && !brandMatch) {
+        setBrands((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.brandName))
+          ? current
+          : [...current, { id: `__provider_brand__${normalizeMasterName(mapped.brandName)}`, name: mapped.brandName }]);
+      }
+
+      setForm((current) => ({
+        ...current,
+        category: categoryId || current.category,
+        brand: brandName || current.brand,
+        model: mapped.model || current.model,
+        variant: mapped.variant || current.variant,
+        manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
+        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationNo: mapped.registrationNo || current.registrationNo,
+        chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
+        engineNumber: mapped.engineNumber || current.engineNumber,
+        previousOwners: mapped.previousOwners || current.previousOwners,
+        fuelType: mapped.fuelType || current.fuelType,
+        title: current.title.trim() || mapped.titleSuggestion,
+        insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
+        rtoDetails: { ...current.rtoDetails, ...mapped.rtoDetails },
+      }));
+      setVerifiedChassisNumber(mapped.chassisOrSerialNo);
+      setVerifiedRegistrationNumber(mapped.registrationNo);
+      setVehicleVerificationSource('RC_FULL');
+      setChassisVerificationId(verificationRecordId);
+      setChassisVerificationStatus('VERIFIED');
+      setMessage(response.data.cacheHit
+        ? 'Vehicle verification loaded from the recent secure result.'
+        : 'Vehicle verified. Available details have been auto-filled.');
+    } catch (verificationError) {
+      if (requestId !== chassisVerificationRequestRef.current) return;
+      setChassisVerificationStatus('FAILED');
+      setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
+      setChassisVerificationId('');
+      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the vehicle number and try again.'));
+    } finally {
+      if (requestId === chassisVerificationRequestRef.current) {
+        setVerificationLoadingSource('');
+      }
     }
   };
 
@@ -1828,16 +1959,18 @@ export default function PartnerListingsPage() {
       return;
     }
 
-    const currentChassis = sanitizedForm.chassisOrSerialNo.trim().toUpperCase().replace(/\s+/g, '');
-    const savedChassis = originalChassisNumberRef.current.trim().toUpperCase().replace(/\s+/g, '');
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
-    const canReuseSavedVerification = Boolean(editingListingId && currentChassis && currentChassis === savedChassis && chassisVerificationId);
-    const verifiedChassis = verifiedChassisNumber.trim().toUpperCase().replace(/\s+/g, '');
-    const chassisVerificationError = !vehicleVerificationRequired || canReuseSavedVerification
-      ? null
-      : getChassisSubmitValidationError(sanitizedForm.chassisOrSerialNo, verifiedChassis, false);
-    if (chassisVerificationError || (vehicleVerificationRequired && !chassisVerificationId && !canReuseSavedVerification)) {
-      setError(chassisVerificationError || 'Verify the chassis number before posting this vehicle.');
+    const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
+      required: vehicleVerificationRequired,
+      source: vehicleVerificationSource,
+      currentRegistrationNumber: sanitizedForm.registrationNo,
+      currentChassisNumber: sanitizedForm.chassisOrSerialNo,
+      verifiedRegistrationNumber,
+      verifiedChassisNumber,
+      verifiedSource: vehicleVerificationSource,
+    });
+    if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
+      setError(vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.');
       return;
     }
 
@@ -1859,8 +1992,50 @@ export default function PartnerListingsPage() {
       return;
     }
 
+    if (!sanitizedForm.price || Number(sanitizedForm.price) <= 0) {
+      setError('Price is required and must be greater than 0.');
+      setForm(sanitizedForm);
+      return;
+    }
+
     if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
       setError('Price must contain digits only.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!sanitizedForm.state.trim()) {
+      setError('State is required.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!sanitizedForm.city.trim()) {
+      setError('City is required.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!sanitizedForm.address.trim()) {
+      setError('Address is required.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!sanitizedForm.pinCode.trim()) {
+      setError('PIN Code is required.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!isValidPinCodeValue(sanitizedForm.pinCode) || sanitizedForm.pinCode.length !== 6) {
+      setError('Pin code must be exactly 6 digits.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (!sanitizedForm.nearbyLandmark.trim()) {
+      setError('Nearby Landmark is required.');
       setForm(sanitizedForm);
       return;
     }
@@ -1885,12 +2060,6 @@ export default function PartnerListingsPage() {
 
     if (!isValidDigitsOnlyValue(sanitizedForm.previousOwners)) {
       setError('Previous owners must contain digits only.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidPinCodeValue(sanitizedForm.pinCode)) {
-      setError('Pin code must be exactly 6 digits.');
       setForm(sanitizedForm);
       return;
     }
@@ -1956,7 +2125,9 @@ export default function PartnerListingsPage() {
         grossPower: sanitizedForm.grossPower,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
-        ...(chassisVerificationId ? { chassisVerificationId } : {}),
+        ...(chassisVerificationId
+          ? { vehicleVerificationId: chassisVerificationId, vehicleVerificationSource: vehicleVerificationSource || 'CHASSIS' }
+          : {}),
         ...(shouldSyncRto ? {
           rtoDetails: buildListingRtoDetails(sanitizedRto, {
             registrationNo: sanitizedForm.registrationNo,
@@ -2138,6 +2309,8 @@ export default function PartnerListingsPage() {
     ? listings.find((item) => item.id === editingListingId) || null
     : null;
   const editingVerification = verificationStatusMeta(editingListingRecord?.vehicleVerification?.status);
+  const chassisButtonState = getVehicleVerificationButtonState('CHASSIS', verificationLoadingSource, vehicleVerificationSource);
+  const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
 
   return (
     <div className="space-y-4">
@@ -2868,29 +3041,53 @@ export default function PartnerListingsPage() {
                           aria-required={listingVerificationPolicy?.required === true}
                           placeholder="Enter chassis number first"
                         />
-                        {listingVerificationPolicy?.enabled ? (
+                        {listingVerificationPolicy?.chassisEnabled ? (
                         <button
                           type="button"
                           onClick={() => void handleChassisVerification()}
-                          disabled={chassisVerificationStatus === 'VERIFYING' || !form.chassisOrSerialNo.trim()}
+                          disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
                           className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {chassisVerificationStatus === 'VERIFYING' ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisVerificationStatus === 'VERIFIED' ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : <><Sparkles className="h-4 w-4" />Verify &amp; Auto-fill</>}
+                          {chassisButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : chassisButtonState.isLocked ? <span>Filled from vehicle number</span> : <><Sparkles className="h-4 w-4" />Verify</>}
                         </button>
                         ) : null}
                       </div>
-                      {listingVerificationPolicy?.enabled ? (
+                      {listingVerificationPolicy?.chassisEnabled ? (
                       <p
                         id="admin-chassis-verification-status"
-                        className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisVerificationStatus === 'VERIFIED' ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}
+                            className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}
                       >
-                        {chassisVerificationStatus === 'VERIFIED' ? '✓ Verified successfully. API-backed vehicle details were filled.' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy.required ? 'Verification is required before posting this vehicle.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
+                        {chassisButtonState.isVerified ? '✓ Verified successfully. API-backed vehicle details were filled.' : vehicleVerificationSource === 'RC_FULL' ? 'Chassis was auto-filled from vehicle-number verification.' : verificationLoadingSource === 'CHASSIS' ? 'Verifying chassis number...' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy.required ? 'Verification is required before posting this vehicle.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
                       </p>
                       ) : (
-                        <p className="mt-1.5 text-xs font-medium text-gray-500">Manual listing mode is active. Chassis verification and auto-fill are disabled.</p>
+                        <p className="mt-1.5 text-xs font-medium text-gray-500">{listingVerificationPolicy?.registrationEnabled ? 'Chassis verification is disabled. Vehicle number verification can auto-fill chassis details.' : 'Manual listing mode is active. Vehicle verification and auto-fill are disabled.'}</p>
                       )}
                     </Field>
-                    <div>
+                    <Field label={'Vehicle Number' + (listingVerificationPolicy?.registrationRequired ? ' *' : '')}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                          value={form.registrationNo}
+                          onChange={(event) => updateField('registrationNo', event.target.value)}
+                          className={fieldClassName}
+                          placeholder="e.g. DL01AB1234"
+                          aria-describedby={listingVerificationPolicy?.enabled ? 'admin-vehicle-verification-status' : undefined}
+                          aria-required={listingVerificationPolicy?.registrationRequired === true}
+                        />
+                        {listingVerificationPolicy?.registrationEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleVehicleNumberVerification()}
+                            disabled={registrationButtonState.isLoading || registrationButtonState.isLocked || !form.registrationNo.trim()}
+                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {registrationButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : registrationButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : registrationButtonState.isLocked ? <span>Filled from chassis</span> : <><Sparkles className="h-4 w-4" />Verify</>}
+                          </button>
+                        ) : null}
+                      </div>
+                      {listingVerificationPolicy?.registrationEnabled ? <p id="admin-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using vehicle number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Vehicle number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying vehicle number...' : 'Use vehicle number verification when chassis verification is not available.'}</p> : null}
+                    </Field>
+                  </div>
+                  <div className="mb-4">
                     <Field label="Vehicle Name">
                       <input
                         value={form.title}
@@ -2902,7 +3099,6 @@ export default function PartnerListingsPage() {
                     <p className="mt-1 text-xs text-gray-500">
                       This name is used as the main listing title on the marketplace.
                     </p>
-                    </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label="Category *">
@@ -2953,9 +3149,6 @@ export default function PartnerListingsPage() {
                     </Field>
                     <Field label="Registration Year">
                       <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label="Vehicle Number">
-                      <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     {form.rtoDetails.insuranceStatus === 'VALID' && (
                       <Field label="Insurance Expiry Date">
@@ -3161,8 +3354,16 @@ export default function PartnerListingsPage() {
                     <h3 className="text-base font-semibold">Price and Location</h3>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label="Price">
-                      <input type="number" value={form.price} onChange={(event) => updateField('price', event.target.value)} className={fieldClassName} />
+                    <Field label="Price *">
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={form.price}
+                        onChange={(event) => updateField('price', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="Enter price"
+                      />
                     </Field>
                     <div className="flex items-end pb-1 md:pb-3">
                       <label className="flex items-center gap-2 cursor-pointer pt-2">
@@ -3175,7 +3376,7 @@ export default function PartnerListingsPage() {
                         <span className="text-sm font-medium text-gray-700">Price is Negotiable</span>
                       </label>
                     </div>
-                    <Field label="State">
+                    <Field label="State *">
                       <SearchableSelect
                         options={states}
                         value={form.selectedStateId || form.state}
@@ -3187,13 +3388,20 @@ export default function PartnerListingsPage() {
                           updateField('selectedCityId', '');
                         }}
                         placeholder="Select state"
+                        required
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label={t('sellModal.address', 'Address')}>
-                      <input value={form.address} onChange={(event) => updateField('address', event.target.value)} className={fieldClassName} />
+                    <Field label={`${t('sellModal.address', 'Address')} *`}>
+                      <input
+                        required
+                        value={form.address}
+                        onChange={(event) => updateField('address', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="Enter address"
+                      />
                     </Field>
-                    <Field label="City">
+                    <Field label="City *">
                       <SearchableSelect
                         options={cities}
                         value={form.selectedCityId || form.city}
@@ -3204,14 +3412,28 @@ export default function PartnerListingsPage() {
                         }}
                         placeholder={form.selectedStateId ? "Select city" : "Select state first"}
                         disabled={!form.selectedStateId}
+                        required
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="PIN Code">
-                      <input value={form.pinCode} onChange={(event) => updateField('pinCode', event.target.value)} className={fieldClassName} />
+                    <Field label="PIN Code *">
+                      <input
+                        required
+                        maxLength={6}
+                        value={form.pinCode}
+                        onChange={(event) => updateField('pinCode', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="6-digit PIN code"
+                      />
                     </Field>
-                    <Field label="Nearby Landmark">
-                      <input value={form.nearbyLandmark} onChange={(event) => updateField('nearbyLandmark', event.target.value)} className={fieldClassName} />
+                    <Field label="Nearby Landmark *">
+                      <input
+                        required
+                        value={form.nearbyLandmark}
+                        onChange={(event) => updateField('nearbyLandmark', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="Enter nearby landmark"
+                      />
                     </Field>
                   </div>
                   <div className="mt-4">

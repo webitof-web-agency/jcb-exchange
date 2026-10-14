@@ -4,6 +4,7 @@ export type ApiBillableServiceKey =
   | 'MOBILE_TO_PAN'
   | 'DRIVING_LICENSE_VERIFICATION'
   | 'RC_OWNER_HISTORY'
+  | 'RC_FULL'
   | 'RC_CHALLAN'
   | 'CHASSIS_TO_RC'
   | 'RC_TO_MOBILE'

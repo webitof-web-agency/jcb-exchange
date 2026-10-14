@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getChassisSubmitValidationError,
+  getProviderVehicleIdentityMismatch,
   getProviderDateStatus,
+  getVehicleVerificationButtonState,
+  getVehicleVerificationSubmitValidationError,
   mapChassisToRcVehicle,
+  mapProviderVehicleToListing,
+  normalizeRegistrationNumber,
 } from './sellVehicleVerification';
 
 test('maps the nested chassis-to-RC details response to Sell Vehicle fields', () => {
@@ -72,4 +77,69 @@ test('blocks a normal submit when the current chassis was not verified', () => {
     'Verify the current chassis number before posting this vehicle.',
   );
   assert.equal(getChassisSubmitValidationError('MALBM51ABC123456', '', true), null);
+});
+
+test('normalizes vehicle numbers consistently for verification identity checks', () => {
+  assert.equal(normalizeRegistrationNumber(' DL-01 AB / 1234 '), 'DL01AB1234');
+});
+
+test('maps RC Full response and rejects a mismatched vehicle identity', () => {
+  const mapped = mapProviderVehicleToListing({
+    rcNumber: 'DL01AB1234',
+    vehicleChasiNumber: 'CHASSIS123',
+    makerDescription: 'JCB',
+    makerModel: '3DX',
+  });
+
+  assert.equal(mapped.registrationNo, 'DL01AB1234');
+  assert.equal(getProviderVehicleIdentityMismatch('RC_FULL', 'DL01AB9999', '', mapped), 'The verified vehicle number does not match the entered vehicle number.');
+  assert.equal(getProviderVehicleIdentityMismatch('RC_FULL', 'DL-01 AB/1234', '', mapped), null);
+});
+
+test('requires the identity selected by the user and prevents stale edit verification reuse', () => {
+  assert.equal(getVehicleVerificationSubmitValidationError({
+    required: true,
+    source: 'RC_FULL',
+    currentRegistrationNumber: 'DL01AB1234',
+    currentChassisNumber: 'CHASSIS123',
+    verifiedRegistrationNumber: 'DL01AB1234',
+    verifiedChassisNumber: 'CHASSIS123',
+    verifiedSource: 'RC_FULL',
+  }), null);
+  assert.equal(getVehicleVerificationSubmitValidationError({
+    required: true,
+    source: 'RC_FULL',
+    currentRegistrationNumber: 'DL01AB9999',
+    currentChassisNumber: 'CHASSIS123',
+    verifiedRegistrationNumber: 'DL01AB1234',
+    verifiedChassisNumber: 'CHASSIS123',
+    verifiedSource: 'RC_FULL',
+  }), 'Verify the current vehicle number before posting this vehicle.');
+  assert.equal(getVehicleVerificationSubmitValidationError({
+    required: true,
+    source: 'CHASSIS',
+    currentRegistrationNumber: 'DL01AB1234',
+    currentChassisNumber: 'CHASSIS123',
+    verifiedRegistrationNumber: 'DL01AB1234',
+    verifiedChassisNumber: 'CHASSIS123',
+    verifiedSource: 'RC_FULL',
+  }), 'Verify the current vehicle identity before posting this vehicle.');
+});
+
+test('shows loading only for the requested source and locks the alternate source', () => {
+  assert.deepEqual(getVehicleVerificationButtonState('CHASSIS', 'CHASSIS', ''), {
+    isLoading: true,
+    isVerified: false,
+    isLocked: false,
+  });
+  assert.deepEqual(getVehicleVerificationButtonState('RC_FULL', 'CHASSIS', ''), {
+    isLoading: false,
+    isVerified: false,
+    isLocked: true,
+  });
+  assert.deepEqual(getVehicleVerificationButtonState('CHASSIS', '', 'RC_FULL'), {
+    isLoading: false,
+    isVerified: false,
+    isLocked: true,
+  });
 });

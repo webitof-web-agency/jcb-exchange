@@ -20,7 +20,13 @@ import {
   sanitizeListingFormData,
   SELL_VEHICLE_AVAILABILITY_OPTIONS,
 } from '@/lib/listingFormSanitizers';
-import { getChassisSubmitValidationError, mapChassisToRcVehicle } from '@/lib/sellVehicleVerification';
+import {
+  getProviderVehicleIdentityMismatch,
+  getVehicleVerificationButtonState,
+  getVehicleVerificationSubmitValidationError,
+  mapProviderVehicleToListing,
+  type VehicleVerificationSource,
+} from '@/lib/sellVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
@@ -126,6 +132,10 @@ type ListingVerificationPolicyResponse = {
   vehicleListingVerification: {
     enabled: boolean;
     required: boolean;
+    chassisEnabled: boolean;
+    registrationEnabled: boolean;
+    chassisRequired: boolean;
+    registrationRequired: boolean;
   };
 };
 
@@ -212,6 +222,9 @@ export type EditableListing = {
   rtoRecords?: ListingRecord['rtoRecords'];
   vehicleVerification?: {
     verificationRecordId?: string | null;
+    verificationSource?: VehicleVerificationSource | null;
+    verifiedRegistrationNumber?: string | null;
+    verifiedChassisNumber?: string | null;
     status?: 'NOT_VERIFIED' | 'API_VERIFIED' | 'MANUALLY_MODIFIED' | 'REVERIFICATION_REQUIRED' | null;
   } | null;
 };
@@ -391,7 +404,6 @@ const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
 const normalizeMasterName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const normalizeChassisValue = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
 
 const findMasterOption = <T extends { id: string | number; name: string }>(options: T[], value: string) => {
   const normalized = normalizeMasterName(value);
@@ -634,6 +646,9 @@ export default function SellVehicleModal({
   const [error, setError] = useState('');
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<ChassisVerificationStatus>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
+  const [verifiedRegistrationNumber, setVerifiedRegistrationNumber] = useState('');
+  const [vehicleVerificationSource, setVehicleVerificationSource] = useState<VehicleVerificationSource | ''>('');
+  const [verificationLoadingSource, setVerificationLoadingSource] = useState<VehicleVerificationSource | ''>('');
   const [chassisVerificationId, setChassisVerificationId] = useState('');
   const [listingVerificationPolicy, setListingVerificationPolicy] = useState<ListingVerificationPolicyResponse['vehicleListingVerification'] | null>(null);
   const chassisVerificationRequestRef = useRef(0);
@@ -711,7 +726,14 @@ export default function SellVehicleModal({
         }
 
         if (verificationPolicyResult.status === 'fulfilled' && verificationPolicyResult.value) {
-          setListingVerificationPolicy(verificationPolicyResult.value.data.vehicleListingVerification);
+          const policy = verificationPolicyResult.value.data.vehicleListingVerification;
+          setListingVerificationPolicy({
+            ...policy,
+            chassisEnabled: policy.chassisEnabled ?? policy.enabled,
+            registrationEnabled: policy.registrationEnabled ?? false,
+            chassisRequired: policy.chassisRequired ?? policy.required,
+            registrationRequired: policy.registrationRequired ?? false,
+          });
         } else {
           setListingVerificationPolicy(null);
         }
@@ -805,6 +827,9 @@ export default function SellVehicleModal({
     setEditingListingId(null);
     setChassisVerificationStatus('UNVERIFIED');
     setVerifiedChassisNumber('');
+    setVerifiedRegistrationNumber('');
+    setVehicleVerificationSource('');
+    setVerificationLoadingSource('');
     setChassisVerificationId('');
   }
 
@@ -892,7 +917,9 @@ export default function SellVehicleModal({
       && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || ''),
     );
     setChassisVerificationStatus(hasReusableVerification ? 'VERIFIED' : 'UNVERIFIED');
-    setVerifiedChassisNumber(hasReusableVerification ? parsedDetails.chassisOrSerialNo : '');
+    setVerifiedChassisNumber(hasReusableVerification ? savedVerification?.verifiedChassisNumber || parsedDetails.chassisOrSerialNo : '');
+    setVerifiedRegistrationNumber(hasReusableVerification ? savedVerification?.verifiedRegistrationNumber || parsedDetails.registrationNo : '');
+    setVehicleVerificationSource(hasReusableVerification ? savedVerification?.verificationSource || 'CHASSIS' : '');
     setChassisVerificationId(hasReusableVerification ? savedVerification?.verificationRecordId || '' : '');
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
@@ -949,10 +976,13 @@ export default function SellVehicleModal({
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
-    if (key === 'chassisOrSerialNo') {
+    if (key === 'chassisOrSerialNo' || key === 'registrationNo' || key === 'engineNumber') {
       chassisVerificationRequestRef.current += 1;
       setChassisVerificationStatus('UNVERIFIED');
       setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
+      setVerificationLoadingSource('');
       setChassisVerificationId('');
     }
     setForm((current) => ({
@@ -966,8 +996,8 @@ export default function SellVehicleModal({
   };
 
   const handleChassisVerification = async () => {
-    if (listingVerificationPolicy?.enabled !== true) {
-      setError('Vehicle listing verification is currently disabled. Enter the vehicle details manually.');
+    if (listingVerificationPolicy?.chassisEnabled !== true) {
+      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use vehicle number verification.');
       return;
     }
 
@@ -979,6 +1009,7 @@ export default function SellVehicleModal({
     }
 
     const requestId = ++chassisVerificationRequestRef.current;
+    setVerificationLoadingSource('CHASSIS');
     setChassisVerificationStatus('VERIFYING');
     setError('');
     setMessage('');
@@ -997,17 +1028,19 @@ export default function SellVehicleModal({
       }
 
       const result = response.data.result || {};
-      const mapped = mapChassisToRcVehicle(result);
-      const normalizedReturnedChassis = (mapped.chassisOrSerialNo || chassisNumber).toUpperCase().replace(/\s+/g, '');
-      const normalizedRequestedChassis = chassisNumber.toUpperCase().replace(/\s+/g, '');
-
-      if (normalizedReturnedChassis !== normalizedRequestedChassis) {
-        throw new Error('The verified chassis number does not match the entered chassis number.');
+      const mapped = mapProviderVehicleToListing(result);
+      const identityMismatch = getProviderVehicleIdentityMismatch('CHASSIS', form.registrationNo, chassisNumber, mapped);
+      if (identityMismatch || !mapped.chassisOrSerialNo) {
+        throw new Error(identityMismatch || 'The provider did not return a usable chassis number.');
       }
 
       const categoryMatch = findMasterOption(categories, mapped.categoryName);
       const brandMatch = findMasterOption(brands, mapped.brandName);
-      const categoryId = categoryMatch?.id ? String(categoryMatch.id) : mapped.categoryName ? `__provider_category__${normalizeMasterName(mapped.categoryName)}` : '';
+      const categoryId = categoryMatch?.id
+        ? String(categoryMatch.id)
+        : mapped.categoryName
+          ? `__provider_category__${normalizeMasterName(mapped.categoryName)}`
+          : '';
       const brandName = brandMatch?.name || mapped.brandName;
 
       if (mapped.categoryName && !categoryMatch) {
@@ -1042,6 +1075,8 @@ export default function SellVehicleModal({
         },
       }));
       setVerifiedChassisNumber(mapped.chassisOrSerialNo || chassisNumber);
+      setVerifiedRegistrationNumber(mapped.registrationNo);
+      setVehicleVerificationSource('CHASSIS');
       setChassisVerificationId(verificationRecordId);
       setChassisVerificationStatus('VERIFIED');
       setMessage(response.data.cacheHit ? 'Vehicle verification loaded from the recent secure result.' : 'Vehicle verified. Available details have been auto-filled.');
@@ -1052,8 +1087,110 @@ export default function SellVehicleModal({
 
       setChassisVerificationStatus('FAILED');
       setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
       setChassisVerificationId('');
       setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the chassis number and try again.'));
+    } finally {
+      if (requestId === chassisVerificationRequestRef.current) {
+        setVerificationLoadingSource('');
+      }
+    }
+  };
+
+  const handleVehicleNumberVerification = async () => {
+    if (listingVerificationPolicy?.registrationEnabled !== true) {
+      setError('Vehicle number verification is currently disabled. Enter the vehicle details manually or use chassis verification.');
+      return;
+    }
+
+    const registrationNumber = form.registrationNo.trim();
+    if (!registrationNumber) {
+      setChassisVerificationStatus('FAILED');
+      setError('Enter a vehicle number before verification.');
+      return;
+    }
+
+    const requestId = ++chassisVerificationRequestRef.current;
+    setVerificationLoadingSource('RC_FULL');
+    setChassisVerificationStatus('VERIFYING');
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await api.post<ChassisVerificationResponse>('/listings/vehicle-verification/rc-full', {
+        id_number: registrationNumber,
+      });
+      if (requestId !== chassisVerificationRequestRef.current) return;
+
+      const verificationRecordId = response.data.record?.id || '';
+      if (!response.data.success || !verificationRecordId) {
+        throw new Error('Vehicle verification did not return a usable verification record.');
+      }
+
+      const mapped = mapProviderVehicleToListing(response.data.result || {});
+      const identityMismatch = getProviderVehicleIdentityMismatch('RC_FULL', registrationNumber, form.chassisOrSerialNo, mapped);
+      if (identityMismatch || !mapped.registrationNo || !mapped.chassisOrSerialNo) {
+        throw new Error(identityMismatch || 'The provider did not return complete vehicle identity details.');
+      }
+
+      const categoryMatch = findMasterOption(categories, mapped.categoryName);
+      const brandMatch = findMasterOption(brands, mapped.brandName);
+      const categoryId = categoryMatch?.id
+        ? String(categoryMatch.id)
+        : mapped.categoryName
+          ? `__provider_category__${normalizeMasterName(mapped.categoryName)}`
+          : '';
+      const brandName = brandMatch?.name || mapped.brandName;
+
+      if (mapped.categoryName && !categoryMatch) {
+        setCategories((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.categoryName))
+          ? current
+          : [...current, { id: categoryId, name: mapped.categoryName }]);
+      }
+      if (mapped.brandName && !brandMatch) {
+        setBrands((current) => current.some((option) => normalizeMasterName(option.name) === normalizeMasterName(mapped.brandName))
+          ? current
+          : [...current, { id: `__provider_brand__${normalizeMasterName(mapped.brandName)}`, name: mapped.brandName }]);
+      }
+
+      setForm((current) => ({
+        ...current,
+        category: categoryId || current.category,
+        brand: brandName || current.brand,
+        model: mapped.model || current.model,
+        variant: mapped.variant || current.variant,
+        manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
+        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationNo: mapped.registrationNo || current.registrationNo,
+        chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
+        engineNumber: mapped.engineNumber || current.engineNumber,
+        previousOwners: mapped.previousOwners || current.previousOwners,
+        fuelType: mapped.fuelType || current.fuelType,
+        title: current.title.trim() || mapped.titleSuggestion,
+        insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
+        rtoDetails: { ...current.rtoDetails, ...mapped.rtoDetails },
+      }));
+      setVerifiedChassisNumber(mapped.chassisOrSerialNo);
+      setVerifiedRegistrationNumber(mapped.registrationNo);
+      setVehicleVerificationSource('RC_FULL');
+      setChassisVerificationId(verificationRecordId);
+      setChassisVerificationStatus('VERIFIED');
+      setMessage(response.data.cacheHit
+        ? 'Vehicle verification loaded from the recent secure result.'
+        : 'Vehicle verified. Available details have been auto-filled.');
+    } catch (verificationError) {
+      if (requestId !== chassisVerificationRequestRef.current) return;
+      setChassisVerificationStatus('FAILED');
+      setVerifiedChassisNumber('');
+      setVerifiedRegistrationNumber('');
+      setVehicleVerificationSource('');
+      setChassisVerificationId('');
+      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the vehicle number and try again.'));
+    } finally {
+      if (requestId === chassisVerificationRequestRef.current) {
+        setVerificationLoadingSource('');
+      }
     }
   };
 
@@ -1078,19 +1215,17 @@ export default function SellVehicleModal({
     }
 
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
-    const currentChassis = normalizeChassisValue(form.chassisOrSerialNo);
-    const savedChassis = normalizeChassisValue(originalChassisNumberRef.current);
-    const canReuseSavedVerification = Boolean(
-      editingListingId
-      && currentChassis
-      && currentChassis === savedChassis
-      && chassisVerificationId,
-    );
-    const chassisVerificationError = !vehicleVerificationRequired || canReuseSavedVerification
-      ? null
-      : getChassisSubmitValidationError(form.chassisOrSerialNo, verifiedChassisNumber, false);
-    if (chassisVerificationError || (vehicleVerificationRequired && !chassisVerificationId && !canReuseSavedVerification)) {
-      const safeError = chassisVerificationError || 'Verify the chassis number before posting this vehicle.';
+    const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
+      required: vehicleVerificationRequired,
+      source: vehicleVerificationSource,
+      currentRegistrationNumber: form.registrationNo,
+      currentChassisNumber: form.chassisOrSerialNo,
+      verifiedRegistrationNumber,
+      verifiedChassisNumber,
+      verifiedSource: vehicleVerificationSource,
+    });
+    if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
+      const safeError = vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.';
       setError(safeError);
       showToast({
         title: t('sellModal.notSubmitted'),
@@ -1118,19 +1253,31 @@ export default function SellVehicleModal({
       return;
     }
 
-    const validationError = !isValidDigitsOnlyValue(sanitizedForm.price)
-      ? 'Price must contain digits only.'
-      : !isValidYearValue(sanitizedForm.manufacturingYear)
-        ? 'Manufacturing year must be a 4-digit year.'
-        : !isValidDigitsOnlyValue(sanitizedForm.operatingHours)
-          ? 'Operating hours must contain digits only.'
-          : !isValidYearValue(sanitizedForm.registrationYear)
-            ? 'Registration year must be a 4-digit year.'
-            : !isValidDigitsOnlyValue(sanitizedForm.previousOwners)
-              ? 'Previous owners must contain digits only.'
-              : !isValidPinCodeValue(sanitizedForm.pinCode)
-                ? t('sellModal.pinValidation')
-                : null;
+    const validationError = !sanitizedForm.price || Number(sanitizedForm.price) <= 0
+      ? 'Price is required and must be greater than 0.'
+      : !isValidDigitsOnlyValue(sanitizedForm.price)
+        ? 'Price must contain digits only.'
+        : !sanitizedForm.state.trim()
+          ? 'State is required.'
+          : !sanitizedForm.city.trim()
+            ? 'City is required.'
+            : !sanitizedForm.address.trim()
+              ? 'Address is required.'
+              : !sanitizedForm.pinCode.trim()
+                ? 'PIN Code is required.'
+                : !isValidPinCodeValue(sanitizedForm.pinCode) || sanitizedForm.pinCode.length !== 6
+                  ? (t('sellModal.pinValidation') || 'PIN code must be a valid 6-digit number.')
+                  : !sanitizedForm.nearbyLandmark.trim()
+                    ? 'Nearby Landmark is required.'
+                    : !isValidYearValue(sanitizedForm.manufacturingYear)
+                      ? 'Manufacturing year must be a 4-digit year.'
+                      : !isValidDigitsOnlyValue(sanitizedForm.operatingHours)
+                        ? 'Operating hours must contain digits only.'
+                        : !isValidYearValue(sanitizedForm.registrationYear)
+                          ? 'Registration year must be a 4-digit year.'
+                          : !isValidDigitsOnlyValue(sanitizedForm.previousOwners)
+                            ? 'Previous owners must contain digits only.'
+                            : null;
     if (validationError) {
       setError(validationError);
       setForm(sanitizedForm);
@@ -1200,7 +1347,9 @@ export default function SellVehicleModal({
         grossPower: sanitizedForm.grossPower,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
-        ...(chassisVerificationId ? { chassisVerificationId } : {}),
+        ...(chassisVerificationId
+          ? { vehicleVerificationId: chassisVerificationId, vehicleVerificationSource: vehicleVerificationSource || 'CHASSIS' }
+          : {}),
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
@@ -1285,9 +1434,9 @@ export default function SellVehicleModal({
       const submitErrorMessage = isSessionExpired
         ? t('sellModal.signInRequired')
         : getApiErrorMessage(
-            submitError,
-            editingListingId ? t('sellModal.updateFailed') : t('sellModal.postFailed')
-          );
+          submitError,
+          editingListingId ? t('sellModal.updateFailed') : t('sellModal.postFailed')
+        );
       setError(submitErrorMessage);
       showToast({
         title: editingListingId ? t('sellModal.vehicleUpdateFailed') : t('sellModal.vehicleSubmitFailed'),
@@ -1325,6 +1474,9 @@ export default function SellVehicleModal({
     }
   };
 
+  const chassisButtonState = getVehicleVerificationButtonState('CHASSIS', verificationLoadingSource, vehicleVerificationSource);
+  const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
+
   return (
     <>
       {isOpen ? (
@@ -1356,79 +1508,139 @@ export default function SellVehicleModal({
                     <h3 className="text-base font-semibold">{t('sellModal.equipmentDetails')}</h3>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.required ? ' *' : ''}`}>
+                    <Field label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.chassisRequired ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.chassisOrSerialNo}
                           onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
                           className={fieldClassName}
-                          aria-describedby={listingVerificationPolicy?.enabled ? 'chassis-verification-status' : undefined}
-                          aria-required={listingVerificationPolicy?.required === true}
+                          aria-describedby={listingVerificationPolicy?.chassisEnabled ? 'chassis-verification-status' : undefined}
+                          aria-required={listingVerificationPolicy?.chassisRequired === true}
                         />
-                        {listingVerificationPolicy?.enabled ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleChassisVerification()}
-                          disabled={chassisVerificationStatus === 'VERIFYING' || !form.chassisOrSerialNo.trim()}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
-                        >
-                          {chassisVerificationStatus === 'VERIFYING' ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
-                              <span>Checking…</span>
-                            </>
-                          ) : chassisVerificationStatus === 'VERIFIED' ? (
-                            <>
-                              <CheckCircle2 className="h-4 w-4 text-emerald-800" />
-                              <span>Verified</span>
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-4 w-4 text-gray-900" />
-                              <span>Verify & Auto-fill</span>
-                            </>
-                          )}
-                        </button>
+                        {listingVerificationPolicy?.chassisEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleChassisVerification()}
+                            disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
+                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
+                          >
+                            {chassisButtonState.isLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
+                                <span>Checking…</span>
+                              </>
+                            ) : chassisButtonState.isVerified ? (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 text-emerald-800" />
+                                <span>Verified</span>
+                              </>
+                            ) : chassisButtonState.isLocked ? (
+                              <span>Filled from vehicle number</span>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4 text-gray-900" />
+                                <span>Verify</span>
+                              </>
+                            )}
+                          </button>
                         ) : null}
                       </div>
-                      {listingVerificationPolicy?.enabled ? (
-                      <p
-                        id="chassis-verification-status"
-                        className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${
-                          chassisVerificationStatus === 'VERIFIED'
-                            ? 'text-emerald-600'
-                            : chassisVerificationStatus === 'FAILED'
-                              ? 'text-red-600'
-                              : 'text-gray-500'
-                        }`}
-                      >
-                        {chassisVerificationStatus === 'VERIFIED'
-                          ? '✓ Verified successfully. API-backed vehicle details were filled.'
-                          : chassisVerificationStatus === 'FAILED'
-                            ? '✕ Verification failed. Correct the chassis number and try again.'
-                            : listingVerificationPolicy.required
-                              ? 'Verification is required before posting this vehicle.'
-                              : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
-                      </p>
+                      {listingVerificationPolicy?.chassisEnabled ? (
+                        <p
+                          id="chassis-verification-status"
+                          className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisButtonState.isVerified
+                              ? 'text-emerald-600'
+                              : chassisVerificationStatus === 'FAILED'
+                                ? 'text-red-600'
+                                : 'text-gray-500'
+                            }`}
+                        >
+                          {chassisButtonState.isVerified
+                            ? '✓ Verified successfully. API-backed vehicle details were filled.'
+                            : vehicleVerificationSource === 'RC_FULL'
+                              ? 'Chassis was auto-filled from vehicle-number verification.'
+                              : verificationLoadingSource === 'CHASSIS'
+                                ? 'Verifying chassis number...'
+                                : chassisVerificationStatus === 'FAILED'
+                                  ? '✕ Verification failed. Correct the chassis number and try again.'
+                                  : listingVerificationPolicy.chassisRequired
+                                    ? 'Verification is required before posting this vehicle.'
+                                    : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
+                        </p>
                       ) : (
                         <p className="mt-1.5 text-xs font-medium text-gray-500">
                           Manual listing mode is active. Chassis verification and auto-fill are disabled.
                         </p>
                       )}
                     </Field>
-                    <div>
-                      <Field label={t('sellModal.vehicleName')}>
+                    <Field label={`${t('sellModal.vehicleNumber', 'Vehicle Number')}${listingVerificationPolicy?.registrationRequired ? ' *' : ''}`}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
-                          value={form.title}
-                          onChange={(event) => updateField('title', event.target.value)}
+                          value={form.registrationNo}
+                          onChange={(event) => updateField('registrationNo', event.target.value)}
                           className={fieldClassName}
-                          placeholder={t('sellModal.vehicleNamePlaceholder')}
+                          placeholder={t('sellModal.vehicleNumberPlaceholder', 'e.g. DL01AB1234')}
+                          aria-describedby={listingVerificationPolicy?.registrationEnabled ? 'vehicle-number-verification-status' : undefined}
+                          aria-required={listingVerificationPolicy?.registrationRequired === true}
                         />
-                      </Field>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {t('sellModal.vehicleNameHelp')}
-                      </p>
-                    </div>
+                        {listingVerificationPolicy?.registrationEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleVehicleNumberVerification()}
+                            disabled={registrationButtonState.isLoading || registrationButtonState.isLocked || !form.registrationNo.trim()}
+                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
+                          >
+                            {registrationButtonState.isLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
+                                <span>Checking...</span>
+                              </>
+                            ) : registrationButtonState.isVerified ? (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 text-emerald-800" />
+                                <span>Verified</span>
+                              </>
+                            ) : registrationButtonState.isLocked ? (
+                              <span>Filled from chassis</span>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4 text-gray-900" />
+                                <span>Verify</span>
+                              </>
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
+                      {listingVerificationPolicy?.registrationEnabled ? (
+                        <p
+                          id="vehicle-number-verification-status"
+                          className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' && vehicleVerificationSource !== 'CHASSIS' ? 'text-red-600' : 'text-gray-500'}`}
+                        >
+                          {registrationButtonState.isVerified
+                            ? '✓ Verified using vehicle number. Details were auto-filled.'
+                            : vehicleVerificationSource === 'CHASSIS'
+                              ? 'Vehicle number was auto-filled from chassis verification.'
+                              : verificationLoadingSource === 'RC_FULL'
+                                ? 'Verifying vehicle number...'
+                                : listingVerificationPolicy.registrationRequired
+                                  ? 'RC Full verification is required before posting this vehicle.'
+                                  : 'Vehicle-number verification is optional. Use it to auto-fill available RC details.'}
+                        </p>
+                      ) : null}
+                    </Field>
+                  </div>
+                  <div className="mb-4">
+                    <Field label={t('sellModal.vehicleName')}>
+                      <input
+                        value={form.title}
+                        onChange={(event) => updateField('title', event.target.value)}
+                        className={fieldClassName}
+                        placeholder={t('sellModal.vehicleNamePlaceholder')}
+                      />
+                    </Field>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {t('sellModal.vehicleNameHelp')}
+                    </p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label={`${t('sellModal.category')} *`}>
@@ -1480,9 +1692,6 @@ export default function SellVehicleModal({
                     </Field>
                     <Field label={t('sellModal.registrationYear')}>
                       <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.vehicleNumber', 'Vehicle Number')}>
-                      <input value={form.registrationNo} onChange={(event) => updateField('registrationNo', event.target.value)} className={fieldClassName} />
                     </Field>
                     {form.rtoDetails.insuranceStatus === 'VALID' && (
                       <Field label={t('sellModal.insuranceExpiryDate')}>
@@ -1549,15 +1758,15 @@ export default function SellVehicleModal({
                     </Field>
                   </div>
 
-                <ListingRtoFields
-                  value={form.rtoDetails}
-                  onChange={updateRtoField}
-                  insuranceExpiry={form.insuranceExpiry}
-                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
-                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
-                />
+                  <ListingRtoFields
+                    value={form.rtoDetails}
+                    onChange={updateRtoField}
+                    insuranceExpiry={form.insuranceExpiry}
+                    onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                    required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                  />
 
-                {form.currentAvailability === 'SOLD' && (
+                  {form.currentAvailability === 'SOLD' && (
                     <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />
@@ -1695,8 +1904,16 @@ export default function SellVehicleModal({
                     <h3 className="text-base font-semibold">{t('sellModal.priceAndLocation')}</h3>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label={t('sellModal.price')}>
-                      <input type="number" value={form.price} onChange={(event) => updateField('price', event.target.value)} className={fieldClassName} />
+                    <Field label={`${t('sellModal.price')} *`}>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={form.price}
+                        onChange={(event) => updateField('price', event.target.value)}
+                        className={fieldClassName}
+                        placeholder={t('sellModal.price')}
+                      />
                     </Field>
                     <div className="flex items-end pb-1 md:pb-3">
                       <label className="flex items-center gap-2 cursor-pointer pt-2">
@@ -1709,7 +1926,7 @@ export default function SellVehicleModal({
                         <span className="text-sm font-medium text-gray-700">{t('sellModal.priceNegotiable')}</span>
                       </label>
                     </div>
-                    <Field label={t('sellModal.state')}>
+                    <Field label={`${t('sellModal.state')} *`}>
                       <SearchableSelect
                         options={states}
                         value={form.selectedStateId || form.state}
@@ -1723,13 +1940,20 @@ export default function SellVehicleModal({
                         placeholder={t('sellModal.selectState')}
                         searchPlaceholder={t('sellModal.searchOptions')}
                         noResultsText={t('sellModal.noResults')}
+                        required
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label={t('sellModal.address', 'Address')}>
-                      <input value={form.address} onChange={(event) => updateField('address', event.target.value)} className={fieldClassName} />
+                    <Field label={`${t('sellModal.address', 'Address')} *`}>
+                      <input
+                        required
+                        value={form.address}
+                        onChange={(event) => updateField('address', event.target.value)}
+                        className={fieldClassName}
+                        placeholder={t('sellModal.address', 'Address')}
+                      />
                     </Field>
-                    <Field label={t('sellModal.city')}>
+                    <Field label={`${t('sellModal.city')} *`}>
                       <SearchableSelect
                         options={cities}
                         value={form.selectedCityId || form.city}
@@ -1742,14 +1966,28 @@ export default function SellVehicleModal({
                         searchPlaceholder={t('sellModal.searchOptions')}
                         noResultsText={t('sellModal.noResults')}
                         disabled={!form.selectedStateId}
+                        required
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label={t('sellModal.pinCode')}>
-                      <input value={form.pinCode} onChange={(event) => updateField('pinCode', event.target.value)} className={fieldClassName} />
+                    <Field label={`${t('sellModal.pinCode')} *`}>
+                      <input
+                        required
+                        maxLength={6}
+                        value={form.pinCode}
+                        onChange={(event) => updateField('pinCode', event.target.value)}
+                        className={fieldClassName}
+                        placeholder={t('sellModal.pinCode')}
+                      />
                     </Field>
-                    <Field label={t('sellModal.nearbyLandmark')}>
-                      <input value={form.nearbyLandmark} onChange={(event) => updateField('nearbyLandmark', event.target.value)} className={fieldClassName} />
+                    <Field label={`${t('sellModal.nearbyLandmark')} *`}>
+                      <input
+                        required
+                        value={form.nearbyLandmark}
+                        onChange={(event) => updateField('nearbyLandmark', event.target.value)}
+                        className={fieldClassName}
+                        placeholder={t('sellModal.nearbyLandmark')}
+                      />
                     </Field>
                   </div>
                   <div className="mt-4">

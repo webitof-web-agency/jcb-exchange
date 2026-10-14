@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   findMasterOption,
+  getProviderVehicleIdentityMismatch,
   getChassisSubmitValidationError,
+  getVehicleVerificationSubmitValidationError,
   mapChassisToRcVehicle,
+  mapProviderVehicleToListing,
+  normalizeRegistrationNumber,
   normalizeMasterName,
 } from './listingVehicleVerification';
 
@@ -69,5 +73,61 @@ test('allows the same trusted admin roles to reuse the shared chassis submit rul
   assert.equal(
     getChassisSubmitValidationError('ABC123', '', false),
     'Verify the chassis number before posting this vehicle.',
+  );
+});
+
+test('maps RC Full response into the same listing autofill contract', () => {
+  const mapped = mapProviderVehicleToListing({
+    rc_number: 'DL01AB1234',
+    vehicle_chasi_number: 'CHASSIS123456',
+    vehicle_engine_number: 'ENGINE123',
+    maker_description: 'JCB',
+    maker_model: '3DX',
+    vehicle_category_description: 'Backhoe Loader',
+    manufacturing_date_formatted: '2020-04',
+    registration_date: '2020-06-01',
+  });
+
+  assert.equal(mapped.registrationNo, 'DL01AB1234');
+  assert.equal(mapped.chassisOrSerialNo, 'CHASSIS123456');
+  assert.equal(mapped.titleSuggestion, 'JCB 3DX');
+});
+
+test('rejects a provider response whose identity does not match the requested source', () => {
+  assert.equal(
+    getProviderVehicleIdentityMismatch('RC_FULL', 'DL01AB1234', '', { rcNumber: 'DL02ZZ9999' }),
+    'The verified vehicle number does not match the entered vehicle number.',
+  );
+  assert.equal(
+    getProviderVehicleIdentityMismatch('CHASSIS', 'DL01AB1234', 'CHASSIS123', { rcNumber: 'DL01AB1234', chassisOrSerialNo: 'OTHER' }),
+    'The verified chassis number does not match the entered chassis number.',
+  );
+});
+
+test('requires a fresh verification after either identity field changes', () => {
+  assert.equal(normalizeRegistrationNumber(' dl 01-ab 1234 '), 'DL01AB1234');
+  assert.equal(
+    getVehicleVerificationSubmitValidationError({
+      required: true,
+      source: 'RC_FULL',
+      currentRegistrationNumber: 'DL01AB1234',
+      currentChassisNumber: 'CHASSIS123',
+      verifiedRegistrationNumber: 'DL01AB1234',
+      verifiedChassisNumber: 'CHASSIS123',
+      verifiedSource: 'RC_FULL',
+    }),
+    null,
+  );
+  assert.equal(
+    getVehicleVerificationSubmitValidationError({
+      required: true,
+      source: 'RC_FULL',
+      currentRegistrationNumber: 'DL02AB1234',
+      currentChassisNumber: 'CHASSIS123',
+      verifiedRegistrationNumber: 'DL01AB1234',
+      verifiedChassisNumber: 'CHASSIS123',
+      verifiedSource: 'RC_FULL',
+    }),
+    'Verify the current vehicle number before posting this vehicle.',
   );
 });

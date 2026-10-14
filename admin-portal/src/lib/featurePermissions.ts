@@ -13,6 +13,7 @@ export const MOBILE_TO_PAN_VIEW_PERMISSIONS = ['pan.mobile-to-pan.read'];
 export const VEHICLE_TRANSPORT_VIEW_PERMISSIONS = [
   'driving-license.verification.read',
   'rc.owner-history.read',
+  'rc.full.read',
   'rc.challan.verification.read',
   'rc.chassis-to-rc.read',
   'rc.to-mobile.read',
@@ -22,6 +23,7 @@ export const VEHICLE_TRANSPORT_VIEW_PERMISSIONS = [
 
 export const DRIVING_LICENSE_VIEW_PERMISSIONS = ['driving-license.verification.read'];
 export const RC_OWNER_HISTORY_VIEW_PERMISSIONS = ['rc.owner-history.read'];
+export const RC_FULL_VIEW_PERMISSIONS = ['rc.full.read'];
 export const RC_CHALLAN_VIEW_PERMISSIONS = ['rc.challan.verification.read'];
 export const CHASSIS_TO_RC_VIEW_PERMISSIONS = ['rc.chassis-to-rc.read'];
 export const RC_TO_MOBILE_VIEW_PERMISSIONS = ['rc.to-mobile.read'];

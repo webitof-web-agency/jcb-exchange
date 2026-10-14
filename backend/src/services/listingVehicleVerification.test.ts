@@ -149,3 +149,34 @@ test('persists a safe verification summary and audit event without provider payl
   assert.equal(JSON.stringify(auditData).includes('CHASSIS-1'), false);
   assert.equal(JSON.stringify(auditData).includes('ENGINE-1'), false);
 });
+
+test('clears stale verification identity when an edit is saved without a provider snapshot', async () => {
+  const upsertCalls: Array<Record<string, unknown>> = [];
+  const client = {
+    listingVehicleVerification: {
+      findUnique: async () => ({
+        status: 'API_VERIFIED',
+        changedFields: [],
+        verificationRecordId: 'old-verification',
+        verificationSource: 'CHASSIS',
+      }),
+      upsert: async (args: Record<string, unknown>) => {
+        upsertCalls.push(args);
+        return args.update;
+      },
+    },
+  };
+
+  await syncListingVehicleVerification(client, {
+    listingId: 'listing-2',
+    actorUserId: 'user-2',
+    verificationRecordId: null,
+    verificationSource: null,
+    providerSnapshot: null,
+    currentSnapshot: { chassisNumber: 'CHASSIS-2' },
+  });
+
+  const updateData = upsertCalls[0]!.update as Record<string, unknown>;
+  assert.equal(updateData.verificationRecordId, null);
+  assert.equal(updateData.verificationSource, null);
+});

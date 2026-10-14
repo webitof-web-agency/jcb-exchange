@@ -23,17 +23,24 @@ import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl }
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
 import { canBypassListingVerification, canCreateListing, canEditListing } from '../utils/listingAccess';
-import { shouldRequireVehicleListingVerification } from '../utils/listingVerificationPolicy';
+import {
+  isVehicleListingVerificationEnabled,
+  shouldRequireVehicleListingVerification,
+} from '../utils/listingVerificationPolicy';
 import { getListingPaymentOutcome, type ListingPaymentMethod } from '../utils/listingPaymentPolicy';
 import { buildCustomerListingNotificationText } from '../utils/listingNotificationText';
 import { resolveListingContactNumber } from '../utils/listingContact';
 import { chassisToRcVerificationService } from '../services/chassisToRcVerification.service';
+import { rcFullService } from '../services/rcOwnerHistory.service';
 import {
   buildChassisVerificationFingerprint,
+  buildRcFullVerificationFingerprint,
   buildCurrentListingVerificationSnapshot,
   buildProviderListingVerificationSnapshot,
   getListingVerificationStatus,
+  getVehicleVerificationIdentityMismatch,
   isUsableChassisVerification,
+  isUsableRcFullVerification,
   syncListingVehicleVerification,
 } from '../services/listingVehicleVerification';
 
@@ -393,16 +400,87 @@ const getChassisVerificationContext = async ({
   };
 };
 
-const getProviderListingVerificationSnapshot = async (recordId?: string | null) => {
+const getProviderListingVerificationDetail = async (
+  source: 'CHASSIS' | 'RC_FULL',
+  recordId?: string | null,
+) => {
   if (!recordId) return null;
 
   try {
-    const detail = await chassisToRcVerificationService.getHistoryDetail(recordId);
+    const detail = source === 'RC_FULL'
+      ? await rcFullService.getHistoryDetail(recordId)
+      : await chassisToRcVerificationService.getHistoryDetail(recordId);
     if (detail.record?.status !== 'SUCCESS' || !detail.result || typeof detail.result !== 'object') return null;
     return buildProviderListingVerificationSnapshot(detail.result as Record<string, unknown>);
   } catch {
     return null;
   }
+};
+
+const getListingVerificationContext = async ({
+  source,
+  registrationNumber,
+  chassisNumber,
+  verificationId,
+  requestedById,
+  canBypassVerification,
+}: {
+  source: 'CHASSIS' | 'RC_FULL';
+  registrationNumber: unknown;
+  chassisNumber: unknown;
+  verificationId: unknown;
+  requestedById: string;
+  canBypassVerification: boolean;
+}) => {
+  if (source === 'CHASSIS') {
+    const context = await getChassisVerificationContext({
+      chassisNumber,
+      verificationId,
+      requestedById,
+      canBypassVerification,
+    });
+    return { ...context, source };
+  }
+
+  const normalizedRegistration = normalizeText(registrationNumber).toUpperCase().replace(/[\s/-]+/g, '');
+  const normalizedVerificationId = normalizeText(verificationId);
+  if (!normalizedRegistration && !canBypassVerification) {
+    return { record: null, error: 'Vehicle number is required before posting this vehicle.', source };
+  }
+
+  let record: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
+  if (normalizedVerificationId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedVerificationId)) {
+      return { record: null, error: canBypassVerification ? null : 'Verify the current vehicle number before posting this vehicle.', source };
+    }
+    record = await prismaAny.rcOwnerHistoryRecord.findUnique({
+      where: { id: normalizedVerificationId, serviceKey: 'RC_FULL' },
+      select: { id: true, status: true, requestedById: true, requestFingerprint: true },
+    });
+  } else if (normalizedRegistration) {
+    record = await prismaAny.rcOwnerHistoryRecord.findFirst({
+      where: {
+        serviceKey: 'RC_FULL',
+        requestFingerprint: buildRcFullVerificationFingerprint(normalizedRegistration),
+      },
+      orderBy: { completedAt: 'desc' },
+      select: { id: true, status: true, requestedById: true, requestFingerprint: true },
+    });
+  }
+
+  const verifiedForRequester = isUsableRcFullVerification(record, normalizedRegistration, requestedById);
+  const verifiedForSnapshot = Boolean(
+    record
+    && normalizedRegistration
+    && record.status === 'SUCCESS'
+    && record.requestFingerprint === buildRcFullVerificationFingerprint(normalizedRegistration),
+  );
+
+  return {
+    record: verifiedForSnapshot ? record : null,
+    error: canBypassVerification || verifiedForRequester ? null : 'Verify the current vehicle number before posting this vehicle.',
+    source,
+  };
 };
 
 const normalizeText = (value: unknown) => {
@@ -413,8 +491,16 @@ const normalizeText = (value: unknown) => {
   return value.trim();
 };
 
+const normalizeVehicleVerificationSource = (value: unknown): 'CHASSIS' | 'RC_FULL' =>
+  normalizeText(value).toUpperCase() === 'RC_FULL' ? 'RC_FULL' : 'CHASSIS';
+
 const parseListingDescriptionChassis = (description: string) => {
   const match = description.match(/(?:^|\n)chassis(?:\s*\/\s*|\s+or\s+|\s+)serial\s*:\s*([^\n]+)/i);
+  return match?.[1]?.trim() || '';
+};
+
+const parseListingDescriptionRegistration = (description: string) => {
+  const match = description.match(/(?:^|\n)registration\s+no\s*:\s*([^\n]+)/i);
   return match?.[1]?.trim() || '';
 };
 
@@ -552,6 +638,9 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
                 verificationRecordId: typeof verification.verificationRecordId === 'string'
                   ? verification.verificationRecordId
                   : null,
+                verificationSource: verification.verificationSource || null,
+                verifiedRegistrationNumber: verification.verifiedRegistrationNumber || null,
+                verifiedChassisNumber: verification.verifiedChassisNumber || null,
                 status: verification.status || 'NOT_VERIFIED',
                 changedFields: Array.isArray(verification.changedFields) ? verification.changedFields : [],
                 lastVerifiedAt: verification.lastVerifiedAt || null,
@@ -559,6 +648,9 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
               }
             : {
                 verificationRecordId: null,
+                verificationSource: null,
+                verifiedRegistrationNumber: null,
+                verifiedChassisNumber: null,
                 status: 'NOT_VERIFIED',
                 changedFields: [],
                 lastVerifiedAt: null,
@@ -619,15 +711,27 @@ export const getListingVerificationPolicy = async (req: Request, res: Response, 
       req.user.role === 'EMPLOYEE' ? getEmployeePermissions(req.user.id) : Promise.resolve([] as string[]),
     ]);
     const canBypassVerification = canBypassListingVerification(req.user.role, employeePermissions);
-    const required = shouldRequireVehicleListingVerification(
+    const chassisEnabled = isVehicleListingVerificationEnabled(settings.vehicleListingVerification, 'CHASSIS');
+    const registrationEnabled = isVehicleListingVerificationEnabled(settings.vehicleListingVerification, 'RC_FULL');
+    const chassisRequired = shouldRequireVehicleListingVerification(
       settings.vehicleListingVerification,
       canBypassVerification,
+      'CHASSIS',
+    );
+    const registrationRequired = shouldRequireVehicleListingVerification(
+      settings.vehicleListingVerification,
+      canBypassVerification,
+      'RC_FULL',
     );
 
     return res.json({
       vehicleListingVerification: {
-        enabled: settings.vehicleListingVerification.enabled === true,
-        required,
+        enabled: chassisEnabled || registrationEnabled,
+        required: chassisRequired || registrationRequired,
+        chassisEnabled,
+        registrationEnabled,
+        chassisRequired,
+        registrationRequired,
       },
     });
   } catch (error) {
@@ -821,11 +925,6 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       ? await getEmployeePermissions(authenticatedUserId)
       : [];
     const canBypassVehicleVerification = canBypassListingVerification(req.user.role, employeePermissions);
-    const vehicleListingVerificationEnabled = platformSettings.vehicleListingVerification.enabled === true;
-    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
-      platformSettings.vehicleListingVerification,
-      canBypassVehicleVerification,
-    );
     if (!canCreateListing(req.user.role, [], platformSettings.listingCreationAccess)) {
       return res.status(403).json({ error: 'Listing creation is not enabled for this account role.' });
     }
@@ -865,6 +964,8 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       brandName,
       modelName,
       chassisVerificationId,
+      vehicleVerificationId,
+      vehicleVerificationSource,
       chassisOrSerialNo,
       title,
       status,
@@ -885,7 +986,17 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
 
     const normalizedCategoryId = normalizeText(categoryId);
     const normalizedCategoryName = normalizeText(categoryName);
-    const normalizedChassisVerificationId = normalizeText(chassisVerificationId);
+    const normalizedVehicleVerificationId = normalizeText(vehicleVerificationId) || normalizeText(chassisVerificationId);
+    const normalizedVehicleVerificationSource = normalizeVehicleVerificationSource(vehicleVerificationSource);
+    const vehicleListingVerificationEnabled = isVehicleListingVerificationEnabled(
+      platformSettings.vehicleListingVerification,
+      normalizedVehicleVerificationSource,
+    );
+    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
+      platformSettings.vehicleListingVerification,
+      canBypassVehicleVerification,
+      normalizedVehicleVerificationSource,
+    );
     const normalizedBrandName = normalizeText(brandName) || 'Not specified';
     const normalizedModelName = normalizeText(modelName) || 'Not specified';
     const normalizedTitle = normalizeText(title);
@@ -903,20 +1014,26 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const parsedPrice = parseDecimal(price) || new Prisma.Decimal(0);
     const normalizedMedia = normalizeMedia(media);
 
-    const chassisVerification = vehicleListingVerificationEnabled
-      ? await getChassisVerificationContext({
+    const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
+      ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
+      : parseListingDescriptionRegistration(normalizedDescription);
+    const vehicleVerification = vehicleListingVerificationEnabled
+      ? await getListingVerificationContext({
+        source: normalizedVehicleVerificationSource,
+        registrationNumber: requestedRegistrationNumber,
         chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription),
-        verificationId: normalizedChassisVerificationId,
+        verificationId: normalizedVehicleVerificationId,
         requestedById: authenticatedUserId,
         canBypassVerification: !vehicleListingVerificationRequired,
       })
-      : { record: null, error: null };
-    if (chassisVerification.error) {
-      return res.status(422).json({ error: chassisVerification.error, code: 'chassis_verification_required' });
+      : { record: null, error: null, source: normalizedVehicleVerificationSource as 'CHASSIS' | 'RC_FULL' };
+    if (vehicleVerification.error) {
+      return res.status(422).json({ error: vehicleVerification.error, code: 'vehicle_verification_required' });
     }
-    const providerVerificationSnapshot = vehicleListingVerificationEnabled
-      ? await getProviderListingVerificationSnapshot(chassisVerification.record?.id)
+    const providerVerificationDetail = vehicleListingVerificationEnabled
+      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
       : null;
+    const providerVerificationSnapshot = providerVerificationDetail || null;
     const soldAt = getSoldAtValueForStatus({ nextStatus: initialListingStatus });
     const payloadValidationError = validateListingPayload({
       categoryId: normalizedCategoryId,
@@ -937,7 +1054,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
 
     let category = await getSelectableCategory(normalizedCategoryId, partnerProfileId || '');
 
-    if (!category && normalizedChassisVerificationId) {
+    if (!category && normalizedVehicleVerificationId) {
       category = await getOrCreateVerifiedGlobalCategory(normalizedCategoryName);
     }
 
@@ -981,11 +1098,22 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       rtoDetails: rtoDetails && typeof rtoDetails === 'object' ? rtoDetails : null,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
-    if (vehicleListingVerificationRequired && chassisVerification.record && !providerVerificationSnapshot) {
-      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the chassis number again.', code: 'chassis_verification_required' });
+    const identityMismatch = providerVerificationSnapshot
+      ? getVehicleVerificationIdentityMismatch(
+        vehicleVerification.source,
+        currentVerificationSnapshot.registrationNumber,
+        currentVerificationSnapshot.chassisNumber,
+        providerVerificationSnapshot,
+      )
+      : null;
+    if (identityMismatch) {
+      return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
+    }
+    if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
+      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the vehicle number or chassis number again.', code: 'vehicle_verification_required' });
     }
     if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
-      return res.status(422).json({ error: 'Chassis or engine number changed. Verify the current vehicle identity before saving.', code: 'chassis_reverification_required' });
+      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and vehicle number before saving.', code: 'vehicle_reverification_required' });
     }
 
     const listing = await prismaAny.$transaction(async (tx: any) => {
@@ -1029,7 +1157,8 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       await syncListingVehicleVerification(tx, {
         listingId: createdListing.id,
         actorUserId: authenticatedUserId,
-        verificationRecordId: chassisVerification.record?.id || null,
+        verificationRecordId: vehicleVerification.record?.id || null,
+        verificationSource: providerVerificationSnapshot ? vehicleVerification.source : null,
         providerSnapshot: providerVerificationSnapshot,
         currentSnapshot: currentVerificationSnapshot,
       });
@@ -1255,11 +1384,6 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
     const canBypassVehicleVerification = canBypassListingVerification(req.user.role, editPermissions);
     const platformSettings = await getAppSettings();
-    const vehicleListingVerificationEnabled = platformSettings.vehicleListingVerification.enabled === true;
-    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
-      platformSettings.vehicleListingVerification,
-      canBypassVehicleVerification,
-    );
     const existingListing = isAdmin
       ? await prismaAny.listing.findUnique({
           where: { id: listingId },
@@ -1320,6 +1444,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       brandName,
       modelName,
       chassisVerificationId,
+      vehicleVerificationId,
+      vehicleVerificationSource,
       chassisOrSerialNo,
       title,
       status,
@@ -1339,7 +1465,19 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
     const normalizedCategoryId = normalizeText(categoryId);
     const normalizedCategoryName = normalizeText(categoryName);
-    const normalizedChassisVerificationId = normalizeText(chassisVerificationId);
+    const normalizedVehicleVerificationId = normalizeText(vehicleVerificationId) || normalizeText(chassisVerificationId);
+    const normalizedVehicleVerificationSource = hasOwnField('vehicleVerificationSource')
+      ? normalizeVehicleVerificationSource(vehicleVerificationSource)
+      : normalizeVehicleVerificationSource(existingListing.vehicleVerification?.verificationSource);
+    const vehicleListingVerificationEnabled = isVehicleListingVerificationEnabled(
+      platformSettings.vehicleListingVerification,
+      normalizedVehicleVerificationSource,
+    );
+    const vehicleListingVerificationRequired = shouldRequireVehicleListingVerification(
+      platformSettings.vehicleListingVerification,
+      canBypassVehicleVerification,
+      normalizedVehicleVerificationSource,
+    );
     const normalizedBrandName = normalizeText(brandName) || existingListing.brand?.name || 'Not specified';
     const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
     const normalizedTitle = normalizeText(title);
@@ -1376,23 +1514,27 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           slot: (item as any).slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
           isFeatured: item.isFeatured,
         }));
-    const chassisVerification = vehicleListingVerificationEnabled
-      ? await getChassisVerificationContext({
+    const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
+      ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
+      : normalizeText(existingListing.rtoRecords?.[0]?.vehicleNumber)
+        || parseListingDescriptionRegistration(normalizedDescription || '');
+    const vehicleVerification = vehicleListingVerificationEnabled
+      ? await getListingVerificationContext({
+        source: normalizedVehicleVerificationSource,
+        registrationNumber: requestedRegistrationNumber,
         chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription || ''),
-        verificationId: normalizedChassisVerificationId,
+        verificationId: normalizedVehicleVerificationId,
         requestedById: req.user.id,
         canBypassVerification: !vehicleListingVerificationRequired,
       })
-      : { record: null, error: null };
-    if (chassisVerification.error) {
-      return res.status(422).json({ error: chassisVerification.error, code: 'chassis_verification_required' });
+      : { record: null, error: null, source: normalizedVehicleVerificationSource as 'CHASSIS' | 'RC_FULL' };
+    if (vehicleVerification.error) {
+      return res.status(422).json({ error: vehicleVerification.error, code: 'vehicle_verification_required' });
     }
-    const providerVerificationRecordId = chassisVerification.record?.id
-      || existingListing.vehicleVerification?.verificationRecordId
-      || null;
-    const providerVerificationSnapshot = vehicleListingVerificationEnabled
-      ? await getProviderListingVerificationSnapshot(providerVerificationRecordId)
+    const providerVerificationDetail = vehicleListingVerificationEnabled
+      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
       : null;
+    const providerVerificationSnapshot = providerVerificationDetail || null;
     const nextIsNegotiable = hasOwnField('isNegotiable')
       ? Boolean(isNegotiable)
       : Boolean(existingListing.isNegotiable);
@@ -1429,7 +1571,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? await getSelectableCategory(normalizedCategoryId, partnerProfile?.id || '')
       : existingListing.category;
 
-    if (!category && normalizedChassisVerificationId) {
+    if (!category && normalizedVehicleVerificationId) {
       category = await getOrCreateVerifiedGlobalCategory(normalizedCategoryName);
     }
 
@@ -1489,11 +1631,22 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           : null,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
-    if (vehicleListingVerificationRequired && chassisVerification.record && !providerVerificationSnapshot) {
-      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the chassis number again.', code: 'chassis_verification_required' });
+    const identityMismatch = providerVerificationSnapshot
+      ? getVehicleVerificationIdentityMismatch(
+        vehicleVerification.source,
+        currentVerificationSnapshot.registrationNumber,
+        currentVerificationSnapshot.chassisNumber,
+        providerVerificationSnapshot,
+      )
+      : null;
+    if (identityMismatch) {
+      return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
+    }
+    if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
+      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the vehicle number or chassis number again.', code: 'vehicle_verification_required' });
     }
     if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
-      return res.status(422).json({ error: 'Chassis or engine number changed. Verify the current vehicle identity before saving.', code: 'chassis_reverification_required' });
+      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and vehicle number before saving.', code: 'vehicle_reverification_required' });
     }
 
     const updatedListing = await prismaAny.$transaction(async (tx: any) => {
@@ -1547,7 +1700,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       await syncListingVehicleVerification(tx, {
         listingId: nextListing.id,
         actorUserId: authenticatedUserId,
-        verificationRecordId: chassisVerification.record?.id || existingListing.vehicleVerification?.verificationRecordId,
+        verificationRecordId: vehicleVerification.record?.id || null,
+        verificationSource: providerVerificationSnapshot ? vehicleVerification.source : null,
         providerSnapshot: providerVerificationSnapshot,
         currentSnapshot: currentVerificationSnapshot,
       });

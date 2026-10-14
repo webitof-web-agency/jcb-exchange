@@ -16,6 +16,7 @@ import {
   updateListingStatus,
   updateListingAvailability,
 } from '../controllers/listing.controller';
+import { verifyRcFullForListing } from '../controllers/rcFull.controller';
 import { requireAuth, requireAdmin } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -23,6 +24,7 @@ const router = Router();
 router.post('/', requireAuth, createListing);
 router.get('/', requireAuth, getListings);
 router.get('/verification-policy', requireAuth, getListingVerificationPolicy);
+router.post('/vehicle-verification/rc-full', requireAuth, verifyRcFullForListing);
 router.get('/payment-submissions/customer', requireAuth, getCustomerListingPaymentSubmissions);
 router.get('/payment-submissions/partner', requireAuth, getPartnerListingPaymentSubmissions);
 router.get('/:id/payment-settings', requireAuth, getListingPaymentSettings);

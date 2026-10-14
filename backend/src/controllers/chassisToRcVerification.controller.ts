@@ -48,10 +48,14 @@ export const verifyChassisToRc = async (req: Request, res: Response, next: NextF
   try {
     const result = await chassisToRcVerificationService.verifyChassisToRc(bodyOf(req.body), req.user!.id);
     const isSeller = req.user?.role === 'CUSTOMER' || req.user?.role === 'PARTNER';
+    const billing = 'billing' in result ? result.billing : undefined;
     return res.status(201).json({
       success: true,
-      ...result,
+      record: isSeller ? { id: result.record.id, status: result.record.status } : result.record,
+      cacheHit: result.cacheHit,
+      ...(billing && !isSeller ? { billing } : {}),
       ...(isSeller ? { result: sanitizeChassisToRcResultForSeller(result.result) } : {}),
+      ...(!isSeller ? { result: result.result } : {}),
     });
   } catch (error) {
     return sendError(error, res, next);

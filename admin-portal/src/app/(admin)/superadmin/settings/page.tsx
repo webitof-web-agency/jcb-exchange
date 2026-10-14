@@ -134,6 +134,8 @@ type SettingsResponse = {
   };
   vehicleListingVerification: {
     enabled: boolean;
+    chassisEnabled?: boolean;
+    registrationEnabled?: boolean;
     updatedAt?: string | null;
     updatedByUserId?: string | null;
   };
@@ -173,7 +175,8 @@ type ListingCreationAccessFormState = {
 };
 
 type VehicleListingVerificationFormState = {
-  enabled: boolean;
+  chassisEnabled: boolean;
+  registrationEnabled: boolean;
 };
 
 const isMaskedSecretValue = (value: string) => /^\*+$/.test(value.trim());
@@ -392,7 +395,8 @@ export default function SuperAdminSettingsPage() {
     allowEmployee: false,
   });
   const [vehicleListingVerificationForm, setVehicleListingVerificationForm] = useState<VehicleListingVerificationFormState>({
-    enabled: false,
+    chassisEnabled: false,
+    registrationEnabled: false,
   });
   const [listingPaymentForm, setListingPaymentForm] = useState<ListingPaymentFormState>(emptyListingPaymentForm);
 
@@ -552,7 +556,9 @@ export default function SuperAdminSettingsPage() {
         allowEmployee: response.data.listingCreationAccess?.allowEmployee === true,
       });
       setVehicleListingVerificationForm({
-        enabled: response.data.vehicleListingVerification?.enabled === true,
+        chassisEnabled: response.data.vehicleListingVerification?.chassisEnabled
+          ?? response.data.vehicleListingVerification?.enabled === true,
+        registrationEnabled: response.data.vehicleListingVerification?.registrationEnabled === true,
       });
       setListingPaymentForm({
         rtgs: {
@@ -756,12 +762,18 @@ export default function SuperAdminSettingsPage() {
       });
 
       setVehicleListingVerificationForm({
-        enabled: response.data.vehicleListingVerification.enabled === true,
+        chassisEnabled: response.data.vehicleListingVerification.chassisEnabled
+          ?? response.data.vehicleListingVerification.enabled === true,
+        registrationEnabled: response.data.vehicleListingVerification.registrationEnabled === true,
       });
       toast.success(
-        response.data.vehicleListingVerification.enabled
-          ? 'Vehicle listing verification enabled successfully.'
-          : 'Vehicle listing verification disabled. Listings can now be submitted manually.',
+        response.data.vehicleListingVerification.chassisEnabled && response.data.vehicleListingVerification.registrationEnabled
+          ? 'Chassis and vehicle number verification enabled successfully.'
+          : response.data.vehicleListingVerification.chassisEnabled
+            ? 'Chassis verification enabled. Vehicle number verification is disabled.'
+            : response.data.vehicleListingVerification.registrationEnabled
+              ? 'Vehicle number verification enabled. Chassis verification is disabled.'
+              : 'All vehicle verification is disabled. Listings can now be submitted manually.',
       );
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to save vehicle listing verification settings.'));
@@ -1736,15 +1748,17 @@ export default function SuperAdminSettingsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Vehicle Listings</p>
                     <h3 className="mt-1 text-xl font-bold text-gray-900">Vehicle Listing Verification</h3>
                     <p className="mt-2 max-w-3xl text-sm text-gray-500">
-                      Require chassis verification to auto-fill vehicle RC details when creating listings.
+                      Control chassis and vehicle-number (RC Full) verification independently when creating or editing listings.
                     </p>
                   </div>
-                  <span className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${vehicleListingVerificationForm.enabled
+                  <span className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${vehicleListingVerificationForm.chassisEnabled || vehicleListingVerificationForm.registrationEnabled
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                     : 'border-gray-200 bg-gray-50 text-gray-600'
                   }`}>
                     <ScanLine className="h-4 w-4" />
-                    {vehicleListingVerificationForm.enabled ? 'Verification required' : 'Manual listing mode'}
+                    {vehicleListingVerificationForm.chassisEnabled || vehicleListingVerificationForm.registrationEnabled
+                      ? 'Verification required'
+                      : 'Manual listing mode'}
                   </span>
                 </div>
 
@@ -1753,23 +1767,50 @@ export default function SuperAdminSettingsPage() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h4 className="text-sm font-semibold text-gray-900">Require chassis verification for vehicle listings</h4>
+                        <p className="mt-1 text-xs text-gray-500">Controls chassis-number verification and chassis-based auto-fill.</p>
                       </div>
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={vehicleListingVerificationForm.enabled}
-                        aria-label="Toggle vehicle listing verification"
-                        onClick={() => setVehicleListingVerificationForm((current) => ({ ...current, enabled: !current.enabled }))}
+                        aria-checked={vehicleListingVerificationForm.chassisEnabled}
+                        aria-label="Toggle chassis verification"
+                        onClick={() => setVehicleListingVerificationForm((current) => ({ ...current, chassisEnabled: !current.chassisEnabled }))}
                         disabled={vehicleListingVerificationSaving}
-                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${vehicleListingVerificationForm.enabled
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${vehicleListingVerificationForm.chassisEnabled
                           ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
                           : 'border-gray-300 bg-white text-gray-600'
                         } ${vehicleListingVerificationSaving ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
-                        <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${vehicleListingVerificationForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                          <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${vehicleListingVerificationForm.enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${vehicleListingVerificationForm.chassisEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                          <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${vehicleListingVerificationForm.chassisEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
                         </span>
-                        <span>{vehicleListingVerificationForm.enabled ? 'Enabled' : 'Disabled'}</span>
+                        <span>{vehicleListingVerificationForm.chassisEnabled ? 'Enabled' : 'Disabled'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900">Require vehicle number verification for vehicle listings</h4>
+                        <p className="mt-1 text-xs text-gray-500">Controls RC Full verification and vehicle-number-based auto-fill.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={vehicleListingVerificationForm.registrationEnabled}
+                        aria-label="Toggle vehicle number verification"
+                        onClick={() => setVehicleListingVerificationForm((current) => ({ ...current, registrationEnabled: !current.registrationEnabled }))}
+                        disabled={vehicleListingVerificationSaving}
+                        className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${vehicleListingVerificationForm.registrationEnabled
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                          : 'border-gray-300 bg-white text-gray-600'
+                        } ${vehicleListingVerificationSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        <span className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${vehicleListingVerificationForm.registrationEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                          <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${vehicleListingVerificationForm.registrationEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </span>
+                        <span>{vehicleListingVerificationForm.registrationEnabled ? 'Enabled' : 'Disabled'}</span>
                       </button>
                     </div>
                   </div>

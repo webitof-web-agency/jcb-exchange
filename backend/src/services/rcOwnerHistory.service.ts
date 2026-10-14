@@ -12,6 +12,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  type ApiBillableServiceKey,
 } from './apiWalletBilling.service';
 
 const RC_STATUS = {
@@ -37,6 +38,9 @@ type RcOwnerHistoryDependencies = {
   provider?: ReturnType<typeof createSurepassClient>;
   dataSecret?: string;
   billing?: ApiBillingGateway;
+  serviceKey?: Extract<ApiBillableServiceKey, 'RC_OWNER_HISTORY' | 'RC_FULL'>;
+  auditEntityType?: 'RC_OWNER_HISTORY' | 'RC_FULL';
+  auditActionPrefix?: 'RC_OWNER_HISTORY' | 'RC_FULL';
 };
 
 export class RcOwnerHistoryError extends Error {
@@ -125,6 +129,29 @@ export const maskRcNumber = (value: string) => {
 
 export type RcOwnerHistoryResult = Record<string, unknown>;
 
+const sellerListingResultFields = new Set([
+  'rcNumber',
+  'registrationDate',
+  'vehicleCategory',
+  'vehicleCategoryDescription',
+  'vehicleChasiNumber',
+  'vehicleEngineNumber',
+  'makerDescription',
+  'makerModel',
+  'fuelType',
+  'variant',
+  'manufacturingDate',
+  'manufacturingDateFormatted',
+  'fitUpTo',
+  'insuranceUpto',
+  'taxUpto',
+  'taxPaidUpto',
+  'puccUpto',
+  'ownerNumber',
+  'registeredAt',
+  'financed',
+]);
+
 export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryResult => {
   const data = objectValue(value) || {};
   const result: RcOwnerHistoryResult = {};
@@ -137,6 +164,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     ['permanentAddress', data.permanent_address ?? data.permanentAddress, 1200],
     ['mobileNumber', data.mobile_number ?? data.mobileNumber, 30],
     ['vehicleCategory', data.vehicle_category ?? data.vehicleCategory, 100],
+    ['vehicleCategoryDescription', data.vehicle_category_description ?? data.vehicleCategoryDescription, 200],
     ['vehicleChasiNumber', data.vehicle_chasi_number ?? data.vehicleChasiNumber, 100],
     ['vehicleEngineNumber', data.vehicle_engine_number ?? data.vehicleEngineNumber, 100],
     ['makerDescription', data.maker_description ?? data.makerDescription, 250],
@@ -218,6 +246,13 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
   return result;
 };
 
+export const sanitizeRcFullResultForListing = (value: unknown): RcOwnerHistoryResult => {
+  const result = objectValue(value) || {};
+  return Object.fromEntries(
+    Object.entries(result).filter(([key]) => sellerListingResultFields.has(key)),
+  );
+};
+
 const recordSummary = (record: any) => ({
   id: record.id,
   status: record.status,
@@ -268,6 +303,9 @@ export class RcOwnerHistoryService {
   private readonly provider: ReturnType<typeof createSurepassClient> | undefined;
   private readonly dataSecret: string | undefined;
   private readonly billing: ApiBillingGateway | undefined;
+  private readonly serviceKey: Extract<ApiBillableServiceKey, 'RC_OWNER_HISTORY' | 'RC_FULL'>;
+  private readonly auditEntityType: 'RC_OWNER_HISTORY' | 'RC_FULL';
+  private readonly auditActionPrefix: 'RC_OWNER_HISTORY' | 'RC_FULL';
 
   constructor(dependencies: RcOwnerHistoryDependencies = {}) {
     this.record = dependencies.record || (prisma as any).rcOwnerHistoryRecord;
@@ -275,6 +313,9 @@ export class RcOwnerHistoryService {
     this.provider = dependencies.provider;
     this.dataSecret = dependencies.dataSecret?.trim() || undefined;
     this.billing = dependencies.billing ?? (!dependencies.record ? apiWalletBillingService : undefined);
+    this.serviceKey = dependencies.serviceKey || 'RC_OWNER_HISTORY';
+    this.auditEntityType = dependencies.auditEntityType || this.serviceKey;
+    this.auditActionPrefix = dependencies.auditActionPrefix || this.serviceKey;
   }
 
   private async getRuntime() {
@@ -298,6 +339,7 @@ export class RcOwnerHistoryService {
   private async ensureNoRecentDuplicate(requestFingerprint: string) {
     const existing = await this.record.findFirst({
       where: {
+        serviceKey: this.serviceKey,
         requestFingerprint,
         status: RC_STATUS.PENDING,
         createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
@@ -310,6 +352,7 @@ export class RcOwnerHistoryService {
   private async findFreshCachedResult(requestFingerprint: string, dataSecret: string) {
     const cached = await this.record.findFirst({
       where: {
+        serviceKey: this.serviceKey,
         requestFingerprint,
         status: RC_STATUS.SUCCESS,
         completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
@@ -344,7 +387,7 @@ export class RcOwnerHistoryService {
   private async writeAudit(actorUserId: string, action: string, entityId: string, afterJson: Record<string, unknown>) {
     if (!this.audit) return;
     try {
-      await this.audit.create({ data: { actorUserId, entityType: 'RC_OWNER_HISTORY', entityId, action, afterJson } });
+      await this.audit.create({ data: { actorUserId, entityType: this.auditEntityType, entityId, action, afterJson } });
     } catch {
       // Audit failure must not expose provider data or block a successful lookup.
     }
@@ -356,12 +399,13 @@ export class RcOwnerHistoryService {
     const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret);
     if (cached) return cached;
     await this.ensureNoRecentDuplicate(requestFingerprint);
-    const existing = await this.record.findFirst({ where: { requestFingerprint }, orderBy: { completedAt: 'desc' } });
+    const existing = await this.record.findFirst({ where: { serviceKey: this.serviceKey, requestFingerprint }, orderBy: { completedAt: 'desc' } });
     const pending = existing
       ? await this.record.update({
           where: { id: existing.id },
           data: {
             status: RC_STATUS.PENDING,
+            serviceKey: this.serviceKey,
             maskedRcNumber,
             requestFingerprint,
             requestedById,
@@ -372,20 +416,33 @@ export class RcOwnerHistoryService {
             completedAt: null,
           },
         })
-      : await this.record.create({ data: { status: RC_STATUS.PENDING, maskedRcNumber, requestFingerprint, requestedById } });
-    await this.writeAudit(requestedById, 'RC_OWNER_HISTORY_REQUESTED', pending.id, { maskedRcNumber, status: RC_STATUS.PENDING });
+      : await this.record.create({ data: { status: RC_STATUS.PENDING, serviceKey: this.serviceKey, maskedRcNumber, requestFingerprint, requestedById } });
+    await this.writeAudit(requestedById, `${this.auditActionPrefix}_REQUESTED`, pending.id, { maskedRcNumber, status: RC_STATUS.PENDING });
 
     try {
       const billing = this.billing
         ? await this.billing.chargeForProviderCall({
-            serviceKey: 'RC_OWNER_HISTORY',
+            serviceKey: this.serviceKey,
             verificationRecordId: pending.id,
             requestedById,
           })
         : undefined;
       const body = await runtime.provider.verifyRcFull({ id_number: rcNumber });
       const { response, data } = ensureProviderData(body);
-      const normalized = normalizeRcOwnerHistoryResult({ ...data, rc_number: data.rc_number ?? rcNumber });
+      const normalized = normalizeRcOwnerHistoryResult({
+        ...data,
+        rc_number: data.rc_number ?? data.rcNumber ?? rcNumber,
+      });
+      if (
+        this.serviceKey === 'RC_FULL'
+        && normalizeRcNumber(normalized.rcNumber) !== rcNumber
+      ) {
+        throw operationError(
+          'The verified vehicle number does not match the requested vehicle number.',
+          422,
+          'provider_identity_mismatch',
+        );
+      }
       const encryptedResult = encryptPanData(JSON.stringify(normalized), runtime.dataSecret);
       const completed = await this.record.update({
         where: { id: pending.id },
@@ -402,7 +459,7 @@ export class RcOwnerHistoryService {
         },
         include: { requestedBy: { select: { id: true, name: true, email: true } } },
       });
-      await this.writeAudit(requestedById, 'RC_OWNER_HISTORY_SUCCEEDED', pending.id, {
+      await this.writeAudit(requestedById, `${this.auditActionPrefix}_SUCCEEDED`, pending.id, {
         maskedRcNumber,
         status: RC_STATUS.SUCCESS,
         rcStatus: completed.rcStatus ?? null,
@@ -417,7 +474,7 @@ export class RcOwnerHistoryService {
           ? error
           : new RcOwnerHistoryError('Vehicle verification could not be completed.', 502, 'verification_failed');
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
-      await this.writeAudit(requestedById, 'RC_OWNER_HISTORY_FAILED', pending.id, {
+      await this.writeAudit(requestedById, `${this.auditActionPrefix}_FAILED`, pending.id, {
         maskedRcNumber,
         status: RC_STATUS.FAILED,
         code: normalizedError.code,
@@ -430,7 +487,7 @@ export class RcOwnerHistoryService {
     const rcNumber = normalizeRcNumber(input.id_number ?? input.rc_number ?? input.rcNumber);
     const rcError = validateRcNumber(rcNumber);
     if (rcError) throw operationError(rcError);
-    return this.run(rcNumber, requestedById, createVerificationFingerprint('RC_OWNER_HISTORY', { id_number: rcNumber }));
+    return this.run(rcNumber, requestedById, createVerificationFingerprint(this.serviceKey, { id_number: rcNumber }));
   }
 
   async listHistory(filters: { page?: unknown; limit?: unknown; status?: unknown; search?: unknown }) {
@@ -442,7 +499,7 @@ export class RcOwnerHistoryService {
       ? filters.status as typeof RC_STATUS[keyof typeof RC_STATUS]
       : undefined;
     const search = typeof filters.search === 'string' ? filters.search.trim().slice(0, 50) : '';
-    const where = { ...(status ? { status } : {}), ...(search ? { maskedRcNumber: { contains: search, mode: 'insensitive' } } : {}) };
+    const where = { serviceKey: this.serviceKey, ...(status ? { status } : {}), ...(search ? { maskedRcNumber: { contains: search, mode: 'insensitive' } } : {}) };
     const [total, records] = await Promise.all([
       this.record.count({ where }),
       this.record.findMany({
@@ -458,7 +515,7 @@ export class RcOwnerHistoryService {
 
   async getHistoryDetail(id: string) {
     const record = await this.record.findUnique({
-      where: { id },
+      where: { id, serviceKey: this.serviceKey },
       include: { requestedBy: { select: { id: true, name: true, email: true } } },
     });
     if (!record) throw new RcOwnerHistoryError('Vehicle verification record not found.', 404, 'record_not_found');
@@ -478,3 +535,11 @@ export class RcOwnerHistoryService {
 }
 
 export const rcOwnerHistoryService = new RcOwnerHistoryService();
+
+export class RcFullService extends RcOwnerHistoryService {
+  constructor(dependencies: Omit<RcOwnerHistoryDependencies, 'serviceKey' | 'auditEntityType' | 'auditActionPrefix'> = {}) {
+    super({ ...dependencies, serviceKey: 'RC_FULL', auditEntityType: 'RC_FULL', auditActionPrefix: 'RC_FULL' });
+  }
+}
+
+export const rcFullService = new RcFullService();

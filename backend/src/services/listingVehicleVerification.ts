@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { createVerificationFingerprint } from './verificationCache';
 import { normalizeChassisNumber } from './chassisToRcVerification.validation';
+import { normalizeRcNumber } from './rcOwnerHistory.validation';
+
+export type ListingVerificationSource = 'CHASSIS' | 'RC_FULL';
 
 export type ListingVerificationStatus =
   | 'NOT_VERIFIED'
@@ -9,6 +12,34 @@ export type ListingVerificationStatus =
   | 'REVERIFICATION_REQUIRED';
 
 export type ListingVerificationSnapshot = Record<string, string>;
+
+export const buildRcFullVerificationFingerprint = (registrationNumber: unknown) =>
+  createVerificationFingerprint('RC_FULL', {
+    id_number: normalizeRcNumber(registrationNumber),
+  });
+
+export const getVehicleVerificationIdentityMismatch = (
+  source: ListingVerificationSource,
+  requestedRegistrationNumber: unknown,
+  requestedChassisNumber: unknown,
+  providerSnapshot: Partial<Pick<ListingVerificationSnapshot, 'registrationNumber' | 'chassisNumber'>>,
+) => {
+  const requestedRegistration = normalizeRcNumber(requestedRegistrationNumber).replace(/[/-]+/g, '');
+  const returnedRegistration = normalizeRcNumber(providerSnapshot.registrationNumber).replace(/[/-]+/g, '');
+  const requestedChassis = normalizeChassisNumber(requestedChassisNumber);
+  const returnedChassis = normalizeChassisNumber(providerSnapshot.chassisNumber);
+
+  if (source === 'RC_FULL' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
+    return 'The verified vehicle number does not match the entered vehicle number.';
+  }
+  if (requestedChassis && returnedChassis && requestedChassis !== returnedChassis) {
+    return 'The verified chassis number does not match the entered chassis number.';
+  }
+  if (source === 'CHASSIS' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
+    return 'The verified vehicle number does not match the entered vehicle number.';
+  }
+  return null;
+};
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : value === null || value === undefined ? '' : String(value).trim());
 const firstText = (...values: unknown[]) => values.map(text).find(Boolean) || '';
@@ -182,6 +213,7 @@ export const syncListingVehicleVerification = async (
     listingId: string;
     actorUserId?: string;
     verificationRecordId?: string | null;
+    verificationSource?: ListingVerificationSource | null;
     providerSnapshot?: ListingVerificationSnapshot | null;
     currentSnapshot: ListingVerificationSnapshot;
   },
@@ -191,7 +223,7 @@ export const syncListingVehicleVerification = async (
   const now = new Date();
   const previous = await client.listingVehicleVerification.findUnique({
     where: { listingId: input.listingId },
-    select: { status: true, changedFields: true, verificationRecordId: true },
+    select: { status: true, changedFields: true, verificationRecordId: true, verificationSource: true },
   });
 
   const verification = await client.listingVehicleVerification.upsert({
@@ -199,7 +231,9 @@ export const syncListingVehicleVerification = async (
     create: {
       listingId: input.listingId,
       verificationRecordId: input.verificationRecordId || null,
+      verificationSource: input.verificationSource || null,
       status: assessment.status,
+      verifiedRegistrationNumber: providerSnapshot?.registrationNumber || null,
       verifiedChassisNumber: providerSnapshot?.chassisNumber || null,
       verifiedEngineNumber: providerSnapshot?.engineNumber || null,
       verifiedFieldHashes: providerSnapshot ? hashListingVerificationSnapshot(providerSnapshot) : null,
@@ -208,10 +242,15 @@ export const syncListingVehicleVerification = async (
       lastModifiedAt: assessment.status === 'API_VERIFIED' ? null : now,
     },
     update: {
-      ...(input.verificationRecordId ? { verificationRecordId: input.verificationRecordId } : {}),
+      // The absence of a provider snapshot is meaningful. It means the current
+      // identity is no longer backed by the previous verification, so do not
+      // retain an old record/source that could be reused on the next edit.
+      verificationRecordId: input.verificationRecordId || null,
+      verificationSource: input.verificationSource || null,
       status: assessment.status,
       ...(providerSnapshot
         ? {
+            verifiedRegistrationNumber: providerSnapshot.registrationNumber || null,
             verifiedChassisNumber: providerSnapshot.chassisNumber || null,
             verifiedEngineNumber: providerSnapshot.engineNumber || null,
             verifiedFieldHashes: hashListingVerificationSnapshot(providerSnapshot),
@@ -228,7 +267,8 @@ export const syncListingVehicleVerification = async (
     const previousChangedFields = Array.isArray(previous?.changedFields) ? previous.changedFields : [];
     const changed = previousStatus !== assessment.status
       || JSON.stringify(previousChangedFields) !== JSON.stringify(assessment.changedFields)
-      || previous?.verificationRecordId !== (input.verificationRecordId || previous?.verificationRecordId || null);
+      || previous?.verificationRecordId !== (input.verificationRecordId || null)
+      || previous?.verificationSource !== (input.verificationSource || null);
 
     if (changed) {
       await client.auditLog.create({
@@ -243,7 +283,10 @@ export const syncListingVehicleVerification = async (
           afterJson: {
             status: assessment.status,
             changedFields: assessment.changedFields,
-            verificationRecordId: input.verificationRecordId || previous?.verificationRecordId || null,
+            verificationRecordId: input.verificationRecordId || null,
+            ...(input.verificationSource
+              ? { verificationSource: input.verificationSource }
+              : {}),
           },
         },
       });
@@ -271,4 +314,19 @@ export const isUsableChassisVerification = (
   && record.status === 'SUCCESS'
   && record.requestedById === requestedById
   && record.requestFingerprint === buildChassisVerificationFingerprint(chassisNumber),
+);
+
+export const isUsableRcFullVerification = (
+  record: {
+    status?: unknown;
+    requestedById?: unknown;
+    requestFingerprint?: unknown;
+  } | null | undefined,
+  registrationNumber: unknown,
+  requestedById: string,
+) => Boolean(
+  record
+  && record.status === 'SUCCESS'
+  && record.requestedById === requestedById
+  && record.requestFingerprint === buildRcFullVerificationFingerprint(registrationNumber),
 );

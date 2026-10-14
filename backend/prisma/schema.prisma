@@ -163,6 +163,7 @@ enum AuditEntityType {
   GST_VERIFICATION
   DRIVING_LICENSE_VERIFICATION
   RC_OWNER_HISTORY
+  RC_FULL
   RC_CHALLAN_VERIFICATION
   CHASSIS_TO_RC_VERIFICATION
   RC_TO_MOBILE_VERIFICATION
@@ -398,6 +399,7 @@ enum ApiBillableService {
   MOBILE_TO_PAN
   DRIVING_LICENSE_VERIFICATION
   RC_OWNER_HISTORY
+  RC_FULL
   RC_CHALLAN
   CHASSIS_TO_RC
   RC_TO_MOBILE
@@ -693,6 +695,7 @@ model DrivingLicenseVerificationRecord {
 model RcOwnerHistoryRecord {
   id                 String               @id @default(uuid())
   status             RcOwnerHistoryStatus @default(PENDING)
+  serviceKey         ApiBillableService   @default(RC_OWNER_HISTORY)
   maskedRcNumber     String
   requestFingerprint String?              @db.VarChar(64)
   ownerName          String?
@@ -715,6 +718,8 @@ model RcOwnerHistoryRecord {
   @@index([maskedRcNumber, createdAt])
   @@index([rcStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([serviceKey, status, createdAt])
+  @@index([serviceKey, requestFingerprint, status, completedAt])
 }
 
 model RcChallanVerificationRecord {
@@ -1078,11 +1083,18 @@ enum ListingVerificationStatus {
   REVERIFICATION_REQUIRED
 }
 
+enum ListingVerificationSource {
+  CHASSIS
+  RC_FULL
+}
+
 model ListingVehicleVerification {
   id                    String                    @id @default(uuid())
   listingId             String                    @unique
   verificationRecordId  String?
+  verificationSource    ListingVerificationSource?
   status                ListingVerificationStatus @default(NOT_VERIFIED)
+  verifiedRegistrationNumber String?
   verifiedChassisNumber String?
   verifiedEngineNumber  String?
   verifiedFieldHashes   Json?

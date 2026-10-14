@@ -702,7 +702,9 @@ export const updatePlatformRuntimeSettings = async ({
   listingCreationAccess?: Partial<
     Pick<ListingCreationAccessSettings, 'allowAdmin' | 'allowEmployee'>
   > | null;
-  vehicleListingVerification?: Partial<Pick<VehicleListingVerificationSettings, 'enabled'>> | null;
+  vehicleListingVerification?: Partial<
+    Pick<VehicleListingVerificationSettings, 'enabled' | 'chassisEnabled' | 'registrationEnabled'>
+  > | null;
   listingPayment?: Partial<ListingPaymentSettings> | null;
   companyInvoice?: Partial<CompanyInvoiceSettings> | null;
   googleDrive?: Partial<GoogleDriveSettings> | null;
