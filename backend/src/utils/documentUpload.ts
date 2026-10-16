@@ -5,6 +5,7 @@ import path from 'path';
 export type UploadVisibility = 'public' | 'secure';
 export type UploadPurpose =
   | 'document'
+  | 'passport-photo'
   | 'resume'
   | 'offer-letter'
   | 'listing-media'
@@ -48,6 +49,18 @@ const allowedDocumentExtensionsByMimeType: Record<string, string[]> = {
   'application/pdf': ['.pdf'],
 };
 
+const allowedPassportPhotoMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+const allowedPassportPhotoExtensionsByMimeType: Record<string, string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+};
+
 const allowedResumeExtensionsByMimeType: Record<string, string[]> = {
   'application/pdf': ['.pdf'],
   'application/msword': ['.doc'],
@@ -66,6 +79,7 @@ const allowedListingMediaExtensionsByMimeType: Record<string, string[]> = {
 };
 
 export const MAX_DOCUMENT_UPLOAD_SIZE = 5 * 1024 * 1024;
+export const MAX_PASSPORT_PHOTO_UPLOAD_SIZE = 3 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_UPLOAD_SIZE = 15 * 1024 * 1024;
 export const MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE = 2 * 1024 * 1024;
 export const MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;
@@ -105,6 +119,15 @@ export const isAllowedDocumentFile = (mimeType: string, originalName: string) =>
   return allowedExtensions.includes(extension);
 };
 
+export const isAllowedPassportPhotoFile = (mimeType: string, originalName: string) => {
+  if (!allowedPassportPhotoMimeTypes.has(mimeType)) {
+    return false;
+  }
+
+  const extension = getExtensionFromOriginalName(originalName);
+  return (allowedPassportPhotoExtensionsByMimeType[mimeType] || []).includes(extension);
+};
+
 export const isAllowedListingMediaFile = (mimeType: string, originalName: string) => {
   if (!allowedListingMediaMimeTypes.has(mimeType)) {
     return false;
@@ -135,6 +158,19 @@ export const isAllowedResumeFile = (mimeType: string, originalName: string) => {
   return allowedExtensions.includes(extension);
 };
 
+export const getUploadFileSizeLimit = (purpose: UploadPurpose) => {
+  if (purpose === 'passport-photo') return MAX_PASSPORT_PHOTO_UPLOAD_SIZE;
+  if (purpose === 'listing-media') return MAX_LISTING_VIDEO_UPLOAD_SIZE;
+  if (purpose === 'blog-cover') return MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'inspection-section') return MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'site-logo' || purpose === 'site-dark-logo') return MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'site-favicon') return MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'site-manifest-icon') return MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'hero-image') return MAX_HERO_IMAGE_UPLOAD_SIZE;
+  if (purpose === 'finance-support') return MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE;
+  return MAX_DOCUMENT_UPLOAD_SIZE;
+};
+
 export const getDocumentUploadMiddleware = (
   visibility: UploadVisibility,
   purpose: UploadPurpose = 'document'
@@ -145,6 +181,8 @@ export const getDocumentUploadMiddleware = (
       const allowed =
         purpose === 'resume' || purpose === 'offer-letter'
           ? isAllowedResumeFile(file.mimetype, file.originalname)
+          : purpose === 'passport-photo'
+            ? isAllowedPassportPhotoFile(file.mimetype, file.originalname)
           : purpose === 'listing-media'
             ? isAllowedListingMediaFile(file.mimetype, file.originalname)
               : purpose === 'finance-support' || purpose === 'blog-cover' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-dark-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
@@ -156,6 +194,8 @@ export const getDocumentUploadMiddleware = (
           new Error(
             purpose === 'resume' || purpose === 'offer-letter'
               ? 'Only PDF, DOC, and DOCX files are allowed for resumes and documents.'
+              : purpose === 'passport-photo'
+                ? 'Only JPG, PNG, and WEBP passport photos are allowed.'
               : purpose === 'listing-media'
                 ? 'Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.'
                 : purpose === 'finance-support' || purpose === 'blog-cover' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
@@ -170,7 +210,9 @@ export const getDocumentUploadMiddleware = (
     },
     limits: {
       fileSize:
-        purpose === 'listing-media'
+        purpose === 'passport-photo'
+          ? MAX_PASSPORT_PHOTO_UPLOAD_SIZE
+          : purpose === 'listing-media'
           ? MAX_LISTING_VIDEO_UPLOAD_SIZE
           : purpose === 'blog-cover'
             ? MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE

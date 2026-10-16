@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Search, X, MoreVertical, Eye, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Search, X, MoreVertical, Eye, AlertCircle, CheckCircle2, XCircle, Pencil } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
+import { hasAnyPermission } from '@/lib/permissionUtils';
+import { useAuthStore } from '@/store/authStore';
+import { getKycVerificationFields, type KycVerificationDocumentType } from '@/lib/kycVerification';
 
 interface VerificationItem {
   id: string;
@@ -55,7 +59,7 @@ interface VerificationDetail {
   documents: Array<{
     id: string;
     documentType: string;
-    fileUrl: string;
+    fileUrl: string | null;
     fileName: string | null;
     documentNumber: string | null;
     nameOnDocument: string | null;
@@ -64,6 +68,13 @@ interface VerificationDetail {
     submittedNote: string | null;
     status: string;
     reviewComment: string | null;
+    verificationStatus: string | null;
+    verificationRecordId: string | null;
+    verificationCacheHit: boolean;
+    verificationMessage: string | null;
+    verificationRequestedAt: string | null;
+    verificationCompletedAt: string | null;
+    verificationResult: Record<string, unknown> | null;
   }>;
   agreements: Array<{
     agreementType: string;
@@ -78,16 +89,39 @@ interface VerificationDetail {
   }>;
 }
 
-const formatDate = (value?: string | null) =>
-  value
-    ? new Intl.DateTimeFormat('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      }).format(new Date(value))
-    : '-';
+const formatDate = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
 
 const formatStatus = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '-');
+
+const verificationStatusClass: Record<string, string> = {
+  VERIFIED: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  FAILED: 'bg-red-50 text-red-700 ring-red-200',
+  MANUAL_REVIEW: 'bg-amber-50 text-amber-700 ring-amber-200',
+  VERIFYING: 'bg-blue-50 text-blue-700 ring-blue-200',
+  NOT_STARTED: 'bg-gray-100 text-gray-600 ring-gray-200',
+};
 
 const getReviewActionLabel = (action: string, partnerType?: string | null, partnerName?: string | null) => {
   const resolvedPartnerType = formatPartnerTypeLabel(partnerType);
@@ -110,6 +144,18 @@ const statusLabel: Record<string, string> = {
 
 export default function SuperAdminVerificationsPage() {
   const { t } = useTranslation();
+  const pathname = usePathname();
+  const router = useRouter();
+  const viewer = useAuthStore((state) => state.user);
+  const canEditKyc =
+    viewer?.role === 'SUPER_ADMIN' ||
+    viewer?.role === 'ADMIN' ||
+    hasAnyPermission(viewer?.permissions, ['kyc.edit.override']);
+  const canManageKyc =
+    viewer?.role === 'SUPER_ADMIN' ||
+    viewer?.role === 'ADMIN' ||
+    hasAnyPermission(viewer?.permissions, ['kyc.manage']);
+  const partnerEditBasePath = pathname.startsWith('/employee') ? '/employee/partners' : '/superadmin/partners';
   const [verifications, setVerifications] = useState<VerificationItem[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -320,27 +366,40 @@ export default function SuperAdminVerificationsPage() {
                               icon: <Eye className="h-4 w-4" />,
                               onClick: () => { void openDetail(partner.id); },
                             },
-                            {
-                              label: t('verifications.requestChanges'),
-                              icon: <AlertCircle className="h-4 w-4" />,
-                              variant: 'warning',
-                              disabled: updatingId === partner.id,
-                              onClick: () => { void handleStatusUpdate(partner.id, 'CHANGES_REQUESTED'); },
-                            },
-                            {
-                              label: t('verifications.approve'),
-                              icon: <CheckCircle2 className="h-4 w-4" />,
-                              variant: 'success',
-                              disabled: updatingId === partner.id,
-                              onClick: () => { void handleStatusUpdate(partner.id, 'APPROVED'); },
-                            },
-                            {
-                              label: t('verifications.reject'),
-                              icon: <XCircle className="h-4 w-4" />,
-                              variant: 'danger',
-                              disabled: updatingId === partner.id,
-                              onClick: () => { void handleStatusUpdate(partner.id, 'REJECTED'); },
-                            },
+                            ...(canEditKyc
+                              ? [{
+                                  label: 'Edit KYC',
+                                  icon: <Pencil className="h-4 w-4" />,
+                                  onClick: () => {
+                                    router.push(`${partnerEditBasePath}/${partner.id}/edit`);
+                                  },
+                                }]
+                              : []),
+                            ...(canManageKyc
+                              ? [
+                                  {
+                                    label: t('verifications.requestChanges'),
+                                    icon: <AlertCircle className="h-4 w-4" />,
+                                    variant: 'warning' as const,
+                                    disabled: updatingId === partner.id,
+                                    onClick: () => { void handleStatusUpdate(partner.id, 'CHANGES_REQUESTED'); },
+                                  },
+                                  {
+                                    label: t('verifications.approve'),
+                                    icon: <CheckCircle2 className="h-4 w-4" />,
+                                    variant: 'success' as const,
+                                    disabled: updatingId === partner.id,
+                                    onClick: () => { void handleStatusUpdate(partner.id, 'APPROVED'); },
+                                  },
+                                  {
+                                    label: t('verifications.reject'),
+                                    icon: <XCircle className="h-4 w-4" />,
+                                    variant: 'danger' as const,
+                                    disabled: updatingId === partner.id,
+                                    onClick: () => { void handleStatusUpdate(partner.id, 'REJECTED'); },
+                                  },
+                                ]
+                              : []),
                           ]}
                         />
                       </div>
@@ -400,16 +459,35 @@ export default function SuperAdminVerificationsPage() {
                 <Section title={t('verifications.kycDocuments')}>
                   {previewError ? <p className="text-sm text-red-600">{previewError}</p> : null}
                   <div className="space-y-4">
-                    {selectedDetail.documents.map((document) => (
+                    {selectedDetail.documents.map((document) => {
+                      const verificationStatus = document.verificationStatus || 'NOT_STARTED';
+                      const verificationFields = document.verificationResult &&
+                        ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)
+                        ? getKycVerificationFields(
+                            document.documentType as KycVerificationDocumentType,
+                            document.verificationResult,
+                          )
+                        : [];
+
+                      return (
                       <div key={document.id} className="rounded-xl border border-gray-200 p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{formatStatus(document.documentType)}</p>
-                            <p className="mt-1 text-xs text-gray-500">{document.fileName || t('verifications.uploadedFile')}</p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {document.fileUrl ? document.fileName || t('verifications.uploadedFile') : 'No file uploaded'}
+                            </p>
                           </div>
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                            {formatStatus(document.status)}
-                          </span>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {document.verificationStatus ? (
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${verificationStatusClass[verificationStatus] || verificationStatusClass.NOT_STARTED}`}>
+                                KYC {formatStatus(verificationStatus)}
+                              </span>
+                            ) : null}
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${document.fileUrl ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {document.fileUrl ? formatStatus(document.status || 'UPLOADED') : 'NOT UPLOADED'}
+                            </span>
+                          </div>
                         </div>
                         <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm text-gray-600">
                           <div>Document number: {document.documentNumber || '-'}</div>
@@ -417,18 +495,50 @@ export default function SuperAdminVerificationsPage() {
                           <div>Issue date: {formatDate(document.issueDate)}</div>
                           <div>Expiry date: {formatDate(document.expiryDate)}</div>
                         </div>
+                        {verificationFields.length > 0 ? (
+                          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-bold text-emerald-900">Verified result</p>
+                              <span className="text-xs font-medium text-emerald-800">
+                                {document.verificationCacheHit ? 'Saved verification result' : 'Fresh API verification'}
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              {verificationFields.map((field) => (
+                                <div key={field.label} className="rounded-lg border border-emerald-100 bg-white/80 px-3 py-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">{field.label}</p>
+                                  <p className="mt-1 break-words text-sm font-medium text-gray-900">{field.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 grid gap-2 text-xs text-emerald-900 md:grid-cols-2">
+                              <p>Verified on: <span className="font-semibold">{formatDateTime(document.verificationCompletedAt)}</span></p>
+                              <p>Verification requested: <span className="font-semibold">{formatDateTime(document.verificationRequestedAt)}</span></p>
+                            </div>
+                          </div>
+                        ) : null}
+                        {document.verificationMessage ? (
+                          <p className={`mt-3 text-sm font-medium ${verificationStatus === 'FAILED' ? 'text-red-600' : 'text-amber-700'}`}>
+                            {document.verificationMessage}
+                          </p>
+                        ) : null}
                         {document.submittedNote ? <LongText label="Partner note" value={document.submittedNote} /> : null}
                         {document.reviewComment ? <LongText label="Review comment" value={document.reviewComment} /> : null}
-                        <button
-                          type="button"
-                          onClick={() => void openSecurePreview(document.fileUrl, document.fileName)}
-                          disabled={previewLoading}
-                          className="mt-3 inline-flex text-sm font-semibold text-[#9a7600] hover:underline"
-                        >
-                          {previewLoading ? t('verifications.opening') : t('verifications.openFile')}
-                        </button>
+                        {document.fileUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => void openSecurePreview(document.fileUrl || '', document.fileName)}
+                            disabled={previewLoading}
+                            className="mt-3 inline-flex text-sm font-semibold text-[#9a7600] hover:underline disabled:opacity-60"
+                          >
+                            {previewLoading ? t('verifications.opening') : t('verifications.openFile')}
+                          </button>
+                        ) : (
+                          <p className="mt-3 text-xs text-gray-500">No document file was uploaded.</p>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Section>
 
@@ -463,30 +573,46 @@ export default function SuperAdminVerificationsPage() {
                 </Section>
 
                 <div className="flex flex-wrap justify-end gap-3 border-t border-gray-100 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => void handleStatusUpdate(selectedDetail.id, 'CHANGES_REQUESTED')}
-                    disabled={updatingId === selectedDetail.id}
-                    className="rounded-md border border-amber-200 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
-                  >
-                    {t('verifications.requestChanges')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleStatusUpdate(selectedDetail.id, 'APPROVED')}
-                    disabled={updatingId === selectedDetail.id}
-                    className="rounded-md border border-green-200 px-4 py-2 text-sm font-medium text-green-700 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {t('verifications.approvePartner')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleStatusUpdate(selectedDetail.id, 'REJECTED')}
-                    disabled={updatingId === selectedDetail.id}
-                    className="rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
-                  >
-                    {t('verifications.rejectPartner')}
-                  </button>
+                  {canEditKyc ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        router.push(`${partnerEditBasePath}/${selectedDetail.id}/edit`);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit KYC
+                    </button>
+                  ) : null}
+                  {canManageKyc ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleStatusUpdate(selectedDetail.id, 'CHANGES_REQUESTED')}
+                        disabled={updatingId === selectedDetail.id}
+                        className="rounded-md border border-amber-200 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
+                      >
+                        {t('verifications.requestChanges')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleStatusUpdate(selectedDetail.id, 'APPROVED')}
+                        disabled={updatingId === selectedDetail.id}
+                        className="rounded-md border border-green-200 px-4 py-2 text-sm font-medium text-green-700 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {t('verifications.approvePartner')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleStatusUpdate(selectedDetail.id, 'REJECTED')}
+                        disabled={updatingId === selectedDetail.id}
+                        className="rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {t('verifications.rejectPartner')}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             )}

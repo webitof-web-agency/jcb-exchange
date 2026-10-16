@@ -146,7 +146,7 @@ const statusBadgeClassName = (status?: string | null) => {
 };
 
 export default function PartnerProfileView() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, setAuth } = useAuthStore();
   const [profileForm, setProfileForm] = useState<PartnerProfileFormState>({
     ownerName: '',
     businessName: '',
@@ -303,7 +303,11 @@ export default function PartnerProfileView() {
 
     try {
       const response = await api.patch('/auth/profile', profileForm);
-      updateUser(response.data.user);
+      if (response.data.token && response.data.user) {
+        setAuth(response.data.token, response.data.user);
+      } else {
+        updateUser(response.data.user);
+      }
 
       setPartnerData((current) =>
         current
@@ -345,6 +349,9 @@ export default function PartnerProfileView() {
 
     try {
       const response = await api.patch('/auth/profile/password', passwordForm);
+      if (response.data.token && response.data.user) {
+        setAuth(response.data.token, response.data.user);
+      }
       setPasswordForm(emptyPasswordForm);
       setPasswordMessage(response.data.message || 'Password updated successfully.');
     } catch (error: unknown) {

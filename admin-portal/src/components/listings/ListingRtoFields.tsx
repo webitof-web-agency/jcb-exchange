@@ -105,6 +105,13 @@ export default function ListingRtoFields({
         <Field label="Hire Purchase" required={required}>
           {makeSelect('hirePurchaseStatus', hirePurchaseOptions)}
         </Field>
+        <Field label="Financer Name" required={false}>
+          <input
+            value={value.financerName}
+            onChange={(e) => onChange('financerName', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
 
         {/* Tax Validity — has LLT option; date hidden when LIFETIME selected */}
         <Field label="Tax Validity" required={required}>
@@ -182,6 +189,13 @@ export default function ListingRtoFields({
         <Field label="HSRP Valid" required={false}>
           {makeSelect('hsrpStatus', hsrpOptions)}
         </Field>
+        <Field label="HSRP Number" required={false}>
+          <input
+            value={value.hsrpNumber}
+            onChange={(e) => onChange('hsrpNumber', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
 
         <Field label="RTO Office" required={required}>
           <input
@@ -209,9 +223,8 @@ export default function ListingRtoFields({
             className={inputClass}
           />
         </Field>
-        <Field label="Vehicle Maintenance Cost" required={required}>
+        <Field label="Vehicle Maintenance Cost" required={false}>
           <input
-            required={required}
             type="number"
             min={1}
             step={1}

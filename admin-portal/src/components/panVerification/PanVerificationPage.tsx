@@ -13,6 +13,7 @@ import {
   type PanRecord,
   type PanResultResponse,
 } from '@/lib/panVerification';
+import { sanitizePan, sanitizePersonName } from '@/lib/verificationSanitizers';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 
@@ -146,10 +147,14 @@ export default function PanVerificationPage() {
     event.preventDefault();
     setError('');
     setResponse(null);
-    const panError = validatePan(pan);
+    const cleanPan = sanitizePan(pan);
+    const cleanFullName = sanitizePersonName(fullName, 150, true);
+    setPan(cleanPan);
+    setFullName(cleanFullName);
+    const panError = validatePan(cleanPan);
     if (panError) return setError(panError);
     if (tab === 'verify') {
-      if (!fullName.trim()) return setError('Full name is required.');
+      if (!cleanFullName.trim()) return setError('Full name is required.');
       const dobError = validateDob(dob);
       if (dobError) return setError(dobError);
     }
@@ -164,12 +169,12 @@ export default function PanVerificationPage() {
             ? '/pan-verification/contact'
             : '/pan-verification/comprehensive-v2';
       const payload = tab === 'verify'
-        ? { id_number: normalizePan(pan), full_name: fullName.trim().replace(/\s+/g, ' '), dob }
+        ? { id_number: normalizePan(cleanPan), full_name: cleanFullName.replace(/\s+/g, ' '), dob }
         : tab === 'aadhaar'
-          ? { pan_number: normalizePan(pan) }
+          ? { pan_number: normalizePan(cleanPan) }
           : tab === 'contact'
-            ? { id_number: normalizePan(pan), ...(fetchEmail ? { fetch_email: true } : {}) }
-            : { id_number: normalizePan(pan) };
+            ? { id_number: normalizePan(cleanPan), ...(fetchEmail ? { fetch_email: true } : {}) }
+            : { id_number: normalizePan(cleanPan) };
       const result = await api.post<PanResultResponse>(endpoint, payload);
       setResponse(result.data);
       if (canHistory) void loadHistory(1, historySearch);
@@ -234,10 +239,10 @@ export default function PanVerificationPage() {
                 <div className={`grid gap-5 ${tab === 'verify' ? 'md:grid-cols-2' : ''}`}>
                   <label className={tab === 'verify' ? '' : 'max-w-xl'}>
                     <span className="text-sm font-semibold text-slate-700">PAN number <span className="text-red-500">*</span></span>
-                    <input value={pan} onChange={(event) => setPan(normalizePan(event.target.value).slice(0, 10))} className={inputClass} placeholder="ABCDE1234F" autoComplete="off" maxLength={10} />
+                    <input value={pan} onChange={(event) => setPan(sanitizePan(event.target.value))} className={inputClass} placeholder="ABCDE1234F" autoComplete="off" maxLength={10} />
                   </label>
                   {tab === 'verify' ? <>
-                    <label><span className="text-sm font-semibold text-slate-700">Full name <span className="text-red-500">*</span></span><input value={fullName} onChange={(event) => setFullName(event.target.value)} className={inputClass} placeholder="As per PAN record" maxLength={150} /></label>
+                    <label><span className="text-sm font-semibold text-slate-700">Full name <span className="text-red-500">*</span></span><input value={fullName} onChange={(event) => setFullName(sanitizePersonName(event.target.value, 150, false))} onBlur={() => setFullName((prev) => sanitizePersonName(prev, 150, true))} className={inputClass} placeholder="As per PAN record" maxLength={150} autoComplete="name" /></label>
                     <label><span className="text-sm font-semibold text-slate-700">Date of birth <span className="text-red-500">*</span></span><input type="date" value={dob} onChange={(event) => setDob(event.target.value)} className={inputClass} /></label>
                   </> : null}
                 </div>
@@ -254,7 +259,7 @@ export default function PanVerificationPage() {
             <div className="p-5 sm:p-7">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="text-lg font-bold text-slate-900">Verification history</h2><p className="text-sm text-slate-500">Only masked PAN values are displayed in the list.</p></div>
-                <div className="flex gap-2"><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value.toUpperCase().slice(0, 10))} onKeyDown={(event) => { if (event.key === 'Enter') { setHistoryPage(1); void loadHistory(1, historySearch); } }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search masked PAN" /><button type="button" onClick={() => { setHistoryPage(1); void loadHistory(1, historySearch); }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Search className="h-4 w-4" /></button></div>
+                <div className="flex gap-2"><input value={historySearch} onChange={(event) => setHistorySearch(sanitizePan(event.target.value))} onKeyDown={(event) => { if (event.key === 'Enter') { setHistoryPage(1); void loadHistory(1, historySearch); } }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search masked PAN" /><button type="button" onClick={() => { setHistoryPage(1); void loadHistory(1, historySearch); }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Search className="h-4 w-4" /></button></div>
               </div>
               {historyLoading ? <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-amber-600" /></div> : history?.records.length ? <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">PAN</th><th className="px-3 py-3">Operation</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Requested by</th><th className="px-3 py-3">Date</th><th className="px-3 py-3"> </th></tr></thead><tbody>{history.records.map((record) => <tr key={record.id} className="border-b border-slate-100"><td className="px-3 py-3 font-mono font-semibold text-slate-800">{record.maskedPan}</td><td className="px-3 py-3 text-slate-600">{operationLabel(record.operation)}</td><td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${record.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : record.status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{record.status}</span></td><td className="px-3 py-3 text-slate-600">{record.requestedBy?.name || record.requestedBy?.email || '—'}</td><td className="px-3 py-3 text-slate-500">{formatDate(record.createdAt)}</td><td className="px-3 py-3 text-right"><button type="button" onClick={() => void openDetail(record.id)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">{detailLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}View</button></td></tr>)}</tbody></table></div> : <div className="mt-6 rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">No PAN verification history found.</div>}
               {history?.pagination.totalPages && history.pagination.totalPages > 1 ? <div className="mt-5 flex items-center justify-between text-sm text-slate-600"><span>Page {history.pagination.page} of {history.pagination.totalPages}</span><div className="flex gap-2"><button type="button" disabled={historyPage <= 1} onClick={() => { const next = historyPage - 1; setHistoryPage(next); void loadHistory(next, historySearch); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><button type="button" disabled={historyPage >= history.pagination.totalPages} onClick={() => { const next = historyPage + 1; setHistoryPage(next); void loadHistory(next, historySearch); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div></div> : null}

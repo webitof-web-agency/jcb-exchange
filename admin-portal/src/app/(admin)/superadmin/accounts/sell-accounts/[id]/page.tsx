@@ -460,7 +460,7 @@ export default function SellAccountDetailView() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Number</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Registration Number</p>
                 <p className="font-bold text-gray-900 text-lg mt-0.5">{record.vehicleNumber}</p>
               </div>
               <div>
@@ -662,7 +662,7 @@ export default function SellAccountDetailView() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Vehicle Number *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Registration Number *</label>
                     <input
                       type="text"
                       placeholder="e.g. MH-12-AB-1234"

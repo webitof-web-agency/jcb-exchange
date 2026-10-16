@@ -8,6 +8,7 @@ import LiveInvoiceEditorModal, {
   type LiveInvoicePaymentData,
   type SavedListingBill,
 } from '@/components/portal/LiveInvoiceEditorModal';
+import type { InvoiceSettings } from '@/components/portal/SubscriptionInvoicePDFTemplate';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
@@ -107,11 +108,11 @@ export default function ListingBillsTable() {
         termsAndConditions: null,
       };
 
-      let invoiceSettings = payload.invoiceSettings;
+      let invoiceSettings: InvoiceSettings | undefined = payload.invoiceSettings;
       if (!invoiceSettings) {
         try {
-          const res = await api.get<{ settings: any }>('/superadmin/invoice-settings');
-          invoiceSettings = res.data.settings;
+          const res = await api.get<{ settings: InvoiceSettings | null }>('/superadmin/invoice-settings');
+          invoiceSettings = res.data.settings || undefined;
         } catch {
           invoiceSettings = fallbackSettings;
         }

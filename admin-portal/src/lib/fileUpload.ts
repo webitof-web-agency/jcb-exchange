@@ -6,6 +6,7 @@ import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUp
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
+export const MAX_PASSPORT_PHOTO_INPUT_SIZE = 3 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_INPUT_SIZE = 30 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_DURATION_SECONDS = 120;
@@ -45,6 +46,7 @@ const allowedFileTypesLabel = 'JPG, PNG, WEBP, and PDF';
 const allowedListingMediaLabel = 'JPG, PNG, WEBP, MP4, WEBM, and MOV';
 
 export type UploadVisibility = 'public' | 'secure';
+export type UploadPurpose = 'document' | 'passport-photo';
 export type ListingMediaKind = 'image' | 'video';
 
 export type UploadedFileResult = {
@@ -167,6 +169,18 @@ export const getUploadValidationError = (file: File) => {
 
   if (isPdf && file.size > MAX_PDF_INPUT_SIZE) {
     return `PDF size must be ${bytesToReadableLimit(MAX_PDF_INPUT_SIZE)} or smaller.`;
+  }
+
+  return null;
+};
+
+export const getPassportPhotoUploadValidationError = (file: File) => {
+  if (!allowedImageTypes.has(file.type)) {
+    return 'Only JPG, PNG, and WEBP passport photos are allowed.';
+  }
+
+  if (file.size > MAX_PASSPORT_PHOTO_INPUT_SIZE) {
+    return `Passport photo size must be ${bytesToReadableLimit(MAX_PASSPORT_PHOTO_INPUT_SIZE)} or smaller.`;
   }
 
   return null;
@@ -621,6 +635,10 @@ export const prepareFileForUpload = async (file: File) => {
     return compressImageForUpload(file);
   }
 
+  if (validation.isPdf) {
+    return file;
+  }
+
   return compressVideoForUpload(file);
 };
 
@@ -801,15 +819,20 @@ export const prepareSiteManifestIconImageForUpload = async (file: File) => {
 export const uploadFileToServer = async ({
   file,
   visibility,
+  purpose = 'document',
 }: {
   file: File;
   visibility: UploadVisibility;
+  purpose?: UploadPurpose;
 }) => {
   const preparedFile = await prepareFileForUpload(file);
   const formData = new FormData();
   formData.append('file', preparedFile);
 
-  const response = await api.post<{ file: UploadedFileResult }>(`/documents/upload/${visibility}`, formData, {
+  const uploadPath = visibility === 'secure' && purpose === 'passport-photo'
+    ? '/documents/upload/secure/passport-photo'
+    : `/documents/upload/${visibility}`;
+  const response = await api.post<{ file: UploadedFileResult }>(uploadPath, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

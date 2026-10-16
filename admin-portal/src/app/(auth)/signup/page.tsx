@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Mail, Lock, User, Phone, BriefcaseBusiness } from 'lucide-react';
+import { Mail, Lock, User, Phone, BriefcaseBusiness, MessageCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -16,6 +16,8 @@ export default function SignupPage() {
   const { t } = useTranslation();
 
   const [formData, setFormData] = useState({ name: '', email: '', mobile: '', password: '' });
+  const [whatsappSameAsMobile, setWhatsappSameAsMobile] = useState(true);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
@@ -47,12 +49,23 @@ export default function SignupPage() {
       return;
     }
 
+    const cleanWhatsappNumber = whatsappSameAsMobile
+      ? cleanPhone
+      : whatsappNumber.replace(/\D/g, '').slice(-10);
+    if (cleanWhatsappNumber.length !== 10) {
+      setError(t('authPortal.validWhatsappNumber', 'Please enter a valid 10-digit WhatsApp number.'));
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await api.post('/auth/register', {
         ...formData,
-        mobile: cleanPhone // Send cleaned 10-digit number to backend
+        mobile: cleanPhone,
+        whatsappSameAsMobile,
+        whatsappNumber: cleanWhatsappNumber,
+        registrationType: 'PARTNER',
       });
       const { token, user } = response.data;
       
@@ -86,7 +99,7 @@ export default function SignupPage() {
   const badgeLabel = isFirstSetup ? t('authPortal.superAdminBadge') : t('authPortal.applicantBadge');
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a] bg-opacity-95 bg-[url('https://images.unsplash.com/photo-1578319439584-104c94d37305?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center bg-blend-overlay font-sans relative px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a] bg-opacity-60 bg-[url('/jcb-bg.jpg')] bg-cover bg-center bg-blend-overlay font-sans relative px-4 py-8">
       
       {/* Main Box */}
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden flex flex-col">
@@ -159,6 +172,46 @@ export default function SignupPage() {
                     placeholder={t('authPortal.enterMobileNumber')} 
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    id="whatsapp-same-as-mobile"
+                    type="checkbox"
+                    checked={whatsappSameAsMobile}
+                    onChange={(event) => setWhatsappSameAsMobile(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#FFC107] focus:ring-[#FFC107]"
+                  />
+                  <span className="cursor-pointer">
+                    {t('authPortal.whatsappSameAsMobile', 'This mobile number is also my WhatsApp number')}
+                  </span>
+                </label>
+
+                {!whatsappSameAsMobile ? (
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <MessageCircle className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      required
+                      value={whatsappNumber}
+                      onChange={(event) => setWhatsappNumber(event.target.value.replace(/[^0-9]/g, ''))}
+                      className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-lg bg-[#F5F8FA] text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:border-transparent transition-all sm:text-sm"
+                      placeholder={t('authPortal.whatsappNumber', 'Enter WhatsApp number')}
+                      autoComplete="tel"
+                    />
+                  </div>
+                ) : (
+                  <p className="pl-6 text-xs text-gray-500">
+                    {formData.mobile
+                      ? `WhatsApp number: ${formData.mobile}`
+                      : 'WhatsApp number will use your mobile number.'}
+                  </p>
+                )}
               </div>
 
               <div>

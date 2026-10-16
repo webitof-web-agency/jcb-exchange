@@ -50,6 +50,9 @@ import { getCustomerDeletionBlockers, type CustomerDeletionCounts } from '../ser
 import { resolveListingContactNumber } from '../utils/listingContact';
 import { canCreateListing } from '../utils/listingAccess';
 import type { VehicleListingVerificationSettings } from '../utils/listingVerificationPolicy';
+import { panVerificationService } from '../services/panVerification.service';
+import { gstVerificationService } from '../services/gstVerification.service';
+import { buildKycReviewDocument } from '../utils/kycReviewPresentation';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -286,6 +289,24 @@ const managedUserCompactInclude = {
       startedAt: true,
       expiresAt: true,
       submittedAt: true,
+    },
+  },
+} as const;
+
+const managedUserDetailInclude = {
+  ...managedUserInclude,
+  partnerProfile: {
+    include: {
+      kycDocuments: {
+        orderBy: { uploadedAt: 'asc' },
+      },
+      agreements: {
+        orderBy: { acceptedAt: 'asc' },
+      },
+      kycReviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      },
     },
   },
 } as const;
@@ -1494,7 +1515,7 @@ export const getAdminPartners = async (req: Request, res: Response, next: NextFu
         ...(requestedId ? { id: requestedId } : {}),
         ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
       } as any,
-      include: (compact ? managedUserCompactInclude : managedUserInclude) as any,
+      include: (compact ? managedUserCompactInclude : requestedId ? managedUserDetailInclude : managedUserInclude) as any,
       orderBy: [{ createdAt: 'desc' }],
     });
 
@@ -2108,18 +2129,46 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
           accountStatus: partnerProfile.accountStatus,
           approvedAt: partnerProfile.approvedAt,
         },
-        documents: (partnerProfile.kycDocuments || []).map((document: any) => ({
-          id: document.id,
-          documentType: document.documentType,
-          fileUrl: document.fileUrl,
-          fileName: document.fileName,
-          documentNumber: document.documentNumber,
-          nameOnDocument: document.nameOnDocument,
-          issueDate: document.issueDate,
-          expiryDate: document.expiryDate,
-          submittedNote: document.submittedNote,
-          status: document.status,
-          reviewComment: document.reviewComment,
+        documents: await Promise.all((partnerProfile.kycDocuments || []).map(async (document: any) => {
+          let verificationDetail: {
+            record?: { status?: string | null; createdAt?: Date | null; completedAt?: Date | null } | null;
+            result?: Record<string, unknown> | null;
+          } | null = null;
+
+          if (document.verificationRecordId && ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
+            try {
+              const detail = document.documentType === 'PAN_CARD'
+                ? await panVerificationService.getHistoryDetail(document.verificationRecordId, req.user!.id, req.user!.role)
+                : await gstVerificationService.getHistoryDetail(document.verificationRecordId);
+              verificationDetail = {
+                record: detail.record,
+                result: detail.result && typeof detail.result === 'object' && !Array.isArray(detail.result)
+                  ? detail.result as Record<string, unknown>
+                  : null,
+              };
+            } catch {
+              verificationDetail = null;
+            }
+          }
+
+          return buildKycReviewDocument({
+            id: document.id,
+            documentType: document.documentType,
+            fileUrl: document.fileUrl,
+            fileName: document.fileName,
+            documentNumber: document.documentNumber,
+            nameOnDocument: document.nameOnDocument,
+            issueDate: document.issueDate,
+            expiryDate: document.expiryDate,
+            submittedNote: document.submittedNote,
+            status: document.status,
+            reviewComment: document.reviewComment,
+            verificationRecordId: document.verificationRecordId,
+            verificationStatus: document.verificationStatus,
+            verificationCacheHit: document.verificationCacheHit,
+            verificationMessage: document.verificationMessage,
+            verificationCompletedAt: document.verificationCompletedAt,
+          }, verificationDetail);
         })),
         agreements: (partnerProfile.agreements || []).map((agreement: any) => ({
           agreementType: agreement.agreementType,
@@ -2685,7 +2734,7 @@ export const getAdminPartnerOnboarding = async (req: Request, res: Response, nex
 
     res.json({
       user: authUser,
-      ...buildOnboardingResponse(partnerUser),
+      ...(await buildOnboardingResponse(partnerUser)),
     });
   } catch (error) {
     next(error);
@@ -2715,14 +2764,17 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
 
     await saveOnboardingData({
       userId: id,
+      ...(req.user?.id ? { actorUserId: req.user.id } : {}),
       userEmail: existingPartner.email,
       profile,
       kycDocuments,
       agreementTypes: agreements,
       submitForReview: false,
       preserveApprovalState: true,
-      actionName: actionName || 'SUPER_ADMIN_SAVED_ONBOARDING_CHANGES',
-      actionComment: actionComment || 'Super admin updated partner onboarding details.',
+      actionName: actionName || (req.user?.role === 'EMPLOYEE' ? 'EMPLOYEE_KYC_OVERRIDE_EDIT' : 'ADMIN_SAVED_ONBOARDING_CHANGES'),
+      actionComment: actionComment || (req.user?.role === 'EMPLOYEE'
+        ? 'Employee updated partner onboarding using KYC edit override.'
+        : 'Admin updated partner onboarding details.'),
     });
 
     const refreshedPartnerUser = await getPartnerOnboardingContext(id);
@@ -2736,7 +2788,9 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
     await createPartnerNotification({
       userId: id,
       title: 'Onboarding Updated',
-      message: 'Super admin updated your onboarding details.',
+      message: req.user?.role === 'EMPLOYEE'
+        ? 'An employee updated your onboarding details for KYC review.'
+        : 'An admin updated your onboarding details.',
       type: 'ONBOARDING_UPDATE',
       link: '/partner/kyc',
     });
@@ -2744,7 +2798,7 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
     res.json({
       message: 'Partner onboarding updated successfully.',
       user: authUser,
-      onboarding: buildOnboardingResponse(refreshedPartnerUser),
+      onboarding: await buildOnboardingResponse(refreshedPartnerUser),
     });
   } catch (error) {
     next(error);
@@ -2773,6 +2827,7 @@ export const submitAdminPartnerOnboarding = async (req: Request, res: Response, 
 
     await saveOnboardingData({
       userId: id,
+      ...(req.user?.id ? { actorUserId: req.user.id } : {}),
       userEmail: existingPartner.email,
       profile,
       kycDocuments,
@@ -2801,7 +2856,7 @@ export const submitAdminPartnerOnboarding = async (req: Request, res: Response, 
     res.json({
       message: 'Partner onboarding submitted for review successfully.',
       user: authUser,
-      onboarding: buildOnboardingResponse(refreshedPartnerUser),
+      onboarding: await buildOnboardingResponse(refreshedPartnerUser),
     });
   } catch (error) {
     next(error);

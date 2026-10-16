@@ -34,6 +34,7 @@ type AuthResponseUser = {
   email?: string | null;
   name?: string | null;
   mobile?: string | null;
+  whatsappNumber?: string | null;
   role?: string;
 };
 
@@ -317,12 +318,23 @@ export default function AuthModal() {
           return;
         }
 
+        const cleanMobile = mobile.replace(/\D/g, '').slice(-10);
+        const cleanWhatsappNumber = whatsappSameAsMobile
+          ? cleanMobile
+          : whatsappNumber.replace(/\D/g, '').slice(-10);
+        if (cleanWhatsappNumber.length !== 10) {
+          setError(t('auth.validWhatsappNumber', 'Please enter a valid 10-digit WhatsApp number.'));
+          setIsSubmitting(false);
+          return;
+        }
+
         const response = await api.post('/auth/register', {
           email,
           password,
           name,
-          mobile,
-          ...(whatsappSameAsMobile ? {} : { whatsappNumber }),
+          mobile: cleanMobile,
+          whatsappSameAsMobile,
+          whatsappNumber: cleanWhatsappNumber,
         });
         const { token, user } = response.data as { token: string; user: AuthResponseUser };
         completeAuth(token, user);

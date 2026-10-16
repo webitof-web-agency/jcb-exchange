@@ -59,6 +59,7 @@ import { generateAdminListingDetailPath } from '@/lib/routePaths';
 import { YEAR_SELECT_OPTIONS } from '@/lib/listingDateOptions';
 import {
   isValidDigitsOnlyValue,
+  isValidDateValue,
   isValidPinCodeValue,
   isValidYearValue,
   sanitizeListingFieldValue,
@@ -67,6 +68,7 @@ import {
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
+import { getListingRtoOptionalTextFields } from '@/lib/listingRtoDisplay';
 
 type ListingDetail = {
   id: string;
@@ -82,6 +84,7 @@ type ListingDetail = {
   category?: { id: string; name: string };
   vehicleVerification?: {
     verificationRecordId?: string | null;
+    verifiedEngineNumber?: string | null;
     status?: string | null;
     changedFields?: string[];
     lastVerifiedAt?: string | null;
@@ -92,6 +95,7 @@ type ListingDetail = {
   description?: string;
   additionalDescription?: string;
   grossPower?: string;
+  engineNumber?: string | null;
   isNegotiable?: boolean;
   views?: number;
   partner?: {
@@ -127,9 +131,9 @@ type ListingDetail = {
   } | null;
   rtoRecords?: Array<{
     vehicleNumber?: string | null;
-    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: string; taxValidUntil?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; financerName?: string | null; taxStatus: string; taxValidUntil?: string | null;
     fitnessStatus: string; fitnessValidUntil?: string | null; insuranceStatus: string; insuranceValidUntil?: string | null;
-    pucStatus: string; pucValidUntil?: string | null; hsrpStatus: string; rtoOffice?: string | null; rtoAgentName?: string | null;
+    pucStatus: string; pucValidUntil?: string | null; hsrpStatus: string; hsrpNumber?: string | null; rtoOffice?: string | null; rtoAgentName?: string | null;
     rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
   media: Array<{
@@ -166,6 +170,8 @@ const verificationStatusMeta = (status?: string | null) => {
 type ParsedListingDetails = {
   rawDescription: string;
   variant: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
@@ -215,7 +221,8 @@ type ListingEditForm = {
   chassisOrSerialNo: string;
   engineNumber: string;
   registrationNo: string;
-  registrationYear: string;
+  registrationDate: string;
+  registrationUpto: string;
   insuranceExpiry: string;
   previousOwners: string;
   rtoDetails: ListingRtoFormState;
@@ -224,6 +231,8 @@ type ListingEditForm = {
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
   variant: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
@@ -256,6 +265,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
     switch (key) {
       case 'variant': parsed.variant = value; break;
       case 'registration year': parsed.registrationYear = value; break;
+      case 'registration date': parsed.registrationDate = value; break;
+      case 'registration upto':
+      case 'registration up to': parsed.registrationUpto = value; break;
       case 'registration no': parsed.registrationNo = value; break;
       case 'chassis/serial':
       case 'chassis / serial':
@@ -362,10 +374,10 @@ const resolveDealerTypeLabel = (listing: ListingDetail) => {
 const buildListingDescription = (form: ListingEditForm) => {
   const detailLines = [
     ['Variant', form.variant],
-    ['Registration Year', form.registrationYear],
+    ['Registration Date', form.registrationDate],
+    ['Registration Upto', form.registrationUpto],
     ['Registration No', form.registrationNo],
     ['Chassis / Serial', form.chassisOrSerialNo],
-    ['Engine Number', form.engineNumber],
     ['Owners', form.previousOwners],
     ['Fuel', form.fuelType],
     ['Transmission', form.transmission],
@@ -419,8 +431,12 @@ const getListingSectionValidationError = (section: DetailSection, form: ListingE
       return 'Operating hours must contain digits only.';
     }
 
-    if (!isValidYearValue(form.registrationYear)) {
-      return 'Registration year must be a 4-digit year.';
+    if (!isValidDateValue(form.registrationDate) || !isValidDateValue(form.registrationUpto)) {
+      return 'Registration dates must be valid calendar dates.';
+    }
+
+    if (form.registrationDate && form.registrationUpto && form.registrationDate > form.registrationUpto) {
+      return 'Registration upto cannot be before the registration date.';
     }
 
     if (!isValidDigitsOnlyValue(form.previousOwners)) {
@@ -498,9 +514,10 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     transmission: parsed.transmission || '',
     grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
     chassisOrSerialNo: parsed.chassisOrSerialNo || '',
-    engineNumber: parsed.engineNumber || '',
+    engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsed.engineNumber || '',
     registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
-    registrationYear: parsed.registrationYear || '',
+    registrationDate: parsed.registrationDate || '',
+    registrationUpto: parsed.registrationUpto || '',
     insuranceExpiry: linkedRto
       ? linkedRto.insuranceStatus === 'VALID' && linkedRto.insuranceValidUntil
         ? String(linkedRto.insuranceValidUntil).split('T')[0]
@@ -509,6 +526,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     previousOwners: parsed.previousOwners || '',
     rtoDetails: {
       hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+      financerName: linkedRto?.financerName || '',
       taxStatus: linkedRto?.taxStatus === 'EXPIRED'
         ? 'EXPIRED'
         : linkedRto?.taxStatus === 'LIFETIME'
@@ -523,6 +541,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
       pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.pucStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
       pucValidUntil: linkedRto?.pucStatus === 'VALID' && linkedRto.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
       hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : linkedRto?.hsrpStatus === 'NO' ? 'NO' : linkedRto?.hsrpStatus === 'NOT_APPLICABLE' || linkedRto?.hsrpStatus === 'NOT_REQUIRED' ? 'NOT_APPLICABLE' : 'PENDING',
+      hsrpNumber: linkedRto?.hsrpNumber || '',
       rtoOffice: linkedRto?.rtoOffice || '',
       rtoAgentName: linkedRto?.rtoAgentName || '',
       rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
@@ -548,7 +567,8 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
       'chassisOrSerialNo',
       'engineNumber',
       'registrationNo',
-      'registrationYear',
+      'registrationDate',
+      'registrationUpto',
       'insuranceExpiry',
       'previousOwners',
     ],
@@ -868,7 +888,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         modelName: mapped.model || current.modelName,
         variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
-        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationDate: mapped.registrationDate || current.registrationDate,
+        registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
@@ -952,7 +973,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         next.chassisOrSerialNo = baseForm.chassisOrSerialNo;
         next.engineNumber = baseForm.engineNumber;
         next.registrationNo = baseForm.registrationNo;
-        next.registrationYear = baseForm.registrationYear;
+        next.registrationDate = baseForm.registrationDate;
+        next.registrationUpto = baseForm.registrationUpto;
         next.insuranceExpiry = baseForm.insuranceExpiry;
         next.previousOwners = baseForm.previousOwners;
         next.rtoDetails = baseForm.rtoDetails;
@@ -1043,6 +1065,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     if (section === 'technical') {
       payload.operatingHours = sanitizedForm.operatingHours.trim();
       payload.grossPower = sanitizedForm.grossPower.trim();
+      payload.engineNumber = sanitizedForm.engineNumber.trim();
       if (shouldSyncRto) {
         payload.rtoDetails = buildListingRtoDetails(sanitizedRto, {
           registrationNo: sanitizedForm.registrationNo,
@@ -2075,18 +2098,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <Field label={t('listingDetails.engineNumber', 'Engine Number')}>
                   <input value={form.engineNumber} onChange={(event) => updateForm('engineNumber', event.target.value)} className={inputClassName} maxLength={40} />
                 </Field>
-                <Field label={t('listingDetails.vehicleNumber', 'Vehicle Number')}>
+                <Field label={t('listingDetails.registrationNo', 'Registration No.') }>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationYear')}>
-                  <SearchableSelect
-                    options={YEAR_SELECT_OPTIONS}
-                    value={form.registrationYear}
-                    displayValue={form.registrationYear}
-                    onChange={(option) => updateForm('registrationYear', String(option.id))}
-                    placeholder={t('listingDetails.selectRegistrationYear', 'Select registration year')}
-                    searchable={false}
-                  />
+                <Field label={t('listingDetails.registrationDate', 'Registration Date')}>
+                  <input type="date" value={form.registrationDate} onChange={(event) => updateForm('registrationDate', event.target.value)} className={inputClassName} />
+                </Field>
+                <Field label={t('listingDetails.registrationUpto', 'Registration Upto')}>
+                  <input type="date" value={form.registrationUpto} onChange={(event) => updateForm('registrationUpto', event.target.value)} className={inputClassName} />
                 </Field>
                 {form.rtoDetails.insuranceStatus === 'VALID' && (
                   <Field label={t('listingDetails.insuranceExpiry')}>
@@ -2132,15 +2151,19 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.engineNumber', 'Engine Number')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.engineNumber || t('listingDetails.na')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.vehicleNumber', 'Vehicle Number')}</span>
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationNo', 'Registration No.')}</span>
                   <span className="text-sm font-semibold text-gray-900">{formatRegistrationNumber(listing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo) || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationYear')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.registrationYear || t('listingDetails.na')}</span>
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationDate', 'Registration Date')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.registrationDate || parsedDetails.registrationYear || t('listingDetails.na')}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-gray-50 py-2">
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><Calendar className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationUpto', 'Registration Upto')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.registrationUpto || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><ShieldCheck className="h-4 w-4 text-gray-400" /> {t('listingDetails.insuranceExpiry')}</span>
@@ -2181,6 +2204,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       </div>
                       {([
                         ['Hire Purchase', statusBadge(rto.hirePurchaseStatus, 'hp')],
+                        ...getListingRtoOptionalTextFields(rto).map(([label, value]) => [label, <span key={label} className="text-sm font-semibold text-gray-900">{value}</span>] as [string, React.ReactNode]),
                         ['Tax Validity', <span key="tv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.taxStatus, 'validity')}{rto.taxStatus === 'VALID' && rto.taxValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.taxValidUntil)}</span>}</span>],
                         ['Fitness Validity', <span key="fv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.fitnessStatus, 'validity')}{rto.fitnessStatus === 'VALID' && rto.fitnessValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.fitnessValidUntil)}</span>}</span>],
                         ['Insurance Validity', <span key="iv" className="flex flex-col items-end gap-0.5">{statusBadge(rto.insuranceStatus, 'validity')}{rto.insuranceStatus === 'VALID' && rto.insuranceValidUntil && <span className="text-[10px] text-gray-400">{formatPortalDate(rto.insuranceValidUntil)}</span>}</span>],

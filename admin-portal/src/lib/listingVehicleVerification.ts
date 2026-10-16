@@ -12,13 +12,15 @@ export type VehicleVerificationAutofill = {
   variant: string;
   fuelType: string;
   manufacturingYear: string;
-  registrationYear: string;
+  registrationDate: string;
+  registrationUpto: string;
   previousOwners: string;
   titleSuggestion: string;
   insuranceExpiry: string;
   rtoDetails: Pick<
     ListingRtoFormState,
     | 'hirePurchaseStatus'
+    | 'financerName'
     | 'taxStatus'
     | 'taxValidUntil'
     | 'fitnessStatus'
@@ -26,6 +28,7 @@ export type VehicleVerificationAutofill = {
     | 'insuranceStatus'
     | 'pucStatus'
     | 'pucValidUntil'
+    | 'hsrpNumber'
     | 'rtoOffice'
   >;
 };
@@ -106,16 +109,16 @@ export const getVehicleVerificationSubmitValidationError = ({
     return 'Verify the current vehicle identity before posting this vehicle.';
   }
   if (source === 'RC_FULL' && !currentRegistration) {
-    return 'Vehicle number is required before RC verification.';
+    return 'Registration number is required before RC verification.';
   }
   if (currentChassis !== verifiedChassis) {
     return 'Verify the current chassis number before posting this vehicle.';
   }
   if (source === 'RC_FULL' && (!verifiedRegistration || currentRegistration !== verifiedRegistration)) {
-    return 'Verify the current vehicle number before posting this vehicle.';
+    return 'Verify the current registration number before posting this vehicle.';
   }
   if (source === 'CHASSIS' && currentRegistration && verifiedRegistration && currentRegistration !== verifiedRegistration) {
-    return 'Verify the current vehicle number before posting this vehicle.';
+    return 'Verify the current registration number before posting this vehicle.';
   }
   return null;
 };
@@ -169,7 +172,17 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
   const variant = text(result.variant);
   const fuelType = optionLabel(result.fuelType ?? result.fuel_type, ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other']);
   const manufacturingYear = yearFrom(result.manufacturingDateFormatted ?? result.manufacturing_date_formatted ?? result.manufacturingDate ?? result.manufacturing_date);
-  const registrationYear = yearFrom(result.registrationDate ?? result.registration_date);
+  const registrationDate = dateOnly(result.registrationDate ?? result.registration_date);
+  const registrationUpto = dateOnly(
+    result.registrationUpto
+      ?? result.registration_upto
+      ?? result.registrationValidUpto
+      ?? result.registration_valid_upto
+      ?? result.rcValidUpto
+      ?? result.rc_valid_upto
+      ?? result.rcExpiryDate
+      ?? result.rc_expiry_date,
+  );
   const previousOwners = text(result.ownerNumber ?? result.owner_number);
   const insuranceExpiry = dateOnly(result.insuranceUpto ?? result.insurance_upto);
   const fitnessValidUntil = dateOnly(result.fitUpTo ?? result.fit_up_to);
@@ -179,6 +192,8 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
   const fitnessStatus = fitnessValidUntil ? getProviderDateStatus(fitnessValidUntil, now) : 'NOT_AVAILABLE';
   const insuranceStatus = insuranceExpiry ? getProviderDateStatus(insuranceExpiry, now) : 'NOT_AVAILABLE';
   const pucStatus = pucValidUntil ? getProviderDateStatus(pucValidUntil, now) : 'NOT_AVAILABLE';
+  const financerName = text(result.financer ?? result.financier ?? result.financerName ?? result.financer_name);
+  const hsrpNumber = text(result.hsrpNumber ?? result.hsrp_number ?? result.hsrpNo ?? result.hsrp_no ?? result.hsrp);
 
   return {
     registrationNo,
@@ -190,12 +205,14 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
     variant,
     fuelType,
     manufacturingYear,
-    registrationYear,
+    registrationDate,
+    registrationUpto,
     previousOwners,
     titleSuggestion: [brandName, model].filter(Boolean).join(' '),
     insuranceExpiry: insuranceStatus === 'VALID' ? insuranceExpiry : '',
     rtoDetails: {
       hirePurchaseStatus: result.financed === true ? 'ACTIVE' : result.financed === false ? 'NOT_APPLICABLE' : 'PENDING',
+      financerName,
       taxStatus,
       taxValidUntil: taxStatus === 'VALID' ? taxValidUntil : '',
       fitnessStatus,
@@ -203,6 +220,7 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
       insuranceStatus,
       pucStatus,
       pucValidUntil: pucStatus === 'VALID' ? pucValidUntil : '',
+      hsrpNumber,
       rtoOffice: text(result.registeredAt ?? result.registered_at),
     },
   };
@@ -226,13 +244,13 @@ export const getProviderVehicleIdentityMismatch = (
   const requestedChassis = normalizeChassis(requestedChassisNumber);
 
   if (source === 'RC_FULL' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   if (requestedChassis && returnedChassis && requestedChassis !== returnedChassis) {
     return 'The verified chassis number does not match the entered chassis number.';
   }
   if (source === 'CHASSIS' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   return null;
 };

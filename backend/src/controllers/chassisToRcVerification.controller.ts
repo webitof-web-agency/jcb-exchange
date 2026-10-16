@@ -10,6 +10,7 @@ const bodyOf = (value: unknown): Record<string, unknown> =>
 const sellerResultFields = new Set([
   'rcNumber',
   'registrationDate',
+  'registrationUpto',
   'vehicleCategory',
   'vehicleCategoryDescription',
   'vehicleChasiNumber',

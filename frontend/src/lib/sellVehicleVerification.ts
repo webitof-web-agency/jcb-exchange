@@ -12,13 +12,15 @@ export type VehicleVerificationAutofill = {
   variant: string;
   fuelType: string;
   manufacturingYear: string;
-  registrationYear: string;
+  registrationDate: string;
+  registrationUpto: string;
   previousOwners: string;
   titleSuggestion: string;
   insuranceExpiry: string;
   rtoDetails: Pick<
     ListingRtoFormState,
     | 'hirePurchaseStatus'
+    | 'financerName'
     | 'taxStatus'
     | 'taxValidUntil'
     | 'fitnessStatus'
@@ -26,6 +28,7 @@ export type VehicleVerificationAutofill = {
     | 'insuranceStatus'
     | 'pucStatus'
     | 'pucValidUntil'
+    | 'hsrpNumber'
     | 'rtoOffice'
   >;
 };
@@ -177,7 +180,17 @@ export const mapChassisToRcVehicle = (
   const variant = text(result.variant);
   const fuelType = optionLabel(result.fuelType ?? result.fuel_type, ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other']);
   const manufacturingYear = yearFrom(result.manufacturingDateFormatted ?? result.manufacturing_date_formatted ?? result.manufacturingDate ?? result.manufacturing_date);
-  const registrationYear = yearFrom(result.registrationDate ?? result.registration_date);
+  const registrationDate = dateOnly(result.registrationDate ?? result.registration_date);
+  const registrationUpto = dateOnly(
+    result.registrationUpto
+      ?? result.registration_upto
+      ?? result.registrationValidUpto
+      ?? result.registration_valid_upto
+      ?? result.rcValidUpto
+      ?? result.rc_valid_upto
+      ?? result.rcExpiryDate
+      ?? result.rc_expiry_date,
+  );
   const previousOwners = text(result.ownerNumber ?? result.owner_number);
   const insuranceExpiry = dateOnly(result.insuranceUpto ?? result.insurance_upto);
   const fitnessValidUntil = dateOnly(result.fitUpTo ?? result.fit_up_to);
@@ -188,6 +201,8 @@ export const mapChassisToRcVehicle = (
   const insuranceStatus = insuranceExpiry ? getProviderDateStatus(insuranceExpiry, now) : 'NOT_AVAILABLE';
   const pucStatus = pucValidUntil ? getProviderDateStatus(pucValidUntil, now) : 'NOT_AVAILABLE';
   const financed = result.financed;
+  const financerName = text(result.financer ?? result.financier ?? result.financerName ?? result.financer_name);
+  const hsrpNumber = text(result.hsrpNumber ?? result.hsrp_number ?? result.hsrpNo ?? result.hsrp_no ?? result.hsrp);
 
   return {
     registrationNo,
@@ -199,12 +214,14 @@ export const mapChassisToRcVehicle = (
     variant,
     fuelType,
     manufacturingYear,
-    registrationYear,
+    registrationDate,
+    registrationUpto,
     previousOwners,
     titleSuggestion: [brandName, model].filter(Boolean).join(' '),
     insuranceExpiry: insuranceStatus === 'VALID' ? insuranceExpiry : '',
     rtoDetails: {
       hirePurchaseStatus: financed === true ? 'ACTIVE' : financed === false ? 'NOT_APPLICABLE' : 'PENDING',
+      financerName,
       taxStatus,
       taxValidUntil: taxStatus === 'VALID' ? taxValidUntil : '',
       fitnessStatus,
@@ -212,6 +229,7 @@ export const mapChassisToRcVehicle = (
       insuranceStatus,
       pucStatus,
       pucValidUntil: pucStatus === 'VALID' ? pucValidUntil : '',
+      hsrpNumber,
       rtoOffice: text(result.registeredAt ?? result.registered_at),
     },
   };

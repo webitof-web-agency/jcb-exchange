@@ -102,6 +102,13 @@ export const resolveEffectiveUserRole = (user: {
   }
 
   const partnerProfile = user.partnerProfile;
+  // A legacy partner applicant could have been registered as CUSTOMER before
+  // partner onboarding registration was introduced. Once a partner profile
+  // exists, keep that applicant in the partner portal until approval.
+  if (user.role === 'CUSTOMER' && partnerProfile) {
+    return 'PARTNER';
+  }
+
   const isVerifiedPartner =
     partnerProfile?.onboardingStatus === approvedPartnerStatuses.onboardingStatus &&
     partnerProfile?.accountStatus === approvedPartnerStatuses.accountStatus &&

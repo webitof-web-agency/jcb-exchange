@@ -132,6 +132,7 @@ export type RcOwnerHistoryResult = Record<string, unknown>;
 const sellerListingResultFields = new Set([
   'rcNumber',
   'registrationDate',
+  'registrationUpto',
   'vehicleCategory',
   'vehicleCategoryDescription',
   'vehicleChasiNumber',
@@ -205,6 +206,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
 
   const dates: Array<[string, unknown]> = [
     ['registrationDate', data.registration_date ?? data.registrationDate],
+    ['registrationUpto', data.registration_upto ?? data.registrationUpto ?? data.registration_valid_upto ?? data.registrationValidUpto ?? data.rc_valid_upto ?? data.rcValidUpto ?? data.rc_expiry_date ?? data.rcExpiryDate],
     ['fitUpTo', data.fit_up_to ?? data.fitUpTo],
     ['insuranceUpto', data.insurance_upto ?? data.insuranceUpto],
     ['latestBy', data.latest_by ?? data.latestBy],

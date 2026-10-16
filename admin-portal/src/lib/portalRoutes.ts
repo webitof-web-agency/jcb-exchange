@@ -2,6 +2,7 @@ export const employeeUsersPermissions = ['users.read', 'users.create', 'users.up
 export const employeeRolesPermissions = ['roles.read', 'roles.create', 'roles.update', 'roles.delete'];
 export const employeeBrandsPermissions = ['brands.read', 'brands.create', 'brands.update', 'brands.delete'];
 export const employeeFooterPermissions = ['footer.manage'];
+export const employeePartnerAgreementPermissions = ['partner.agreements.read', 'partner.agreements.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
 export const employeeSmsPermissions = ['sms.read', 'sms.manage'];
 export const employeeBlogPermissions = ['blog.read', 'blog.create', 'blog.update', 'blog.delete'];
@@ -98,6 +99,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/superadmin/footer',
     employeePath: '/employee/footer',
     permissions: employeeFooterPermissions,
+  },
+  {
+    superadminPath: '/superadmin/partner-agreements',
+    employeePath: '/employee/partner-agreements',
+    permissions: employeePartnerAgreementPermissions,
   },
   {
     superadminPath: '/superadmin/blogs',

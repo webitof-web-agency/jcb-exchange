@@ -28,6 +28,15 @@ test('allowedAdminPermissions includes all blog permissions', () => {
   });
 });
 
+test('allowedAdminPermissions includes separate partner agreement view and manage permissions', () => {
+  assert.equal(allowedAdminPermissions.has('partner.agreements.read'), true);
+  assert.equal(allowedAdminPermissions.has('partner.agreements.manage'), true);
+});
+
+test('allowedAdminPermissions exposes the KYC edit override permission', () => {
+  assert.equal(allowedAdminPermissions.has('kyc.edit.override'), true);
+});
+
 test('allowedAdminPermissions exposes the employee vehicle verification bypass permission', () => {
   assert.equal(allowedAdminPermissions.has('listings.verification.bypass'), true);
 });

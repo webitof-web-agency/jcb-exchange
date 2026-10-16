@@ -648,7 +648,7 @@ export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogo
                     {/* Details Container */}
                     <div className="flex flex-1 flex-col p-2.5 sm:p-5 min-w-0">
                       {/* Title */}
-                      <h3 className="line-clamp-2 text-[17px] font-bold text-slate-900 leading-tight">
+                      <h3 className="line-clamp-2 text-xs sm:text-[13px] lg:text-[13.5px] font-bold text-slate-900 leading-tight sm:leading-snug transition-colors group-hover:text-yellow-600">
                         {finalTitle}
                       </h3>
 
@@ -680,7 +680,7 @@ export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogo
                       <div className="mt-auto flex items-end justify-between gap-1">
                         <div className="min-w-0 flex-1">
                           <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">Sold Price</div>
-                          <div className="text-[13px] sm:text-sm font-bold text-slate-800 truncate">{formatPrice(item.price)}</div>
+                          <div className="text-xs sm:text-[13px] lg:text-sm font-bold text-slate-900 tracking-tight truncate">{formatPrice(item.price)}</div>
                         </div>
                         <div className="text-right shrink-0">
                           <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">

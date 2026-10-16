@@ -14,6 +14,7 @@ import {
   type MobileToRcRecord,
   type MobileToRcResponse,
 } from '@/lib/mobileToRc';
+import { sanitizeMobileNumber } from '@/lib/verificationSanitizers';
 
 type HistoryResponse = {
   records: MobileToRcRecord[];
@@ -130,11 +131,12 @@ export default function MobileToRcLookupPage({ embedded = false }: { embedded?: 
     event.preventDefault();
     setError('');
     setResponse(null);
-    const mobileError = validateMobileNumber(mobileNumber);
+    const cleanedMobile = sanitizeMobileNumber(mobileNumber, 16);
+    const mobileError = validateMobileNumber(cleanedMobile);
     if (mobileError) { setError(mobileError); return; }
     setBusy(true);
     try {
-      const result = await api.post<MobileToRcResponse>('/mobile-to-rc/lookup', { mobile_number: normalizeMobileNumber(mobileNumber) });
+      const result = await api.post<MobileToRcResponse>('/mobile-to-rc/lookup', { mobile_number: normalizeMobileNumber(cleanedMobile) });
       setResponse(result.data);
       if (canHistory) { setHistoryPage(1); void loadHistory(1, historySearch); }
     } catch (requestError) {
@@ -166,14 +168,14 @@ export default function MobileToRcLookupPage({ embedded = false }: { embedded?: 
           <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:max-h-[calc(100vh-140px)] overflow-hidden"><div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-5 flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" /><p>Enter the mobile number. It is normalized and validated before any provider request. Use this lookup only with appropriate user consent.</p></div>
             <form onSubmit={submit}>
-              <label><span className="text-sm font-semibold text-slate-700">Mobile Number <span className="text-red-500">*</span></span><input value={mobileNumber} onChange={(event) => setMobileNumber(event.target.value.slice(0, 16))} className={inputClass} placeholder="8908885858" autoComplete="off" inputMode="numeric" maxLength={16} /></label>
+              <label><span className="text-sm font-semibold text-slate-700">Mobile Number <span className="text-red-500">*</span></span><input value={mobileNumber} onChange={(event) => setMobileNumber(sanitizeMobileNumber(event.target.value, 16))} className={inputClass} placeholder="8908885858" autoComplete="off" inputMode="numeric" maxLength={16} /></label>
               {error ? <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
               <button type="submit" disabled={busy || !canLookup} className={`${buttonClass} mt-6 w-full`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListChecks className="h-4 w-4" />}{busy ? 'Looking up…' : canLookup ? 'Lookup Mobile' : 'Lookup not permitted'}</button>
             </form>
             {response ? <ResultPanel response={response} /> : null}
           </div></section>
           {canHistory ? <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:max-h-[calc(100vh-140px)] overflow-hidden"><div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><History className="h-5 w-5 text-amber-600" />Mobile To RC History</h2><p className="text-sm text-slate-500">Only masked mobile numbers are shown in history.</p></div><div className="flex gap-2"><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value.slice(0, 30))} onKeyDown={(event) => { if (event.key === 'Enter') { setHistoryPage(1); void loadHistory(1, historySearch); } }} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search masked mobile" /><button type="button" onClick={() => { setHistoryPage(1); void loadHistory(1, historySearch); }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Search history"><Search className="h-4 w-4" /></button></div></div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><History className="h-5 w-5 text-amber-600" />Mobile To RC History</h2><p className="text-sm text-slate-500">Only masked mobile numbers are shown in history.</p></div><div className="flex gap-2"><input value={historySearch} onChange={(event) => setHistorySearch(sanitizeMobileNumber(event.target.value, 30))} onKeyDown={(event) => { if (event.key === 'Enter') { setHistoryPage(1); void loadHistory(1, historySearch); } }} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search masked mobile" /><button type="button" onClick={() => { setHistoryPage(1); void loadHistory(1, historySearch); }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Search history"><Search className="h-4 w-4" /></button></div></div>
             {historyLoading ? <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-amber-600" /></div> : history?.records.length ? <div className="mt-5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Mobile</th><th className="px-3 py-3">RC numbers</th><th className="px-3 py-3">Result</th><th className="px-3 py-3">Date</th><th className="px-3 py-3" /></tr></thead><tbody>{history.records.map((record) => <tr key={record.id} className="border-b border-slate-100"><td className="px-3 py-3 font-mono font-semibold text-slate-800">{record.maskedMobileNumber}</td><td className="px-3 py-3 text-slate-600">{record.rcNumbersCount}</td><td className="px-3 py-3"><StatusBadge status={record.status} /></td><td className="px-3 py-3 text-slate-500">{formatDate(record.createdAt) || 'Not available'}</td><td className="px-3 py-3 text-right"><button type="button" onClick={() => void openDetail(record.id)} disabled={detailLoading} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"><Eye className="h-3.5 w-3.5" />View</button></td></tr>)}</tbody></table></div> : <div className="mt-6 rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">No Mobile To RC history found.</div>}
             {history?.pagination.totalPages && history.pagination.totalPages > 1 ? <div className="mt-5 flex items-center justify-between text-sm text-slate-600"><span>Page {history.pagination.page} of {history.pagination.totalPages}</span><div className="flex gap-2"><button type="button" disabled={historyPage <= 1} onClick={() => { const next = historyPage - 1; setHistoryPage(next); void loadHistory(next, historySearch); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><button type="button" disabled={historyPage >= history.pagination.totalPages} onClick={() => { const next = historyPage + 1; setHistoryPage(next); void loadHistory(next, historySearch); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div></div> : null}
           </div></section> : null}

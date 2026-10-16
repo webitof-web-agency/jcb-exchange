@@ -1,5 +1,6 @@
 export type ListingRtoFormState = {
   hirePurchaseStatus: 'PENDING' | 'ACTIVE' | 'TERMINATED' | 'NOT_APPLICABLE';
+  financerName: string;
   taxStatus: 'VALID' | 'EXPIRED' | 'LIFETIME' | 'NOT_AVAILABLE';
   taxValidUntil: string;
   fitnessStatus: 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE';
@@ -8,6 +9,7 @@ export type ListingRtoFormState = {
   pucStatus: 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE';
   pucValidUntil: string;
   hsrpStatus: 'YES' | 'NO' | 'PENDING' | 'NOT_APPLICABLE';
+  hsrpNumber: string;
   rtoOffice: string;
   rtoAgentName: string;
   rtoExpenses: string;
@@ -15,8 +17,8 @@ export type ListingRtoFormState = {
 };
 
 export const emptyListingRtoForm: ListingRtoFormState = {
-  hirePurchaseStatus: 'PENDING', taxStatus: 'NOT_AVAILABLE', taxValidUntil: '', fitnessStatus: 'NOT_AVAILABLE', fitnessValidUntil: '',
-  insuranceStatus: 'NOT_AVAILABLE', pucStatus: 'NOT_AVAILABLE', pucValidUntil: '', hsrpStatus: 'PENDING', rtoOffice: '', rtoAgentName: '',
+  hirePurchaseStatus: 'PENDING', financerName: '', taxStatus: 'NOT_AVAILABLE', taxValidUntil: '', fitnessStatus: 'NOT_AVAILABLE', fitnessValidUntil: '',
+  insuranceStatus: 'NOT_AVAILABLE', pucStatus: 'NOT_AVAILABLE', pucValidUntil: '', hsrpStatus: 'PENDING', hsrpNumber: '', rtoOffice: '', rtoAgentName: '',
   rtoExpenses: '', vehicleMaintenanceCost: '',
 };
 
@@ -30,12 +32,14 @@ export const sanitizeListingRtoForm = (form: ListingRtoFormState): ListingRtoFor
   pucValidUntil: form.pucStatus === 'VALID' ? form.pucValidUntil.trim() : '',
   rtoOffice: sanitizeUppercase(form.rtoOffice),
   rtoAgentName: sanitizeUppercase(form.rtoAgentName), rtoExpenses: sanitizeDigits(form.rtoExpenses),
+  financerName: sanitizeUppercase(form.financerName),
+  hsrpNumber: sanitizeUppercase(form.hsrpNumber),
   vehicleMaintenanceCost: sanitizeDigits(form.vehicleMaintenanceCost),
 });
 
 export const hasListingRtoInput = (form: ListingRtoFormState) => Boolean(
   form.taxValidUntil.trim() || form.fitnessValidUntil.trim() || form.pucValidUntil.trim()
-  || form.rtoOffice.trim() || form.rtoAgentName.trim() || form.rtoExpenses || form.vehicleMaintenanceCost,
+  || form.financerName.trim() || form.hsrpNumber.trim() || form.rtoOffice.trim() || form.rtoAgentName.trim() || form.rtoExpenses || form.vehicleMaintenanceCost,
 );
 
 export const validateListingRtoForm = (
@@ -55,7 +59,6 @@ export const validateListingRtoForm = (
   const missingValidity = validityChecks.find(([, status, date]) => !status || !date.trim());
   if (missingValidity) return `${missingValidity[0]} status and date are required.`;
   if (!form.rtoOffice.trim()) return 'RTO Office is required.';
-  if (Number(form.vehicleMaintenanceCost) <= 0) return 'Vehicle Maintenance Cost is required.';
   if (Number(base.operatingHours) <= 0) return 'Hours Running is required.';
   return null;
 };

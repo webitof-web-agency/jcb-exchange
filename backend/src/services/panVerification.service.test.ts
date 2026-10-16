@@ -169,6 +169,33 @@ test('PAN Comprehensive V2 maps the direct sandbox response shape and retains co
   assert.equal((result.providerData as Record<string, unknown>).unexpected_provider_field, 'preserve safely');
 });
 
+test('PAN Advanced V2 maps the supplied government-style response fields safely', () => {
+  const result = sanitizePanComprehensiveV2Result('EKRPR1234F', {
+    client_id: 'pan_advanced_client',
+    pan_number: 'EKRPR1234F',
+    full_name: 'VISHAL RATHORE',
+    title: 'Shri',
+    pan_status: 'E',
+    pan_status_desc: 'EXISTING AND VALID',
+    aadhaar_seeding_status: 'Y',
+    aadhaar_seeding_status_desc: 'Aadhaar Seeding is Successful',
+    pan_modified_date: null,
+    category: 'person',
+    secret_field: 'must not persist',
+  });
+
+  const details = result.panDetails as Record<string, unknown>;
+  assert.equal(result.pan, 'EKRPR****F');
+  assert.equal(details.fullName, 'VISHAL RATHORE');
+  assert.equal(details.title, 'Shri');
+  assert.equal(details.status, 'EXISTING AND VALID');
+  assert.equal(details.panStatus, 'E');
+  assert.equal(details.aadhaarSeedingStatus, 'Y');
+  assert.equal(details.aadhaarLinked, true);
+  assert.equal(details.category, 'person');
+  assert.equal((result.providerData as Record<string, unknown>).secret_field, undefined);
+});
+
 test('contact result keeps only email and mobile arrays', () => {
   assert.deepEqual(
     sanitizeContactResult('ABCDE1234F', {

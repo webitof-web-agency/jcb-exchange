@@ -699,8 +699,8 @@ function MachinesPageContent({
                         </div>
 
                         <div className="flex flex-1 flex-col p-2.5 sm:p-4 lg:p-5">
-                          <h3 className="line-clamp-2 break-words text-xs font-bold leading-tight sm:leading-snug text-gray-900 transition-colors group-hover:text-yellow-600 sm:text-sm lg:text-[15px]">{machine.title}</h3>
-                          <p className="mt-1 sm:mt-2 text-sm sm:text-base font-extrabold text-[#b48900] lg:text-lg">{formatPrice(machine.price)}</p>
+                          <h3 className="line-clamp-2 break-words text-xs sm:text-[13px] lg:text-[13.5px] font-bold leading-tight sm:leading-snug text-gray-900 transition-colors group-hover:text-yellow-600">{machine.title}</h3>
+                          <p className="mt-1 sm:mt-1.5 text-xs sm:text-[13px] lg:text-sm font-bold text-[#b48900] tracking-tight">{formatPrice(machine.price)}</p>
 
                           <div className="mt-auto flex items-center gap-1 sm:gap-1.5 border-t border-gray-100 pt-2 sm:pt-3 text-[10px] sm:text-xs text-gray-500 lg:pt-4">
                             <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-gray-400" />

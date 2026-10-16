@@ -16,6 +16,7 @@ test('masks RC data and drops malformed provider dates', () => {
     client_id: 'rc-client-1',
     rc_number: 'RJ12XJ1234',
     registration_date: '2017-09-05',
+    registration_valid_upto: '2040-09-05',
     owner_name: ' Munna Bhaiya ',
     father_name: 'Kaleen Bhaiya',
     fit_up_to: '2099-09-00',
@@ -29,6 +30,7 @@ test('masks RC data and drops malformed provider dates', () => {
     providerClientId: 'rc-client-1',
     rcNumber: 'RJ12XJ1234',
     registrationDate: '2017-09-05',
+    registrationUpto: '2040-09-05',
     ownerName: 'Munna Bhaiya',
     fatherName: 'Kaleen Bhaiya',
     permitValidUpto: '2080-11-06',
@@ -158,6 +160,7 @@ test('keeps RC Full billing and audit records separate from RC Owner History', a
 test('sanitizes RC Full data before returning it to listing forms', () => {
   assert.deepEqual(sanitizeRcFullResultForListing({
     rcNumber: 'RJ12XJ1234',
+    registrationUpto: '2040-09-05',
     vehicleChasiNumber: 'CHASSIS123',
     vehicleEngineNumber: 'ENGINE123',
     makerDescription: 'JCB',
@@ -167,6 +170,7 @@ test('sanitizes RC Full data before returning it to listing forms', () => {
     mobileNumber: '9999999999',
   }), {
     rcNumber: 'RJ12XJ1234',
+    registrationUpto: '2040-09-05',
     vehicleChasiNumber: 'CHASSIS123',
     vehicleEngineNumber: 'ENGINE123',
     makerDescription: 'JCB',

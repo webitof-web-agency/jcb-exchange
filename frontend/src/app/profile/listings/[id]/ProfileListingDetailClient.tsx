@@ -103,6 +103,8 @@ type ListingResponse = {
 type ParsedListingDetails = {
   rawDescription: string;
   variant: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
@@ -119,6 +121,8 @@ type ParsedListingDetails = {
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
   variant: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
@@ -160,6 +164,13 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
         break;
       case 'registration year':
         parsed.registrationYear = value;
+        break;
+      case 'registration date':
+        parsed.registrationDate = value;
+        break;
+      case 'registration upto':
+      case 'registration up to':
+        parsed.registrationUpto = value;
         break;
       case 'registration no':
         parsed.registrationNo = value;
@@ -685,8 +696,9 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 <SpecCard icon={<Cog className="h-4 w-4" />} label={t('machineDetails.transmissionLabel')} value={listing.transmission || parsedDetails.transmission || t('machineDetails.na')} />
                 <SpecCard icon={<ShieldCheck className="h-4 w-4" />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
                 <SpecCard icon={<Clock className="h-4 w-4" />} label={t('machineDetails.operatingHoursLabel')} value={listing.operatingHours ? String(listing.operatingHours) : t('machineDetails.na')} />
-                <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('profile.registrationYear')} value={String(listing.registrationYear || parsedDetails.registrationYear || t('machineDetails.na'))} />
-                <SpecCard icon={<Info className="h-4 w-4" />} label={t('profile.registrationNumber')} value={listing.registrationNo || parsedDetails.registrationNo || t('machineDetails.na')} />
+                <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('profile.registrationDate', 'Registration Date')} value={parsedDetails.registrationDate || String(listing.registrationYear || parsedDetails.registrationYear || t('machineDetails.na'))} />
+                <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('profile.registrationUpto', 'Registration Upto')} value={parsedDetails.registrationUpto || t('machineDetails.na')} />
+                <SpecCard icon={<Info className="h-4 w-4" />} label={t('profile.registrationNumber', 'Registration No.')} value={listing.registrationNo || parsedDetails.registrationNo || t('machineDetails.na')} />
                 <SpecCard icon={<Info className="h-4 w-4" />} label={t('profile.chassisNumber')} value={listing.chassisOrSerialNo || parsedDetails.chassisOrSerialNo || t('machineDetails.na')} />
                 <SpecCard icon={<UserRound className="h-4 w-4" />} label={t('profile.previousOwners')} value={String(listing.previousOwners || parsedDetails.previousOwners || t('machineDetails.na'))} />
                 <SpecCard icon={<MapPin className="h-4 w-4" />} label={t('machineDetails.addressLabel', 'Address')} value={listing.address || parsedDetails.address || parsedDetails.district || t('machineDetails.na')} />

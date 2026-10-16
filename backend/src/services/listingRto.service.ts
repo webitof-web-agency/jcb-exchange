@@ -6,6 +6,7 @@ export type ListingRtoDetailsInput = {
   vehicleModel?: unknown;
   operatingHours?: unknown;
   hirePurchaseStatus?: unknown;
+  financerName?: unknown;
   taxStatus?: unknown;
   taxValidUntil?: unknown;
   fitnessStatus?: unknown;
@@ -16,6 +17,7 @@ export type ListingRtoDetailsInput = {
   pucStatus?: unknown;
   pucValidUntil?: unknown;
   hsrpStatus?: unknown;
+  hsrpNumber?: unknown;
   rtoOffice?: unknown;
   rtoAgentName?: unknown;
   rtoExpenses?: unknown;
@@ -91,7 +93,6 @@ export const validateListingRtoDetails = (input: ListingRtoDetailsInput) => {
   });
   if (missingValidity) return `${missingValidity[0]} status and date are required.`;
 
-  if (Number(input.vehicleMaintenanceCost) <= 0) return 'Vehicle Maintenance Cost is required.';
   if (Number(input.operatingHours) <= 0) return 'Hours Running is required.';
   return null;
 };
@@ -108,6 +109,7 @@ export const buildListingRtoData = (
   vehicleType: text(input.vehicleType),
   vehicleModel: text(input.vehicleModel),
   hirePurchaseStatus: validEnum(input.hirePurchaseStatus, Object.values(RtoHirePurchaseStatus), RtoHirePurchaseStatus.PENDING),
+  financerName: text(input.financerName),
   taxStatus: validEnum(input.taxStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
   taxValidUntil: dateForValidity(input.taxStatus, input.taxValidUntil),
   fitnessStatus: validEnum(input.fitnessStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
@@ -117,6 +119,7 @@ export const buildListingRtoData = (
   pucStatus: validEnum(input.pucStatus, Object.values(RtoValidityStatus), RtoValidityStatus.NOT_AVAILABLE),
   pucValidUntil: dateForValidity(input.pucStatus, input.pucValidUntil),
   hsrpStatus: validEnum(input.hsrpStatus, Object.values(RtoHsrpStatus), RtoHsrpStatus.PENDING),
+  hsrpNumber: text(input.hsrpNumber).toUpperCase(),
   sellerName: existing?.sellerName || text(context.ownerName),
   sellerNumber: existing?.sellerNumber || digits(context.ownerNumber),
   purchaserName: existing?.purchaserName || '',

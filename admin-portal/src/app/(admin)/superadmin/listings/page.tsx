@@ -29,6 +29,7 @@ import { hasPermission } from '@/lib/permissionUtils';
 import { generateAdminListingDetailPath } from '@/lib/routePaths';
 import {
   isValidDigitsOnlyValue,
+  isValidDateValue,
   isValidPinCodeValue,
   isValidYearValue,
   normalizeSellVehicleAvailability,
@@ -50,7 +51,8 @@ type ListingFormState = {
   model: string;
   variant: string;
   manufacturingYear: string;
-  registrationYear: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationNo: string;
   chassisOrSerialNo: string;
   engineNumber: string;
@@ -152,6 +154,7 @@ type ListingRecord = {
     verificationSource?: VehicleVerificationSource | null;
     verifiedRegistrationNumber?: string | null;
     verifiedChassisNumber?: string | null;
+    verifiedEngineNumber?: string | null;
     status?: string | null;
     changedFields?: string[];
     lastVerifiedAt?: string | null;
@@ -162,6 +165,7 @@ type ListingRecord = {
   description?: string;
   additionalDescription?: string;
   grossPower?: string;
+  engineNumber?: string | null;
   isNegotiable?: boolean;
   views?: number;
   dealer?: string;
@@ -190,12 +194,12 @@ type ListingRecord = {
   } | null;
   rtoRecords?: Array<{
     vehicleNumber?: string | null;
-    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus'];
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; financerName?: string | null;
     taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
     fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null;
     insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
     pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null;
-    hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    hsrpStatus: ListingRtoFormState['hsrpStatus']; hsrpNumber?: string | null; rtoOffice?: string | null; rtoAgentName?: string | null;
     rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
   media: Array<{
@@ -207,7 +211,8 @@ type ListingRecord = {
   }>;
 };
 
-const isProtectedListing = (listing: ListingRecord) => listing.partner?.role === 'SUPER_ADMIN';
+const isProtectedListing = (listing: ListingRecord, currentUserRole?: string | null) =>
+  listing.partner?.role === 'SUPER_ADMIN' && currentUserRole !== 'SUPER_ADMIN';
 
 const verificationStatusMeta = (status?: string | null) => {
   switch (String(status || 'NOT_VERIFIED').toUpperCase()) {
@@ -251,6 +256,8 @@ type MediaSlotConfig = {
 type ParsedListingDetails = {
   rawDescription: string;
   variant: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
@@ -272,7 +279,8 @@ const initialForm: ListingFormState = {
   model: '',
   variant: '',
   manufacturingYear: '',
-  registrationYear: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationNo: '',
   chassisOrSerialNo: '',
   engineNumber: '',
@@ -518,6 +526,8 @@ const formatCurrency = (value: string | number) => {
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
   variant: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
@@ -563,6 +573,13 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
         break;
       case 'registration year':
         parsed.registrationYear = value;
+        break;
+      case 'registration date':
+        parsed.registrationDate = value;
+        break;
+      case 'registration upto':
+      case 'registration up to':
+        parsed.registrationUpto = value;
         break;
       case 'registration no':
         parsed.registrationNo = value;
@@ -615,10 +632,10 @@ const buildListingDescription = (form: ListingFormState) =>
   [
     form.description.trim(),
     form.variant ? `Variant: ${form.variant}` : '',
-    form.registrationYear ? `Registration year: ${form.registrationYear}` : '',
+    form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
+    form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
     form.chassisOrSerialNo ? `Chassis/serial: ${form.chassisOrSerialNo}` : '',
-    form.engineNumber ? `Engine number: ${form.engineNumber}` : '',
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
@@ -1594,10 +1611,11 @@ export default function PartnerListingsPage() {
       model: listing.model?.name || '',
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
-      registrationYear: parsedDetails.registrationYear,
+      registrationDate: parsedDetails.registrationDate,
+      registrationUpto: parsedDetails.registrationUpto,
       registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
-      engineNumber: parsedDetails.engineNumber,
+      engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
       operatingHours: String(listing.operatingHours || ''),
@@ -1633,6 +1651,7 @@ export default function PartnerListingsPage() {
       selectedBuyerCityId: '',
       rtoDetails: {
         hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        financerName: linkedRto?.financerName || '',
         taxStatus: linkedRto?.taxStatus === 'EXPIRED'
           ? 'EXPIRED'
           : linkedRto?.taxStatus === 'LIFETIME'
@@ -1647,6 +1666,7 @@ export default function PartnerListingsPage() {
         pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.pucStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
         pucValidUntil: linkedRto?.pucStatus === 'VALID' && linkedRto.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
         hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : linkedRto?.hsrpStatus === 'NO' ? 'NO' : linkedRto?.hsrpStatus === 'NOT_APPLICABLE' ? 'NOT_APPLICABLE' : 'PENDING',
+        hsrpNumber: linkedRto?.hsrpNumber || '',
         rtoOffice: linkedRto?.rtoOffice || '',
         rtoAgentName: linkedRto?.rtoAgentName || '',
         rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
@@ -1752,7 +1772,7 @@ export default function PartnerListingsPage() {
 
   const handleChassisVerification = async () => {
     if (listingVerificationPolicy?.chassisEnabled !== true) {
-      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use vehicle number verification.');
+      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use registration number verification.');
       return;
     }
 
@@ -1813,7 +1833,8 @@ export default function PartnerListingsPage() {
         model: mapped.model || current.model,
         variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
-        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationDate: mapped.registrationDate || current.registrationDate,
+        registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
@@ -1848,14 +1869,14 @@ export default function PartnerListingsPage() {
 
   const handleVehicleNumberVerification = async () => {
     if (listingVerificationPolicy?.registrationEnabled !== true) {
-      setError('Vehicle number verification is currently disabled. Enter the vehicle details manually or use chassis verification.');
+      setError('Registration number verification is currently disabled. Enter the vehicle details manually or use chassis verification.');
       return;
     }
 
     const registrationNumber = form.registrationNo.trim();
     if (!registrationNumber) {
       setChassisVerificationStatus('FAILED');
-      setError('Enter a vehicle number before verification.');
+      setError('Enter a registration number before verification.');
       return;
     }
 
@@ -1909,7 +1930,8 @@ export default function PartnerListingsPage() {
         model: mapped.model || current.model,
         variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
-        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationDate: mapped.registrationDate || current.registrationDate,
+        registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
@@ -1934,7 +1956,7 @@ export default function PartnerListingsPage() {
       setVerifiedRegistrationNumber('');
       setVehicleVerificationSource('');
       setChassisVerificationId('');
-      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the vehicle number and try again.'));
+      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the registration number and try again.'));
     } finally {
       if (requestId === chassisVerificationRequestRef.current) {
         setVerificationLoadingSource('');
@@ -2052,8 +2074,14 @@ export default function PartnerListingsPage() {
       return;
     }
 
-    if (!isValidYearValue(sanitizedForm.registrationYear)) {
-      setError('Registration year must be a 4-digit year.');
+    if (!isValidDateValue(sanitizedForm.registrationDate) || !isValidDateValue(sanitizedForm.registrationUpto)) {
+      setError('Registration dates must be valid calendar dates.');
+      setForm(sanitizedForm);
+      return;
+    }
+
+    if (sanitizedForm.registrationDate && sanitizedForm.registrationUpto && sanitizedForm.registrationDate > sanitizedForm.registrationUpto) {
+      setError('Registration upto cannot be before the registration date.');
       setForm(sanitizedForm);
       return;
     }
@@ -2123,6 +2151,7 @@ export default function PartnerListingsPage() {
         description: buildListingDescription(sanitizedForm),
         additionalDescription: sanitizedForm.additionalDescription,
         grossPower: sanitizedForm.grossPower,
+        engineNumber: sanitizedForm.engineNumber,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
         ...(chassisVerificationId
@@ -2879,7 +2908,7 @@ export default function PartnerListingsPage() {
                                     onClick: () => openEditModal(listing),
                                   },
                                 ] : []),
-                                ...(canDelete && !isProtectedListing(listing) ? [
+                                ...(canDelete && !isProtectedListing(listing, user?.role) ? [
                                   {
                                     label: 'Delete Listing',
                                     icon: <Trash2 size={14} />,
@@ -2998,7 +3027,7 @@ export default function PartnerListingsPage() {
           <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{editingListingId ? 'Edit Vehicle' : 'Sell Vehicle'}</h2>
+                <h2 className="text-xl font-bold text-gray-900">{editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
               </div>
               <button
                 type="button"
@@ -3031,7 +3060,7 @@ export default function PartnerListingsPage() {
                     <h3 className="text-base font-semibold">Equipment Details</h3>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label={`Chassis / Serial No.${listingVerificationPolicy?.required ? ' *' : ''}`}>
+                    <Field className="order-2" label={`Chassis / Serial No.${listingVerificationPolicy?.required ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.chassisOrSerialNo}
@@ -3048,7 +3077,7 @@ export default function PartnerListingsPage() {
                           disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
                           className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {chassisButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : chassisButtonState.isLocked ? <span>Filled from vehicle number</span> : <><Sparkles className="h-4 w-4" />Verify</>}
+                          {chassisButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : chassisButtonState.isLocked ? <span>Filled from registration number</span> : <><Sparkles className="h-4 w-4" />Verify</>}
                         </button>
                         ) : null}
                       </div>
@@ -3060,10 +3089,10 @@ export default function PartnerListingsPage() {
                         {chassisButtonState.isVerified ? '✓ Verified successfully. API-backed vehicle details were filled.' : vehicleVerificationSource === 'RC_FULL' ? 'Chassis was auto-filled from vehicle-number verification.' : verificationLoadingSource === 'CHASSIS' ? 'Verifying chassis number...' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy.required ? 'Verification is required before posting this vehicle.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
                       </p>
                       ) : (
-                        <p className="mt-1.5 text-xs font-medium text-gray-500">{listingVerificationPolicy?.registrationEnabled ? 'Chassis verification is disabled. Vehicle number verification can auto-fill chassis details.' : 'Manual listing mode is active. Vehicle verification and auto-fill are disabled.'}</p>
+                        <p className="mt-1.5 text-xs font-medium text-gray-500">{listingVerificationPolicy?.registrationEnabled ? 'Chassis verification is disabled. Registration number verification can auto-fill chassis details.' : 'Manual listing mode is active. Vehicle verification and auto-fill are disabled.'}</p>
                       )}
                     </Field>
-                    <Field label={'Vehicle Number' + (listingVerificationPolicy?.registrationRequired ? ' *' : '')}>
+                    <Field className="order-1" label={'Registration No.' + (listingVerificationPolicy?.registrationRequired ? ' *' : '')}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.registrationNo}
@@ -3084,7 +3113,7 @@ export default function PartnerListingsPage() {
                           </button>
                         ) : null}
                       </div>
-                      {listingVerificationPolicy?.registrationEnabled ? <p id="admin-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using vehicle number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Vehicle number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying vehicle number...' : 'Use vehicle number verification when chassis verification is not available.'}</p> : null}
+                      {listingVerificationPolicy?.registrationEnabled ? <p id="admin-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using registration number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Registration number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Use registration number verification when chassis verification is not available.'}</p> : null}
                     </Field>
                   </div>
                   <div className="mb-4">
@@ -3129,7 +3158,7 @@ export default function PartnerListingsPage() {
                     <Field label="Variant">
                       <input value={form.variant} onChange={(event) => updateField('variant', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label="Gross Power">
+                    <Field label="Horse Power">
                       <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
                         <input
                           type="text"
@@ -3147,8 +3176,11 @@ export default function PartnerListingsPage() {
                     <Field label="Manufacture Year">
                       <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label="Registration Year">
-                      <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
+                    <Field label="Registration Date">
+                      <input type="date" value={form.registrationDate} onChange={(event) => updateField('registrationDate', event.target.value)} className={fieldClassName} />
+                    </Field>
+                    <Field label="Registration Upto">
+                      <input type="date" value={form.registrationUpto} onChange={(event) => updateField('registrationUpto', event.target.value)} className={fieldClassName} />
                     </Field>
                     {form.rtoDetails.insuranceStatus === 'VALID' && (
                       <Field label="Insurance Expiry Date">
@@ -3351,7 +3383,7 @@ export default function PartnerListingsPage() {
                 <section className="rounded-2xl border border-gray-200 p-5">
                   <div className="mb-4 flex items-center gap-2 text-gray-900">
                     <ImagePlus className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">Price and Location</h3>
+                <h3 className="text-base font-semibold">Price and Sell Vehicle</h3>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label="Price *">
@@ -3481,7 +3513,7 @@ export default function PartnerListingsPage() {
                       disabled={saving || uploadingCount > 0}
                       className="rounded-lg bg-[#FFC107] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {saving ? (editingListingId ? 'Updating...' : 'Posting...') : uploadingCount > 0 ? 'Waiting for uploads...' : editingListingId ? 'Update' : 'Post'}
+                      {saving ? (editingListingId ? 'Updating...' : 'Adding...') : uploadingCount > 0 ? 'Waiting for uploads...' : editingListingId ? 'Update' : 'Add'}
                     </button>
                   </div>
                 </div>
@@ -3493,7 +3525,7 @@ export default function PartnerListingsPage() {
 
 
 
-      {deleteListingRecord && !isProtectedListing(deleteListingRecord) && (
+      {deleteListingRecord && !isProtectedListing(deleteListingRecord, user?.role) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
@@ -3529,12 +3561,14 @@ export default function PartnerListingsPage() {
 function Field({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="block">
+    <label className={`block ${className || ''}`}>
       <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
       {children}
     </label>

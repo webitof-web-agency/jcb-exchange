@@ -5,6 +5,7 @@ import { sanitizeChassisToRcResultForSeller } from './chassisToRcVerification.co
 test('returns only listing autofill fields to sellers', () => {
   assert.deepEqual(sanitizeChassisToRcResultForSeller({
     rcNumber: 'PB00AZ1234',
+    registrationUpto: '2040-01-26',
     vehicleChasiNumber: 'MALBM51ABC123456',
     ownerName: 'TARSEM SINGH',
     presentAddress: 'PRIVATE ADDRESS',
@@ -16,6 +17,7 @@ test('returns only listing autofill fields to sellers', () => {
     financed: false,
   }), {
     rcNumber: 'PB00AZ1234',
+    registrationUpto: '2040-01-26',
     vehicleChasiNumber: 'MALBM51ABC123456',
     makerModel: 'I20 SPORTZ CRDI',
     vehicleCategoryDescription: 'Motor Car(LMV)',

@@ -15,6 +15,7 @@ test('maps the nested chassis-to-RC details response to Sell Vehicle fields', ()
   const mapped = mapChassisToRcVehicle({
     rcNumber: 'PB00AZ1234',
     registrationDate: '2019-01-26',
+    registration_valid_upto: '2034-01-25',
     vehicleChasiNumber: 'MALBM51ABC123456',
     vehicleEngineNumber: 'D4FCJM12345',
     vehicleCategory: 'LMV',
@@ -43,12 +44,14 @@ test('maps the nested chassis-to-RC details response to Sell Vehicle fields', ()
     variant: 'SPORTZ',
     fuelType: 'Diesel',
     manufacturingYear: '2018',
-    registrationYear: '2019',
+    registrationDate: '2019-01-26',
+    registrationUpto: '2034-01-25',
     previousOwners: '2',
     titleSuggestion: 'HYUNDAI MOTOR INDIA LTD I20 SPORTZ CRDI',
     insuranceExpiry: '',
     rtoDetails: {
       hirePurchaseStatus: 'NOT_APPLICABLE',
+      financerName: '',
       taxStatus: 'VALID',
       taxValidUntil: '2030-04-01',
       fitnessStatus: 'VALID',
@@ -56,9 +59,21 @@ test('maps the nested chassis-to-RC details response to Sell Vehicle fields', ()
       insuranceStatus: 'EXPIRED',
       pucStatus: 'VALID',
       pucValidUntil: '2027-05-01',
+      hsrpNumber: '',
       rtoOffice: 'FEROZPUR RTA, Punjab',
     },
   });
+});
+
+test('maps registration validity aliases for Sell Vehicle autofill', () => {
+  const mapped = mapProviderVehicleToListing({
+    rcNumber: 'DL01AB1234',
+    registration_date: '2020-06-01',
+    registration_valid_upto: '2040-06-01',
+  });
+
+  assert.equal(mapped.registrationDate, '2020-06-01');
+  assert.equal(mapped.registrationUpto, '2040-06-01');
 });
 
 test('does not call a missing or malformed provider date valid', () => {

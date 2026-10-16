@@ -11,6 +11,7 @@ const validPayload = {
   vehicleType: 'Backhoe Loader',
   vehicleModel: 'JCB 3DX',
   hirePurchaseStatus: RtoHirePurchaseStatus.PENDING,
+  financerName: 'Finance Ltd',
   taxStatus: RtoValidityStatus.LIFETIME,
   taxValidUntil: null,
   fitnessStatus: RtoValidityStatus.VALID,
@@ -20,6 +21,7 @@ const validPayload = {
   pucStatus: RtoValidityStatus.VALID,
   pucValidUntil: new Date('2027-04-10'),
   hsrpStatus: RtoHsrpStatus.YES,
+  hsrpNumber: 'HSRP-12345',
   sellerName: 'Seller',
   sellerNumber: '',
   purchaserName: 'Purchaser',
@@ -144,6 +146,5 @@ test('maps NOT_REQUIRED to NOT_APPLICABLE for hsrpStatus', () => {
   });
   assert.equal(payload.hsrpStatus, RtoHsrpStatus.NOT_APPLICABLE);
 });
-
 
 

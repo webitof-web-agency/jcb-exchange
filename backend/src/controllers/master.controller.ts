@@ -33,6 +33,7 @@ type PublicListingFormDetails = {
   registrationYear: string | null;
   registrationNo: string | null;
   chassisOrSerialNo: string | null;
+  engineNumber: string | null;
   previousOwners: string | null;
   fuelType: string | null;
   transmission: string | null;
@@ -47,6 +48,7 @@ const parsePublicListingFormDetails = (description?: string | null): PublicListi
     registrationYear: null,
     registrationNo: null,
     chassisOrSerialNo: null,
+    engineNumber: null,
     previousOwners: null,
     fuelType: null,
     transmission: null,
@@ -74,6 +76,8 @@ const parsePublicListingFormDetails = (description?: string | null): PublicListi
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial': details.chassisOrSerialNo = value; break;
+      case 'engine number':
+      case 'engine no': details.engineNumber = value; break;
       case 'owners': details.previousOwners = value; break;
       case 'fuel': details.fuelType = value; break;
       case 'transmission': details.transmission = value; break;
@@ -1420,12 +1424,16 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
           },
         },
         saleRecord: true,
+        vehicleVerification: {
+          select: { verifiedEngineNumber: true },
+        },
         rtoRecords: {
           orderBy: { createdAt: 'desc' as const },
           take: 1,
           select: {
             vehicleNumber: true,
             hirePurchaseStatus: true,
+            financerName: true,
             taxStatus: true,
             taxValidUntil: true,
             fitnessStatus: true,
@@ -1435,6 +1443,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
             pucStatus: true,
             pucValidUntil: true,
             hsrpStatus: true,
+            hsrpNumber: true,
             rtoOffice: true,
             rtoAgentName: true,
             vehicleMaintenanceCost: true,
@@ -1502,6 +1511,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       registrationYear: formDetails.registrationYear,
       registrationNo: formDetails.registrationNo,
       chassisOrSerialNo: formDetails.chassisOrSerialNo,
+      engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || formDetails.engineNumber,
       previousOwners: formDetails.previousOwners,
       fuelType: formDetails.fuelType,
       transmission: formDetails.transmission,
@@ -1546,6 +1556,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       vehicleCompliance: latestRto ? {
         vehicleNumber: latestRto.vehicleNumber || null,
         hirePurchaseStatus: latestRto.hirePurchaseStatus || null,
+        financerName: latestRto.financerName || null,
         taxStatus: latestRto.taxStatus || null,
         taxValidUntil: latestRto.taxValidUntil ? new Date(latestRto.taxValidUntil).toISOString() : null,
         fitnessStatus: latestRto.fitnessStatus || null,
@@ -1555,6 +1566,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         pucStatus: latestRto.pucStatus || null,
         pucValidUntil: latestRto.pucValidUntil ? new Date(latestRto.pucValidUntil).toISOString() : null,
         hsrpStatus: latestRto.hsrpStatus || null,
+        hsrpNumber: latestRto.hsrpNumber || null,
         rtoOffice: latestRto.rtoOffice || null,
         rtoAgentName: latestRto.rtoAgentName || null,
         vehicleMaintenanceCost: latestRto.vehicleMaintenanceCost != null ? Number(latestRto.vehicleMaintenanceCost) : null,

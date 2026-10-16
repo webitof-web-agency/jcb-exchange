@@ -11,3 +11,8 @@ export const LISTING_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
   { id: 'listings.verify_payment', label: 'Payment Verification' },
   { id: 'listings.delete', label: 'Delete Listing' },
 ];
+
+export const KYC_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
+  { id: 'kyc.manage', label: 'Manage Verifications' },
+  { id: 'kyc.edit.override', label: 'KYC Edit Override' },
+];

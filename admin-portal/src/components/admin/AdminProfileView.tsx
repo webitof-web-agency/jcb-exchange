@@ -80,7 +80,7 @@ const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
 };
 
 export default function AdminProfileView() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, setAuth } = useAuthStore();
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     name: user?.name || '',
     email: user?.email || '',
@@ -134,7 +134,11 @@ export default function AdminProfileView() {
 
     try {
       const response = await api.patch('/auth/profile', profileForm);
-      updateUser(response.data.user);
+      if (response.data.token && response.data.user) {
+        setAuth(response.data.token, response.data.user);
+      } else {
+        updateUser(response.data.user);
+      }
       setProfileForm({
         name: response.data.user?.name || '',
         email: response.data.user?.email || '',
@@ -157,6 +161,9 @@ export default function AdminProfileView() {
 
     try {
       const response = await api.patch('/auth/profile/password', passwordForm);
+      if (response.data.token && response.data.user) {
+        setAuth(response.data.token, response.data.user);
+      }
       setPasswordForm(emptyPasswordForm);
       setPasswordMessage(response.data.message || 'Password updated successfully.');
     } catch (error: unknown) {

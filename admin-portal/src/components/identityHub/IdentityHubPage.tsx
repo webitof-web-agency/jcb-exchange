@@ -1,9 +1,9 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Building2, CheckCircle2, Eye, FileCheck2, FileSearch, History, Loader2, Search, ShieldAlert, XCircle, ScanLine, ArrowLeft, ArrowRight, Phone } from 'lucide-react';
+import { BadgeCheck, Building2, CalendarDays, CheckCircle2, Eye, FileCheck2, FileSearch, History, Loader2, Search, ShieldAlert, XCircle, ScanLine, ArrowLeft, ArrowRight, Phone } from 'lucide-react';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { canViewFeature, GST_VIEW_PERMISSIONS, MOBILE_TO_PAN_VIEW_PERMISSIONS, PAN_VIEW_PERMISSIONS } from '@/lib/featurePermissions';
@@ -14,6 +14,8 @@ import { ApiServicePrice } from '@/components/apiBilling/ApiBillingDisplay';
 import {
   normalizePan,
   operationLabel,
+  PAN_COMPREHENSIVE_OPERATION,
+  PAN_COMPREHENSIVE_ROUTE,
   safeApiError as safePanApiError,
   validateDob,
   validatePan,
@@ -36,6 +38,14 @@ import {
   type MobileToPanRecord,
   type MobileToPanResponse,
 } from '@/lib/mobileToPan';
+import {
+  sanitizePan,
+  sanitizeGstin,
+  sanitizePersonName,
+  sanitizeMobileNumber,
+  sanitizeSearchInput,
+} from '@/lib/verificationSanitizers';
+import { filterDrivingLicenseDobYears, getDrivingLicenseDobYears } from '@/lib/drivingLicenseVerification';
 
 // --- Shared Types & Helpers ---
 type Tab = 'overview' | 'pan' | 'gst' | 'mobileToPan';
@@ -49,6 +59,63 @@ type UnifiedRecord = (
 
 const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2.5 text-sm font-bold text-slate-950 transition shadow-sm disabled:cursor-not-allowed disabled:opacity-50';
+
+function SearchableDobPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const initialYear = Number(value.slice(0, 4)) || today.getFullYear();
+  const initialMonth = Number(value.slice(5, 7)) - 1;
+  const [open, setOpen] = useState(false);
+  const [yearQuery, setYearQuery] = useState(String(initialYear));
+  const [viewYear, setViewYear] = useState(initialYear);
+  const [viewMonth, setViewMonth] = useState(Number.isInteger(initialMonth) && initialMonth >= 0 ? initialMonth : today.getMonth());
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const years = getDrivingLicenseDobYears();
+  const filteredYears = filterDrivingLicenseDobYears(years, yearQuery);
+  const daysInMonth = new Date(Date.UTC(viewYear, viewMonth + 1, 0)).getUTCDate();
+  const firstDay = new Date(Date.UTC(viewYear, viewMonth, 1)).getUTCDay();
+  const selectedDay = Number(value.slice(8, 10));
+  const displayValue = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value.slice(8, 10)}-${value.slice(5, 7)}-${value.slice(0, 4)}` : '';
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [open]);
+
+  const chooseYear = (year: number) => {
+    setViewYear(year);
+    setYearQuery(String(year));
+  };
+  const chooseDay = (day: number) => {
+    const date = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (date <= todayIso) {
+      onChange(date);
+      setOpen(false);
+    }
+  };
+  const moveMonth = (offset: number) => {
+    const next = new Date(Date.UTC(viewYear, viewMonth + offset, 1));
+    if (next.getUTCFullYear() >= 1900 && next <= new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1))) {
+      setViewYear(next.getUTCFullYear());
+      setViewMonth(next.getUTCMonth());
+      setYearQuery(String(next.getUTCFullYear()));
+    }
+  };
+
+  return <div ref={pickerRef} className="relative">
+    <input readOnly value={displayValue} onClick={() => setOpen(true)} className={`${inputClass} pr-11`} placeholder="dd-mm-yyyy" aria-label="Date of birth" />
+    <button type="button" onClick={() => setOpen((current) => !current)} className="absolute right-0 top-1.5 flex h-[calc(100%-0.375rem)] w-11 items-center justify-center text-slate-500 hover:text-slate-900" aria-label="Open date of birth calendar" aria-expanded={open}><CalendarDays className="h-4 w-4" /></button>
+    {open ? <div className="absolute z-30 mt-2 w-full min-w-[290px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl" role="dialog" aria-label="Date of birth calendar">
+      <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => moveMonth(-1)} className="rounded-lg px-2 py-1 text-lg text-slate-600 hover:bg-slate-100" aria-label="Previous month">‹</button><p className="text-sm font-bold text-slate-800">{new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(viewYear, viewMonth, 1)))}</p><button type="button" onClick={() => moveMonth(1)} className="rounded-lg px-2 py-1 text-lg text-slate-600 hover:bg-slate-100" aria-label="Next month">›</button></div>
+      <div className="relative mt-3"><input value={yearQuery} onFocus={() => setYearQuery('')} onChange={(event) => setYearQuery(event.target.value.replace(/\D/g, '').slice(0, 4))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20" placeholder="Search year" inputMode="numeric" role="combobox" aria-expanded="true" aria-controls="pan-dob-year-options" aria-label="Search date of birth year" autoComplete="off" />{yearQuery !== String(viewYear) || !value ? <div id="pan-dob-year-options" className="absolute left-0 right-0 top-full z-40 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg" role="listbox">{filteredYears.length ? filteredYears.slice(0, 8).map((year) => <button key={year} type="button" role="option" aria-selected={year === viewYear} onClick={() => chooseYear(year)} className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-amber-50">{year}</button>) : <p className="px-3 py-2 text-xs text-slate-500">No matching year</p>}</div> : null}</div>
+      <div className="mt-3 grid grid-cols-7 text-center text-xs font-semibold text-slate-400">{['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => <span key={day} className="py-1">{day}</span>)}{Array.from({ length: firstDay }, (_, index) => <span key={`blank-${index}`} />)}{Array.from({ length: daysInMonth }, (_, index) => { const day = index + 1; const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`; const disabled = iso > todayIso; return <button key={day} type="button" disabled={disabled} onClick={() => chooseDay(day)} className={`rounded-lg py-1.5 text-sm ${day === selectedDay && viewYear === Number(value.slice(0, 4)) && viewMonth === Number(value.slice(5, 7)) - 1 ? 'bg-amber-500 font-bold text-slate-950' : 'text-slate-700 hover:bg-amber-50'} disabled:cursor-not-allowed disabled:text-slate-300`}>{day}</button>; })}</div>
+    </div> : null}
+  </div>;
+}
 
 const formatDate = (value: unknown, active = false) => {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -158,7 +225,7 @@ function PanComprehensiveV2ResultPanel({ response }: { response: PanResultRespon
   return (
     <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status" aria-live="polite">
       <div className="flex items-center gap-2 text-sm font-bold text-emerald-800">
-        <BadgeCheck className="h-5 w-5" /> PAN Comprehensive V2 completed{response.cacheHit ? ' · served from saved result' : ''}
+        <BadgeCheck className="h-5 w-5" /> PAN Comprehensive completed{response.cacheHit ? ' · served from saved result' : ''}
       </div>
       <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
         <div><span className="text-slate-500">PAN</span><p className="font-semibold text-slate-900">{String(result.panNumber || result.pan || response.record.maskedPan)}</p></div>
@@ -202,7 +269,7 @@ function PanResultPanel({ response }: { response: PanResultResponse }) {
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title={operationLabel(response.record.operation)} record={response.record} />;
   }
-  if (response.record.operation === 'PAN_COMPREHENSIVE_V2') {
+  if (response.record.operation === PAN_COMPREHENSIVE_OPERATION) {
     return <PanComprehensiveV2ResultPanel response={response} />;
   }
   const result = response.result || {};
@@ -439,7 +506,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
   const panelTitle = activeTab === 'gst'
     ? 'GST History'
     : activeTab === 'pan'
-      ? (panTab === 'aadhaar' ? 'Aadhaar Link History' : panTab === 'contact' ? 'Fetch Contact History' : panTab === 'comprehensive' ? 'Comprehensive V2 History' : 'Basic Verify History')
+          ? (panTab === 'aadhaar' ? 'Aadhaar Link History' : panTab === 'contact' ? 'Fetch Contact History' : panTab === 'comprehensive' ? 'PAN Comprehensive History' : 'Basic Verify History')
       : activeTab === 'mobileToPan'
         ? 'Mobile To PAN History'
         : 'Recent History';
@@ -447,7 +514,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
   const panelSubtitle = activeTab === 'gst'
     ? 'Recent GST verifications'
     : activeTab === 'pan'
-      ? (panTab === 'aadhaar' ? 'Recent PAN to Aadhaar checks' : panTab === 'contact' ? 'Recent PAN contact lookups' : panTab === 'comprehensive' ? 'Recent PAN Comprehensive V2 checks' : 'Recent basic PAN verifications')
+      ? (panTab === 'aadhaar' ? 'Recent PAN to Aadhaar checks' : panTab === 'contact' ? 'Recent PAN contact lookups' : panTab === 'comprehensive' ? 'Recent PAN Comprehensive checks' : 'Recent basic PAN verifications')
       : activeTab === 'mobileToPan'
         ? 'Recent Mobile to PAN lookups'
         : 'Latest verifications across all modules';
@@ -488,7 +555,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(sanitizeSearchInput(e.target.value))}
             placeholder="Search history..."
             className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/20"
           />
@@ -527,8 +594,8 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
                           ? 'Aadhaar Link'
                           : record.operation === 'PAN_CONTACT_LOOKUP'
                             ? 'Fetch Contact'
-                            : record.operation === 'PAN_COMPREHENSIVE_V2'
-                              ? 'Comprehensive V2'
+                            : record.operation === PAN_COMPREHENSIVE_OPERATION
+                              ? 'PAN Comprehensive'
                               : 'Basic Verify'
                         : record._type === 'GST'
                           ? 'GST Verification'
@@ -655,7 +722,7 @@ export default function IdentityHubPage() {
           ? 'aadhaar'
           : result.data.record.operation === 'PAN_CONTACT_LOOKUP'
             ? 'contact'
-            : result.data.record.operation === 'PAN_COMPREHENSIVE_V2'
+            : result.data.record.operation === PAN_COMPREHENSIVE_OPERATION
               ? 'comprehensive'
               : 'verify';
         setPanTab(operationTab);
@@ -743,10 +810,14 @@ export default function IdentityHubPage() {
     event.preventDefault();
     setPanError('');
     setPanResponse(null);
-    const err = validatePan(pan);
+    const cleanPan = sanitizePan(pan);
+    const cleanFullName = sanitizePersonName(fullName, 150, true);
+    setPan(cleanPan);
+    setFullName(cleanFullName);
+    const err = validatePan(cleanPan);
     if (err) return setPanError(err);
     if (panTab === 'verify') {
-      if (!fullName.trim()) return setPanError('Full name is required.');
+      if (!cleanFullName.trim()) return setPanError('Full name is required.');
       const dobError = validateDob(dob);
       if (dobError) return setPanError(dobError);
     }
@@ -758,14 +829,14 @@ export default function IdentityHubPage() {
           ? '/pan-verification/to-aadhaar'
           : panTab === 'contact'
             ? '/pan-verification/contact'
-            : '/pan-verification/comprehensive-v2';
+            : PAN_COMPREHENSIVE_ROUTE;
       const payload = panTab === 'verify'
-        ? { id_number: normalizePan(pan), full_name: fullName.trim().replace(/\s+/g, ' '), dob }
+        ? { id_number: normalizePan(cleanPan), full_name: cleanFullName.replace(/\s+/g, ' '), dob }
         : panTab === 'aadhaar'
-          ? { pan_number: normalizePan(pan) }
+          ? { pan_number: normalizePan(cleanPan) }
           : panTab === 'contact'
-            ? { id_number: normalizePan(pan), ...(fetchEmail ? { fetch_email: true } : {}) }
-            : { id_number: normalizePan(pan) };
+            ? { id_number: normalizePan(cleanPan), ...(fetchEmail ? { fetch_email: true } : {}) }
+            : { id_number: normalizePan(cleanPan) };
       const result = await api.post<PanResultResponse>(endpoint, payload);
       setPanResponse(result.data);
       triggerHistoryRefresh();
@@ -780,11 +851,13 @@ export default function IdentityHubPage() {
     event.preventDefault();
     setGstError('');
     setGstResponse(null);
-    const err = validateGstin(gstin);
+    const cleanGstin = sanitizeGstin(gstin);
+    setGstin(cleanGstin);
+    const err = validateGstin(cleanGstin);
     if (err) return setGstError(err);
     setGstBusy(true);
     try {
-      const result = await api.post<GstResultResponse>('/gst-verification/verify', { id_number: normalizeGstin(gstin) });
+      const result = await api.post<GstResultResponse>('/gst-verification/verify', { id_number: normalizeGstin(cleanGstin) });
       setGstResponse(result.data);
       triggerHistoryRefresh();
     } catch (requestError) {
@@ -798,15 +871,19 @@ export default function IdentityHubPage() {
     event.preventDefault();
     setMobileToPanError('');
     setMobileToPanResponse(null);
-    const nameError = validateMobileToPanName(mobileToPanName);
+    const cleanName = sanitizePersonName(mobileToPanName, 150, true);
+    const cleanMobile = sanitizeMobileNumber(mobileToPanNumber, 16);
+    setMobileToPanName(cleanName);
+    setMobileToPanNumber(cleanMobile);
+    const nameError = validateMobileToPanName(cleanName);
     if (nameError) return setMobileToPanError(nameError);
-    const mobileError = validateMobileNumber(mobileToPanNumber);
+    const mobileError = validateMobileNumber(cleanMobile);
     if (mobileError) return setMobileToPanError(mobileError);
     setMobileToPanBusy(true);
     try {
       const result = await api.post<MobileToPanResponse>('/mobile-to-pan/lookup', {
-        name: normalizeMobileToPanName(mobileToPanName),
-        mobile_no: normalizeMobileNumber(mobileToPanNumber),
+        name: normalizeMobileToPanName(cleanName),
+        mobile_no: normalizeMobileNumber(cleanMobile),
       });
       setMobileToPanResponse(result.data);
       triggerHistoryRefresh();
@@ -947,18 +1024,18 @@ export default function IdentityHubPage() {
                      <button type="button" onClick={()=>handlePanTabChange('verify')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='verify'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Basic Verify</button>
                      <button type="button" onClick={()=>handlePanTabChange('aadhaar')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='aadhaar'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Aadhaar Link</button>
                      <button type="button" onClick={()=>handlePanTabChange('contact')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='contact'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Fetch Contact</button>
-                     <button type="button" onClick={()=>handlePanTabChange('comprehensive')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='comprehensive'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Comprehensive V2</button>
+                     <button type="button" onClick={()=>handlePanTabChange('comprehensive')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='comprehensive'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>PAN Comprehensive</button>
                    </div>
                    <form onSubmit={submitPan} className="max-w-xl">
                     <div className="space-y-3.5">
                       <label className="block max-w-sm">
                         <span className="text-xs font-bold text-slate-700">PAN number <span className="text-red-500">*</span></span>
-                        <input value={pan} onChange={(e) => setPan(normalizePan(e.target.value).slice(0, 10))} className={inputClass} placeholder="ABCDE1234F" maxLength={10} />
+                        <input value={pan} onChange={(e) => setPan(sanitizePan(e.target.value))} className={inputClass} placeholder="ABCDE1234F" maxLength={10} autoComplete="off" />
                       </label>
                       {panTab === 'verify' && (
                         <div className="grid gap-3.5 sm:grid-cols-2">
-                          <label className="block"><span className="text-xs font-bold text-slate-700">Full name <span className="text-red-500">*</span></span><input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} placeholder="As per PAN record" maxLength={150} /></label>
-                          <label className="block"><span className="text-xs font-bold text-slate-700">Date of birth <span className="text-red-500">*</span></span><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputClass} /></label>
+                          <label className="block"><span className="text-xs font-bold text-slate-700">Full name <span className="text-red-500">*</span></span><input value={fullName} onChange={(e) => setFullName(sanitizePersonName(e.target.value, 150, false))} onBlur={() => setFullName((prev) => sanitizePersonName(prev, 150, true))} className={inputClass} placeholder="As per PAN record" maxLength={150} autoComplete="name" /></label>
+                          <label className="block"><span className="text-xs font-bold text-slate-700">Date of birth <span className="text-red-500">*</span></span><SearchableDobPicker value={dob} onChange={setDob} /></label>
                         </div>
                       )}
                       {panTab === 'contact' && (
@@ -998,7 +1075,7 @@ export default function IdentityHubPage() {
                    <form onSubmit={submitGst} className="max-w-md">
                      <label className="block">
                        <span className="text-xs font-bold text-slate-700">GSTIN <span className="text-red-500">*</span></span>
-                       <input value={gstin} onChange={(e) => setGstin(normalizeGstin(e.target.value).slice(0, 15))} className={inputClass} placeholder="08AKWPJ1234H1ZN" maxLength={15} />
+                       <input value={gstin} onChange={(e) => setGstin(sanitizeGstin(e.target.value))} className={inputClass} placeholder="08AKWPJ1234H1ZN" maxLength={15} autoComplete="off" />
                        <p className="mt-1 text-xs text-slate-400">15-character alphanumeric ID.</p>
                      </label>
                      {gstError && <div className="mt-3.5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{gstError}</div>}
@@ -1036,11 +1113,11 @@ export default function IdentityHubPage() {
                     <div className="space-y-3.5">
                       <label className="block">
                         <span className="text-xs font-bold text-slate-700">Full name <span className="text-red-500">*</span></span>
-                        <input value={mobileToPanName} onChange={(event) => setMobileToPanName(event.target.value.slice(0, 150))} className={inputClass} placeholder="As per PAN record" maxLength={150} autoComplete="name" />
+                        <input value={mobileToPanName} onChange={(event) => setMobileToPanName(sanitizePersonName(event.target.value, 150, false))} onBlur={() => setMobileToPanName((prev) => sanitizePersonName(prev, 150, true))} className={inputClass} placeholder="As per PAN record" maxLength={150} autoComplete="name" />
                       </label>
                       <label className="block max-w-sm">
                         <span className="text-xs font-bold text-slate-700">Mobile number <span className="text-red-500">*</span></span>
-                        <input value={mobileToPanNumber} onChange={(event) => setMobileToPanNumber(event.target.value.slice(0, 16))} className={inputClass} placeholder="8888808969" maxLength={16} inputMode="numeric" autoComplete="tel" />
+                        <input value={mobileToPanNumber} onChange={(event) => setMobileToPanNumber(sanitizeMobileNumber(event.target.value, 16))} className={inputClass} placeholder="8888808969" maxLength={16} inputMode="numeric" autoComplete="tel" />
                       </label>
                     </div>
                     {mobileToPanError && <div className="mt-3.5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{mobileToPanError}</div>}

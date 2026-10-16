@@ -43,6 +43,26 @@ export type PanVerificationRuntimeConfig = {
 
 const appMasterSecret = () => process.env.JWT_SECRET?.trim() || DEFAULT_APP_MASTER_SECRET;
 
+// Surepass's current documentation uses the .io hosts. Older project
+// settings used the legacy .app aliases, so keep those values compatible while
+// ensuring outbound requests use the documented canonical host.
+const SUREPASS_HOST_ALIASES: Record<string, string> = {
+  'sandbox.surepass.app': 'sandbox.surepass.io',
+  'kyc-api.surepass.app': 'kyc-api.surepass.io',
+};
+
+const canonicalizeSurepassHost = (value: string) => {
+  const parsed = new URL(value);
+  const canonicalHost = SUREPASS_HOST_ALIASES[parsed.hostname.toLowerCase()];
+  if (canonicalHost) parsed.hostname = canonicalHost;
+  return parsed.toString().replace(/\/+$/, '');
+};
+
+const displayBaseUrl = (value: string | null | undefined) => {
+  if (!value) return '';
+  return value.trim().replace(/\/+$/, '');
+};
+
 export const resolveSurepassEnvironment = (value: unknown): SurepassEnvironment => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
   if (!normalized || normalized === 'SANDBOX') return 'SANDBOX';
@@ -74,13 +94,21 @@ export const normalizePanVerificationBaseUrl = (value: unknown) => {
   return normalized;
 };
 
+/**
+ * Resolves legacy Surepass hosts only at the outbound-request boundary.
+ * The value stored and shown in settings remains the administrator's input.
+ */
+export const normalizeSurepassRuntimeBaseUrl = (value: unknown) => (
+  canonicalizeSurepassHost(normalizePanVerificationBaseUrl(value))
+);
+
 export const selectSurepassProfile = (
   environment: SurepassEnvironment,
   profiles: Record<SurepassEnvironment, SurepassProfile | null>,
 ) => profiles[environment] || null;
 
 const profileSummary = (baseUrl: string | null | undefined, token: string | null | undefined, customerId: string | null | undefined) => ({
-  baseUrl: baseUrl || '',
+  baseUrl: displayBaseUrl(baseUrl),
   tokenConfigured: Boolean(token),
   customerIdConfigured: Boolean(customerId),
 });
@@ -278,7 +306,7 @@ export const getPanVerificationRuntimeConfig = async (): Promise<PanVerification
       return {
         enabled: stored?.enabled === true,
         environment,
-        baseUrl: normalizePanVerificationBaseUrl(storedProfile.baseUrl),
+        baseUrl: normalizeSurepassRuntimeBaseUrl(storedProfile.baseUrl),
         token: decryptPanSetting(storedProfile.encryptedToken, appMasterSecret()),
         dataSecret,
         customerId: storedProfile.encryptedCustomerId
@@ -300,7 +328,7 @@ export const getPanVerificationRuntimeConfig = async (): Promise<PanVerification
   return {
     enabled: true,
     environment,
-    baseUrl: normalizePanVerificationBaseUrl(baseUrl),
+    baseUrl: normalizeSurepassRuntimeBaseUrl(baseUrl),
     token,
     dataSecret,
     customerId: process.env[`${profilePrefix}_CUSTOMER_ID`]?.trim()

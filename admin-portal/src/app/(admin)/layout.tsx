@@ -17,7 +17,7 @@ import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen, ScanLine } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen, ScanLine, FileText } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
@@ -25,6 +25,7 @@ import {
   employeeBrandsPermissions,
   employeeBlogPermissions,
   employeeFooterPermissions,
+  employeePartnerAgreementPermissions,
   employeeRolesPermissions,
   employeeUsersPermissions,
   employeeWhatsAppPermissions,
@@ -59,6 +60,7 @@ const navItems = [
   { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
   { href: '/superadmin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
   { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
+  { href: '/superadmin/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText },
   { href: '/superadmin/blogs', labelKey: 'admin.blog', icon: BookOpen },
   { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
 ];
@@ -73,7 +75,7 @@ const adminNavItems = [
 
 const employeeModuleNavItems = [
   { href: '/employee/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard, permissions: ['dashboard.view'] },
-  { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage'] },
+  { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage', 'kyc.edit.override'] },
   { href: '/employee/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
   { href: '/employee/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/employee/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare, permissions: ['enquiries.manage'] },
@@ -88,6 +90,7 @@ const employeeModuleNavItems = [
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
   { href: '/employee/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards, permissions: ['finance.read', 'finance.manage'] },
   { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
+  { href: '/employee/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText, permissions: employeePartnerAgreementPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
   { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage'] },
@@ -592,6 +595,7 @@ export default function AdminLayout({
     '/superadmin/settings': t('admin.platformSettings'),
     '/superadmin/translations': t('admin.translationManager'),
     '/superadmin/footer': t('admin.footerContent'),
+    '/superadmin/partner-agreements': t('admin.partnerAgreements', 'Partner Agreements'),
     '/superadmin/blogs': t('admin.blog', 'Blog'),
     '/superadmin/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
     '/superadmin/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
@@ -629,6 +633,7 @@ export default function AdminLayout({
     '/employee/settings': t('admin.platformSettings'),
     '/employee/translations': t('admin.translationManager'),
     '/employee/footer': t('admin.footerContent'),
+    '/employee/partner-agreements': t('admin.partnerAgreements', 'Partner Agreements'),
     '/employee/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
     '/employee/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
     '/employee/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
@@ -641,6 +646,8 @@ export default function AdminLayout({
   };
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
+    if (pathname.includes('/accounts/sell-accounts/')) return t('admin.sellAccount', 'Sell Account');
+    if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWorkStatus', 'RTO Work Status');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
     if (pathname.startsWith('/superadmin/analytics/') || pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');

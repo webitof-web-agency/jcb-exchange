@@ -18,6 +18,8 @@ const validInput = {
   pucStatus: RtoValidityStatus.VALID,
   pucValidUntil: '2027-04-10',
   hsrpStatus: RtoHsrpStatus.YES,
+  financerName: 'Finance Ltd',
+  hsrpNumber: 'HSRP-12345',
   rtoOffice: 'Raipur RTO',
   rtoAgentName: 'RTO Agent',
   rtoExpenses: '22344',
@@ -38,6 +40,8 @@ test('buildListingRtoData maps listing fields without creating a second vehicle 
   assert.equal(result.hourRunning, 1200);
   assert.equal(result.customerName, 'Partner One');
   assert.equal(result.rtoOffice, 'Raipur RTO');
+  assert.equal(result.financerName, 'Finance Ltd');
+  assert.equal(result.hsrpNumber, 'HSRP-12345');
   assert.equal(result.rtoExpenses.toString(), '22344');
 });
 
@@ -47,10 +51,11 @@ test('validateListingRtoDetails uses the RTO required validity rules', () => {
     validateListingRtoDetails({ ...validInput, taxValidUntil: '' }),
     'Tax Validity status and date are required.',
   );
-  assert.equal(
-    validateListingRtoDetails({ ...validInput, vehicleMaintenanceCost: '0' }),
-    'Vehicle Maintenance Cost is required.',
-  );
+  assert.equal(validateListingRtoDetails({ ...validInput, vehicleMaintenanceCost: '0' }), null);
+});
+
+test('allows vehicle maintenance cost to be omitted', () => {
+  assert.equal(validateListingRtoDetails({ ...validInput, vehicleMaintenanceCost: '' }), null);
 });
 
 test('does not require or persist expiry dates for expired validity statuses', () => {
@@ -79,6 +84,8 @@ test('allows optional HSRP, RTO agent name, and RTO expenses', () => {
   const optionalInput = {
     ...validInput,
     hsrpStatus: '',
+    financerName: '',
+    hsrpNumber: '',
     rtoAgentName: '',
     rtoExpenses: '',
   };
@@ -88,6 +95,8 @@ test('allows optional HSRP, RTO agent name, and RTO expenses', () => {
   assert.equal(data.hsrpStatus, RtoHsrpStatus.PENDING);
   assert.equal(data.rtoAgentName, '');
   assert.equal(data.rtoExpenses.toString(), '0');
+  assert.equal(data.financerName, '');
+  assert.equal(data.hsrpNumber, '');
 });
 
 test('persists HSRP Not required as the API enum value', () => {

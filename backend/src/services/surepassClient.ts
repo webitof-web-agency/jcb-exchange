@@ -218,15 +218,12 @@ export class SurepassClient {
 
   getPanComprehensiveV2(
     payload: { id_number: string },
-    environment: 'SANDBOX' | 'PRODUCTION' = 'PRODUCTION',
+    _environment: 'SANDBOX' | 'PRODUCTION' = 'PRODUCTION',
   ) {
-    if (environment === 'SANDBOX') {
-      return this.post('/api/v1/pan/pan-comprehensive', {
-        ...payload,
-        masked_aadhaar_variant: 'v1, v2, empty',
-      });
-    }
-    return this.post('/api/v1/pan/pan-comprehensive-v2', payload);
+    return this.post('/api/v1/pan/pan-comprehensive', {
+      ...payload,
+      masked_aadhaar_variant: 'v1, v2, empty',
+    });
   }
 }
 

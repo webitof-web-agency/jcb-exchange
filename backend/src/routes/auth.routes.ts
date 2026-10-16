@@ -25,6 +25,7 @@ import {
   resendEmailLoginOtp,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import { verifyPartnerGstin, verifyPartnerPan } from '../controllers/partnerKycVerification.controller';
 
 const router = Router();
 
@@ -50,6 +51,8 @@ router.post('/customer-prime/subscribe', requireAuth, submitCustomerPrimeSubscri
 router.get('/partner/onboarding', requireAuth, getPartnerOnboarding);
 router.put('/partner/onboarding', requireAuth, savePartnerOnboarding);
 router.post('/partner/onboarding/submit', requireAuth, submitPartnerOnboarding);
+router.post('/partner/kyc/verify-pan', requireAuth, verifyPartnerPan);
+router.post('/partner/kyc/verify-gstin', requireAuth, verifyPartnerGstin);
 router.post('/partner/kyc', requireAuth, submitKyc);
 
 export default router;

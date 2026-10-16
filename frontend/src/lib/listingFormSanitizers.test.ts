@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isValidDigitsOnlyValue,
+  isValidDateValue,
   isValidPinCodeValue,
   isValidYearValue,
   normalizeSellVehicleAvailability,
@@ -29,4 +30,7 @@ test('shares the same numeric field validation contract used by the partner port
   assert.equal(isValidPinCodeValue('49200'), false);
   assert.equal(isValidDigitsOnlyValue('2450000'), true);
   assert.equal(isValidDigitsOnlyValue('24.5'), false);
+  assert.equal(isValidDateValue('2019-01-26'), true);
+  assert.equal(isValidDateValue('2019-02-30'), false);
+  assert.equal(isValidDateValue('2019'), false);
 });

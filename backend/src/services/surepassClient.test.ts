@@ -30,10 +30,10 @@ test('sends PAN verify only to the configured Surepass backend with a bearer tok
   assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
 });
 
-test('sends PAN Comprehensive V2 to the documented endpoint', async () => {
+test('sends PAN Comprehensive V2 to the documented endpoint in production', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
-    baseUrl: 'https://kyc-api.surepass.app/',
+    baseUrl: 'https://kyc-api.surepass.io/',
     token: 'server-only-token',
     fetchImpl: async (url, init) => {
       request = { url, init: init ?? {} };
@@ -45,13 +45,16 @@ test('sends PAN Comprehensive V2 to the documented endpoint', async () => {
 
   const sent = request as unknown as { url: string; init: RequestInit };
   assert.ok(sent);
-  assert.equal(sent.url, 'https://kyc-api.surepass.app/api/v1/pan/pan-comprehensive-v2');
+  assert.equal(sent.url, 'https://kyc-api.surepass.io/api/v1/pan/pan-comprehensive');
   assert.equal(sent.init.method, 'POST');
-  assert.deepEqual(JSON.parse(String(sent.init.body)), { id_number: 'AGYPP1234F' });
+  assert.deepEqual(JSON.parse(String(sent.init.body)), {
+    id_number: 'AGYPP1234F',
+    masked_aadhaar_variant: 'v1, v2, empty',
+  });
   assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
 });
 
-test('sends sandbox PAN comprehensive requests to the tested standard endpoint with its required variant', async () => {
+test('sends sandbox PAN comprehensive requests to the documented endpoint with its required variant', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
     baseUrl: 'https://sandbox.surepass.app',

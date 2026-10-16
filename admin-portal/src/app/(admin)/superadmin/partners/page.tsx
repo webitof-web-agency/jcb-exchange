@@ -146,7 +146,11 @@ export default function SuperAdminListingsPage() {
   const currentUserPermissions = currentUser?.permissions || [];
   const canViewPartners = hasAnyPermission(currentUserPermissions, ['partners.read']);
   const canCreatePartners = hasAnyPermission(currentUserPermissions, ['partners.create']);
-  const canUpdatePartners = hasAnyPermission(currentUserPermissions, ['partners.update']);
+  const canKycEditOverride = hasAnyPermission(currentUserPermissions, ['kyc.edit.override']);
+  const canEditOnboarding =
+    currentUser?.role === 'SUPER_ADMIN' ||
+    currentUser?.role === 'ADMIN' ||
+    canKycEditOverride;
   const canResetPartnerPassword = hasAnyPermission(currentUserPermissions, ['partners.reset_password']);
   const canChangePartnerStatus = hasAnyPermission(currentUserPermissions, ['partners.change_status']);
   const canDeletePartners = hasAnyPermission(currentUserPermissions, ['partners.delete']);
@@ -696,7 +700,7 @@ export default function SuperAdminListingsPage() {
 
                         {openActionDropdownId === partner.id && (
                           <div className="absolute right-0 z-[100] mt-1 w-48 origin-top-right rounded-xl bg-white p-1.5 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] ring-1 ring-black/5 focus:outline-none">
-                            {canUpdatePartners ? (
+                            {canEditOnboarding ? (
                               <button
                                 type="button"
                                 title="Open full onboarding editor"

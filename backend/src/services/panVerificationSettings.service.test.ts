@@ -2,19 +2,35 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   normalizePanVerificationBaseUrl,
+  normalizeSurepassRuntimeBaseUrl,
   resolveSurepassEnvironment,
   selectSurepassProfile,
   serializePanVerificationSettings,
 } from './panVerificationSettings.service';
 
-test('normalizes only HTTPS Surepass base URLs', () => {
+test('preserves the configured HTTPS base URL while removing only its trailing slash', () => {
   assert.equal(
     normalizePanVerificationBaseUrl('https://sandbox.surepass.app/'),
     'https://sandbox.surepass.app',
   );
+  assert.equal(
+    normalizePanVerificationBaseUrl('https://kyc-api.surepass.app/'),
+    'https://kyc-api.surepass.app',
+  );
   assert.throws(
     () => normalizePanVerificationBaseUrl('http://sandbox.surepass.app'),
     /HTTPS/,
+  );
+});
+
+test('canonicalizes only the runtime Surepass URL for legacy .app compatibility', () => {
+  assert.equal(
+    normalizeSurepassRuntimeBaseUrl('https://sandbox.surepass.app/'),
+    'https://sandbox.surepass.io',
+  );
+  assert.equal(
+    normalizeSurepassRuntimeBaseUrl('https://kyc-api.surepass.io'),
+    'https://kyc-api.surepass.io',
   );
 });
 
@@ -60,10 +76,10 @@ test('serializes separate sandbox and production profiles without exposing crede
     baseUrl: null,
     encryptedToken: null,
     encryptedCustomerId: null,
-    sandboxBaseUrl: 'https://sandbox.surepass.app',
+    sandboxBaseUrl: 'https://sandbox.surepass.io',
     encryptedSandboxToken: 'sandbox-encrypted-token',
     encryptedSandboxCustomerId: null,
-    productionBaseUrl: 'https://kyc-api.surepass.app',
+    productionBaseUrl: 'https://kyc-api.surepass.io',
     encryptedProductionToken: 'production-encrypted-token',
     encryptedProductionCustomerId: 'production-encrypted-customer-id',
     encryptedDataSecret: 'v1.encrypted-data-secret',
@@ -76,12 +92,12 @@ test('serializes separate sandbox and production profiles without exposing crede
     enabled: true,
     activeEnvironment: 'PRODUCTION',
     sandbox: {
-      baseUrl: 'https://sandbox.surepass.app',
+      baseUrl: 'https://sandbox.surepass.io',
       tokenConfigured: true,
       customerIdConfigured: false,
     },
     production: {
-      baseUrl: 'https://kyc-api.surepass.app',
+      baseUrl: 'https://kyc-api.surepass.io',
       tokenConfigured: true,
       customerIdConfigured: true,
     },
@@ -99,11 +115,11 @@ test('selects the configured environment profile and rejects invalid environment
   assert.throws(() => resolveSurepassEnvironment('staging'), /environment/i);
 
   const selected = selectSurepassProfile('PRODUCTION', {
-    SANDBOX: { baseUrl: 'https://sandbox.surepass.app', token: 'sandbox-token', customerId: null },
-    PRODUCTION: { baseUrl: 'https://kyc-api.surepass.app', token: 'production-token', customerId: 'customer-id' },
+    SANDBOX: { baseUrl: 'https://sandbox.surepass.io', token: 'sandbox-token', customerId: null },
+    PRODUCTION: { baseUrl: 'https://kyc-api.surepass.io', token: 'production-token', customerId: 'customer-id' },
   });
   assert.deepEqual(selected, {
-    baseUrl: 'https://kyc-api.surepass.app',
+    baseUrl: 'https://kyc-api.surepass.io',
     token: 'production-token',
     customerId: 'customer-id',
   });

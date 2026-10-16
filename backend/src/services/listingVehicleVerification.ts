@@ -108,6 +108,8 @@ export const buildProviderListingVerificationSnapshot = (input: Record<string, u
   const brandName = firstText(result.makerDescription, result.maker_description);
   const modelName = firstText(result.makerModel, result.maker_model);
   const chassisNumber = firstText(result.vehicleChasiNumber, result.vehicle_chasi_number);
+  const financerName = firstText(result.financer, result.financier, result.financerName, result.financer_name);
+  const hsrpNumber = firstText(result.hsrpNumber, result.hsrp_number, result.hsrpNo, result.hsrp_no, typeof result.hsrp === 'string' ? result.hsrp : '');
 
   return {
     vehicleName: [brandName, modelName].filter(Boolean).join(' '),
@@ -128,6 +130,8 @@ export const buildProviderListingVerificationSnapshot = (input: Record<string, u
     pucValidUntil,
     rtoOffice: firstText(result.registeredAt, result.registered_at),
     hirePurchaseStatus: result.financed === true ? 'ACTIVE' : result.financed === false ? 'NOT_APPLICABLE' : 'PENDING',
+    financerName,
+    hsrpNumber,
     taxStatus: validityStatus(taxValidUntil),
     fitnessStatus: validityStatus(fitnessValidUntil),
     insuranceStatus: validityStatus(insuranceExpiry),
@@ -142,6 +146,7 @@ export const buildCurrentListingVerificationSnapshot = (input: {
   modelName?: unknown;
   variant?: unknown;
   manufacturingYear?: unknown;
+  engineNumber?: unknown;
   description?: unknown;
   chassisOrSerialNo?: unknown;
   rtoDetails?: Record<string, unknown> | null;
@@ -160,7 +165,7 @@ export const buildCurrentListingVerificationSnapshot = (input: {
     registrationYear: yearFrom(parsed['registration year']),
     registrationNumber: firstText(details.registrationNo, parsed['registration no']),
     chassisNumber: firstText(input.chassisOrSerialNo, parsed['chassis/serial'], parsed['chassis / serial'], parsed['chassis or serial']),
-    engineNumber: firstText(parsed['engine number'], parsed['engine no']),
+    engineNumber: firstText(input.engineNumber, parsed['engine number'], parsed['engine no']),
     previousOwners: firstText(parsed.owners),
     fuelType: firstText(parsed.fuel),
     insuranceExpiry: validDate(insuranceExpiry),
@@ -169,6 +174,8 @@ export const buildCurrentListingVerificationSnapshot = (input: {
     pucValidUntil: validDate(details.pucValidUntil),
     rtoOffice: emptyValue(details.rtoOffice),
     hirePurchaseStatus: emptyValue(details.hirePurchaseStatus),
+    financerName: emptyValue(details.financerName),
+    hsrpNumber: emptyValue(details.hsrpNumber),
     taxStatus: emptyValue(details.taxStatus),
     fitnessStatus: emptyValue(details.fitnessStatus),
     insuranceStatus: emptyValue(details.insuranceStatus),

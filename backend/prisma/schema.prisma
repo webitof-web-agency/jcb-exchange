@@ -150,6 +150,12 @@ enum AgreementType {
   LEAD_OWNERSHIP_POLICY
 }
 
+enum PartnerAgreementDefinitionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 enum AuditEntityType {
   USER
   PARTNER_PROFILE
@@ -1055,6 +1061,7 @@ model Listing {
   description           String?       @db.Text
   additionalDescription String?       @db.Text
   grossPower            String?
+  engineNumber          String?
   status                ListingStatus @default(DRAFT)
   soldAt                DateTime?
   contactMode           String?
@@ -1154,6 +1161,7 @@ model VehicleRtoRecord {
   vehicleType            String
   vehicleModel           String
   hirePurchaseStatus     RtoHirePurchaseStatus @default(PENDING)
+  financerName           String                @default("")
   taxStatus              RtoValidityStatus     @default(NOT_AVAILABLE)
   taxValidUntil          DateTime?
   fitnessStatus          RtoValidityStatus     @default(NOT_AVAILABLE)
@@ -1163,6 +1171,7 @@ model VehicleRtoRecord {
   pucStatus              RtoValidityStatus     @default(NOT_AVAILABLE)
   pucValidUntil          DateTime?
   hsrpStatus             RtoHsrpStatus         @default(PENDING)
+  hsrpNumber             String                @default("")
   sellerName             String
   sellerNumber           String
   purchaserName          String
@@ -1335,7 +1344,7 @@ model KycDocument {
   id               String            @id @default(uuid())
   partnerProfileId String
   documentType     KycDocumentType
-  fileUrl          String
+  fileUrl          String?
   fileName         String?
   documentNumber   String?
   nameOnDocument   String?
@@ -1343,6 +1352,11 @@ model KycDocument {
   expiryDate       DateTime?
   submittedNote    String?           @db.Text
   status           KycDocumentStatus @default(UPLOADED)
+  verificationRecordId String?
+  verificationStatus String              @default("NOT_STARTED")
+  verificationCacheHit Boolean             @default(false)
+  verificationMessage String?             @db.Text
+  verificationCompletedAt DateTime?
   reviewComment    String?           @db.Text
   reviewedById     String?
   reviewedAt       DateTime?
@@ -1403,15 +1417,43 @@ model PartnerAgreement {
   partnerProfileId String
   agreementType    AgreementType
   version          String
+  definitionId     String?
+  titleSnapshot    String?
+  contentHash      String?       @db.VarChar(64)
   acceptedAt       DateTime      @default(now())
   acceptedByUserId String
   ipAddress        String?
+  userAgent        String?
   createdAt        DateTime      @default(now())
 
   partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
   acceptedByUser User           @relation("AgreementAcceptor", fields: [acceptedByUserId], references: [id])
+  definition     PartnerAgreementDefinition? @relation(fields: [definitionId], references: [id])
 
   @@unique([partnerProfileId, agreementType, version])
+  @@index([definitionId])
+}
+
+model PartnerAgreementDefinition {
+  id                      String                           @id @default(uuid())
+  agreementType           AgreementType                    @unique
+  title                   String
+  summary                 String?                          @db.Text
+  content                 String                           @db.Text
+  version                 String
+  applicablePartnerTypes  String[]                         @default([])
+  isRequired              Boolean                          @default(true)
+  status                  PartnerAgreementDefinitionStatus @default(DRAFT)
+  effectiveFrom           DateTime?
+  displayOrder            Int                              @default(0)
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+
+  acceptances PartnerAgreement[]
+
+  @@index([status, displayOrder])
 }
 
 model AuditLog {

@@ -19,16 +19,33 @@ import {
   Tag,
   Package,
   Image as ImageIcon,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  ClipboardCheck,
+  ChevronDown,
+  Download,
+  X,
 } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useHeaderStore } from '@/store/headerStore';
+import { useAuthStore } from '@/store/authStore';
+import { hasAnyPermission } from '@/lib/permissionUtils';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { formatPortalCurrency, formatPortalDate } from '@/lib/partnerPortal';
 import { resolvePartnerId } from '@/lib/routeResolvers';
 import { generateAdminListingDetailPath, generateAdminPartnerDetailPath, generateAdminPartnerEditPath } from '@/lib/routePaths';
+import {
+  canPreviewPartnerDocument,
+  formatPartnerDocumentStatus,
+  getPartnerDocumentKind,
+  type PartnerDocumentKind,
+} from '@/lib/partnerDetailPresentation';
+import { getKycVerificationFields, type KycVerificationDocumentType } from '@/lib/kycVerification';
+import { createSecureDocumentPreviewUrl, downloadSecureDocument } from '@/lib/secureDownload';
 
 interface PartnerListing {
   id: string;
@@ -77,12 +94,17 @@ interface PartnerProfile {
   referralCode: string;
   websiteUrl: string;
   businessDescription: string;
+  expectedMonthlyListings: number | null;
+  contactPreference: string;
 }
 
 interface ManagedUser {
   id: string;
   email: string;
   mobile: string;
+  whatsappNumber: string;
+  city: string;
+  state: string;
   name: string;
   fullName: string;
   role: string;
@@ -93,6 +115,26 @@ interface ManagedUser {
   onboardingStatus: string;
   createdAt: string;
   partnerProfile?: PartnerProfile;
+}
+
+interface VerificationDetailDocument {
+  id: string;
+  documentType: string;
+  fileUrl: string | null;
+  fileName: string | null;
+  documentNumber: string | null;
+  nameOnDocument: string | null;
+  status: string;
+  verificationStatus: string | null;
+  verificationMessage: string | null;
+  verificationCompletedAt: string | null;
+  verificationResult: Record<string, unknown> | null;
+}
+
+interface VerificationDetail {
+  documents: VerificationDetailDocument[];
+  agreements: Array<{ agreementType: string; version: string; acceptedAt: string }>;
+  reviewHistory: Array<{ id: string; action: string; comment: string | null; createdAt: string }>;
 }
 
 interface PartnerDetailPageProps {
@@ -111,12 +153,24 @@ export default function PartnerDetailPage({
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
+  const viewer = useAuthStore((state) => state.user);
+  const canEditOnboarding = viewer?.role === 'SUPER_ADMIN' || viewer?.role === 'ADMIN' || hasAnyPermission(viewer?.permissions, ['kyc.edit.override']);
   const [partner, setPartner] = useState<ManagedUser | null>(null);
   const [listings, setListings] = useState<PartnerListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingListings, setLoadingListings] = useState(true);
   const [error, setError] = useState('');
   const [resolvedPartnerId, setResolvedPartnerId] = useState<string | null>(null);
+  const [verificationDetail, setVerificationDetail] = useState<VerificationDetail | null>(null);
+  const [isKycExpanded, setIsKycExpanded] = useState(false);
+  const [isAgreementsExpanded, setIsAgreementsExpanded] = useState(false);
+  const [documentPreview, setDocumentPreview] = useState<{
+    document: VerificationDetailDocument;
+    kind: PartnerDocumentKind;
+    previewUrl: string | null;
+    loading: boolean;
+    error: string;
+  } | null>(null);
 
   const fetchPartnerListings = useCallback(async () => {
     if (!resolvedPartnerId) {
@@ -152,6 +206,17 @@ export default function PartnerDetailPage({
         setError(t('partnerDetails.partnerNotFound'));
       } else {
         setPartner(foundPartner);
+        try {
+          const verificationResponse = await api.get<{ verification: VerificationDetail }>(
+            `/superadmin/verifications/${nextResolvedPartnerId}`,
+          );
+          setVerificationDetail(verificationResponse.data.verification);
+        } catch (verificationError) {
+          // The profile remains useful even when the optional KYC review
+          // endpoint is unavailable for a restricted employee role.
+          console.error('Failed to load partner KYC detail', verificationError);
+          setVerificationDetail(null);
+        }
       }
     } catch (err: unknown) {
       const message =
@@ -332,20 +397,73 @@ export default function PartnerDetailPage({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center justify-end pr-2 sm:pr-4">
-            <Link
-              href={editHref}
-              className="flex h-8 items-center justify-center rounded-full bg-[#FFC107] px-3 text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
-            >
-              <span className="hidden sm:inline">{t('partnerDetails.editOnboarding')}</span>
-              <span className="inline sm:hidden">{t('partnerDetails.edit')}</span>
-            </Link>
-          </div>
+          {canEditOnboarding ? (
+            <div className="flex shrink-0 items-center justify-end pr-2 sm:pr-4">
+              <Link
+                href={editHref}
+                className="flex h-8 items-center justify-center rounded-full bg-[#FFC107] px-3 text-xs font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
+              >
+                <span className="hidden sm:inline">{t('partnerDetails.editOnboarding')}</span>
+                <span className="inline sm:hidden">{t('partnerDetails.edit')}</span>
+              </Link>
+            </div>
+          ) : null}
         </div>
       );
     }
     return () => setCustomHeader(null);
-  }, [partner, backHref, editHref, setCustomHeader, getPartnerStatus, getPartnerStatusClassName, t]);
+  }, [partner, backHref, editHref, canEditOnboarding, setCustomHeader, getPartnerStatus, getPartnerStatusClassName, t]);
+
+  useEffect(() => {
+    return () => {
+      if (documentPreview?.previewUrl) {
+        window.URL.revokeObjectURL(documentPreview.previewUrl);
+      }
+    };
+  }, [documentPreview?.previewUrl]);
+
+  const openDocumentPreview = useCallback(async (document: VerificationDetailDocument) => {
+    if (!document.fileUrl) return;
+
+    const kind = getPartnerDocumentKind(document.fileName, document.fileUrl);
+    setDocumentPreview({ document, kind, previewUrl: null, loading: true, error: '' });
+
+    try {
+      const previewUrl = await createSecureDocumentPreviewUrl(document.fileUrl, document.fileName || 'document');
+      setDocumentPreview((current) => current?.document.id === document.id
+        ? { ...current, previewUrl, loading: false }
+        : current);
+    } catch (previewError) {
+      console.error('Failed to open KYC document', previewError);
+      setDocumentPreview((current) => current?.document.id === document.id
+        ? { ...current, loading: false, error: 'Unable to open this document. Please download it instead.' }
+        : current);
+    }
+  }, []);
+
+  const downloadDocument = useCallback(async (document: VerificationDetailDocument) => {
+    if (!document.fileUrl) return;
+
+    try {
+      await downloadSecureDocument(document.fileUrl, document.fileName || 'document');
+    } catch (downloadError) {
+      console.error('Failed to download KYC document', downloadError);
+      setDocumentPreview((current) => current?.document.id === document.id
+        ? { ...current, error: 'Unable to download this document. Please try again.' }
+        : current);
+    }
+  }, []);
+
+  const openOrDownloadDocument = useCallback(async (document: VerificationDetailDocument) => {
+    if (!document.fileUrl) return;
+
+    if (!canPreviewPartnerDocument(document.fileName, document.fileUrl)) {
+      await downloadDocument(document);
+      return;
+    }
+
+    await openDocumentPreview(document);
+  }, [downloadDocument, openDocumentPreview]);
 
   if (loading) {
     return (
@@ -386,6 +504,14 @@ export default function PartnerDetailPage({
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('partnerDetails.businessName')}</p>
                   <p className="mt-1 text-base font-medium text-gray-900">{partner.name || t('partnerDetails.notProvided')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Expected monthly listings</p>
+                  <p className="mt-1 text-base font-medium text-gray-900">{profile?.expectedMonthlyListings || t('partnerDetails.notProvided')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Contact preference</p>
+                  <p className="mt-1 text-base font-medium text-gray-900">{profile?.contactPreference || t('partnerDetails.notProvided')}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('partnerDetails.ownerName')}</p>
@@ -458,6 +584,25 @@ export default function PartnerDetailPage({
                     {[profile?.businessAddress, profile?.district, profile?.pinCode, profile?.state].filter(Boolean).join(', ') ||
                       t('partnerDetails.notProvided')}
                   </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">City</p>
+                  <p className="mt-1 text-base font-medium text-gray-900">{partner.city || t('partnerDetails.notProvided')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">WhatsApp number</p>
+                  <p className="mt-1 flex items-center gap-2 text-base font-medium text-gray-900">
+                    <Phone className="h-4 w-4 text-gray-400" />
+                    {partner.whatsappNumber || t('partnerDetails.notProvided')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">State</p>
+                  <p className="mt-1 text-base font-medium text-gray-900">{partner.state || t('partnerDetails.notProvided')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">PIN code</p>
+                  <p className="mt-1 text-base font-medium text-gray-900">{profile?.pinCode || t('partnerDetails.notProvided')}</p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('partnerDetails.serviceAreas')}</p>
@@ -561,6 +706,292 @@ export default function PartnerDetailPage({
           </div>
         </div>
 
+        {verificationDetail ? (
+          <div className="mt-8 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+            {/* KYC Documents & Verification Card */}
+            <div
+              className={`flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-300 ${
+                isKycExpanded ? 'h-auto' : 'h-[470px]'
+              }`}
+            >
+              <div
+                onClick={() => setIsKycExpanded((prev) => !prev)}
+                className="group mb-4 flex shrink-0 cursor-pointer select-none items-center justify-between border-b border-gray-100 pb-4 transition-colors"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIsKycExpanded((prev) => !prev);
+                  }
+                }}
+                aria-expanded={isKycExpanded}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="h-5 w-5 text-gray-500 transition-colors group-hover:text-amber-600" />
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-amber-900">
+                    KYC documents & verification
+                  </h3>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
+                    {verificationDetail.documents.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-500 transition-colors group-hover:text-gray-800">
+                    {isKycExpanded ? 'Collapse' : 'Expand'}
+                  </span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-50 text-gray-500 transition-all group-hover:bg-gray-100 group-hover:text-gray-900">
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-200 ${
+                        isKycExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`space-y-4 pr-1.5 ${
+                  isKycExpanded
+                    ? 'overflow-visible'
+                    : 'flex-1 min-h-0 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#E5E7EB_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-200 hover:[&::-webkit-scrollbar-thumb]:bg-gray-300'
+                }`}
+              >
+                {verificationDetail.documents.length === 0 ? (
+                  <p className="text-sm text-gray-500">No KYC documents submitted.</p>
+                ) : (
+                  verificationDetail.documents.map((document) => {
+                    const documentType = document.documentType as KycVerificationDocumentType;
+                    const safeFields =
+                      document.verificationResult &&
+                      ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)
+                        ? getKycVerificationFields(documentType, document.verificationResult)
+                        : [];
+                    const detailFields = safeFields.map((field) => {
+                      if (field.label === 'Masked PAN' && document.documentNumber) {
+                        return { ...field, label: 'PAN number', value: document.documentNumber };
+                      }
+                      if (field.label === 'Masked GSTIN' && document.documentNumber) {
+                        return { ...field, label: 'GSTIN', value: document.documentNumber };
+                      }
+                      return field;
+                    });
+                    const status = formatPartnerDocumentStatus(document.verificationStatus);
+                    return (
+                      <div key={document.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold text-gray-900">{document.documentType.replaceAll('_', ' ')}</p>
+                            <p className="mt-1 text-xs text-gray-500">{document.fileName || 'No document file uploaded'}</p>
+                          </div>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                              status === 'VERIFIED'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : status === 'FAILED'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-gray-200 text-gray-700'
+                            }`}
+                          >
+                            {status === 'VERIFIED' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
+                            {status.replaceAll('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                          <div>
+                            <span className="text-gray-500">Document number</span>
+                            <p className="font-semibold text-gray-900">{document.documentNumber || 'Not provided'}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Name on document</span>
+                            <p className="font-semibold text-gray-900">{document.nameOnDocument || 'Not provided'}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Verified on</span>
+                            <p className="font-semibold text-gray-900">
+                              {document.verificationCompletedAt
+                                ? formatPortalDate(document.verificationCompletedAt)
+                                : 'Not verified'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">File</span>
+                            {document.fileUrl ? (
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#9a6b00]">
+                                <button
+                                  type="button"
+                                  onClick={() => void openOrDownloadDocument(document)}
+                                  className="inline-flex items-center gap-1 hover:underline"
+                                >
+                                  {canPreviewPartnerDocument(document.fileName, document.fileUrl) ? (
+                                    <>
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      Open document
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Download className="h-3.5 w-3.5" />
+                                      Download document
+                                    </>
+                                  )}
+                                </button>
+                                {canPreviewPartnerDocument(document.fileName, document.fileUrl) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void downloadDocument(document)}
+                                    className="inline-flex items-center gap-1 hover:underline"
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                    Download
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p className="font-semibold text-gray-900">Not uploaded</p>
+                            )}
+                          </div>
+                        </div>
+                        {detailFields.length > 0 ? (
+                          <div className="mt-4 grid grid-cols-1 gap-2 border-t border-gray-200 pt-3 sm:grid-cols-2">
+                            {detailFields.map((field) => (
+                              <div key={field.label}>
+                                <span className="text-xs text-gray-500">{field.label}</span>
+                                <p className="text-sm font-semibold text-gray-900">{field.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {document.verificationMessage ? (
+                          <p className="mt-3 text-xs text-red-600">{document.verificationMessage}</p>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+                {!isKycExpanded && verificationDetail.documents.length > 1 && (
+                  <div className="sticky bottom-0 -mx-1.5 -mb-1 bg-gradient-to-t from-white via-white/95 to-transparent pt-3 pb-1 text-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsKycExpanded(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline"
+                    >
+                      <span>View all {verificationDetail.documents.length} documents</span>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Agreements & Review History Card */}
+            <div
+              className={`flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-300 ${
+                isAgreementsExpanded ? 'h-auto' : 'h-[470px]'
+              }`}
+            >
+              <div
+                onClick={() => setIsAgreementsExpanded((prev) => !prev)}
+                className="group mb-4 flex shrink-0 cursor-pointer select-none items-center justify-between border-b border-gray-100 pb-4 transition-colors"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIsAgreementsExpanded((prev) => !prev);
+                  }
+                }}
+                aria-expanded={isAgreementsExpanded}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ClipboardCheck className="h-5 w-5 text-gray-500 transition-colors group-hover:text-amber-600" />
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-amber-900">
+                    Agreements & review history
+                  </h3>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
+                    {verificationDetail.agreements.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-500 transition-colors group-hover:text-gray-800">
+                    {isAgreementsExpanded ? 'Collapse' : 'Expand'}
+                  </span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-50 text-gray-500 transition-all group-hover:bg-gray-100 group-hover:text-gray-900">
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-200 ${
+                        isAgreementsExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`space-y-3 pr-1.5 ${
+                  isAgreementsExpanded
+                    ? 'overflow-visible'
+                    : 'flex-1 min-h-0 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#E5E7EB_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-200 hover:[&::-webkit-scrollbar-thumb]:bg-gray-300'
+                }`}
+              >
+                {verificationDetail.agreements.length === 0 ? (
+                  <p className="text-sm text-gray-500">No agreements accepted.</p>
+                ) : (
+                  verificationDetail.agreements.map((agreement) => (
+                    <div
+                      key={`${agreement.agreementType}-${agreement.version}`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3"
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{agreement.agreementType.replaceAll('_', ' ')}</p>
+                        <p className="text-xs text-gray-500">Version {agreement.version}</p>
+                      </div>
+                      <p className="text-right text-xs font-semibold text-emerald-700">
+                        Accepted<br />
+                        {formatPortalDate(agreement.acceptedAt)}
+                      </p>
+                    </div>
+                  ))
+                )}
+
+                {verificationDetail.reviewHistory.length > 0 ? (
+                  <div className="border-t border-gray-100 pt-4">
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Recent review activity
+                    </p>
+                    {verificationDetail.reviewHistory.map((review) => (
+                      <div key={review.id} className="mb-2 rounded-lg border border-gray-100 p-3">
+                        <div className="flex justify-between gap-3 text-sm font-semibold text-gray-900">
+                          <span>{review.action.replaceAll('_', ' ')}</span>
+                          <span className="text-xs text-gray-500">{formatPortalDate(review.createdAt)}</span>
+                        </div>
+                        {review.comment ? <p className="mt-1 text-xs text-gray-600">{review.comment}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {!isAgreementsExpanded && (verificationDetail.agreements.length > 4 || verificationDetail.reviewHistory.length > 0) && (
+                  <div className="sticky bottom-0 -mx-1.5 -mb-1 bg-gradient-to-t from-white via-white/95 to-transparent pt-3 pb-1 text-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsAgreementsExpanded(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline"
+                    >
+                      <span>View all agreements & review history</span>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center justify-between border-b border-gray-100 pb-4">
             <div className="flex items-center gap-2">
@@ -636,6 +1067,84 @@ export default function PartnerDetailPage({
           )}
         </div>
       </div>
+      {documentPreview ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Document preview"
+          onClick={() => setDocumentPreview(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-gray-200 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Document preview</p>
+                <h2 className="truncate text-base font-bold text-gray-900">
+                  {documentPreview.document.fileName || 'KYC document'}
+                </h2>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {documentPreview.document.fileUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadDocument(documentPreview.document)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setDocumentPreview(null)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900"
+                  aria-label="Close document preview"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-[320px] overflow-auto bg-gray-100 p-4">
+              {documentPreview.loading ? (
+                <div className="flex min-h-[280px] items-center justify-center text-sm text-gray-500">
+                  Loading document preview…
+                </div>
+              ) : documentPreview.error ? (
+                <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                  <AlertCircle className="h-8 w-8 text-red-500" />
+                  <p className="text-sm text-red-600">{documentPreview.error}</p>
+                </div>
+              ) : documentPreview.previewUrl && documentPreview.kind === 'image' ? (
+                <div className="flex min-h-[280px] items-center justify-center">
+                  {/* Blob URLs are authenticated, in-memory previews and cannot use next/image optimization. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={documentPreview.previewUrl}
+                    alt={documentPreview.document.fileName || 'KYC document'}
+                    className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-sm"
+                  />
+                </div>
+              ) : (
+                <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-center text-sm text-gray-500">
+                  <FileText className="h-10 w-10 text-gray-400" />
+                  <p>Preview is available only for image documents. Download this file to view it.</p>
+                  <button
+                    type="button"
+                    onClick={() => void downloadDocument(documentPreview.document)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 font-semibold text-gray-900 transition hover:bg-[#E5AD06]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download document
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

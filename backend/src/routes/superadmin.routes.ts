@@ -60,6 +60,13 @@ import {
 import { requireAuth, requireSuperAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
+import {
+  archivePartnerAgreementDefinition,
+  createPartnerAgreementDefinition,
+  getPartnerAgreementDefinition,
+  listPartnerAgreementDefinitions,
+  updatePartnerAgreementDefinition,
+} from '../controllers/partnerAgreement.controller';
 import { deleteListingBill, getListingBills, saveListingBill } from '../controllers/listingBill.controller';
 import {
   getPanVerificationSettingsController,
@@ -75,6 +82,8 @@ const canViewDashboard = requireSuperAdminOrEmployeePermissions(['dashboard.view
 const canManageSettings = requireSuperAdminOrEmployeePermissions(['settings.manage']);
 const canManageTranslations = requireSuperAdminOrEmployeePermissions(['translations.manage']);
 const canManageFooter = requireSuperAdminOrEmployeePermissions(['footer.manage']);
+const canViewPartnerAgreements = requireSuperAdminOrEmployeePermissions(['partner.agreements.read', 'partner.agreements.manage']);
+const canManagePartnerAgreements = requireSuperAdminOrEmployeePermissions(['partner.agreements.manage']);
 const canManageRecurrence = requireSuperAdminOrEmployeePermissions(['recurrence.manage']);
 const canViewUsers = requireSuperAdminOrEmployeePermissions(['users.read']);
 const canCreateUsers = requireSuperAdminOrEmployeePermissions(['users.create']);
@@ -85,10 +94,13 @@ const canCreateRoles = requireSuperAdminOrEmployeePermissions(['roles.create']);
 const canUpdateRoles = requireSuperAdminOrEmployeePermissions(['roles.update']);
 const canDeleteRoles = requireSuperAdminOrEmployeePermissions(['roles.delete']);
 const canViewPartners = requireSuperAdminOrEmployeePermissions(['partners.read']);
+const canViewPartnerOnboarding = requireSuperAdminOrEmployeePermissions(['partners.read', 'kyc.edit.override']);
 const canCreatePartners = requireSuperAdminOrEmployeePermissions(['partners.create']);
 const canUpdatePartners = requireSuperAdminOrEmployeePermissions(['partners.update']);
+const canEditPartnerOnboarding = requireSuperAdminOrEmployeePermissions(['kyc.edit.override']);
 const canDeletePartners = requireSuperAdminOrEmployeePermissions(['partners.delete']);
 const canManageVerifications = requireSuperAdminOrEmployeePermissions(['kyc.manage']);
+const canViewVerifications = requireSuperAdminOrEmployeePermissions(['kyc.manage', 'kyc.edit.override']);
 const canManageEnquiries = requireSuperAdminOrEmployeePermissions(['enquiries.manage']);
 const canViewVisitors = requireSuperAdminOrEmployeePermissions(['visitors.read']);
 const canUpdateAccountStatus = requireSuperAdminOrEmployeePermissions(['users.update', 'partners.change_status', 'visitors.change_status']);
@@ -105,6 +117,11 @@ router.get('/finance-support', canManageSettings, getFinanceSupportContent);
 router.put('/finance-support', canManageSettings, updateFinanceSupportContent);
 router.get('/footer', canManageFooter, getFooterContent);
 router.put('/footer', canManageFooter, updateFooterContent);
+router.get('/partner-agreements', canViewPartnerAgreements, listPartnerAgreementDefinitions);
+router.get('/partner-agreements/:id', canViewPartnerAgreements, getPartnerAgreementDefinition);
+router.post('/partner-agreements', canManagePartnerAgreements, createPartnerAgreementDefinition);
+router.put('/partner-agreements/:id', canManagePartnerAgreements, updatePartnerAgreementDefinition);
+router.delete('/partner-agreements/:id', canManagePartnerAgreements, archivePartnerAgreementDefinition);
 router.get('/blogs', canAccessBlogs, listAdminBlogs);
 router.post('/blogs', canCreateBlogs, createAdminBlog);
 router.put('/blogs/:id', canUpdateBlogs, updateAdminBlog);
@@ -148,11 +165,11 @@ router.post('/partners', canCreatePartners, createPartnerUser);
 router.patch('/users/:id', canUpdateUsers, updateManagedUserAccount);
 router.patch('/users/:id/password', canUpdateUsers, resetManagedUserPassword);
 router.delete('/users/:id', canDeleteUsers, deleteManagedUser);
-router.get('/partners/:id/onboarding', canViewPartners, getAdminPartnerOnboarding);
-router.put('/partners/:id/onboarding', canUpdatePartners, saveAdminPartnerOnboarding);
+router.get('/partners/:id/onboarding', canViewPartnerOnboarding, getAdminPartnerOnboarding);
+router.put('/partners/:id/onboarding', canEditPartnerOnboarding, saveAdminPartnerOnboarding);
 router.post('/partners/:id/onboarding/submit', canUpdatePartners, submitAdminPartnerOnboarding);
-router.get('/verifications', canManageVerifications, getPendingVerifications);
-router.get('/verifications/:id', canManageVerifications, getVerificationDetail);
+router.get('/verifications', canViewVerifications, getPendingVerifications);
+router.get('/verifications/:id', canViewVerifications, getVerificationDetail);
 router.get('/listings', canManageListings, getAdminListings);
 router.patch('/verifications/:id/status', canManageVerifications, updateVerificationStatus);
 router.patch('/listings/:id/status', canManageListings, updateAdminListingStatus);

@@ -14,7 +14,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-html, body {
+html,
+body {
   touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
 }
@@ -99,8 +100,8 @@ body {
   line-height: 1.4 !important;
 }
 
-.Toastify__toast-body > div,
-.Toastify__toast-body > div:last-child {
+.Toastify__toast-body>div,
+.Toastify__toast-body>div:last-child {
   color: #0f172a !important;
   font-size: 14px !important;
   font-weight: 600 !important;

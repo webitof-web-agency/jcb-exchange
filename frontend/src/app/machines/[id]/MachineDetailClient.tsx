@@ -147,9 +147,12 @@ const getDialNumber = (phoneNumber?: string | null) => {
 
 type ParsedListingDetails = {
   variant: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
+  engineNumber: string;
   previousOwners: string;
   fuelType: string;
   transmission: string;
@@ -187,9 +190,12 @@ const maskName = (name: string) => {
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   variant: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
+  engineNumber: '',
   previousOwners: '',
   fuelType: '',
   transmission: '',
@@ -234,6 +240,13 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'registration year':
         parsed.registrationYear = value;
         break;
+      case 'registration date':
+        parsed.registrationDate = value;
+        break;
+      case 'registration upto':
+      case 'registration up to':
+        parsed.registrationUpto = value;
+        break;
       case 'registration no':
         parsed.registrationNo = value;
         break;
@@ -241,6 +254,10 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'chassis / serial':
       case 'chassis or serial':
         parsed.chassisOrSerialNo = value;
+        break;
+      case 'engine number':
+      case 'engine no':
+        parsed.engineNumber = value;
         break;
       case 'owners':
         parsed.previousOwners = value;
@@ -402,9 +419,11 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const parsedDetails = parseListingDescription(listing.description);
   const descriptionParts = getDescriptionParts(listing);
   const detailVariant = listing.variant || parsedDetails.variant;
-  const detailRegistrationYear = listing.registrationYear || parsedDetails.registrationYear;
+  const detailRegistrationDate = parsedDetails.registrationDate || (listing.registrationYear ? String(listing.registrationYear) : parsedDetails.registrationYear);
+  const detailRegistrationUpto = parsedDetails.registrationUpto;
   const detailRegistrationNo = listing.registrationNo || parsedDetails.registrationNo;
   const detailChassisNo = listing.chassisOrSerialNo || parsedDetails.chassisOrSerialNo;
+  const detailEngineNumber = listing.engineNumber || parsedDetails.engineNumber;
   const detailPreviousOwners = listing.previousOwners || parsedDetails.previousOwners;
   const detailFuelType = listing.fuelType || parsedDetails.fuelType;
   const detailTransmission = listing.transmission || parsedDetails.transmission;
@@ -1114,6 +1133,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
                         { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
                         { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
+                        { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.engineNumberLabel', 'Engine Number'), value: detailEngineNumber || t('machineDetails.na') },
                       ]}
                     />
                   </div>
@@ -1124,7 +1144,8 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                     <SpecsGrid
                       items={[
                         { icon: <Car className="h-4 w-4" />, label: t('machineDetails.registrationNoLabel', 'Registration No.'), value: detailRegistrationNumber || t('machineDetails.na') },
-                        { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationYearLabel', 'Registration Year'), value: detailRegistrationYear || t('machineDetails.na') },
+                        { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationDateLabel', 'Registration Date'), value: detailRegistrationDate || t('machineDetails.na') },
+                        { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.registrationUptoLabel', 'Registration Upto'), value: detailRegistrationUpto || t('machineDetails.na') },
                         { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.insuranceExpiryLabel', 'Insurance Expiry'), value: formatDateOnly(listing.vehicleCompliance?.insuranceValidUntil || detailInsuranceExpiry) || t('machineDetails.na') },
                         { icon: <CheckCircle2 className="h-4 w-4" />, label: t('machineDetails.availabilityLabel', 'Availability'), value: listing.currentAvailability || (listing.status === 'SOLD' ? 'SOLD' : listing.status === 'RESERVED' ? 'RESERVED' : 'AVAILABLE') },
                         { icon: <CreditCard className="h-4 w-4" />, label: t('machineDetails.negotiableLabel', 'Price Negotiable'), value: listing.isNegotiable ? 'Yes' : 'No' },
@@ -1145,7 +1166,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                           <Car className="h-4 w-4 sm:h-5 sm:w-5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-700 mb-0.5">Vehicle Number</p>
+                          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-700 mb-0.5">Registration No.</p>
                           <p className="text-base sm:text-xl font-extrabold tracking-widest text-gray-900 truncate">{formatRegistrationNumber(listing.vehicleCompliance.vehicleNumber)}</p>
                         </div>
                       </div>
@@ -1200,9 +1221,11 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       })}
                     </div>
 
-                    {(listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
+                    {(listing.vehicleCompliance.financerName || listing.vehicleCompliance.hsrpNumber || listing.vehicleCompliance.rtoOffice || listing.vehicleCompliance.rtoAgentName || listing.vehicleCompliance.rtoExpenses != null || listing.vehicleCompliance.vehicleMaintenanceCost != null) && (
                       <div className="mt-4 sm:mt-6 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                         {[
+                          ['Financer Name', listing.vehicleCompliance.financerName],
+                          ['HSRP Number', listing.vehicleCompliance.hsrpNumber],
                           ['RTO Office', listing.vehicleCompliance.rtoOffice],
                           ['RTO Agent Name', listing.vehicleCompliance.rtoAgentName],
                           ['RTO Expenses', listing.vehicleCompliance.rtoExpenses != null ? formatCurrency(listing.vehicleCompliance.rtoExpenses) : null],

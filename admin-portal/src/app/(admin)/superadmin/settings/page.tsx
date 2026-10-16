@@ -768,11 +768,11 @@ export default function SuperAdminSettingsPage() {
       });
       toast.success(
         response.data.vehicleListingVerification.chassisEnabled && response.data.vehicleListingVerification.registrationEnabled
-          ? 'Chassis and vehicle number verification enabled successfully.'
+          ? 'Chassis and registration number verification enabled successfully.'
           : response.data.vehicleListingVerification.chassisEnabled
-            ? 'Chassis verification enabled. Vehicle number verification is disabled.'
+            ? 'Chassis verification enabled. Registration number verification is disabled.'
             : response.data.vehicleListingVerification.registrationEnabled
-              ? 'Vehicle number verification enabled. Chassis verification is disabled.'
+              ? 'Registration number verification enabled. Chassis verification is disabled.'
               : 'All vehicle verification is disabled. Listings can now be submitted manually.',
       );
     } catch (error: unknown) {
@@ -1792,14 +1792,14 @@ export default function SuperAdminSettingsPage() {
                   <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <h4 className="text-sm font-semibold text-gray-900">Require vehicle number verification for vehicle listings</h4>
+                        <h4 className="text-sm font-semibold text-gray-900">Require registration number verification for vehicle listings</h4>
                         <p className="mt-1 text-xs text-gray-500">Controls RC Full verification and vehicle-number-based auto-fill.</p>
                       </div>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={vehicleListingVerificationForm.registrationEnabled}
-                        aria-label="Toggle vehicle number verification"
+                        aria-label="Toggle registration number verification"
                         onClick={() => setVehicleListingVerificationForm((current) => ({ ...current, registrationEnabled: !current.registrationEnabled }))}
                         disabled={vehicleListingVerificationSaving}
                         className={`flex min-w-[168px] items-center justify-between rounded-full border px-2 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${vehicleListingVerificationForm.registrationEnabled
@@ -1898,14 +1898,14 @@ export default function SuperAdminSettingsPage() {
                       profile={panVerificationForm.sandbox}
                       onChange={(patch) => setPanVerificationForm((current) => ({ ...current, sandbox: { ...current.sandbox, ...patch } }))}
                       onReveal={(field) => revealSurepassCredential('SANDBOX', field)}
-                      baseUrlPlaceholder="https://sandbox.surepass.app"
+                      baseUrlPlaceholder="https://sandbox.surepass.io"
                     />
                     <SurepassProfileFields
                       title="Production credentials"
                       profile={panVerificationForm.production}
                       onChange={(patch) => setPanVerificationForm((current) => ({ ...current, production: { ...current.production, ...patch } }))}
                       onReveal={(field) => revealSurepassCredential('PRODUCTION', field)}
-                      baseUrlPlaceholder="https://kyc-api.surepass.app"
+                      baseUrlPlaceholder="https://kyc-api.surepass.io"
                     />
                   </div>
 
@@ -1918,7 +1918,7 @@ export default function SuperAdminSettingsPage() {
                       type="url"
                       value={panVerificationForm.baseUrl}
                       onChange={(event) => setPanVerificationForm((current) => ({ ...current, baseUrl: event.target.value }))}
-                      placeholder="https://sandbox.surepass.app"
+                      placeholder="https://sandbox.surepass.io"
                       className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                     />
                     <p className="mt-1.5 text-xs text-gray-500">Use the exact hostname enabled for your Surepass account. Sandbox and production may use different .app or .io hosts; the server appends each documented endpoint path.</p>

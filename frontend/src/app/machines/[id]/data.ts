@@ -54,6 +54,7 @@ export type MachineListingDetail = {
   registrationYear?: string | null;
   registrationNo?: string | null;
   chassisOrSerialNo?: string | null;
+  engineNumber?: string | null;
   previousOwners?: string | null;
   pinCode?: string | null;
   nearbyLandmark?: string | null;
@@ -95,6 +96,7 @@ export type MachineListingDetail = {
   vehicleCompliance?: {
     vehicleNumber: string | null;
     hirePurchaseStatus: string | null;
+    financerName: string | null;
     taxStatus: string | null;
     taxValidUntil: string | null;
     fitnessStatus: string | null;
@@ -104,6 +106,7 @@ export type MachineListingDetail = {
     pucStatus: string | null;
     pucValidUntil: string | null;
     hsrpStatus: string | null;
+    hsrpNumber: string | null;
     rtoOffice: string | null;
     rtoAgentName: string | null;
     vehicleMaintenanceCost: number | null;

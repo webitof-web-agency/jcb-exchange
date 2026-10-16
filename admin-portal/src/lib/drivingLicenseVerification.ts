@@ -44,6 +44,22 @@ export const validateDrivingLicenseDob = (value: string) => {
   return null;
 };
 
+/** Years shown by the DOB picker, newest first for fast keyboard/search access. */
+export const getDrivingLicenseDobYears = (currentYear = new Date().getFullYear()) =>
+  Array.from({ length: currentYear - 1899 }, (_, index) => currentYear - index);
+
+export const filterDrivingLicenseDobYears = (years: number[], query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return years;
+  return years.filter((year) => String(year).includes(normalizedQuery));
+};
+
+/** Replace only the year in an ISO date, keeping the selected month and day. */
+export const replaceDrivingLicenseDobYear = (value: string, year: number) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return `${year.toString().padStart(4, '0')}-${match?.[2] ?? '01'}-${match?.[3] ?? '01'}`;
+};
+
 export const safeApiError = (error: unknown, fallback: string) => {
   const response = error as { response?: { data?: { error?: unknown } } };
   const message = response.response?.data?.error;

@@ -1,6 +1,8 @@
 export const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
 export type PanOperation = 'PAN_VERIFY' | 'PAN_TO_AADHAAR' | 'PAN_CONTACT_LOOKUP' | 'PAN_COMPREHENSIVE_V2';
+export const PAN_COMPREHENSIVE_OPERATION: PanOperation = 'PAN_COMPREHENSIVE_V2';
+export const PAN_COMPREHENSIVE_ROUTE = '/pan-verification/comprehensive';
 export type PanStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
 
 export type PanRecord = {
@@ -45,7 +47,7 @@ export const validateDob = (value: string) => {
 export const operationLabel = (operation: PanOperation) => {
   if (operation === 'PAN_TO_AADHAAR') return 'PAN to Aadhaar';
   if (operation === 'PAN_CONTACT_LOOKUP') return 'PAN to Email / Mobile';
-  if (operation === 'PAN_COMPREHENSIVE_V2') return 'PAN Comprehensive V2';
+  if (operation === PAN_COMPREHENSIVE_OPERATION) return 'PAN Comprehensive';
   return 'PAN Verify';
 };
 

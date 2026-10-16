@@ -8,7 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
+import { KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
 
 interface EmployeeRole {
   id: string;
@@ -225,9 +225,7 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
   'Verifications': [
     {
       groupName: 'Verifications',
-      permissions: [
-        { id: 'kyc.manage', label: 'Manage Verifications' },
-      ],
+      permissions: KYC_PERMISSION_DEFINITIONS,
     },
   ],
   'Identity Hub': [
@@ -284,6 +282,15 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       groupName: 'Footer',
       permissions: [
         { id: 'footer.manage', label: 'Manage Footer' },
+      ],
+    },
+  ],
+  'Partner Agreements': [
+    {
+      groupName: 'Partner Agreements',
+      permissions: [
+        { id: 'partner.agreements.read', label: 'View Partner Agreements' },
+        { id: 'partner.agreements.manage', label: 'Manage Partner Agreements' },
       ],
     },
   ],

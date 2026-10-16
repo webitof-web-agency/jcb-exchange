@@ -576,7 +576,7 @@ export default function SellAccountsPage() {
     { header: 'Record ID', value: (record: SellAccountRecord) => record.id },
     { header: 'Owner Name', value: (record: SellAccountRecord) => record.ownerName },
     { header: 'Owner Number', value: (record: SellAccountRecord) => record.ownerNumber },
-    { header: 'Vehicle Number', value: (record: SellAccountRecord) => record.vehicleNumber },
+    { header: 'Registration Number', value: (record: SellAccountRecord) => record.vehicleNumber },
     { header: 'Chassis Number', value: (record: SellAccountRecord) => record.chassisNumber || '' },
     { header: 'Sell Date', value: (record: SellAccountRecord) => formatDate(record.sellDate) },
     { header: 'Vehicle Type', value: (record: SellAccountRecord) => record.vehicleType },
@@ -631,7 +631,7 @@ export default function SellAccountsPage() {
           <div className="relative w-full sm:max-w-md">
             <input
               type="text"
-              placeholder={t('sellAccounts.searchPlaceholder', 'Search by owner, seller, purchaser, vehicle no, model...')}
+              placeholder={t('sellAccounts.searchPlaceholder', 'Search by owner, seller, purchaser, registration no, model...')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 pl-10 text-sm font-medium text-gray-700 shadow-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -988,7 +988,7 @@ export default function SellAccountsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Vehicle Number *</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Registration Number *</label>
                     <input
                       type="text"
                       placeholder="e.g. MH-12-AB-1234"

@@ -641,6 +641,7 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
                 verificationSource: verification.verificationSource || null,
                 verifiedRegistrationNumber: verification.verifiedRegistrationNumber || null,
                 verifiedChassisNumber: verification.verifiedChassisNumber || null,
+                verifiedEngineNumber: verification.verifiedEngineNumber || null,
                 status: verification.status || 'NOT_VERIFIED',
                 changedFields: Array.isArray(verification.changedFields) ? verification.changedFields : [],
                 lastVerifiedAt: verification.lastVerifiedAt || null,
@@ -967,6 +968,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      engineNumber,
       title,
       status,
       price,
@@ -1009,6 +1011,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const normalizedDescription = normalizeText(description);
     const normalizedAdditionalDescription = normalizeText(additionalDescription);
     const normalizedGrossPower = normalizeText(grossPower);
+    const normalizedEngineNumber = normalizeText(engineNumber);
     const parsedYear = parseInteger(manufacturingYear) || new Date().getFullYear();
     const parsedOperatingHours = parseInteger(operatingHours);
     const parsedPrice = parseDecimal(price) || new Prisma.Decimal(0);
@@ -1095,6 +1098,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       manufacturingYear: parsedYear,
       description: normalizedDescription,
       chassisOrSerialNo: chassisOrSerialNo,
+      engineNumber: normalizedEngineNumber,
       rtoDetails: rtoDetails && typeof rtoDetails === 'object' ? rtoDetails : null,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
@@ -1135,6 +1139,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
           description: normalizedDescription || null,
           additionalDescription: normalizedAdditionalDescription || null,
           grossPower: normalizedGrossPower || null,
+          engineNumber: normalizedEngineNumber || null,
           status: initialListingStatus,
           media: normalizedMedia.length
             ? {
@@ -1447,6 +1452,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      engineNumber,
       title,
       status,
       price,
@@ -1498,6 +1504,9 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? normalizeText(additionalDescription)
       : existingListing.additionalDescription;
     const normalizedGrossPower = hasOwnField('grossPower') ? normalizeText(grossPower) : existingListing.grossPower;
+    const normalizedEngineNumber = hasOwnField('engineNumber')
+      ? normalizeText(engineNumber)
+      : existingListing.engineNumber;
     const parsedYear = parseInteger(manufacturingYear) || existingListing.manufacturingYear || new Date().getFullYear();
     const parsedOperatingHours = hasOwnField('operatingHours')
       ? parseInteger(operatingHours)
@@ -1612,12 +1621,14 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       manufacturingYear: parsedYear,
       description: normalizedDescription,
       chassisOrSerialNo: chassisOrSerialNo,
+      engineNumber: normalizedEngineNumber,
       rtoDetails: rtoDetails && typeof rtoDetails === 'object'
         ? rtoDetails
         : existingListing.rtoRecords?.[0]
           ? {
               registrationNo: existingListing.rtoRecords[0].vehicleNumber,
               hirePurchaseStatus: existingListing.rtoRecords[0].hirePurchaseStatus,
+              financerName: existingListing.rtoRecords[0].financerName,
               taxStatus: existingListing.rtoRecords[0].taxStatus,
               taxValidUntil: existingListing.rtoRecords[0].taxValidUntil,
               fitnessStatus: existingListing.rtoRecords[0].fitnessStatus,
@@ -1626,6 +1637,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
               insuranceValidUntil: existingListing.rtoRecords[0].insuranceValidUntil,
               pucStatus: existingListing.rtoRecords[0].pucStatus,
               pucValidUntil: existingListing.rtoRecords[0].pucValidUntil,
+              hsrpNumber: existingListing.rtoRecords[0].hsrpNumber,
               rtoOffice: existingListing.rtoRecords[0].rtoOffice,
             }
           : null,
@@ -1672,6 +1684,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         description: normalizedDescription || null,
         additionalDescription: normalizedAdditionalDescription || null,
         grossPower: normalizedGrossPower || null,
+        engineNumber: normalizedEngineNumber || null,
         status: nextStatus,
         media: hasMediaField && normalizedMedia.length
           ? {
@@ -1762,8 +1775,8 @@ export const deleteListing = async (req: Request, res: Response, next: NextFunct
       return res.status(404).json({ error: 'Listing not found.' });
     }
 
-    if (existingListing.partner?.role === 'SUPER_ADMIN') {
-      return res.status(403).json({ error: 'Super admin listings cannot be deleted.' });
+    if (existingListing.partner?.role === 'SUPER_ADMIN' && req.user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only a super admin can delete super admin listings.' });
     }
 
     if (req.user.role === 'CUSTOMER' && String(existingListing.status || '').toUpperCase() === 'SOLD') {

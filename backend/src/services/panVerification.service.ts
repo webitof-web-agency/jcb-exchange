@@ -176,26 +176,50 @@ export const sanitizePanComprehensiveV2Result = (pan: string, value: unknown): S
   const details = objectValue(data.pan_details ?? data.panDetails) || data;
   const providerPan = normalizePan(data.pan_number ?? data.panNumber);
   const providerClientId = providerClientIdFrom(data);
+  const advancedPanStatus = safeString(data.pan_status ?? data.panStatus, 50);
+  const advancedPanStatusDescription = safeString(data.pan_status_desc ?? data.panStatusDesc, 200);
+  const advancedAadhaarSeedingStatus = safeString(data.aadhaar_seeding_status ?? data.aadhaarSeedingStatus, 20);
+  const advancedAadhaarSeedingDescription = safeString(
+    data.aadhaar_seeding_status_desc ?? data.aadhaarSeedingStatusDesc,
+    200,
+  );
+  const advancedAadhaarLinked = advancedAadhaarSeedingStatus === 'Y'
+    ? true
+    : advancedAadhaarSeedingStatus === 'R'
+      ? false
+      : safeBoolean(details.aadhaar_linked ?? details.aadhaarLinked);
+  const panDetails: SafeResult = {
+    fullName: normalizeFullName(data.full_name ?? data.fullName ?? details.full_name ?? details.fullName),
+    fullNameSplit: sanitizeComprehensiveNameParts(data.full_name_split ?? data.fullNameSplit ?? details.full_name_split ?? details.fullNameSplit),
+    maskedAadhaar: normalizeMaskedAadhaar(data.masked_aadhaar ?? data.maskedAadhaar ?? details.masked_aadhaar ?? details.maskedAadhaar),
+    address: sanitizeComprehensiveAddress(data.address ?? details.address),
+    email: safeString(data.email ?? details.email, 200),
+    phoneNumber: safeString(data.phone_number ?? data.phoneNumber ?? details.phone_number ?? details.phoneNumber, 40),
+    gender: safeString(data.gender ?? details.gender, 20),
+    dob: safeString(data.dob ?? details.dob, 10),
+    inputDob: safeString(data.input_dob ?? data.inputDob ?? details.input_dob ?? details.inputDob, 10),
+    aadhaarLinked: advancedAadhaarLinked,
+    dobVerified: safeBoolean(data.dob_verified ?? data.dobVerified ?? details.dob_verified ?? details.dobVerified),
+    dobCheck: safeBoolean(data.dob_check ?? data.dobCheck ?? details.dob_check ?? details.dobCheck),
+    category: safeString(data.category ?? details.category, 50),
+    lessInfo: safeBoolean(data.less_info ?? data.lessInfo ?? details.less_info ?? details.lessInfo),
+    status: advancedPanStatusDescription || safeString(data.status ?? details.status, 50),
+  };
+  const optionalPanDetails: Array<[string, unknown]> = [
+    ['title', safeString(data.title, 20)],
+    ['panStatus', advancedPanStatus],
+    ['panStatusDescription', advancedPanStatusDescription],
+    ['aadhaarSeedingStatus', advancedAadhaarSeedingStatus],
+    ['aadhaarSeedingStatusDescription', advancedAadhaarSeedingDescription],
+    ['panModifiedDate', safeString(data.pan_modified_date ?? data.panModifiedDate, 30)],
+  ];
+  for (const [key, optionalValue] of optionalPanDetails) {
+    if (optionalValue !== null) panDetails[key] = optionalValue;
+  }
   const result: SafeResult = {
     pan: maskPan(providerPan || pan),
     panNumber: maskPan(providerPan || pan),
-    panDetails: {
-      fullName: normalizeFullName(details.full_name ?? details.fullName),
-      fullNameSplit: sanitizeComprehensiveNameParts(details.full_name_split ?? details.fullNameSplit),
-      maskedAadhaar: normalizeMaskedAadhaar(details.masked_aadhaar ?? details.maskedAadhaar),
-      address: sanitizeComprehensiveAddress(details.address),
-      email: safeString(details.email, 200),
-      phoneNumber: safeString(details.phone_number ?? details.phoneNumber, 40),
-      gender: safeString(details.gender, 20),
-      dob: safeString(details.dob, 10),
-      inputDob: safeString(details.input_dob ?? details.inputDob, 10),
-      aadhaarLinked: safeBoolean(details.aadhaar_linked ?? details.aadhaarLinked),
-      dobVerified: safeBoolean(details.dob_verified ?? details.dobVerified),
-      dobCheck: safeBoolean(details.dob_check ?? details.dobCheck),
-      category: safeString(details.category, 50),
-      lessInfo: safeBoolean(details.less_info ?? details.lessInfo),
-      status: safeString(details.status ?? data.status, 50),
-    },
+    panDetails,
     isSoleProprietor: safeBoolean(data.is_sole_proprietor ?? data.isSoleProprietor),
     isDirector: safeBoolean(data.is_director ?? data.isDirector),
     isSalaried: safeBoolean(data.is_salaried ?? data.isSalaried),
@@ -229,7 +253,11 @@ const recordSummary = (record: any) => ({
 const providerFailure = (error: SurepassProviderError) => {
   const byKind: Record<SurepassErrorKind, { status: number; code: string; message: string }> = {
     INVALID_REQUEST: { status: 422, code: 'provider_invalid_request', message: 'The PAN details could not be verified.' },
-    AUTHENTICATION: { status: 502, code: 'provider_configuration_error', message: 'PAN verification provider configuration is invalid.' },
+    AUTHENTICATION: {
+      status: 502,
+      code: 'provider_authentication_failed',
+      message: 'Surepass rejected the configured credentials. Check that the API token belongs to the selected environment and that the Surepass base URL is correct.',
+    },
     FORBIDDEN: { status: 502, code: 'provider_access_denied', message: 'PAN verification provider access is not available.' },
     RATE_LIMIT: { status: 429, code: 'provider_rate_limited', message: 'Too many verification requests. Please try again later.' },
     PROVIDER_UNAVAILABLE: { status: 503, code: 'provider_unavailable', message: 'PAN verification is temporarily unavailable. Please try again later.' },

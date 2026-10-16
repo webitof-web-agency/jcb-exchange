@@ -13,6 +13,7 @@ import ListingRtoFields from '@/components/sell/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import {
   isValidDigitsOnlyValue,
+  isValidDateValue,
   isValidPinCodeValue,
   isValidYearValue,
   normalizeSellVehicleAvailability,
@@ -46,7 +47,8 @@ type ListingFormState = {
   model: string;
   variant: string;
   manufacturingYear: string;
-  registrationYear: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationNo: string;
   chassisOrSerialNo: string;
   engineNumber: string;
@@ -103,6 +105,7 @@ type ListingRecord = {
   description?: string;
   additionalDescription?: string;
   grossPower?: string;
+  engineNumber?: string | null;
   isNegotiable?: boolean;
   address?: string | null;
   media: Array<{
@@ -112,11 +115,19 @@ type ListingRecord = {
     slot?: string | null;
     isFeatured: boolean;
   }>;
+  vehicleVerification?: {
+    verificationRecordId?: string | null;
+    verificationSource?: VehicleVerificationSource | null;
+    verifiedRegistrationNumber?: string | null;
+    verifiedChassisNumber?: string | null;
+    verifiedEngineNumber?: string | null;
+    status?: 'NOT_VERIFIED' | 'API_VERIFIED' | 'MANUALLY_MODIFIED' | 'REVERIFICATION_REQUIRED' | null;
+  } | null;
   rtoRecords?: Array<{
     vehicleNumber?: string | null;
-    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; financerName?: string | null; taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
     fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null; insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
-    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null; hsrpStatus: ListingRtoFormState['hsrpStatus']; rtoOffice?: string | null; rtoAgentName?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null; hsrpStatus: ListingRtoFormState['hsrpStatus']; hsrpNumber?: string | null; rtoOffice?: string | null; rtoAgentName?: string | null;
     rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
   }>;
 };
@@ -170,6 +181,8 @@ type MediaSlotConfig = {
 type ParsedListingDetails = {
   rawDescription: string;
   variant: string;
+  registrationDate: string;
+  registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
   chassisOrSerialNo: string;
@@ -201,6 +214,7 @@ export type EditableListing = {
   description?: string | null;
   additionalDescription?: string | null;
   grossPower?: string | null;
+  engineNumber?: string | null;
   isNegotiable?: boolean;
   saleRecord?: {
     buyerName?: string;
@@ -225,6 +239,7 @@ export type EditableListing = {
     verificationSource?: VehicleVerificationSource | null;
     verifiedRegistrationNumber?: string | null;
     verifiedChassisNumber?: string | null;
+    verifiedEngineNumber?: string | null;
     status?: 'NOT_VERIFIED' | 'API_VERIFIED' | 'MANUALLY_MODIFIED' | 'REVERIFICATION_REQUIRED' | null;
   } | null;
 };
@@ -235,7 +250,8 @@ const initialForm: ListingFormState = {
   model: '',
   variant: '',
   manufacturingYear: '',
-  registrationYear: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationNo: '',
   chassisOrSerialNo: '',
   engineNumber: '',
@@ -456,6 +472,8 @@ const listingStatusToAvailability = (value: string) => {
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
   variant: '',
+  registrationDate: '',
+  registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
   chassisOrSerialNo: '',
@@ -500,6 +518,13 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
         break;
       case 'registration year':
         parsed.registrationYear = value;
+        break;
+      case 'registration date':
+        parsed.registrationDate = value;
+        break;
+      case 'registration upto':
+      case 'registration up to':
+        parsed.registrationUpto = value;
         break;
       case 'registration no':
         parsed.registrationNo = value;
@@ -552,10 +577,10 @@ const buildListingDescription = (form: ListingFormState) =>
   [
     form.description.trim(),
     form.variant ? `Variant: ${form.variant}` : '',
-    form.registrationYear ? `Registration year: ${form.registrationYear}` : '',
+    form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
+    form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
     form.chassisOrSerialNo ? `Chassis/serial: ${form.chassisOrSerialNo}` : '',
-    form.engineNumber ? `Engine number: ${form.engineNumber}` : '',
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
     form.transmission ? `Transmission: ${form.transmission}` : '',
@@ -852,10 +877,11 @@ export default function SellVehicleModal({
       model: listing.model?.name || '',
       variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
-      registrationYear: parsedDetails.registrationYear,
+      registrationDate: parsedDetails.registrationDate,
+      registrationUpto: parsedDetails.registrationUpto,
       registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
-      engineNumber: parsedDetails.engineNumber,
+      engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
       operatingHours: String(listing.operatingHours || ''),
@@ -890,6 +916,7 @@ export default function SellVehicleModal({
       selectedBuyerCityId: '',
       rtoDetails: {
         hirePurchaseStatus: linkedRto?.hirePurchaseStatus || emptyListingRtoForm.hirePurchaseStatus,
+        financerName: linkedRto?.financerName || '',
         taxStatus: linkedRto?.taxStatus === 'EXPIRED'
           ? 'EXPIRED'
           : linkedRto?.taxStatus === 'LIFETIME'
@@ -904,6 +931,7 @@ export default function SellVehicleModal({
         pucStatus: linkedRto?.pucStatus === 'EXPIRED' ? 'EXPIRED' : linkedRto?.pucStatus === 'VALID' ? 'VALID' : 'NOT_AVAILABLE',
         pucValidUntil: linkedRto?.pucStatus === 'VALID' && linkedRto.pucValidUntil ? String(linkedRto.pucValidUntil).split('T')[0] : '',
         hsrpStatus: linkedRto?.hsrpStatus === 'YES' ? 'YES' : linkedRto?.hsrpStatus === 'NO' ? 'NO' : linkedRto?.hsrpStatus === 'NOT_APPLICABLE' ? 'NOT_APPLICABLE' : 'PENDING',
+        hsrpNumber: linkedRto?.hsrpNumber || '',
         rtoOffice: linkedRto?.rtoOffice || '',
         rtoAgentName: linkedRto?.rtoAgentName || '',
         rtoExpenses: linkedRto?.rtoExpenses != null ? String(linkedRto.rtoExpenses) : '',
@@ -1061,7 +1089,8 @@ export default function SellVehicleModal({
         model: mapped.model || current.model,
         variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
-        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationDate: mapped.registrationDate || current.registrationDate,
+        registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
@@ -1161,7 +1190,8 @@ export default function SellVehicleModal({
         model: mapped.model || current.model,
         variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
-        registrationYear: mapped.registrationYear || current.registrationYear,
+        registrationDate: mapped.registrationDate || current.registrationDate,
+        registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
@@ -1273,8 +1303,10 @@ export default function SellVehicleModal({
                       ? 'Manufacturing year must be a 4-digit year.'
                       : !isValidDigitsOnlyValue(sanitizedForm.operatingHours)
                         ? 'Operating hours must contain digits only.'
-                        : !isValidYearValue(sanitizedForm.registrationYear)
-                          ? 'Registration year must be a 4-digit year.'
+                        : !isValidDateValue(sanitizedForm.registrationDate) || !isValidDateValue(sanitizedForm.registrationUpto)
+                          ? 'Registration dates must be valid calendar dates.'
+                          : sanitizedForm.registrationDate && sanitizedForm.registrationUpto && sanitizedForm.registrationDate > sanitizedForm.registrationUpto
+                            ? 'Registration upto cannot be before the registration date.'
                           : !isValidDigitsOnlyValue(sanitizedForm.previousOwners)
                             ? 'Previous owners must contain digits only.'
                             : null;
@@ -1345,6 +1377,7 @@ export default function SellVehicleModal({
         description: buildListingDescription(sanitizedForm),
         additionalDescription: sanitizedForm.additionalDescription,
         grossPower: sanitizedForm.grossPower,
+        engineNumber: sanitizedForm.engineNumber,
         isNegotiable: sanitizedForm.isNegotiable,
         media: uploadedMedia,
         ...(chassisVerificationId
@@ -1508,7 +1541,7 @@ export default function SellVehicleModal({
                     <h3 className="text-base font-semibold">{t('sellModal.equipmentDetails')}</h3>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.chassisRequired ? ' *' : ''}`}>
+                    <Field className="order-2" label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.chassisRequired ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.chassisOrSerialNo}
@@ -1573,7 +1606,7 @@ export default function SellVehicleModal({
                         </p>
                       )}
                     </Field>
-                    <Field label={`${t('sellModal.vehicleNumber', 'Vehicle Number')}${listingVerificationPolicy?.registrationRequired ? ' *' : ''}`}>
+                    <Field className="order-1" label={`${t('sellModal.registrationNumber', 'Registration No.')}${listingVerificationPolicy?.registrationRequired ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           value={form.registrationNo}
@@ -1690,8 +1723,11 @@ export default function SellVehicleModal({
                     <Field label={t('sellModal.manufactureYear')}>
                       <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label={t('sellModal.registrationYear')}>
-                      <input type="number" value={form.registrationYear} onChange={(event) => updateField('registrationYear', event.target.value)} className={fieldClassName} />
+                    <Field label={t('sellModal.registrationDate')}>
+                      <input type="date" value={form.registrationDate} onChange={(event) => updateField('registrationDate', event.target.value)} className={fieldClassName} />
+                    </Field>
+                    <Field label={t('sellModal.registrationUpto')}>
+                      <input type="date" value={form.registrationUpto} onChange={(event) => updateField('registrationUpto', event.target.value)} className={fieldClassName} />
                     </Field>
                     {form.rtoDetails.insuranceStatus === 'VALID' && (
                       <Field label={t('sellModal.insuranceExpiryDate')}>
@@ -2035,7 +2071,7 @@ export default function SellVehicleModal({
                       disabled={saving || uploadingCount > 0}
                       className="rounded-lg bg-[#FFC107] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {saving ? (editingListingId ? t('sellModal.updating') : t('sellModal.posting')) : uploadingCount > 0 ? t('sellModal.waitingForUploads') : editingListingId ? t('sellModal.update') : t('sellModal.post')}
+                      {saving ? (editingListingId ? t('sellModal.updating') : t('sellModal.adding', 'Adding...')) : uploadingCount > 0 ? t('sellModal.waitingForUploads') : editingListingId ? t('sellModal.update') : t('sellModal.add', 'Add')}
                     </button>
                   </div>
                 </div>
@@ -2105,10 +2141,14 @@ export default function SellVehicleModal({
                         <h3 className="text-base font-bold text-gray-900">{t('sellModal.registrationIdentity')}</h3>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <DetailItem label={t('sellModal.variant')} value={parsedDetails.variant || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationYear')} value={parsedDetails.registrationYear || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.vehicleNumber', 'Vehicle Number')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.registrationDate')} value={parsedDetails.registrationDate || parsedDetails.registrationYear || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.registrationUpto')} value={parsedDetails.registrationUpto || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.registrationNumber', 'Registration No.')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.engineNumber', 'Engine Number')} value={parsedDetails.engineNumber || t('sellModal.na')} />
+                          <DetailItem
+                            label={t('sellModal.engineNumber', 'Engine Number')}
+                            value={viewListing.engineNumber || viewListing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber || t('sellModal.na')}
+                          />
                           <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.insuranceExpiry')} value={viewListing.rtoRecords?.[0] && viewListing.rtoRecords[0].insuranceStatus !== 'VALID' ? t('sellModal.na') : parsedDetails.insuranceExpiry || t('sellModal.na')} />
                         </div>
@@ -2213,12 +2253,14 @@ export default function SellVehicleModal({
 function Field({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="block">
+    <label className={`block ${className || ''}`}>
       <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
       {children}
     </label>

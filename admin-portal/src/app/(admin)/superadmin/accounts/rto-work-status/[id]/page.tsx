@@ -158,7 +158,7 @@ export default function RtoRecordDetailView() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">RTO Work Status Details</h1>
-            <p className="text-sm font-medium text-gray-500 mt-0.5">Vehicle: <span className="font-bold text-gray-900">{record.vehicleNumber}</span></p>
+            <p className="text-sm font-medium text-gray-500 mt-0.5">Registration: <span className="font-bold text-gray-900">{record.vehicleNumber}</span></p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -179,7 +179,7 @@ export default function RtoRecordDetailView() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Number</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Registration Number</p>
                 <p className="font-bold text-gray-900 text-lg mt-0.5">{record.vehicleNumber}</p>
               </div>
               <div>

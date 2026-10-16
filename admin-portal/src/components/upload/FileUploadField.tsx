@@ -3,8 +3,10 @@
 import Image from 'next/image';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
+  getPassportPhotoUploadValidationError,
   getPdfUploadValidationError,
   getUploadValidationError,
+  type UploadPurpose,
   type UploadVisibility,
   type UploadedFileResult,
   uploadFileToServer,
@@ -24,8 +26,11 @@ type FileUploadFieldProps = {
   uploadedFileMimeType?: string | null;
   uploadedFileUrl?: string | null;
   pdfOnly?: boolean;
+  uploadPurpose?: UploadPurpose;
   visibility: UploadVisibility;
 };
+
+type ImagePreviewState = 'idle' | 'loading' | 'loaded' | 'error';
 
 export function FileUploadField({
   accept,
@@ -35,6 +40,7 @@ export function FileUploadField({
   onUploaded,
   onUploadStateChange,
   pdfOnly = false,
+  uploadPurpose = 'document',
   uploadedFileName,
   uploadedFileMimeType,
   uploadedFileUrl,
@@ -47,7 +53,7 @@ export function FileUploadField({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [imagePreview, setImagePreview] = useState({ source: '', url: '' });
+  const [imagePreview, setImagePreview] = useState({ source: '', url: '', state: 'idle' as ImagePreviewState });
   const isImage = uploadedFileMimeType?.startsWith('image/') || /\.(?:jpe?g|png|webp|gif)$/i.test(uploadedFileName || '');
 
   useEffect(() => {
@@ -67,11 +73,11 @@ export function FileUploadField({
         if (cancelled) {
           URL.revokeObjectURL(objectUrl);
         } else {
-          setImagePreview({ source: uploadedFileUrl, url: objectUrl });
+          setImagePreview({ source: uploadedFileUrl, url: objectUrl, state: 'loaded' });
         }
       } catch {
         if (!cancelled) {
-          setImagePreview({ source: uploadedFileUrl, url: '' });
+          setImagePreview({ source: uploadedFileUrl, url: '', state: 'error' });
         }
       }
     };
@@ -84,6 +90,7 @@ export function FileUploadField({
   }, [isImage, uploadedFileMimeType, uploadedFileUrl]);
 
   const imagePreviewUrl = imagePreview.source === uploadedFileUrl ? imagePreview.url : '';
+  const imagePreviewState = imagePreview.source === uploadedFileUrl ? imagePreview.state : 'loading';
 
   const handleChange = async (file?: File) => {
     if (!file) {
@@ -92,7 +99,11 @@ export function FileUploadField({
 
     setError('');
 
-    const validationError = pdfOnly ? getPdfUploadValidationError(file) : getUploadValidationError(file);
+    const validationError = uploadPurpose === 'passport-photo'
+      ? getPassportPhotoUploadValidationError(file)
+      : pdfOnly
+        ? getPdfUploadValidationError(file)
+        : getUploadValidationError(file);
     if (validationError) {
       setError(validationError);
       if (inputRef.current) {
@@ -105,7 +116,7 @@ export function FileUploadField({
     onUploadStateChange?.(true);
 
     try {
-      const uploadedFile = await uploadFileToServer({ file, visibility });
+      const uploadedFile = await uploadFileToServer({ file, visibility, purpose: uploadPurpose });
       onUploaded(uploadedFile);
     } catch (uploadError) {
       const message =
@@ -131,7 +142,7 @@ export function FileUploadField({
         onChange={(event) => void handleChange(event.target.files?.[0])}
         aria-invalid={error ? 'true' : 'false'}
         aria-describedby={[helperText ? helperId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined}
-        className={`w-full rounded-lg border bg-[#F5F8FA] px-3 py-3 text-sm text-gray-900 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 ${
+        className={`w-full h-[46px] rounded-lg border bg-[#F5F8FA] px-3 py-2.5 text-sm text-gray-900 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 ${
           error ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#FFC107]'
         }`}
       />
@@ -161,6 +172,8 @@ export function FileUploadField({
                 unoptimized
                 className="max-h-40 w-full rounded-lg border border-gray-200 bg-white object-contain p-1"
               />
+            ) : imagePreviewState === 'error' ? (
+              <p className="text-xs text-gray-500">{t('common.previewUnavailable', 'Preview unavailable. The file is uploaded securely.')}</p>
             ) : <p className="text-xs text-gray-500">{t('common.loadingPreview', 'Loading preview...')}</p>
           ) : null}
         </div>

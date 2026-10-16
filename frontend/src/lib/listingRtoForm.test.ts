@@ -24,6 +24,8 @@ const validWithoutProviderDates: ListingRtoFormState = {
   pucStatus: 'NOT_AVAILABLE',
   pucValidUntil: '',
   hsrpStatus: 'PENDING',
+  financerName: 'Manual Finance',
+  hsrpNumber: 'HSRP-12345',
   rtoOffice: 'FEROZPUR RTA, Punjab',
   rtoAgentName: 'Manual Agent',
   rtoExpenses: '100',
@@ -32,6 +34,10 @@ const validWithoutProviderDates: ListingRtoFormState = {
 
 test('accepts unavailable provider validity dates without falsely requiring a date', () => {
   assert.equal(validateListingRtoForm(validWithoutProviderDates, base), null);
+});
+
+test('allows vehicle maintenance cost to be omitted', () => {
+  assert.equal(validateListingRtoForm({ ...validWithoutProviderDates, vehicleMaintenanceCost: '' }, base), null);
 });
 
 test('allows HSRP, RTO agent name, and RTO expenses to be omitted', () => {

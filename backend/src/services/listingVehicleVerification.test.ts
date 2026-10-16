@@ -49,6 +49,8 @@ test('marks a listing API verified when saved values match the provider snapshot
     pucc_upto: '2030-01-25',
     registered_at: 'FEROZPUR RTA, Punjab',
     financed: false,
+    financer: 'Finance Ltd',
+    hsrp_number: 'HSRP-12345',
   });
   const current = buildCurrentListingVerificationSnapshot({
     title: 'HYUNDAI MOTOR INDIA LTD I20 SPORTZ CRDI',
@@ -75,6 +77,8 @@ test('marks a listing API verified when saved values match the provider snapshot
       pucStatus: 'VALID',
       pucValidUntil: '2030-01-25',
       rtoOffice: 'FEROZPUR RTA, Punjab',
+      financerName: 'Finance Ltd',
+      hsrpNumber: 'HSRP-12345',
     },
   });
 
@@ -82,6 +86,15 @@ test('marks a listing API verified when saved values match the provider snapshot
     status: 'API_VERIFIED',
     changedFields: [],
   });
+});
+
+test('uses the structured engine number when building the current listing snapshot', () => {
+  const current = buildCurrentListingVerificationSnapshot({
+    engineNumber: 'D4FCJM12345',
+    description: 'Registration no: PB00AZ1234',
+  });
+
+  assert.equal(current.engineNumber, 'D4FCJM12345');
 });
 
 test('requires re-verification for identity changes and marks other edits manually modified', () => {
