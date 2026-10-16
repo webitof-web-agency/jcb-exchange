@@ -88,6 +88,7 @@ export const MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;
 export const MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE = 2 * 1024 * 1024;
 export const MAX_SITE_FAVICON_IMAGE_UPLOAD_SIZE = 512 * 1024;
 export const MAX_SITE_MANIFEST_ICON_IMAGE_UPLOAD_SIZE = 1024 * 1024;
+export const MAX_AVATAR_UPLOAD_SIZE = 2 * 1024 * 1024;
 
 const resolveStorageBaseDir = () => {
   const configuredDirectory = process.env.APP_STORAGE_DIR?.trim();
@@ -231,6 +232,23 @@ export const getDocumentUploadMiddleware = (
           : purpose === 'finance-support'
             ? MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE
             : MAX_DOCUMENT_UPLOAD_SIZE,
+      files: 1,
+    },
+  });
+
+export const getAvatarUploadMiddleware = () =>
+  multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (_req, file, callback) => {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+        callback(new Error('Only JPG, PNG, and WEBP avatar images are allowed.'));
+        return;
+      }
+
+      callback(null, true);
+    },
+    limits: {
+      fileSize: MAX_AVATAR_UPLOAD_SIZE,
       files: 1,
     },
   });

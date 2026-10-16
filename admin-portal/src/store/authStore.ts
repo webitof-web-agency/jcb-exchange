@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
+  avatarUrl?: string | null;
   role: string;
   status?: string;
   permissions?: string[];

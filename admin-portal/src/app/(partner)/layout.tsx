@@ -17,6 +17,7 @@ import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
+import { UserAvatar } from '@/components/profile/AvatarUpload';
 
 interface PartnerNotification {
   id: string;
@@ -604,9 +605,7 @@ export default function PartnerLayout({
                       {formatPartnerTypeLabel(user.partnerType, translatedPartnerRoleLabel)}
                     </span>
                   </div>
-                  <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
-                    {(user.name || user.email || 'P').charAt(0).toUpperCase()}
-                  </div>
+                  <UserAvatar user={user} size="header" />
                   <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
                 </button>
 

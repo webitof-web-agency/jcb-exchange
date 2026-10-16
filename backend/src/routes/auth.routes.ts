@@ -23,9 +23,12 @@ import {
   sendEmailLoginOtp,
   verifyEmailLoginOtp,
   resendEmailLoginOtp,
+  uploadProfileAvatar,
+  deleteProfileAvatar,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { verifyPartnerGstin, verifyPartnerPan } from '../controllers/partnerKycVerification.controller';
+import { getAvatarUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
 
@@ -45,6 +48,8 @@ router.post('/google', googleLogin);
 router.get('/profile', requireAuth, getProfile);
 router.patch('/profile', requireAuth, updateProfile);
 router.patch('/profile/password', requireAuth, updatePassword);
+router.patch('/profile/avatar', requireAuth, getAvatarUploadMiddleware().single('file'), uploadProfileAvatar);
+router.delete('/profile/avatar', requireAuth, deleteProfileAvatar);
 router.get('/customer-prime/access', requireAuth, getCustomerPrimeAccess);
 router.get('/customer-prime/history', requireAuth, getCustomerPrimeHistory);
 router.post('/customer-prime/subscribe', requireAuth, submitCustomerPrimeSubscription);

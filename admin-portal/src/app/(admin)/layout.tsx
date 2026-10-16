@@ -42,6 +42,7 @@ import {
   DRIVING_LICENSE_VIEW_PERMISSIONS,
 } from '@/lib/featurePermissions';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
+import { UserAvatar } from '@/components/profile/AvatarUpload';
 
 const navItems = [
   { href: '/superadmin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
@@ -1011,9 +1012,7 @@ export default function AdminLayout({
                   <p className="text-sm font-bold text-gray-900">{displayName}</p>
                   <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{translatedRoleLabel}</span>
                 </div>
-                <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
-                  {(user.name || user.email || 'A').charAt(0).toUpperCase()}
-                </div>
+                <UserAvatar user={user} size="header" />
                 <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
               </button>
 

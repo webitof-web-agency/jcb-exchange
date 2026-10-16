@@ -1,4 +1,7 @@
 import { AgreementType, KycDocumentType } from '@prisma/client';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { dispatchMarketplaceWhatsApp } from '../services/whatsappIntegration.service';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
@@ -91,6 +94,15 @@ import { createVerificationFingerprint } from '../services/verificationCache';
 import { hasAuthCredentialChange } from '../utils/authCredentialChange';
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
+import { publicUploadDir } from '../utils/documentUpload';
+import {
+  AVATAR_MAX_BYTES,
+  getAvatarFileName,
+  getAvatarPublicPath,
+  getAvatarStoragePath,
+  hasValidAvatarSignature,
+  isAllowedAvatarMimeType,
+} from '../utils/avatarUpload';
 import {
   areRequiredPartnerAgreementsAccepted,
   buildPartnerAgreementContentHash,
@@ -453,6 +465,7 @@ export const buildAuthUserPayload = async (user: any) => {
     id: user.id,
     email: user.email,
     name: user.name,
+    avatarUrl: user.avatarUrl ?? null,
     role: resolvedRole,
     rawRole: user.role,
     status: user.status,
@@ -1796,6 +1809,96 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
     res.json({ user: authUser });
   } catch (error) {
     next(error);
+  }
+};
+
+export const uploadProfileAvatar = async (req: Request, res: Response, next: NextFunction) => {
+  let writtenFilePath: string | null = null;
+
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'Select an image to upload.' });
+    }
+
+    if (!isAllowedAvatarMimeType(file.mimetype) || !hasValidAvatarSignature(file.buffer, file.mimetype)) {
+      return res.status(400).json({ error: 'Upload a valid JPG, PNG, or WEBP image.' });
+    }
+
+    if (file.size > AVATAR_MAX_BYTES) {
+      return res.status(400).json({ error: 'Avatar image must be 2 MB or smaller after compression.' });
+    }
+
+    const extension = file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'webp';
+    const avatarDirectory = path.join(publicUploadDir, 'avatars');
+    const fileName = `${req.user.id}-${randomUUID()}.${extension}`;
+    writtenFilePath = path.join(avatarDirectory, fileName);
+    await mkdir(avatarDirectory, { recursive: true });
+    await writeFile(writtenFilePath, file.buffer, { flag: 'wx' });
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { avatarUrl: true },
+    });
+
+    const avatarUrl = getAvatarPublicPath(fileName);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl },
+    });
+
+    writtenFilePath = null;
+    const oldFileName = getAvatarFileName(currentUser?.avatarUrl);
+    if (oldFileName && oldFileName !== fileName) {
+      await unlink(path.join(avatarDirectory, oldFileName)).catch(() => undefined);
+    }
+
+    const refreshedUser = await fetchAuthenticatedUserById(req.user.id);
+    const authUser = await buildAuthUserPayload(refreshedUser);
+    return res.json({ message: 'Avatar updated successfully.', user: authUser });
+  } catch (error) {
+    if (writtenFilePath) {
+      await unlink(writtenFilePath).catch(() => undefined);
+    }
+    return next(error);
+  }
+};
+
+export const deleteProfileAvatar = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { avatarUrl: true },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl: null },
+    });
+
+    const avatarDirectory = path.join(publicUploadDir, 'avatars');
+    const oldAvatarPath = getAvatarStoragePath(currentUser.avatarUrl, avatarDirectory);
+    if (oldAvatarPath) {
+      await unlink(oldAvatarPath).catch(() => undefined);
+    }
+
+    const refreshedUser = await fetchAuthenticatedUserById(req.user.id);
+    const authUser = await buildAuthUserPayload(refreshedUser);
+    return res.json({ message: 'Avatar removed successfully.', user: authUser });
+  } catch (error) {
+    return next(error);
   }
 };
 

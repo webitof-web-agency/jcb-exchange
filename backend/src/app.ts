@@ -46,6 +46,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   if (
     err.message.includes('Only JPG, PNG, WEBP, and PDF files are allowed.') ||
     err.message.includes('Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.') ||
+    err.message.includes('Only JPG, PNG, and WEBP avatar images are allowed.') ||
     err.message.includes('PDF files must be 3MB or smaller.') ||
     err.message.includes('Image files must be 5MB or smaller.') ||
     err.message.includes('Video files must be 15MB or smaller.') ||

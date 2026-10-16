@@ -25,6 +25,7 @@ export const authenticatedUserSelect = {
   id: true,
   email: true,
   name: true,
+  avatarUrl: true,
   role: true,
   status: true,
   mobile: true,

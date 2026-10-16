@@ -8,14 +8,13 @@ import {
   KeyRound,
   Mail,
   Phone,
-  Printer,
   Save,
   Shield,
-  UserCircle2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import type { AxiosError } from 'axios';
+import AvatarUpload from '@/components/profile/AvatarUpload';
 
 type ProfileFormState = {
   name: string;
@@ -180,9 +179,7 @@ export default function AdminProfileView() {
           <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex items-center gap-5">
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-inner backdrop-blur-sm">
-                <UserCircle2 className="h-10 w-10 text-[#FFC107]" />
-              </div>
+              <AvatarUpload user={user} onUploaded={updateUser} size="profile" />
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Admin Identity</p>
                 <h2 className="mt-1 text-3xl font-bold tracking-tight text-white">{user?.name || 'Portal User'}</h2>
@@ -203,14 +200,6 @@ export default function AdminProfileView() {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2 profile-no-print">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15"
-            >
-              <Printer className="h-4 w-4" />
-              Print
-            </button>
             <button
               type="button"
               onClick={handlePrint}
