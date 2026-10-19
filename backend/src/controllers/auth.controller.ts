@@ -107,8 +107,9 @@ import {
   areRequiredPartnerAgreementsAccepted,
   buildPartnerAgreementContentHash,
 } from '../services/partnerAgreement.service';
+import { resolveJwtSecret } from '../utils/jwtSecret';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
+const JWT_SECRET = resolveJwtSecret();
 const prismaAny = prisma as any;
 
 const mobileOtpAccountSelect = {

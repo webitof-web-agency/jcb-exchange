@@ -693,7 +693,9 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
                 <SpecCard icon={<Info className="h-4 w-4" />} label={t('machineDetails.variantLabel')} value={parsedDetails.variant || t('machineDetails.na')} />
                 <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('machineDetails.manufacturingYearLabel')} value={listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na')} />
                 <SpecCard icon={<Fuel className="h-4 w-4" />} label={t('machineDetails.fuelTypeLabel')} value={listing.fuelType || parsedDetails.fuelType || t('machineDetails.na')} />
-                <SpecCard icon={<Cog className="h-4 w-4" />} label={t('machineDetails.transmissionLabel')} value={listing.transmission || parsedDetails.transmission || t('machineDetails.na')} />
+                {listing.transmission || parsedDetails.transmission ? (
+                  <SpecCard icon={<Cog className="h-4 w-4" />} label={t('machineDetails.transmissionLabel')} value={listing.transmission || parsedDetails.transmission} />
+                ) : null}
                 <SpecCard icon={<ShieldCheck className="h-4 w-4" />} label={t('machineDetails.grossPowerLabel')} value={listing.grossPower || t('machineDetails.na')} />
                 <SpecCard icon={<Clock className="h-4 w-4" />} label={t('machineDetails.operatingHoursLabel')} value={listing.operatingHours ? String(listing.operatingHours) : t('machineDetails.na')} />
                 <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('profile.registrationDate', 'Registration Date')} value={parsedDetails.registrationDate || String(listing.registrationYear || parsedDetails.registrationYear || t('machineDetails.na'))} />

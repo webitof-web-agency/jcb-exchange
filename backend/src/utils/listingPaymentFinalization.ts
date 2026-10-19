@@ -35,17 +35,20 @@ export const finalizeListingPaymentSale = async (paymentId: string) => {
 
   const buyerName = payment.buyer?.name || payment.buyer?.mobile || payment.buyer?.email || 'Customer';
   const buyerPhone = payment.buyer?.mobile || payment.buyer?.email || payment.buyer?.id || 'N/A';
-  const soldAt = new Date();
 
   return prismaAny.$transaction(async (tx: any) => {
     const listing = await tx.listing.findUnique({
       where: { id: payment.listingId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, soldAt: true },
     });
 
     if (!listing) {
       return null;
     }
+
+    // Payment status checks can be repeated (e.g. the return page is refreshed);
+    // keep the original sale date so retention and reports are not shifted.
+    const soldAt = listing.status === 'SOLD' && listing.soldAt ? listing.soldAt : new Date();
 
     await tx.listing.update({
       where: { id: payment.listingId },

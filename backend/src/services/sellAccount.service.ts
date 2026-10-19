@@ -37,6 +37,32 @@ const jsonValue = (value: unknown) => (value && typeof value === 'object' ? valu
 
 const asFinanceStatus = (value: SellAccountDealStatus): FinanceDealStatus => value as FinanceDealStatus;
 
+// Records are hard-deleted, so a row count can point at a number that is still in use.
+// Continue from the highest existing sequence for the year instead.
+const nextSellAccountRecordNumber = async (client: any) => {
+  const prefix = `SA-${new Date().getFullYear()}-`;
+  const existing: Array<{ recordNumber: string }> = await client.sellAccount.findMany({
+    where: { recordNumber: { startsWith: prefix } },
+    select: { recordNumber: true },
+  });
+  const highest = existing.reduce((max, { recordNumber }) => {
+    const sequence = Number.parseInt(recordNumber.slice(prefix.length), 10);
+    return Number.isFinite(sequence) && sequence > max ? sequence : max;
+  }, 0);
+  return `${prefix}${String(highest + 1).padStart(3, '0')}`;
+};
+
+const assertListingAvailable = async (listingId: string | null, currentId?: string) => {
+  if (!listingId) return;
+  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true } });
+  if (!listing) throw new Error('Linked listing was not found.');
+  const linked = await prisma.sellAccount.findFirst({
+    where: { listingId, ...(currentId ? { NOT: { id: currentId } } : {}) },
+    select: { recordNumber: true },
+  });
+  if (linked) throw new Error(`This listing is already linked to Sell Account ${linked.recordNumber}.`);
+};
+
 type RtoState = {
   status: string;
   linked: boolean;
@@ -358,14 +384,9 @@ export const createSellAccount = async (body: unknown, actorId?: string) => {
   const payload = buildPayload(body);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
-  if (payload.listingId) {
-    const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
-    if (!listing) throw new Error('Linked listing was not found.');
-  }
-  const currentYear = new Date().getFullYear();
-  const count = await prisma.sellAccount.count({ where: { recordNumber: { startsWith: `SA-${currentYear}-` } } });
-  const recordNumber = `SA-${currentYear}-${String(count + 1).padStart(3, '0')}`;
+  await assertListingAvailable(payload.listingId);
   const record = await prisma.$transaction(async (tx) => {
+    const recordNumber = await nextSellAccountRecordNumber(tx);
     const created = await tx.sellAccount.create({ data: { ...payload, recordNumber, createdById: actorId || null, updatedById: actorId || null }, include });
     if (Array.isArray((body as any)?.payments)) {
       for (const payment of (body as any).payments) {
@@ -390,6 +411,7 @@ export const updateSellAccount = async (id: string, body: unknown, actorId?: str
   const payload = buildPayload(body, existing);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
+  if (payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, id);
   const record = await prisma.$transaction(async (tx) => {
     const updated = await tx.sellAccount.update({ where: { id }, data: { ...payload, updatedById: actorId || null }, include });
     if (Array.isArray((body as any)?.payments)) {
@@ -478,10 +500,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
   const payload = buildPayload(requestBody, existing);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
-  if (payload.listingId) {
-    const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
-    if (!listing) throw new Error('Linked listing was not found.');
-  }
+  if (!existing || payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, existing?.id);
 
   return prisma.$transaction(async (tx) => {
     let record: any;
@@ -492,9 +511,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
         include,
       });
     } else {
-      const currentYear = new Date().getFullYear();
-      const count = await tx.sellAccount.count({ where: { recordNumber: { startsWith: `SA-${currentYear}-` } } });
-      const recordNumber = `SA-${currentYear}-${String(count + 1).padStart(3, '0')}`;
+      const recordNumber = await nextSellAccountRecordNumber(tx);
       record = await tx.sellAccount.create({
         data: { ...payload, recordNumber, createdById: actorId || null, updatedById: actorId || null },
         include,

@@ -2530,7 +2530,10 @@ export const verifyListingPhonePeOrder = async (req: Request, res: Response, nex
     }
 
     const latestTransaction = statusPayload.paymentDetails?.find((detail) => detail.state === 'COMPLETED') || statusPayload.paymentDetails?.[0];
-    const nextStatus = statusPayload.state === 'COMPLETED'
+    const expectedAmountInPaise = Math.round(Number(existingPayment.amount || 0) * 100);
+    // A completed order for a different amount is left for manual review instead of selling the listing.
+    const amountMatches = typeof statusPayload.amount !== 'number' || statusPayload.amount === expectedAmountInPaise;
+    const nextStatus = statusPayload.state === 'COMPLETED' && amountMatches
       ? 'PAID'
       : statusPayload.state === 'FAILED'
         ? 'FAILED'
@@ -2682,6 +2685,26 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
       if (expectedSignature !== razorpaySignature) {
         return res.status(400).json({ error: 'Razorpay signature verification failed.' });
       }
+
+      // The signature only proves the payment belongs to the order. Make sure that order was
+      // created for this listing, buyer, and price so a cheaper order cannot be replayed here.
+      const credentials = Buffer.from(`${settings.razorpay.keyId}:${settings.razorpay.keySecret}`).toString('base64');
+      const orderResponse = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(razorpayOrderId)}`, {
+        headers: { Authorization: `Basic ${credentials}` },
+      });
+      const order = await orderResponse.json() as { amount?: number; notes?: { listingId?: string; buyerId?: string } };
+      if (!orderResponse.ok) {
+        return res.status(502).json({ error: 'Unable to verify the Razorpay order.' });
+      }
+
+      const expectedAmountInPaise = Math.round(Number(listing!.price || 0) * 100);
+      if (
+        order.notes?.listingId !== listing!.id ||
+        order.notes?.buyerId !== req.user.id ||
+        order.amount !== expectedAmountInPaise
+      ) {
+        return res.status(400).json({ error: 'Razorpay order does not match this listing payment.' });
+      }
     }
 
     const paymentOutcome = getListingPaymentOutcome(method);
@@ -2723,7 +2746,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
 
     try {
       const listingTitle = listing?.title || 'Vehicle Listing';
-      const formattedAmount = payment.amount ? `Ã¢â€šÂ¹${Number(payment.amount).toLocaleString('en-IN')}` : '';
+      const formattedAmount = payment.amount ? `₹${Number(payment.amount).toLocaleString('en-IN')}` : '';
 
       const notificationTitle = paymentOutcome.requiresManualReview
         ? 'Payment Receipt Submitted'

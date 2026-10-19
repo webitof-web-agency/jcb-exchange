@@ -327,7 +327,6 @@ const createEmptyPreviewState = (): MediaPreviewState => ({
 
 const conditions = ['Excellent', 'Good', 'Fair', 'Needs Repair'];
 const fuelTypes = ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other'];
-const transmissions = ['Manual', 'Automatic'];
 const mediaSlots: MediaSlotConfig[] = [
   { key: 'front-view', label: 'Front View (Image)', kind: 'image' },
   { key: 'rear-view', label: 'Rear View (Image)', kind: 'image' },
@@ -713,7 +712,6 @@ export default function SellVehicleModal({
   const localizedAvailability = (value: string) => t(`sellModal.availability.${value}`);
   const localizedCondition = (value: string) => t(`machineDetails.conditionOptions.${value}`, value);
   const localizedFuelType = (value: string) => t(`machineDetails.fuelOptions.${value}`, value);
-  const localizedTransmission = (value: string) => t(`machineDetails.transmissionOptions.${value}`, value);
   const localizedStatus = (value: string) => {
     const upper = value.toUpperCase();
     if (upper === 'DRAFT') return t('sellModal.status.saved');
@@ -1788,16 +1786,6 @@ export default function SellVehicleModal({
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label={t('sellModal.transmission')}>
-                      <SearchableSelect
-                        options={transmissions.map((option) => ({ id: option, name: localizedTransmission(option) }))}
-                        value={form.transmission}
-                        onChange={(opt) => updateField('transmission', String(opt.id))}
-                        placeholder={t('sellModal.selectTransmission')}
-                        searchable={false}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
                     <Field label={t('sellModal.currentAvailability')}>
                       <SearchableSelect
                         options={(form.currentAvailability === 'PENDING' ? ['PENDING'] : SELL_VEHICLE_AVAILABILITY_OPTIONS).map((option) => ({ id: option, name: localizedAvailability(option) }))}
@@ -2184,7 +2172,7 @@ export default function SellVehicleModal({
                         <h3 className="text-base font-bold text-gray-900">{t('sellModal.mechanicalLocation')}</h3>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <DetailItem label={t('sellModal.fuelType')} value={parsedDetails.fuelType || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.transmission')} value={parsedDetails.transmission || t('sellModal.na')} />
+                          {parsedDetails.transmission ? <DetailItem label={t('sellModal.transmission')} value={parsedDetails.transmission} /> : null}
                           <DetailItem label={t('sellModal.grossPower')} value={viewListing.grossPower || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.address', 'Address')} value={viewListing.address || parsedDetails.address || parsedDetails.district || t('sellModal.na')} />
                           <DetailItem label={t('sellModal.pinCode')} value={parsedDetails.pinCode || t('sellModal.na')} />

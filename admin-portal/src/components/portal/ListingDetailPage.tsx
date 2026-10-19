@@ -345,7 +345,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 const CONDITION_OPTIONS = ['Excellent', 'Good', 'Fair', 'Needs Repair'];
 const FUEL_OPTIONS = ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other'];
-const TRANSMISSION_OPTIONS = ['Manual', 'Automatic'];
 
 const inputClassName =
   'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-2 focus:ring-[#FFC107]/20';
@@ -821,14 +820,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       FUEL_OPTIONS.map((fuel) => ({
         value: fuel,
         label: t(`listingDetails.fuelOptions.${fuel}`),
-      })),
-    [t]
-  );
-  const transmissionOptions = useMemo(
-    () =>
-      TRANSMISSION_OPTIONS.map((item) => ({
-        value: item,
-        label: t(`listingDetails.transmissionOptions.${item}`),
       })),
     [t]
   );
@@ -2060,15 +2051,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     searchable={false}
                   />
                 </Field>
-                <Field label={t('listingDetails.transmission')}>
-                  <SearchableSelect
-                    options={transmissionOptions.map((opt) => ({ id: opt.value, name: opt.label }))}
-                    value={form.transmission}
-                    onChange={(opt) => updateForm('transmission', String(opt.id))}
-                    placeholder={t('listingDetails.selectTransmission')}
-                    searchable={false}
-                  />
-                </Field>
                 <Field label={t('listingDetails.grossPower')}>
                   <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
                     <input
@@ -2149,10 +2131,12 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Fuel className="h-4 w-4 text-gray-400" /> {t('listingDetails.fuelType')}</span>
                   <span className="text-sm font-semibold text-gray-900">{parsedDetails.fuelType ? t(`listingDetails.fuelOptions.${parsedDetails.fuelType}`) : t('listingDetails.na')}</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-gray-50 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-500"><Settings className="h-4 w-4 text-gray-400" /> {t('listingDetails.transmission')}</span>
-                  <span className="text-sm font-semibold text-gray-900">{parsedDetails.transmission ? t(`listingDetails.transmissionOptions.${parsedDetails.transmission}`) : t('listingDetails.na')}</span>
-                </div>
+                {parsedDetails.transmission ? (
+                  <div className="flex items-center justify-between border-b border-gray-50 py-2">
+                    <span className="flex items-center gap-2 text-sm text-gray-500"><Settings className="h-4 w-4 text-gray-400" /> {t('listingDetails.transmission')}</span>
+                    <span className="text-sm font-semibold text-gray-900">{t(`listingDetails.transmissionOptions.${parsedDetails.transmission}`)}</span>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Wrench className="h-4 w-4 text-gray-400" /> {t('listingDetails.grossPower')}</span>
                   <span className="text-sm font-semibold text-gray-900">{listing.grossPower ? `${listing.grossPower.replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim()} HP` : t('listingDetails.na')}</span>

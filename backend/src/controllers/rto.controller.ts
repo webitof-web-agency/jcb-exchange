@@ -87,7 +87,9 @@ const buildPayload = (body: any, existing?: any) => {
     rtoStatus: normalizeRtoWorkStatus(value('rtoStatus') ?? existing?.rtoStatus ?? RtoWorkStatus.RTO_WORK_IN_PROGRESS),
     noteSheet: body.noteSheet !== undefined ? text(body.noteSheet) || null : existing?.noteSheet,
     vehicleMaintenanceCost: money(value('vehicleMaintenanceCost')),
-    hourRunning: body.hourRunning !== undefined && body.hourRunning !== '' ? Number(body.hourRunning) : existing?.hourRunning || null,
+    hourRunning: body.hourRunning !== undefined && body.hourRunning !== '' && body.hourRunning !== null
+      ? (Number.isFinite(Number(body.hourRunning)) ? Math.max(0, Math.trunc(Number(body.hourRunning))) : null)
+      : body.hourRunning === '' || body.hourRunning === null ? null : existing?.hourRunning ?? null,
   };
 };
 
@@ -227,11 +229,17 @@ export const deleteRtoRecord = async (req: Request, res: Response, next: NextFun
       await tx.vehicleRtoRecord.delete({ where: { id } });
       if (policy.action === 'DELETE_LINKED_PAIR' && linkedSellAccount) {
         await tx.sellAccount.delete({ where: { id: linkedSellAccount.id } });
+        return 'pair';
       }
-      return true;
+      return 'rto';
     });
     if (!deleted) return res.status(404).json({ success: false, error: 'RTO record not found.' });
-    res.json({ success: true, message: 'RTO record and connected Sell Account deleted successfully.' });
+    res.json({
+      success: true,
+      message: deleted === 'pair'
+        ? 'RTO record and connected Sell Account deleted successfully.'
+        : 'RTO record deleted successfully.',
+    });
   } catch (error) {
     if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
     next(error);

@@ -14,8 +14,9 @@ import {
 } from '../utils/accountAccess';
 import prisma from '../lib/prisma';
 import { isAuthVersionCurrent } from '../utils/authVersion';
+import { resolveJwtSecret } from '../utils/jwtSecret';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'jcbexchange_super_secret_key_123';
+const JWT_SECRET = resolveJwtSecret();
 
 interface AuthTokenPayload {
   id: string;

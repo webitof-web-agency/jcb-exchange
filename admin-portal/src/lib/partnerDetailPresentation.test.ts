@@ -8,7 +8,7 @@ import {
 } from './partnerDetailPresentation';
 
 test('masks partner document numbers before employee detail display', () => {
-  assert.equal(maskPartnerDocumentNumber('RZGPS0438N'), 'RZ********N');
+  assert.equal(maskPartnerDocumentNumber('RZGPS0438N'), 'RZ******8N');
   assert.equal(maskPartnerDocumentNumber('27ABCDE1234F1Z5'), '27***********Z5');
   assert.equal(maskPartnerDocumentNumber(''), '');
 });

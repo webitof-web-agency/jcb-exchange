@@ -325,7 +325,6 @@ const createEmptyPreviewState = (): MediaPreviewState => ({
 
 const conditions = ['Excellent', 'Good', 'Fair', 'Needs Repair'];
 const fuelTypes = ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other'];
-const transmissions = ['Manual', 'Automatic'];
 const editableAvailabilityTypes = ['AVAILABLE', 'RESERVED', 'SOLD'];
 
 const availabilityBadgeClassName: Record<string, string> = {
@@ -857,7 +856,6 @@ export default function PartnerListingsPage() {
   const { t } = useTranslation();
   const localizedCondition = (value: string) => t(`machineDetails.conditionOptions.${value}`, value);
   const localizedFuelType = (value: string) => t(`machineDetails.fuelOptions.${value}`, value);
-  const localizedTransmission = (value: string) => t(`machineDetails.transmissionOptions.${value}`, value);
 
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
   const [updatingAvailabilityIds, setUpdatingAvailabilityIds] = useState<string[]>([]);
@@ -2166,9 +2164,6 @@ export default function PartnerListingsPage() {
                     <Field label="Model">
                       <input value={form.model} onChange={(event) => updateField('model', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label="Variant">
-                      <input value={form.variant} onChange={(event) => updateField('variant', event.target.value)} className={fieldClassName} />
-                    </Field>
                     <Field label="Horse Power">
                       <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
                         <input
@@ -2223,16 +2218,6 @@ export default function PartnerListingsPage() {
                         value={form.fuelType}
                         onChange={(opt) => updateField('fuelType', String(opt.id))}
                         placeholder="Select fuel type"
-                        searchable={false}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label="Transmission">
-                      <SearchableSelect
-                        options={transmissions.map((option) => ({ id: option, name: localizedTransmission(option) }))}
-                        value={form.transmission}
-                        onChange={(opt) => updateField('transmission', String(opt.id))}
-                        placeholder="Select transmission"
                         searchable={false}
                         className="bg-[#F8FAFC]"
                       />

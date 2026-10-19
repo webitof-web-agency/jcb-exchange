@@ -1130,7 +1130,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         { icon: <Zap className="h-4 w-4" />, label: t('machineDetails.grossPowerLabel'), value: listing.grossPower || t('machineDetails.na') },
                         { icon: <ShieldCheck className="h-4 w-4" />, label: t('machineDetails.conditionLabel'), value: listing.condition || t('machineDetails.na') },
                         { icon: <Fuel className="h-4 w-4" />, label: t('machineDetails.fuelTypeLabel'), value: detailFuelType || t('machineDetails.na') },
-                        { icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission || t('machineDetails.na') },
+                        ...(detailTransmission ? [{ icon: <Cog className="h-4 w-4" />, label: t('machineDetails.transmissionLabel'), value: detailTransmission }] : []),
                         { icon: <UserCheck className="h-4 w-4" />, label: t('machineDetails.previousOwnersLabel', 'Previous Owners'), value: detailPreviousOwners ? (detailPreviousOwners === '1' ? '1st Owner' : detailPreviousOwners === '2' ? '2nd Owner' : `${detailPreviousOwners} Owners`) : t('machineDetails.na') },
                         { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.chassisNoLabel', 'Chassis / Serial No.'), value: detailChassisNo || t('machineDetails.na') },
                         { icon: <Hash className="h-4 w-4" />, label: t('machineDetails.engineNumberLabel', 'Engine Number'), value: detailEngineNumber || t('machineDetails.na') },

@@ -296,12 +296,14 @@ export default function CustomerPrimePaymentsPage() {
                                 label: 'Approve Payment',
                                 icon: <CheckCircle2 className="h-3.5 w-3.5" />,
                                 variant: 'success' as const,
+                                disabled: paymentActionId === payment.id,
                                 onClick: () => void handlePaymentReview(payment.id, 'ACTIVE'),
                               },
                               {
                                 label: 'Reject Payment',
                                 icon: <XCircle className="h-3.5 w-3.5" />,
                                 variant: 'danger' as const,
+                                disabled: paymentActionId === payment.id,
                                 onClick: () => void handlePaymentReview(payment.id, 'REJECTED'),
                               }
                             ] : [])

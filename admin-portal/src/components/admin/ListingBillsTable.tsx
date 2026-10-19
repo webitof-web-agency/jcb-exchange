@@ -111,8 +111,8 @@ export default function ListingBillsTable() {
       let invoiceSettings: InvoiceSettings | undefined = payload.invoiceSettings;
       if (!invoiceSettings) {
         try {
-          const res = await api.get<{ settings: InvoiceSettings | null }>('/superadmin/invoice-settings');
-          invoiceSettings = res.data.settings || undefined;
+          const res = await api.get<{ invoice: InvoiceSettings | null }>('/master/invoice-settings');
+          invoiceSettings = res.data.invoice || undefined;
         } catch {
           invoiceSettings = fallbackSettings;
         }
