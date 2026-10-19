@@ -1,4 +1,5 @@
 import { Prisma, RtoHirePurchaseStatus, RtoHsrpStatus, RtoValidityStatus } from '@prisma/client';
+import { normalizeRtoWorkStatus } from './rtoStatus';
 
 export type ListingRtoDetailsInput = {
   registrationNo?: unknown;
@@ -132,7 +133,7 @@ export const buildListingRtoData = (
   rtoExpenses: money(input.rtoExpenses),
   rtoExpensesAdvance: existing?.rtoExpensesAdvance || new Prisma.Decimal(0),
   documentSendDate: existing?.documentSendDate || null,
-  rtoStatus: existing?.rtoStatus || 'PENDING',
+  rtoStatus: normalizeRtoWorkStatus(existing?.rtoStatus || 'RTO_WORK_IN_PROGRESS'),
   noteSheet: existing?.noteSheet || null,
   vehicleMaintenanceCost: money(input.vehicleMaintenanceCost),
   hourRunning: Number(input.operatingHours) || null,

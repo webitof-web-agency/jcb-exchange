@@ -45,6 +45,7 @@ type ListingFormState = {
   registrationDate: string;
   registrationUpto: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   previousOwners: string;
@@ -144,6 +145,7 @@ type ListingRecord = {
   additionalDescription?: string;
   grossPower?: string;
   engineNumber?: string | null;
+  ownerName?: string | null;
   isNegotiable?: boolean;
   views?: number;
   partner?: {
@@ -229,6 +231,7 @@ type ParsedListingDetails = {
   registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   previousOwners: string;
@@ -251,6 +254,7 @@ const initialForm: ListingFormState = {
   registrationDate: '',
   registrationUpto: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   engineNumber: '',
   previousOwners: '',
@@ -497,6 +501,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   engineNumber: '',
   previousOwners: '',
@@ -551,6 +556,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'registration no':
         parsed.registrationNo = value;
         break;
+      case 'owner name':
+        parsed.ownerName = value;
+        break;
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial':
@@ -602,6 +610,7 @@ const buildListingDescription = (form: ListingFormState) =>
     form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
     form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
+    form.ownerName ? `Owner name: ${form.ownerName}` : '',
     form.chassisOrSerialNo ? `Chassis/serial: ${form.chassisOrSerialNo}` : '',
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
@@ -1111,6 +1120,7 @@ export default function PartnerListingsPage() {
       registrationDate: parsedDetails.registrationDate,
       registrationUpto: parsedDetails.registrationUpto,
       registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
+      ownerName: listing.ownerName || parsedDetails.ownerName,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
@@ -1308,6 +1318,7 @@ export default function PartnerListingsPage() {
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
+        ownerName: mapped.ownerName || current.ownerName,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
@@ -1405,6 +1416,7 @@ export default function PartnerListingsPage() {
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
+        ownerName: mapped.ownerName || current.ownerName,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
@@ -1611,6 +1623,7 @@ export default function PartnerListingsPage() {
           : {}),
         brandName: sanitizedForm.brand,
         modelName: sanitizedForm.model,
+        ownerName: sanitizedForm.ownerName,
         chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
         title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
         price: sanitizedForm.price,
@@ -2104,7 +2117,7 @@ export default function PartnerListingsPage() {
                       {listingVerificationPolicy?.registrationEnabled ? <p id="partner-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using registration number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Registration number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Use registration number verification when chassis verification is not available.'}</p> : null}
                     </Field>
                   </div>
-                  <div className="mb-4">
+                  <div className="mb-4 grid gap-4 md:grid-cols-2">
                     <Field label="Vehicle Name">
                       <input
                         value={form.title}
@@ -2112,10 +2125,21 @@ export default function PartnerListingsPage() {
                         className={fieldClassName}
                         placeholder="Example: JCB 3DX Plus"
                       />
+                      <p className="mt-1 text-xs text-gray-500">
+                        This name is used as the main listing title on the marketplace.
+                      </p>
                     </Field>
-                    <p className="mt-1 text-xs text-gray-500">
-                      This name is used as the main listing title on the marketplace.
-                    </p>
+                    <Field label="Owner Name">
+                      <input
+                        value={form.ownerName}
+                        onChange={(event) => updateField('ownerName', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="Vehicle owner name"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Auto-filled after registration or chassis verification.
+                      </p>
+                    </Field>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label="Category *">

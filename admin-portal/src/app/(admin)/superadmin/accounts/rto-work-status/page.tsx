@@ -2,8 +2,8 @@
 
 'use client';
 
-import { ComponentType, FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Car, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, FileText, Filter, Loader2, Mail, MapPin, MoreVertical, Phone, Plus, RefreshCw, Search, Trash2, X, Pencil } from 'lucide-react';
+import { ComponentType, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Car, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, FileText, Filter, Loader2, LockKeyhole, Mail, MapPin, MoreVertical, Phone, Plus, RefreshCw, Search, Trash2, X, Pencil } from 'lucide-react';
 import api from '@/lib/api';
 import { getAccountCreatePermissions, getAccountDeletePermissions, getAccountExportPermission, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
 import { buildPaginationItems } from '@/lib/paginationUtils';
@@ -15,20 +15,26 @@ import SearchableSelect from '@/components/ui/SearchableSelect';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { filterSelectOptions, getHsrpStatusOptions, getInitialTermsAccepted, getRtoStatusOptions, getValidityOptions, isValidityDateRequired, normalizeHsrpStatus, normalizeRemark, normalizeRtoStatus, normalizeValidityForEdit } from '@/lib/rtoWorkStatusForm.mjs';
+import { filterSelectOptions, getHsrpStatusOptions, getInitialTermsAccepted, getRtoStatusLabel, getRtoStatusOptions, getValidityOptions, isValidityDateRequired, normalizeHsrpStatus, normalizeRemark, normalizeRtoStatus, normalizeValidityForEdit } from '@/lib/rtoWorkStatusForm.mjs';
+import { buildRtoStatusFilterOptions } from '@/lib/rtoWorkStatusFilter.mjs';
 import { normalizeAmountInput, toEditableAmount } from '@/lib/sellAccountForm.mjs';
 import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
 import { getRtoActionVisibility } from '@/lib/rtoWorkStatusPermissions.mjs';
 import { formatRtoCurrency } from '@/lib/rtoWorkStatusDisplay.mjs';
 import { toast } from 'react-toastify';
+import { getListingAccountPrefill, mergeListingAccountPrefill } from '@/lib/listingAccountPrefill.mjs';
 
-type Status = 'PENDING' | 'IN_PROGRESS' | 'DOCUMENT_REQUIRED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
+type Status = 'RTO_WORK_STARTED' | 'RTO_WORK_IN_PROGRESS' | 'RTO_WORK_FAILED' | 'RTO_WORK_COMPLETED' | 'DEAL_DONE';
 type Validity = 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE' | 'LIFETIME' | 'NOT_APPLICABLE' | 'PENDING';
 type HsrpStatus = 'YES' | 'NO' | 'PENDING' | 'NOT_APPLICABLE';
 type HirePurchase = 'PENDING' | 'ACTIVE' | 'TERMINATED' | 'NOT_APPLICABLE';
 
 type RtoRecord = {
   id: string;
+  isLocked?: boolean;
+  lockedAt?: string | null;
+  sellAccountId?: string | null;
+  listingId?: string | null;
   customerName: string; customerNumber: string; vehicleNumber: string; brandName: string; vehicleType: string; vehicleModel: string;
   hirePurchaseStatus: HirePurchase; taxStatus: Validity; taxValidUntil: string | null;
   fitnessStatus: Validity; fitnessValidUntil: string | null; insuranceStatus: Validity; insuranceValidUntil: string | null;
@@ -47,27 +53,35 @@ type StatusConfig = { label: string; bg: string; text: string; border: string; i
 type ExportFormat = 'csv' | 'xls';
 
 const emptyForm: FormState = {
+  listingId: null,
   customerName: '', customerNumber: '', vehicleNumber: '', brandName: '', vehicleType: '', vehicleModel: '', hirePurchaseStatus: 'PENDING',
   taxStatus: 'VALID', taxValidUntil: null, fitnessStatus: 'VALID', fitnessValidUntil: null,
   insuranceStatus: 'VALID', insuranceValidUntil: null, pucStatus: 'VALID', pucValidUntil: null,
   hsrpStatus: 'NO', sellerName: '', sellerNumber: '', purchaserName: '', purchaserNumber: '', rtoOffice: '',
   rtoAgentName: '', rtoAgentState: '', rtoAgentCity: '', rtoAgentNumber: '', rtoExpenses: 0, rtoExpensesAdvance: 0,
-  documentSendDate: null, rtoStatus: 'PENDING', noteSheet: '', vehicleMaintenanceCost: 0,
+  documentSendDate: null, rtoStatus: 'RTO_WORK_IN_PROGRESS', noteSheet: '', vehicleMaintenanceCost: 0,
 };
 
-const statuses: Status[] = ['PENDING', 'IN_PROGRESS', 'DOCUMENT_REQUIRED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED', 'CANCELLED'];
 const statusConfig: Record<Status, StatusConfig> = {
-  PENDING: { label: 'Pending', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', icon: Clock },
-  IN_PROGRESS: { label: 'In Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
-  DOCUMENT_REQUIRED: { label: 'Document Required', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', icon: AlertTriangle },
-  SUBMITTED: { label: 'Submitted', bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-200', icon: FileText },
-  APPROVED: { label: 'Approved', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
-  REJECTED: { label: 'Rejected', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', icon: AlertTriangle },
-  COMPLETED: { label: 'Completed', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
-  CANCELLED: { label: 'Cancelled', bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', icon: X },
+  RTO_WORK_STARTED: { label: 'RTO Work Start', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', icon: AlertTriangle },
+  RTO_WORK_IN_PROGRESS: { label: 'RTO Work Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
+  RTO_WORK_FAILED: { label: 'RTO Work Failed / Errors', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', icon: AlertTriangle },
+  RTO_WORK_COMPLETED: { label: 'RTO Work Completed', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
+  DEAL_DONE: { label: 'Deal Done', bg: 'bg-emerald-50', text: 'text-emerald-900', border: 'border-emerald-300', icon: Check },
 };
+
+const RTO_STATUS_OPTIONS: Array<{ value: Status; label: string }> = [
+  { value: 'RTO_WORK_STARTED', label: 'RTO Work Start' },
+  { value: 'RTO_WORK_IN_PROGRESS', label: 'RTO Work Progress' },
+  { value: 'RTO_WORK_FAILED', label: 'RTO Work Failed / Errors' },
+  { value: 'RTO_WORK_COMPLETED', label: 'RTO Work Completed' },
+  { value: 'DEAL_DONE', label: 'Deal Done' },
+];
 const label = (value: string) => {
   if (!value) return '—';
+  if (['PENDING', 'IN_PROGRESS', 'DOCUMENT_REQUIRED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'RTO_WORK_STARTED', 'RTO_WORK_IN_PROGRESS', 'RTO_WORK_FAILED', 'RTO_WORK_COMPLETED', 'DEAL_DONE'].includes(value)) {
+    return getRtoStatusLabel(value);
+  }
   if (value === 'NOT_APPLICABLE' || value === 'NOT_REQUIRED') return 'Not Required';
   return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 };
@@ -165,6 +179,13 @@ export default function RTOWorkStatusPage() {
   const [actionMenuId, setActionMenuIdState] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [linkedListingTitle, setLinkedListingTitle] = useState('');
+  const [openStatusDropdownId, setOpenStatusDropdownId] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [lockCandidate, setLockCandidate] = useState<RtoRecord | null>(null);
+  const [pendingDealDoneSave, setPendingDealDoneSave] = useState<{ id: string; payload: Record<string, unknown> } | null>(null);
+  const [lockingRecord, setLockingRecord] = useState(false);
+  const handledListingIdRef = useRef<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -175,11 +196,12 @@ export default function RTOWorkStatusPage() {
   const canManageAccounts = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
   const canCreateRto = canManageAccounts || hasAnyPermission(userPermissions, getAccountCreatePermissions('rto-work-status'));
   const canUpdateRto = canManageAccounts || hasAnyPermission(userPermissions, getAccountUpdatePermissions('rto-work-status'));
+  const canOpenRtoLink = canCreateRto || canUpdateRto;
   const canDeleteRto = canManageAccounts || hasAnyPermission(userPermissions, getAccountDeletePermissions('rto-work-status'));
   const canExportRto = canManageAccounts || hasAnyPermission(userPermissions, [getAccountExportPermission('rto-work-status')]);
   const { showActions, showEdit, showDelete } = getRtoActionVisibility({ canUpdateRto, canDeleteRto });
   const setActionMenuId = useCallback((nextId: string | null) => {
-    if (!showActions || (!showEdit && !showDelete)) {
+    if (!showActions) {
       setActionMenuIdState(null);
       return;
     }
@@ -251,14 +273,7 @@ export default function RTOWorkStatusPage() {
     void loadStates();
   }, [hasHydrated, isAuthenticated]);
 
-  const statusFilterOptions = useMemo(() => {
-    const counts = statuses.reduce((accumulator, status) => ({ ...accumulator, [status]: 0 }), {} as Record<Status, number>);
-    records.forEach((record) => { counts[record.rtoStatus] += 1; });
-    return [
-      { value: 'ALL', label: `All RTO Statuses (${records.length})` },
-      ...statuses.filter((status) => counts[status] > 0).map((status) => ({ value: status, label: `${label(status)} (${counts[status]})` })),
-    ];
-  }, [records]);
+  const statusFilterOptions = useMemo(() => buildRtoStatusFilterOptions(records), [records]);
 
   useEffect(() => {
     if (statusFilter !== 'ALL' && !statusFilterOptions.some((option) => option.value === statusFilter)) {
@@ -307,7 +322,7 @@ export default function RTOWorkStatusPage() {
     { header: 'RTO Expenses Advance', value: (record: RtoRecord) => record.rtoExpensesAdvance },
     { header: 'RTO Expenses Balance', value: (record: RtoRecord) => record.rtoExpensesBalance },
     { header: 'Document Send Date', value: (record: RtoRecord) => exportDateValue(record.documentSendDate) },
-    { header: 'RTO Status', value: (record: RtoRecord) => label(record.rtoStatus) },
+    { header: 'RTO Status', value: (record: RtoRecord) => getRtoStatusLabel(record.rtoStatus) },
     { header: 'Note Sheet', value: (record: RtoRecord) => record.noteSheet || '' },
   ], []);
 
@@ -334,8 +349,8 @@ export default function RTOWorkStatusPage() {
 
   const recordCounts = useMemo(() => ({
     all: records.length,
-    pending: records.filter((record) => record.rtoStatus === 'PENDING').length,
-    completed: records.filter((record) => record.rtoStatus === 'COMPLETED').length,
+    pending: records.filter((record) => record.rtoStatus === 'RTO_WORK_IN_PROGRESS').length,
+    completed: records.filter((record) => record.rtoStatus === 'RTO_WORK_COMPLETED').length,
   }), [records]);
 
   useEffect(() => {
@@ -365,10 +380,11 @@ export default function RTOWorkStatusPage() {
     setVehicleMaintenanceCostInput(normalized.raw);
     update('vehicleMaintenanceCost', normalized.value);
   };
-  const openCreate = () => {
+  const openCreate = useCallback((prefill: Partial<FormState> = {}) => {
     if (!canCreateRto) return;
+    if (!prefill.listingId) setLinkedListingTitle('');
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, ...prefill });
     setRtoExpensesInput('');
     setRtoExpensesAdvanceInput('');
     setVehicleMaintenanceCostInput('');
@@ -376,9 +392,13 @@ export default function RTOWorkStatusPage() {
     setError('');
     setTermsAccepted(getInitialTermsAccepted('create'));
     setModalOpen(true);
-  };
+  }, [canCreateRto]);
   const openEdit = useCallback(async (record: RtoRecord) => {
     if (!canUpdateRto) return;
+    if (record.isLocked) {
+      toast.info('This record is locked and can only be viewed.');
+      return;
+    }
     const taxStatus = normalizeValidityForEdit(record.taxStatus) as Validity;
     const fitnessStatus = normalizeValidityForEdit(record.fitnessStatus) as Validity;
     const insuranceStatus = normalizeValidityForEdit(record.insuranceStatus) as Validity;
@@ -424,6 +444,55 @@ export default function RTOWorkStatusPage() {
     void openEdit(record);
     router.replace(accountBasePath, { scroll: false });
   }, [accountBasePath, canUpdateRto, modalOpen, openEdit, records, router, searchParams, states.length]);
+
+  useEffect(() => {
+    const listingId = searchParams.get('listingId')?.trim() || '';
+    if (!listingId || loading || modalOpen || handledListingIdRef.current === listingId || !canOpenRtoLink) return;
+    handledListingIdRef.current = listingId;
+
+    const linkedRecord = records.find((record) => record.listingId === listingId);
+
+    const loadListingPrefill = async () => {
+      try {
+        const response = await api.get<{ listing?: Record<string, unknown> }>(`/listings/${encodeURIComponent(listingId)}`);
+        const listing = response.data?.listing;
+        if (!listing) throw new Error('Listing not found.');
+        const prefill = getListingAccountPrefill(listing);
+        if (linkedRecord) {
+          const mergedRecord = mergeListingAccountPrefill(linkedRecord, prefill) as RtoRecord;
+          setLinkedListingTitle(`Edit RTO record: ${prefill.listingTitle}`);
+          void openEdit(mergedRecord);
+          router.replace(accountBasePath, { scroll: false });
+          return;
+        }
+
+        setLinkedListingTitle(`Create RTO record: ${prefill.listingTitle}`);
+        openCreate({
+          listingId: prefill.listingId,
+          customerName: prefill.ownerName || prefill.sellerName,
+          customerNumber: prefill.ownerNumber || prefill.sellerNumber,
+          vehicleNumber: prefill.vehicleNumber,
+          brandName: prefill.brandName,
+          vehicleType: prefill.vehicleType,
+          vehicleModel: prefill.vehicleModel,
+          sellerName: prefill.sellerName || prefill.ownerName,
+          sellerNumber: prefill.ownerNumber || prefill.sellerNumber,
+        });
+        router.replace(accountBasePath, { scroll: false });
+      } catch (caught) {
+        if (linkedRecord) {
+          setLinkedListingTitle(`Edit RTO record: ${linkedRecord.vehicleModel || linkedRecord.vehicleNumber}`);
+          void openEdit(linkedRecord);
+          router.replace(accountBasePath, { scroll: false });
+          return;
+        }
+        setError(caught instanceof Error ? caught.message : 'Unable to load the selected listing.');
+        router.replace(accountBasePath, { scroll: false });
+      }
+    };
+
+    void loadListingPrefill();
+  }, [accountBasePath, canOpenRtoLink, loading, modalOpen, openCreate, openEdit, records, router, searchParams]);
   const changeState = async (stateName: string) => {
     update('rtoAgentState', stateName); update('rtoAgentCity', ''); setCities([]);
     if (!stateName) return;
@@ -479,6 +548,12 @@ export default function RTOWorkStatusPage() {
         rtoExpensesAdvance: Number(form.rtoExpensesAdvance || 0),
         vehicleMaintenanceCost: Number(form.vehicleMaintenanceCost || 0),
       };
+      if (editingId && form.rtoStatus === 'DEAL_DONE') {
+        const record = records.find((item) => item.id === editingId) || null;
+        setPendingDealDoneSave({ id: editingId, payload });
+        setLockCandidate(record || { ...form, id: editingId, rtoExpensesBalance: 0 });
+        return;
+      }
       const response = editingId ? await api.put(`/recruitment/admin/rto-records/${editingId}`, payload) : await api.post('/recruitment/admin/rto-records', payload);
       if (!response.data?.success) throw new Error(response.data?.error || 'Save failed.');
       setModalOpen(false); await loadRecords();
@@ -490,16 +565,216 @@ export default function RTOWorkStatusPage() {
     } finally { setSaving(false); }
   };
 
+  const confirmDealDoneLock = async () => {
+    if (!pendingDealDoneSave) return;
+    setLockingRecord(true);
+    setError('');
+    try {
+      const updateResponse = await api.put(`/recruitment/admin/rto-records/${pendingDealDoneSave.id}`, pendingDealDoneSave.payload);
+      if (!updateResponse.data?.success) throw new Error(updateResponse.data?.error || 'Unable to save Deal Done status.');
+      const lockResponse = await api.post(`/recruitment/admin/rto-records/${pendingDealDoneSave.id}/lock`);
+      if (!lockResponse.data?.success) throw new Error(lockResponse.data?.error || 'Unable to lock the record.');
+      setPendingDealDoneSave(null);
+      setLockCandidate(null);
+      setModalOpen(false);
+      setSelected(null);
+      await loadRecords();
+      toast.success('Deal Done record locked. It is now view-only.');
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Unable to lock the record.';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLockingRecord(false);
+    }
+  };
+
   const remove = async (id: string) => {
     if (!canDeleteRto) return;
+    const record = records.find((item) => item.id === id);
+    if (record?.isLocked) {
+      toast.info('This record is locked and can only be viewed.');
+      return;
+    }
     if (!window.confirm('Delete this RTO record? This action cannot be undone.')) return;
-    try { await api.delete(`/recruitment/admin/rto-records/${id}`); await loadRecords(); } catch { setError('Unable to delete RTO record.'); }
+    try {
+      await api.delete(`/recruitment/admin/rto-records/${id}`);
+      await loadRecords();
+      toast.success(record?.sellAccountId ? 'RTO and connected Sell Account deleted successfully.' : 'RTO record deleted successfully.');
+    } catch (caught) {
+      const responseError = caught as { response?: { data?: { error?: unknown } } };
+      const message = typeof responseError.response?.data?.error === 'string'
+        ? responseError.response.data.error
+        : 'Unable to delete RTO record.';
+      setError(message);
+      toast.error(message);
+    }
   };
 
   const phoneLink = (phoneNumber: string) => phoneNumber ? <a href={`tel:${phoneNumber}`} onClick={(event) => event.stopPropagation()} className="mt-0.5 flex items-center gap-1 text-xs text-blue-600 hover:underline"><Phone className="h-3 w-3 text-blue-500" />{phoneNumber}</a> : <span className="mt-0.5 block text-xs text-gray-400">No number</span>;
   const validityCell = (status: Validity, date: string | null) => <span className="whitespace-nowrap">{label(status)}{date ? <small className="block text-gray-400">{dateValue(date)}</small> : null}</span>;
+
+  useEffect(() => {
+    if (!openStatusDropdownId) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest('[data-rto-status-dropdown]')) {
+        setOpenStatusDropdownId(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenStatusDropdownId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openStatusDropdownId]);
+
+  const handleQuickStatusChange = async (record: RtoRecord, nextStatus: Status) => {
+    if (!canUpdateRto || updatingStatusId) return;
+    if (record.isLocked) {
+      toast.info('This record is locked and can only be viewed.');
+      return;
+    }
+    if (record.rtoStatus === nextStatus) return;
+
+    if (nextStatus === 'DEAL_DONE') {
+      setPendingDealDoneSave({ id: record.id, payload: { ...record, rtoStatus: nextStatus } });
+      setLockCandidate({ ...record, rtoStatus: nextStatus });
+      setOpenStatusDropdownId(null);
+      return;
+    }
+
+    const previousStatus = record.rtoStatus;
+    setUpdatingStatusId(record.id);
+
+    // Optimistically update the status in the UI
+    setRecords((prev) =>
+      prev.map((r) => (r.id === record.id ? { ...r, rtoStatus: nextStatus } : r))
+    );
+
+    try {
+      const payload = {
+        ...record,
+        rtoStatus: nextStatus,
+      };
+      const response = await api.put(`/recruitment/admin/rto-records/${record.id}`, payload);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || 'Failed to update RTO status.');
+      }
+      const updatedRecord: RtoRecord = {
+        ...record,
+        ...response.data.record,
+        rtoStatus: normalizeRtoStatus(response.data.record?.rtoStatus || nextStatus) as Status,
+      };
+      setRecords((prev) =>
+        prev.map((r) => (r.id === record.id ? updatedRecord : r))
+      );
+      toast.success(`RTO Status updated to "${statusConfig[nextStatus]?.label || nextStatus}"`);
+    } catch (err: unknown) {
+      setRecords((prev) =>
+        prev.map((r) => (r.id === record.id ? { ...r, rtoStatus: previousStatus } : r))
+      );
+      const message = err instanceof Error ? err.message : 'Unable to update RTO status.';
+      toast.error(message);
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
+  const renderStatusDropdown = (record: RtoRecord, index: number) => {
+    const config = statusConfig[record.rtoStatus] || statusConfig.RTO_WORK_IN_PROGRESS;
+    const StatusIcon = config.icon;
+    const isOpen = openStatusDropdownId === record.id;
+    const isUpdating = updatingStatusId === record.id;
+    const openUpwards = index >= Math.max(0, currentRecords.length - 2) && currentRecords.length > 2;
+
+    if (!canUpdateRto || record.isLocked) {
+      return (
+        <span title={record.isLocked ? 'Locked: view only' : undefined} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 ${config.bg} ${config.text} ${config.border}`}>
+          <StatusIcon className="h-3.5 w-3.5" />
+          {config.label}
+          {record.isLocked ? <LockKeyhole className="h-3.5 w-3.5" /> : null}
+        </span>
+      );
+    }
+
+    return (
+      <div className={`relative inline-block ${isOpen ? 'z-40' : 'z-10'}`} data-rto-status-dropdown>
+        <button
+          type="button"
+          disabled={isUpdating}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpenStatusDropdownId((current) => (current === record.id ? null : record.id));
+          }}
+          className={`group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 transition-all shadow-xs hover:shadow-sm cursor-pointer select-none disabled:cursor-wait disabled:opacity-75 ${config.bg} ${config.text} ${config.border} hover:brightness-95`}
+          title="Click to change RTO status"
+          aria-haspopup="true"
+          aria-expanded={isOpen}
+        >
+          {isUpdating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-current" />
+          ) : (
+            <StatusIcon className="h-3.5 w-3.5" />
+          )}
+          <span>{config.label}</span>
+          <ChevronDown className={`h-3 w-3 text-current transition-transform duration-200 ${isOpen ? 'rotate-180' : 'opacity-70 group-hover:opacity-100'}`} />
+        </button>
+
+        {isOpen ? (
+          <div
+            className={`absolute left-0 ${openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} z-50 w-56 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 mb-1">
+              Change RTO Status
+            </div>
+            {RTO_STATUS_OPTIONS.map((opt) => {
+              const isSelected = record.rtoStatus === opt.value;
+              const itemConfig = statusConfig[opt.value] || statusConfig.RTO_WORK_IN_PROGRESS;
+              const ItemIcon = itemConfig.icon;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={isUpdating}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenStatusDropdownId(null);
+                    if (!isSelected) {
+                      void handleQuickStatusChange(record, opt.value);
+                    }
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition cursor-pointer ${
+                    isSelected
+                      ? `${itemConfig.bg} ${itemConfig.text} ring-1 ring-inset ${itemConfig.border}`
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <ItemIcon className={`h-3.5 w-3.5 shrink-0 ${isSelected ? itemConfig.text : 'text-gray-400'}`} />
+                    <span className="truncate">{itemConfig.label}</span>
+                  </div>
+                  {isSelected ? <Check className="h-3.5 w-3.5 shrink-0 text-current" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
   const statusPill = (status: Status) => {
-    const config = statusConfig[status] || statusConfig.PENDING;
+    const config = statusConfig[status] || statusConfig.RTO_WORK_IN_PROGRESS;
     const StatusIcon = config.icon;
     return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 ${config.bg} ${config.text} ${config.border}`}><StatusIcon className="h-3.5 w-3.5" />{config.label}</span>;
   };
@@ -516,7 +791,7 @@ export default function RTOWorkStatusPage() {
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <div className="w-full sm:w-64">
-            <StyledSelect value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} />
+            <StyledSelect searchable value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} />
           </div>
           <button type="button" onClick={() => { setSearch(''); setStatusFilter('ALL'); }} className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-500 shadow-sm transition hover:bg-gray-50" aria-label="Reset filters"><RefreshCw size={18} /></button>
           {canExportRto ? (
@@ -532,7 +807,7 @@ export default function RTOWorkStatusPage() {
               ) : null}
             </div>
           ) : null}
-          {canCreateRto ? <button type="button" onClick={openCreate} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-[#E5AD06] sm:w-auto"><Plus size={18} />Add</button> : null}
+          {canCreateRto ? <button type="button" onClick={() => openCreate()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-[#E5AD06] sm:w-auto"><Plus size={18} />Add</button> : null}
         </div>
       </div>
 
@@ -552,7 +827,7 @@ export default function RTOWorkStatusPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {currentRecords.length > 0 ? (
-              currentRecords.map((record) => {
+              currentRecords.map((record, index) => {
                 return (
                   <tr key={record.id} onClick={() => router.push(`${accountBasePath}/${record.id}`)} className="cursor-pointer transition-colors hover:bg-gray-50/80">
                     <td className="px-3.5 py-3.5"><div className="flex items-start gap-1.5"><Car className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" /><div><p className="font-bold text-gray-900 whitespace-nowrap">{vehicleNumberDisplay(record.vehicleNumber)}</p><p className="text-xs text-gray-500">{record.brandName ? `${record.brandName} Â· ` : ''}{record.vehicleType} {record.vehicleModel}</p><span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{label(record.hirePurchaseStatus)}</span></div></div></td>
@@ -572,7 +847,7 @@ export default function RTOWorkStatusPage() {
                       ) : null}
                     </td>
                     <td className="px-3 py-3.5 whitespace-nowrap"><p className="text-xs font-semibold text-gray-900">{formatRtoCurrency(record.rtoExpenses)}</p></td>
-                    <td className="px-3 py-3.5 whitespace-nowrap">{statusPill(record.rtoStatus)}</td>
+                    <td className="px-3 py-3.5 whitespace-nowrap">{renderStatusDropdown(record, index)}</td>
                     <td className="px-3.5 py-3.5 text-right">
                       <div onClick={(event) => event.stopPropagation()}>
                         <PortalActionDropdown
@@ -583,7 +858,7 @@ export default function RTOWorkStatusPage() {
                               icon: <Eye className="h-4 w-4 text-gray-500" />,
                               onClick: () => router.push(`${accountBasePath}/${record.id}`),
                             },
-                            ...(canUpdateRto ? [{
+                            ...(canUpdateRto && !record.isLocked ? [{
                               label: 'Edit Record',
                               icon: <Pencil className="h-4 w-4 text-blue-500" />,
                               onClick: () => void openEdit(record),
@@ -593,11 +868,16 @@ export default function RTOWorkStatusPage() {
                               icon: <Download className="h-4 w-4 text-gray-500" />,
                               onClick: () => downloadRecord(record),
                             }] : []),
-                            ...(canDeleteRto ? [{
+                            ...(canDeleteRto && !record.isLocked ? [{
                               label: 'Delete Record',
                               icon: <Trash2 className="h-4 w-4 text-red-500" />,
                               variant: 'danger' as const,
                               onClick: () => void remove(record.id),
+                            }] : []),
+                            ...(record.isLocked ? [{
+                              label: 'Locked · View only',
+                              icon: <LockKeyhole className="h-4 w-4 text-slate-500" />,
+                              onClick: () => router.push(`${accountBasePath}/${record.id}`),
                             }] : []),
                           ]}
                         />
@@ -632,29 +912,35 @@ export default function RTOWorkStatusPage() {
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {([
             ['ALL', `All RTO Records (${recordCounts.all})`],
-            ['PENDING', `Pending (${recordCounts.pending})`],
-            ['COMPLETED', `Completed (${recordCounts.completed})`],
+            ['RTO_WORK_STARTED', 'RTO Work Start'],
+            ['RTO_WORK_IN_PROGRESS', `RTO Work Progress (${recordCounts.pending})`],
+            ['RTO_WORK_FAILED', 'RTO Work Failed / Errors'],
+            ['RTO_WORK_COMPLETED', `RTO Work Completed (${recordCounts.completed})`],
+            ['DEAL_DONE', 'Deal Done'],
           ] as const).map(([value, title]) => (
             <button key={value} type="button" onClick={() => setStatusFilter(value)} className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition cursor-pointer sm:text-sm ${statusFilter === value ? 'bg-[#FFC107] text-black shadow-2xs font-extrabold' : 'border border-gray-200 bg-white text-gray-600 hover:border-[#FFC107] hover:text-gray-900'}`}>
               {title}
             </button>
           ))}
         </div>
-        <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-gray-950 transition hover:bg-amber-600"><Plus size={17} /> Add RTO Record</button>
+        <button onClick={() => openCreate()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-gray-950 transition hover:bg-amber-600"><Plus size={17} /> Add RTO Record</button>
       </div>
       <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/40 p-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="relative w-full xl:max-w-3xl"><Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} /><input className={`${inputClass} h-11 rounded-full bg-white pl-10`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vehicle, customer, RTO office or agent..." /></div>
-        <div className="flex flex-wrap items-center gap-2"><Filter size={16} className="text-gray-400" /><div className="w-full sm:w-64"><StyledSelect value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} /></div><button onClick={() => { setSearch(''); setStatusFilter('ALL'); }} className="rounded-xl bg-gray-100 p-3 text-gray-600 hover:bg-gray-200" aria-label="Reset filters"><RefreshCw size={17} /></button></div>
+        <div className="flex flex-wrap items-center gap-2"><Filter size={16} className="text-gray-400" /><div className="w-full sm:w-64"><StyledSelect searchable value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} /></div><button onClick={() => { setSearch(''); setStatusFilter('ALL'); }} className="rounded-xl bg-gray-100 p-3 text-gray-600 hover:bg-gray-200" aria-label="Reset filters"><RefreshCw size={17} /></button></div>
       </div>
       <div className="overflow-x-auto"><table className="min-w-[2600px] w-full text-left text-sm"><thead className="border-b border-gray-200 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr>{columns.map((column) => <th key={column} className="whitespace-nowrap px-5 py-4">{column}</th>)}<th className="sticky right-0 bg-gray-50 px-5 py-4">ACTION</th></tr></thead><tbody className="divide-y divide-gray-100">{loading ? <tr><td colSpan={24} className="py-16 text-center text-gray-500">Loading RTO records...</td></tr> : filteredRecords.length ? filteredRecords.map((record) => <tr key={record.id} className="hover:bg-gray-50"><td className="px-5 py-4 font-semibold text-gray-900">{record.customerName}</td><td className="px-5 py-4">{record.customerNumber || 'â€”'}</td><td className="px-5 py-4 font-bold text-gray-900">{record.vehicleNumber}</td><td className="px-5 py-4">{record.vehicleType}</td><td className="px-5 py-4">{record.vehicleModel}</td><td className="px-5 py-4">{label(record.hirePurchaseStatus)}</td><td className="px-5 py-4">{validityCell(record.taxStatus, record.taxValidUntil)}</td><td className="px-5 py-4">{validityCell(record.fitnessStatus, record.fitnessValidUntil)}</td><td className="px-5 py-4">{validityCell(record.insuranceStatus, record.insuranceValidUntil)}</td><td className="px-5 py-4">{validityCell(record.pucStatus, record.pucValidUntil)}</td><td className="px-5 py-4">{label(record.hsrpStatus)}</td><td className="px-5 py-4">{record.sellerName}</td><td className="px-5 py-4">{record.sellerNumber || 'â€”'}</td><td className="px-5 py-4">{record.purchaserName}</td><td className="px-5 py-4">{record.purchaserNumber || 'â€”'}</td><td className="px-5 py-4">{record.rtoAgentName || 'â€”'}<small className="block text-gray-400">{[record.rtoAgentCity, record.rtoAgentState].filter(Boolean).join(', ') || 'â€”'}</small></td><td className="px-5 py-4">{record.rtoAgentNumber || 'â€”'}</td><td className="px-5 py-4">â‚¹{record.rtoExpenses.toLocaleString('en-IN')}</td><td className="px-5 py-4">â‚¹{record.rtoExpensesAdvance.toLocaleString('en-IN')}</td><td className="px-5 py-4 font-semibold">â‚¹{record.rtoExpensesBalance.toLocaleString('en-IN')}</td><td className="px-5 py-4">{dateValue(record.documentSendDate)}</td><td className="px-5 py-4"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{label(record.rtoStatus)}</span></td><td className="max-w-xs px-5 py-4">{record.noteSheet || 'â€”'}</td><td className="sticky right-0 bg-white px-5 py-4"><div className="relative flex justify-end"><button type="button" onClick={() => setActionMenuId(actionMenuId === record.id ? null : record.id)} className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100" aria-label="Open actions"><MoreVertical size={17} /></button>{actionMenuId === record.id ? <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setSelected(record); setActionMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Eye size={14} /> View</button><button type="button" onClick={() => { setActionMenuId(null); void openEdit(record); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"><Pencil size={14} /> Edit</button><button type="button" onClick={() => { setActionMenuId(null); void remove(record.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"><Trash2 size={14} /> Delete</button></div> : null}</div></td></tr>) : <tr><td colSpan={24} className="py-16 text-center text-gray-500"><FileText className="mx-auto mb-2 text-gray-300" size={36} />No RTO records found.</td></tr>}</tbody></table></div>
     </div>
 
-    {selected ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold text-gray-900">RTO Record Details</h2><button onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><div className="grid gap-3 text-sm sm:grid-cols-2">{[['Registration Number', vehicleNumberDisplay(selected.vehicleNumber)], ['Vehicle Type', selected.vehicleType], ['Vehicle Model', selected.vehicleModel], ['Customer', `${selected.customerName} (${selected.customerNumber || 'â€”'})`], ['Seller', `${selected.sellerName} (${selected.sellerNumber || 'â€”'})`], ['Purchaser', `${selected.purchaserName} (${selected.purchaserNumber || 'â€”'})`], ['RTO Office', selected.rtoOffice], ['Agent', [selected.rtoAgentName, selected.rtoAgentCity, selected.rtoAgentState].filter(Boolean).join(', ') || 'â€”'], ['Agent Number', selected.rtoAgentNumber || 'â€”'], ['RTO Status', label(selected.rtoStatus)], ['RTO Balance', `â‚¹${selected.rtoExpensesBalance.toLocaleString('en-IN')}`], ['Maintenance Cost', `â‚¹${selected.vehicleMaintenanceCost.toLocaleString('en-IN')}`]].map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-3"><span className="block text-xs text-gray-500">{key}</span><span className="font-semibold text-gray-900">{value}</span></div>)}</div></div></div> : null}
+    {selected ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold text-gray-900">RTO Record Details</h2><button onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div>{selected.isLocked ? <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700"><LockKeyhole className="h-4 w-4" /> Locked — view only</div> : null}<div className="grid gap-3 text-sm sm:grid-cols-2">{[['Registration Number', vehicleNumberDisplay(selected.vehicleNumber)], ['Vehicle Type', selected.vehicleType], ['Vehicle Model', selected.vehicleModel], ['Customer', `${selected.customerName} (${selected.customerNumber || 'â€”'})`], ['Seller', `${selected.sellerName} (${selected.sellerNumber || 'â€”'})`], ['Purchaser', `${selected.purchaserName} (${selected.purchaserNumber || 'â€”'})`], ['RTO Office', selected.rtoOffice], ['Agent', [selected.rtoAgentName, selected.rtoAgentCity, selected.rtoAgentState].filter(Boolean).join(', ') || 'â€”'], ['Agent Number', selected.rtoAgentNumber || 'â€”'], ['RTO Status', label(selected.rtoStatus)], ['RTO Balance', `â‚¹${selected.rtoExpensesBalance.toLocaleString('en-IN')}`], ['Maintenance Cost', `â‚¹${selected.vehicleMaintenanceCost.toLocaleString('en-IN')}`]].map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-3"><span className="block text-xs text-gray-500">{key}</span><span className="font-semibold text-gray-900">{value}</span></div>)}</div></div></div> : null}
+
+    {lockCandidate ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-4 flex items-start gap-3"><div className="rounded-xl bg-amber-100 p-3 text-amber-700"><LockKeyhole className="h-5 w-5" /></div><div><h2 className="text-lg font-bold text-slate-900">Lock Deal Done record?</h2><p className="mt-1 text-sm text-slate-600">After locking, no admin or employee can edit, delete, update status, payments, or start RTO. The record will remain available in view-only mode.</p></div></div><div className="flex justify-end gap-3 border-t border-slate-100 pt-4"><button type="button" disabled={lockingRecord} onClick={() => { setLockCandidate(null); setPendingDealDoneSave(null); }} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button><button type="button" disabled={lockingRecord} onClick={() => void confirmDealDoneLock()} className="rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-600 disabled:cursor-wait disabled:opacity-60">{lockingRecord ? 'Locking...' : 'Lock record'}</button></div></div></div> : null}
 
     {modalOpen ? <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"><div className="mx-auto my-4 max-w-6xl rounded-2xl bg-white shadow-xl"><div className="flex items-center justify-between border-b border-gray-100 p-5"><div><h2 className="text-xl font-bold text-gray-900">{editingId ? 'Edit RTO Record' : 'Add RTO Record'}</h2><p className="text-xs text-gray-500">All fields match the RTO work status sheet.</p></div><button onClick={() => setModalOpen(false)} className="rounded-lg p-2 hover:bg-gray-100"><X size={18} /></button></div><form onSubmit={save} className="space-y-6 p-5">
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {linkedListingTitle ? <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">{linkedListingTitle}. Prefilled values can be reviewed before saving.</div> : null}
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Customer & Vehicle</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Customer Name *"><input className={inputClass} value={form.customerName} onChange={(e) => update('customerName', e.target.value.toUpperCase())} /></Field><Field label="Customer Number"><input className={inputClass} inputMode="numeric" value={form.customerNumber} onChange={(e) => update('customerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Registration Number *"><input className={inputClass} value={vehicleNumberDisplay(form.vehicleNumber)} onChange={(e) => update('vehicleNumber', vehicleNumberInput(e.target.value))} /></Field><Field label="Vehicle Category *"><StyledSelect value={form.vehicleType} placeholder="Select vehicle category" options={[{ value: '', label: 'Select vehicle category' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('vehicleType', value)} /></Field><Field label="Vehicle Modal *"><input className={inputClass} value={form.vehicleModel} onChange={(e) => update('vehicleModel', e.target.value.toUpperCase())} /></Field><Field label="Brand *"><SearchableSelect options={brands} value={form.brandName} displayValue={form.brandName} onChange={(option) => update('brandName', option.name)} placeholder="Select vehicle brand" className="w-full" /></Field></div></section>
-      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={getValidityOptions(form[statusKey], statusKey === 'taxStatus')} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (!isValidityDateRequired(nextStatus)) update(dateKey, null); }} />{isValidityDateRequired(form[statusKey]) ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid"><StyledSelect value={form.hsrpStatus} options={getHsrpStatusOptions()} onChange={(value) => update('hsrpStatus', normalizeHsrpStatus(value) as HsrpStatus)} /></Field><Field label="RTO Status *"><StyledSelect value={form.rtoStatus} options={getRtoStatusOptions()} onChange={(value) => update('rtoStatus', normalizeRtoStatus(value) as Status)} /></Field></div></section>
+      <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Hire Purchase & Validity</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Hire Purchase *"><StyledSelect value={form.hirePurchaseStatus} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ value: item, label: label(item) }))} onChange={(value) => update('hirePurchaseStatus', value as HirePurchase)} /></Field>{([['Tax Validity *', 'taxStatus', 'taxValidUntil'], ['Fitness Validity *', 'fitnessStatus', 'fitnessValidUntil'], ['Insurance Validity *', 'insuranceStatus', 'insuranceValidUntil'], ['PUC Validity *', 'pucStatus', 'pucValidUntil']] as const).map(([title, statusKey, dateKey]) => <Field key={statusKey} label={title}><div className="space-y-2"><StyledSelect value={form[statusKey]} options={getValidityOptions(form[statusKey], statusKey === 'taxStatus')} onChange={(value) => { const nextStatus = value as Validity; update(statusKey, nextStatus); if (!isValidityDateRequired(nextStatus)) update(dateKey, null); }} />{isValidityDateRequired(form[statusKey]) ? <input className={inputClass} type="date" required value={form[dateKey] ? String(form[dateKey]).slice(0, 10) : ''} onChange={(e) => update(dateKey, e.target.value || null)} /> : null}</div></Field>)}<Field label="HSRP Valid"><StyledSelect value={form.hsrpStatus} options={getHsrpStatusOptions()} onChange={(value) => update('hsrpStatus', normalizeHsrpStatus(value) as HsrpStatus)} /></Field></div></section>
       <section><h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">Seller, Purchaser & RTO Agent</h3><div className="grid gap-4 md:grid-cols-3"><Field label="Seller Name *"><input className={inputClass} value={form.sellerName} onChange={(e) => update('sellerName', e.target.value.toUpperCase())} /></Field><Field label="Seller Number"><input className={inputClass} inputMode="numeric" value={form.sellerNumber} onChange={(e) => update('sellerNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="Purcheser Name *"><input className={inputClass} value={form.purchaserName} onChange={(e) => update('purchaserName', e.target.value.toUpperCase())} /></Field><Field label="Purcheser Number"><input className={inputClass} inputMode="numeric" value={form.purchaserNumber} onChange={(e) => update('purchaserNumber', e.target.value.replace(/\D/g, ''))} /></Field><Field label="RTO Office *"><input className={inputClass} value={form.rtoOffice} onChange={(e) => update('rtoOffice', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent Name"><input className={inputClass} value={form.rtoAgentName} onChange={(e) => update('rtoAgentName', e.target.value.toUpperCase())} /></Field><Field label="RTO Agent State"><StyledSelect searchable value={form.rtoAgentState} placeholder="Select state" options={[{ value: '', label: 'Select state' }, ...states.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => void changeState(value)} /></Field><Field label="RTO Agent City"><StyledSelect searchable value={form.rtoAgentCity} placeholder="Select city" disabled={!form.rtoAgentState} options={[{ value: '', label: 'Select city' }, ...cities.map((item) => ({ value: item.name, label: item.name }))]} onChange={(value) => update('rtoAgentCity', value)} /></Field><Field label="RTO Agent Number"><input className={inputClass} inputMode="numeric" value={form.rtoAgentNumber} onChange={(e) => update('rtoAgentNumber', e.target.value.replace(/\D/g, ''))} /></Field></div></section>
       <section>
         <h3 className="mb-3 border-b pb-2 text-sm font-bold uppercase tracking-wide text-amber-700">RTO Expense &amp; Document</h3>
@@ -670,6 +956,9 @@ export default function RTOWorkStatusPage() {
           </Field>
           <Field label="Document Send Date">
             <input className={inputClass} type="date" value={form.documentSendDate ? String(form.documentSendDate).slice(0, 10) : ''} onChange={(e) => update('documentSendDate', e.target.value || null)} />
+          </Field>
+          <Field label="RTO Status *">
+            <StyledSelect value={form.rtoStatus} options={getRtoStatusOptions()} onChange={(value) => update('rtoStatus', normalizeRtoStatus(value) as Status)} />
           </Field>
         </div>
         <p className="mt-2 text-xs text-gray-500">Enter non-negative amounts. Advance cannot exceed total RTO expenses.</p>

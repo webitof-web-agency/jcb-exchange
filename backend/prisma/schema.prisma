@@ -1051,6 +1051,7 @@ model Listing {
   brandId               String
   modelId               String
   title                 String
+  ownerName             String?
   price                 Decimal
   isNegotiable          Boolean       @default(false)
   manufacturingYear     Int
@@ -1079,6 +1080,7 @@ model Listing {
   saleRecord         SaleRecord?
   paymentSubmissions ListingPaymentSubmission[]
   rtoRecords         VehicleRtoRecord[]
+  sellAccount        SellAccount?
   vehicleVerification ListingVehicleVerification?
 
   @@index([status, soldAt])
@@ -1150,11 +1152,134 @@ enum RtoWorkStatus {
   REJECTED
   COMPLETED
   CANCELLED
+  RTO_WORK_STARTED
+  RTO_WORK_IN_PROGRESS
+  RTO_WORK_FAILED
+  RTO_WORK_COMPLETED
+  DEAL_DONE
+}
+
+enum SellAccountDealStatus {
+  OPEN
+  PARTIAL_PAYMENT_RECEIVED
+  FULL_PAYMENT
+  RTO_WORK_STARTED
+  RTO_WORK_IN_PROGRESS
+  RTO_WORK_FAILED
+  RTO_WORK_COMPLETED
+  DEAL_DONE
+}
+
+enum SellAccountPaymentSide {
+  PURCHASER_RECEIPT
+  SELLER_PAYMENT
+}
+
+enum SellAccountPaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  OTHER
+}
+
+enum SellAccountTaxMode {
+  INCLUSIVE
+  EXCLUSIVE
+}
+
+model SellAccount {
+  id                    String                 @id @default(uuid())
+  recordNumber          String                 @unique
+  listingId             String?                @unique
+  listingTitle          String?
+  ownerName             String?
+  ownerNumber           String?
+  vehicleNumber         String?
+  chassisNumber         String?
+  sellDate              DateTime?
+  purchaserDate         DateTime?
+  sellerDate            DateTime?
+  vehicleType           String?
+  brandName             String?
+  vehicleModel          String?
+  sellerName            String?
+  sellerNumber          String?
+  purchaserName         String?
+  purchaserNumber       String?
+  sellerState            String?
+  purchaserState        String?
+  purchaseAmount        Decimal                @db.Decimal(14, 2)
+  sellAmount            Decimal                @db.Decimal(14, 2)
+  expenses              Decimal                @default(0) @db.Decimal(14, 2)
+  balanceAmount         Decimal                @default(0) @db.Decimal(14, 2)
+  netProfit             Decimal                @default(0) @db.Decimal(14, 2)
+  netProfitAfterGst     Decimal                @default(0) @db.Decimal(14, 2)
+  gstRatePercent        Decimal                @default(18) @db.Decimal(5, 2)
+  taxMode               SellAccountTaxMode     @default(INCLUSIVE)
+  transferDetails       String?                @db.Text
+  remarks               String?                @db.Text
+  documents             Json?
+  isDraft               Boolean                @default(false)
+  draftSavedAt          DateTime?
+  isLocked              Boolean                @default(false)
+  lockedAt              DateTime?
+  lockedById            String?
+  dealStatus            SellAccountDealStatus  @default(OPEN)
+  rtoStatusSnapshot     String                 @default("PENDING")
+  createdById           String?
+  updatedById           String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  listing               Listing?               @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  rtoRecord             VehicleRtoRecord?
+  payments              SellAccountPayment[]
+  statusHistory         SellAccountStatusHistory[]
+
+  @@index([dealStatus, updatedAt])
+  @@index([isDraft, updatedAt])
+  @@index([isLocked])
+  @@index([vehicleNumber])
+  @@index([deletedAt])
+}
+
+model SellAccountPayment {
+  id             String                  @id @default(uuid())
+  sellAccountId  String
+  side           SellAccountPaymentSide
+  amount         Decimal                 @db.Decimal(14, 2)
+  paymentDate    DateTime
+  method         SellAccountPaymentMethod @default(OTHER)
+  reference      String?
+  note           String?                 @db.Text
+  createdById    String?
+  createdAt      DateTime                @default(now())
+
+  sellAccount    SellAccount             @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@index([sellAccountId, side, paymentDate])
+}
+
+model SellAccountStatusHistory {
+  id             String                @id @default(uuid())
+  sellAccountId  String
+  oldStatus      SellAccountDealStatus?
+  newStatus      SellAccountDealStatus
+  reason         String?
+  changedById    String?
+  createdAt      DateTime              @default(now())
+
+  sellAccount    SellAccount           @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@index([sellAccountId, createdAt])
 }
 
 model VehicleRtoRecord {
   id                     String                @id @default(uuid())
   listingId              String?
+  sellAccountId          String?               @unique
   customerName           String
   customerNumber         String
   vehicleNumber          String
@@ -1186,6 +1311,9 @@ model VehicleRtoRecord {
   rtoExpensesAdvance     Decimal               @default(0) @db.Decimal(12, 2)
   documentSendDate       DateTime?
   rtoStatus              RtoWorkStatus         @default(PENDING)
+  isLocked               Boolean               @default(false)
+  lockedAt               DateTime?
+  lockedById             String?
   noteSheet              String?               @db.Text
   vehicleMaintenanceCost Decimal               @default(0) @db.Decimal(12, 2)
   hourRunning            Int?
@@ -1193,9 +1321,11 @@ model VehicleRtoRecord {
   updatedAt              DateTime              @updatedAt
 
   listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  sellAccount SellAccount? @relation(fields: [sellAccountId], references: [id], onDelete: SetNull)
 
   @@index([vehicleNumber])
   @@index([rtoStatus])
+  @@index([isLocked])
   @@index([documentSendDate])
   @@index([rtoAgentState, rtoAgentCity])
 }

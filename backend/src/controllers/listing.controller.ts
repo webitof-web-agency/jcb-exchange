@@ -968,6 +968,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      ownerName,
       engineNumber,
       title,
       status,
@@ -1011,6 +1012,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const normalizedDescription = normalizeText(description);
     const normalizedAdditionalDescription = normalizeText(additionalDescription);
     const normalizedGrossPower = normalizeText(grossPower);
+    const normalizedOwnerName = normalizeText(ownerName);
     const normalizedEngineNumber = normalizeText(engineNumber);
     const parsedYear = parseInteger(manufacturingYear) || new Date().getFullYear();
     const parsedOperatingHours = parseInteger(operatingHours);
@@ -1128,6 +1130,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
           brandId: brand.id,
           modelId: model.id,
           title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
+          ownerName: normalizedOwnerName || null,
           price: parsedPrice,
           isNegotiable: Boolean(isNegotiable),
           manufacturingYear: parsedYear,
@@ -1452,6 +1455,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      ownerName,
       engineNumber,
       title,
       status,
@@ -1504,6 +1508,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? normalizeText(additionalDescription)
       : existingListing.additionalDescription;
     const normalizedGrossPower = hasOwnField('grossPower') ? normalizeText(grossPower) : existingListing.grossPower;
+    const normalizedOwnerName = hasOwnField('ownerName') ? normalizeText(ownerName) : existingListing.ownerName;
     const normalizedEngineNumber = hasOwnField('engineNumber')
       ? normalizeText(engineNumber)
       : existingListing.engineNumber;
@@ -1673,6 +1678,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         brandId: brand.id,
         modelId: model.id,
         title: normalizedTitle || `${brand.name} ${model.name}`.trim() || 'Untitled listing',
+        ownerName: normalizedOwnerName || null,
         price: parsedPrice,
         isNegotiable: nextIsNegotiable,
         manufacturingYear: parsedYear,

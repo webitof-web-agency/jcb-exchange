@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Prisma, RtoHsrpStatus, RtoHirePurchaseStatus, RtoValidityStatus } from '@prisma/client';
+import {
+  Prisma,
+  RtoHsrpStatus,
+  RtoHirePurchaseStatus,
+  RtoValidityStatus,
+  RtoWorkStatus,
+} from '@prisma/client';
 import { buildPayload, validateRtoPayload } from './rto.controller';
 
 const validPayload = {
+  listingId: null,
   customerName: 'Customer',
   customerNumber: '',
   vehicleNumber: 'CG04GO4234',
@@ -34,7 +41,7 @@ const validPayload = {
   rtoExpenses: new Prisma.Decimal(100),
   rtoExpensesAdvance: new Prisma.Decimal(0),
   documentSendDate: null,
-  rtoStatus: 'PENDING',
+  rtoStatus: RtoWorkStatus.PENDING,
   noteSheet: null,
   vehicleMaintenanceCost: new Prisma.Decimal(100),
   hourRunning: null,
@@ -69,6 +76,12 @@ test('trims and persists the selected brand', () => {
   const payload = buildPayload({ ...validPayload, brandName: '  CAT  ' });
 
   assert.equal(payload.brandName, 'CAT');
+});
+
+test('preserves an optional listing link when creating an RTO payload', () => {
+  const payload = buildPayload({ ...validPayload, listingId: 'listing-1' });
+
+  assert.equal(payload.listingId, 'listing-1');
 });
 
 test('requires a brand for RTO records', () => {
@@ -146,5 +159,3 @@ test('maps NOT_REQUIRED to NOT_APPLICABLE for hsrpStatus', () => {
   });
   assert.equal(payload.hsrpStatus, RtoHsrpStatus.NOT_APPLICABLE);
 });
-
-

@@ -96,6 +96,7 @@ type ListingDetail = {
   additionalDescription?: string;
   grossPower?: string;
   engineNumber?: string | null;
+  ownerName?: string | null;
   isNegotiable?: boolean;
   views?: number;
   partner?: {
@@ -174,6 +175,7 @@ type ParsedListingDetails = {
   registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   previousOwners: string;
@@ -218,6 +220,7 @@ type ListingEditForm = {
   fuelType: string;
   transmission: string;
   grossPower: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   registrationNo: string;
@@ -235,6 +238,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   engineNumber: '',
   previousOwners: '',
@@ -269,6 +273,7 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'registration upto':
       case 'registration up to': parsed.registrationUpto = value; break;
       case 'registration no': parsed.registrationNo = value; break;
+      case 'owner name': parsed.ownerName = value; break;
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial': parsed.chassisOrSerialNo = value; break;
@@ -377,6 +382,7 @@ const buildListingDescription = (form: ListingEditForm) => {
     ['Registration Date', form.registrationDate],
     ['Registration Upto', form.registrationUpto],
     ['Registration No', form.registrationNo],
+    ['Owner Name', form.ownerName],
     ['Chassis / Serial', form.chassisOrSerialNo],
     ['Owners', form.previousOwners],
     ['Fuel', form.fuelType],
@@ -513,6 +519,7 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     fuelType: parsed.fuelType || '',
     transmission: parsed.transmission || '',
     grossPower: (listing.grossPower || '').replace(/\s*(hp|HP|kw|kW|kWh|w|W).*$/i, '').trim(),
+    ownerName: listing.ownerName || parsed.ownerName || '',
     chassisOrSerialNo: parsed.chassisOrSerialNo || '',
     engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsed.engineNumber || '',
     registrationNo: linkedRto?.vehicleNumber || parsed.registrationNo || '',
@@ -891,6 +898,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
+        ownerName: mapped.ownerName || current.ownerName,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
@@ -1065,6 +1073,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     if (section === 'technical') {
       payload.operatingHours = sanitizedForm.operatingHours.trim();
       payload.grossPower = sanitizedForm.grossPower.trim();
+      payload.ownerName = sanitizedForm.ownerName.trim();
       payload.engineNumber = sanitizedForm.engineNumber.trim();
       if (shouldSyncRto) {
         payload.rtoDetails = buildListingRtoDetails(sanitizedRto, {
@@ -2098,6 +2107,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <Field label={t('listingDetails.engineNumber', 'Engine Number')}>
                   <input value={form.engineNumber} onChange={(event) => updateForm('engineNumber', event.target.value)} className={inputClassName} maxLength={40} />
                 </Field>
+                <Field label={t('listingDetails.ownerName', 'Owner Name')}>
+                  <input value={form.ownerName} onChange={(event) => updateForm('ownerName', event.target.value)} className={inputClassName} />
+                </Field>
                 <Field label={t('listingDetails.registrationNo', 'Registration No.') }>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
@@ -2152,6 +2164,10 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.engineNumber', 'Engine Number')}</span>
                   <span className="text-sm font-semibold text-gray-900">{listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber || t('listingDetails.na')}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-gray-50 py-2">
+                  <span className="flex items-center gap-2 text-sm text-gray-500"><UserCheck className="h-4 w-4 text-gray-400" /> {t('listingDetails.ownerName', 'Owner Name')}</span>
+                  <span className="text-sm font-semibold text-gray-900">{listing.ownerName || parsedDetails.ownerName || t('listingDetails.na')}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 py-2">
                   <span className="flex items-center gap-2 text-sm text-gray-500"><Hash className="h-4 w-4 text-gray-400" /> {t('listingDetails.registrationNo', 'Registration No.')}</span>

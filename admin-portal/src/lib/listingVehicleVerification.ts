@@ -4,6 +4,7 @@ type ProviderVehicleResult = Record<string, unknown>;
 
 export type VehicleVerificationAutofill = {
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   categoryName: string;
@@ -164,6 +165,7 @@ export const getProviderDateStatus = (value: unknown, now = new Date()): Provide
 
 export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now = new Date()): VehicleVerificationAutofill => {
   const registrationNo = text(result.rcNumber ?? result.rc_number);
+  const ownerName = text(result.ownerName ?? result.owner_name);
   const chassisOrSerialNo = text(result.vehicleChasiNumber ?? result.vehicle_chasi_number);
   const engineNumber = text(result.vehicleEngineNumber ?? result.vehicle_engine_number);
   const categoryName = text(result.vehicleCategoryDescription ?? result.vehicle_category_description ?? result.vehicleCategory ?? result.vehicle_category);
@@ -197,6 +199,7 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
 
   return {
     registrationNo,
+    ownerName,
     chassisOrSerialNo,
     engineNumber,
     categoryName,

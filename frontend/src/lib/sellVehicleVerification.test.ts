@@ -14,6 +14,7 @@ import {
 test('maps the nested chassis-to-RC details response to Sell Vehicle fields', () => {
   const mapped = mapChassisToRcVehicle({
     rcNumber: 'PB00AZ1234',
+    owner_name: 'RAJESH KUMAR',
     registrationDate: '2019-01-26',
     registration_valid_upto: '2034-01-25',
     vehicleChasiNumber: 'MALBM51ABC123456',
@@ -37,6 +38,7 @@ test('maps the nested chassis-to-RC details response to Sell Vehicle fields', ()
   assert.deepEqual(mapped, {
     registrationNo: 'PB00AZ1234',
     chassisOrSerialNo: 'MALBM51ABC123456',
+    ownerName: 'RAJESH KUMAR',
     engineNumber: 'D4FCJM12345',
     categoryName: 'Motor Car(LMV)',
     brandName: 'HYUNDAI MOTOR INDIA LTD',

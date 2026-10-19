@@ -20,6 +20,7 @@ test('returns only listing autofill fields to sellers', () => {
     registrationUpto: '2040-01-26',
     vehicleChasiNumber: 'MALBM51ABC123456',
     makerModel: 'I20 SPORTZ CRDI',
+    ownerName: 'TARSEM SINGH',
     vehicleCategoryDescription: 'Motor Car(LMV)',
     insuranceUpto: '2025-01-20',
     registeredAt: 'FEROZPUR RTA, Punjab',

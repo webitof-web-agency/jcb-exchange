@@ -25,6 +25,8 @@ import {
   uploadListingMediaToServer,
 } from '@/lib/fileUpload';
 import { useAuthStore } from '@/store/authStore';
+import { buildAccountModuleUrl, getListingAccountLinkState, isInternalAccountLinkRole } from '@/lib/listingAccountPrefill.mjs';
+import { getListingVerificationDisplay } from '@/lib/listingVerificationDisplay.mjs';
 import { hasPermission } from '@/lib/permissionUtils';
 import { generateAdminListingDetailPath } from '@/lib/routePaths';
 import {
@@ -54,6 +56,7 @@ type ListingFormState = {
   registrationDate: string;
   registrationUpto: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   previousOwners: string;
@@ -166,6 +169,7 @@ type ListingRecord = {
   additionalDescription?: string;
   grossPower?: string;
   engineNumber?: string | null;
+  ownerName?: string | null;
   isNegotiable?: boolean;
   views?: number;
   dealer?: string;
@@ -214,19 +218,6 @@ type ListingRecord = {
 const isProtectedListing = (listing: ListingRecord, currentUserRole?: string | null) =>
   listing.partner?.role === 'SUPER_ADMIN' && currentUserRole !== 'SUPER_ADMIN';
 
-const verificationStatusMeta = (status?: string | null) => {
-  switch (String(status || 'NOT_VERIFIED').toUpperCase()) {
-    case 'API_VERIFIED':
-      return { label: 'API Verified', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
-    case 'MANUALLY_MODIFIED':
-      return { label: 'Manually Modified', className: 'border-amber-200 bg-amber-50 text-amber-800' };
-    case 'REVERIFICATION_REQUIRED':
-      return { label: 'Re-verification Required', className: 'border-rose-200 bg-rose-50 text-rose-700' };
-    default:
-      return { label: 'Not Verified', className: 'border-gray-200 bg-gray-50 text-gray-600' };
-  }
-};
-
 type MediaSlotKey =
   | 'front-view'
   | 'rear-view'
@@ -260,6 +251,7 @@ type ParsedListingDetails = {
   registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   engineNumber: string;
   previousOwners: string;
@@ -282,6 +274,7 @@ const initialForm: ListingFormState = {
   registrationDate: '',
   registrationUpto: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   engineNumber: '',
   previousOwners: '',
@@ -530,6 +523,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   engineNumber: '',
   previousOwners: '',
@@ -584,6 +578,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
       case 'registration no':
         parsed.registrationNo = value;
         break;
+      case 'owner name':
+        parsed.ownerName = value;
+        break;
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial':
@@ -635,6 +632,7 @@ const buildListingDescription = (form: ListingFormState) =>
     form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
     form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
+    form.ownerName ? `Owner name: ${form.ownerName}` : '',
     form.chassisOrSerialNo ? `Chassis/serial: ${form.chassisOrSerialNo}` : '',
     form.previousOwners ? `Owners: ${form.previousOwners}` : '',
     form.fuelType ? `Fuel: ${form.fuelType}` : '',
@@ -1013,6 +1011,7 @@ export default function PartnerListingsPage() {
     user?.role === 'ADMIN' ||
     hasPermission(user?.permissions, 'listings.verify_payment') ||
     hasPermission(user?.permissions, 'listings.approve');
+  const canLinkAccountModules = isInternalAccountLinkRole(user?.role);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState<ListingFormState>(initialForm);
@@ -1029,6 +1028,38 @@ export default function PartnerListingsPage() {
   const [mediaState, setMediaState] = useState<MediaSlotState>(createEmptyMediaState);
   const [previewState, setPreviewState] = useState<MediaPreviewState>(createEmptyPreviewState);
   const [loadingListings, setLoadingListings] = useState(true);
+  const [linkedRtoRecords, setLinkedRtoRecords] = useState<Array<{ listingId?: string | null }>>([]);
+  const [linkedSellRecords, setLinkedSellRecords] = useState<Array<{ listingId?: string | null }>>([]);
+
+  useEffect(() => {
+    if (!canLinkAccountModules) return;
+
+    let cancelled = false;
+    const loadLinkedAccountRecords = async () => {
+      const [rtoResult, sellResult] = await Promise.allSettled([
+        api.get<{ records?: Array<{ listingId?: string | null }> }>('/recruitment/admin/rto-records'),
+        api.get<{ records?: Array<{ listingId?: string | null }> }>('/recruitment/admin/sell-accounts'),
+      ]);
+
+      let sellRecords: Array<{ listingId?: string | null }> = [];
+      try {
+        const saved = localStorage.getItem('jcb_sell_accounts_records');
+        const parsed = saved ? JSON.parse(saved) : [];
+        if (Array.isArray(parsed)) sellRecords = parsed;
+      } catch {
+        sellRecords = [];
+      }
+
+      if (cancelled) return;
+      setLinkedRtoRecords(rtoResult.status === 'fulfilled' ? rtoResult.value.data.records || [] : []);
+      setLinkedSellRecords(sellResult.status === 'fulfilled' ? sellResult.value.data.records || [] : sellRecords);
+    };
+
+    void loadLinkedAccountRecords();
+    return () => {
+      cancelled = true;
+    };
+  }, [canLinkAccountModules]);
 
   const openListingDetails = (listing: ListingRecord) => {
     const basePath = pathname.startsWith('/employee')
@@ -1614,6 +1645,7 @@ export default function PartnerListingsPage() {
       registrationDate: parsedDetails.registrationDate,
       registrationUpto: parsedDetails.registrationUpto,
       registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
+      ownerName: listing.ownerName || parsedDetails.ownerName,
       chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
       engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
@@ -1836,6 +1868,7 @@ export default function PartnerListingsPage() {
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
+        ownerName: mapped.ownerName || current.ownerName,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
@@ -1933,6 +1966,7 @@ export default function PartnerListingsPage() {
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
         registrationNo: mapped.registrationNo || current.registrationNo,
+        ownerName: mapped.ownerName || current.ownerName,
         chassisOrSerialNo: mapped.chassisOrSerialNo || current.chassisOrSerialNo,
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
@@ -2139,6 +2173,7 @@ export default function PartnerListingsPage() {
           : {}),
         brandName: sanitizedForm.brand,
         modelName: sanitizedForm.model,
+        ownerName: sanitizedForm.ownerName,
         chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
         title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
         price: sanitizedForm.price,
@@ -2337,7 +2372,7 @@ export default function PartnerListingsPage() {
   const editingListingRecord = editingListingId
     ? listings.find((item) => item.id === editingListingId) || null
     : null;
-  const editingVerification = verificationStatusMeta(editingListingRecord?.vehicleVerification?.status);
+    const editingVerification = getListingVerificationDisplay(editingListingRecord?.vehicleVerification?.status);
   const chassisButtonState = getVehicleVerificationButtonState('CHASSIS', verificationLoadingSource, vehicleVerificationSource);
   const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
 
@@ -2714,7 +2749,7 @@ export default function PartnerListingsPage() {
                       className="truncate px-2.5 py-2.5 text-[11px] font-semibold tracking-wide cursor-pointer select-none hover:text-amber-600 transition-colors"
                       onClick={() => handleSort('title')}
                     >Vehicle Name<SortIcon col="title" sortKey={sortKey} sortDir={sortDir} /></th>
-                    <th className="truncate px-2.5 py-2.5 text-[11px] font-semibold tracking-wide">Dealer/Owner</th>
+                    <th className="truncate px-2.5 py-2.5 text-[11px] font-semibold tracking-wide">Listed By</th>
                     <th className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide">Model</th>
                     <th className="truncate px-2 py-2.5 text-[11px] font-semibold tracking-wide">Category</th>
                     <th
@@ -2739,8 +2774,10 @@ export default function PartnerListingsPage() {
                   {paginatedListings.map((listing, index) => {
                     const cover = getCoverMedia(listing);
                     const parsedDetails = parseListingDescription(listing.description);
-                    const linkedRto = listing.rtoRecords?.[0];
-                    const vehicleNumber = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
+                    const accountLinkState = getListingAccountLinkState(listing.id, {
+                      rtoRecords: linkedRtoRecords,
+                      sellRecords: linkedSellRecords,
+                    });
                     const availability = listingStatusToAvailability(listing.status);
                     const isUpdatingAvailability = updatingAvailabilityIds.includes(listing.id);
                     const isModeratingListing = moderatingListingIds.includes(listing.id);
@@ -2865,7 +2902,7 @@ export default function PartnerListingsPage() {
                         </td>
                         <td className="px-1.5 py-2 text-center">
                           {(() => {
-                            const verification = verificationStatusMeta(listing.vehicleVerification?.status);
+                            const verification = getListingVerificationDisplay(listing.vehicleVerification?.status);
                             return (
                               <span
                                 className={`inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[9.5px] font-semibold whitespace-nowrap ${verification.className}`}
@@ -2914,6 +2951,20 @@ export default function PartnerListingsPage() {
                                     icon: <Trash2 size={14} />,
                                     variant: 'danger' as const,
                                     onClick: () => setDeleteListingRecord(listing),
+                                  },
+                                ] : []),
+                                ...(canLinkAccountModules ? [
+                                  {
+                                    label: accountLinkState.rtoExists ? 'Edit RTO Record' : 'Create RTO Work Status',
+                                    icon: <Truck size={14} />,
+                                    variant: 'default' as const,
+                                    onClick: () => router.push(buildAccountModuleUrl(pathname, 'rto-work-status', listing.id)),
+                                  },
+                                  {
+                                    label: accountLinkState.sellExists ? 'Edit Sell Account Record' : 'Create Sell Account',
+                                    icon: <ReceiptText size={14} />,
+                                    variant: 'default' as const,
+                                    onClick: () => router.push(buildAccountModuleUrl(pathname, 'sell-accounts', listing.id)),
                                   },
                                 ] : []),
                               ]}
@@ -3116,7 +3167,7 @@ export default function PartnerListingsPage() {
                       {listingVerificationPolicy?.registrationEnabled ? <p id="admin-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using registration number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Registration number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Use registration number verification when chassis verification is not available.'}</p> : null}
                     </Field>
                   </div>
-                  <div className="mb-4">
+                  <div className="mb-4 grid gap-4 md:grid-cols-2">
                     <Field label="Vehicle Name">
                       <input
                         value={form.title}
@@ -3124,10 +3175,21 @@ export default function PartnerListingsPage() {
                         className={fieldClassName}
                         placeholder="Example: JCB 3DX Plus"
                       />
+                      <p className="mt-1 text-xs text-gray-500">
+                        This name is used as the main listing title on the marketplace.
+                      </p>
                     </Field>
-                    <p className="mt-1 text-xs text-gray-500">
-                      This name is used as the main listing title on the marketplace.
-                    </p>
+                    <Field label="Owner Name">
+                      <input
+                        value={form.ownerName}
+                        onChange={(event) => updateField('ownerName', event.target.value)}
+                        className={fieldClassName}
+                        placeholder="Vehicle owner name"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Auto-filled after registration or chassis verification.
+                      </p>
+                    </Field>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label="Category *">

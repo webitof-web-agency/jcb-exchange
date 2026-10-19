@@ -2302,8 +2302,12 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
           imageUrl: listingMedia.find((m: any) => String(m.type || '').toUpperCase() === 'IMAGE')?.url || null,
           media: listingMedia,
           vehicleVerification: (listing as any).vehicleVerification
-            ? {
+              ? {
                 verificationRecordId: (listing as any).vehicleVerification.verificationRecordId || null,
+                verificationSource: (listing as any).vehicleVerification.verificationSource || null,
+                verifiedRegistrationNumber: (listing as any).vehicleVerification.verifiedRegistrationNumber || null,
+                verifiedChassisNumber: (listing as any).vehicleVerification.verifiedChassisNumber || null,
+                verifiedEngineNumber: (listing as any).vehicleVerification.verifiedEngineNumber || null,
                 status: (listing as any).vehicleVerification.status || 'NOT_VERIFIED',
                 changedFields: Array.isArray((listing as any).vehicleVerification.changedFields)
                   ? (listing as any).vehicleVerification.changedFields
@@ -2311,8 +2315,12 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
                 lastVerifiedAt: (listing as any).vehicleVerification.lastVerifiedAt || null,
                 lastModifiedAt: (listing as any).vehicleVerification.lastModifiedAt || null,
               }
-            : {
+              : {
                 verificationRecordId: null,
+                verificationSource: null,
+                verifiedRegistrationNumber: null,
+                verifiedChassisNumber: null,
+                verifiedEngineNumber: null,
                 status: 'NOT_VERIFIED',
                 changedFields: [],
                 lastVerifiedAt: null,

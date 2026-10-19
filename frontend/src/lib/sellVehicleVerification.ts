@@ -5,6 +5,7 @@ type ProviderVehicleResult = Record<string, unknown>;
 export type VehicleVerificationAutofill = {
   registrationNo: string;
   chassisOrSerialNo: string;
+  ownerName: string;
   engineNumber: string;
   categoryName: string;
   brandName: string;
@@ -168,6 +169,7 @@ export const mapChassisToRcVehicle = (
 ): VehicleVerificationAutofill => {
   const registrationNo = text(result.rcNumber ?? result.rc_number);
   const chassisOrSerialNo = text(result.vehicleChasiNumber ?? result.vehicle_chasi_number);
+  const ownerName = text(result.ownerName ?? result.owner_name ?? result.ownerFullName ?? result.owner_full_name);
   const engineNumber = text(result.vehicleEngineNumber ?? result.vehicle_engine_number);
   const categoryName = text(
     result.vehicleCategoryDescription
@@ -207,6 +209,7 @@ export const mapChassisToRcVehicle = (
   return {
     registrationNo,
     chassisOrSerialNo,
+    ownerName,
     engineNumber,
     categoryName,
     brandName,

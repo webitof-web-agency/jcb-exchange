@@ -444,7 +444,7 @@ export default function PartnerLayout({
           </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -558,7 +558,7 @@ export default function PartnerLayout({
                           </button>
                         )}
                       </div>
-                      <div className="max-h-[300px] overflow-y-auto">
+                      <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-0.5">
                         {notifications.length === 0 ? (
                           <div className="px-4 py-8 text-center text-sm text-gray-500">
                             {t('common.noNotifications')}
@@ -648,7 +648,7 @@ export default function PartnerLayout({
             </div>
           </div>
         </header>
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

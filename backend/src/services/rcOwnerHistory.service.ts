@@ -131,6 +131,7 @@ export type RcOwnerHistoryResult = Record<string, unknown>;
 
 const sellerListingResultFields = new Set([
   'rcNumber',
+  'ownerName',
   'registrationDate',
   'registrationUpto',
   'vehicleCategory',

@@ -51,7 +51,20 @@ import {
 } from '../controllers/recruitment.controller';
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
-import { createRtoRecord, deleteRtoRecord, listRtoRecords, updateRtoRecord } from '../controllers/rto.controller';
+import { createRtoRecord, deleteRtoRecord, listRtoRecords, lockRtoRecord, updateRtoRecord } from '../controllers/rto.controller';
+import {
+  addSellAccountPaymentRecord,
+  createSellAccountRecord,
+  deleteSellAccountPaymentRecord,
+  deleteSellAccountRecord,
+  getSellAccountRecord,
+  listSellAccountRecords,
+  saveAndStartSellAccountRtoRecord,
+  startSellAccountRtoRecord,
+  updateAndStartSellAccountRtoRecord,
+  updateSellAccountRecord,
+  lockSellAccountRecord,
+} from '../controllers/sellAccount.controller';
 
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
@@ -72,6 +85,10 @@ const canViewRto = requireAdminOrEmployeePermissions(['accounts.rto.read', 'acco
 const canCreateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.create']);
 const canUpdateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.update']);
 const canDeleteRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.delete']);
+const canViewSell = requireAdminOrEmployeePermissions(['accounts.sell.read', 'accounts.sell.crud']);
+const canCreateSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.create']);
+const canUpdateSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.update']);
+const canDeleteSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.delete']);
 const canViewApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.read']);
 const canUpdateApplicationStage = requireSuperAdminOrEmployeePermissions(['recruitment.applications.update_stage']);
 const canAssignApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.assign']);
@@ -146,6 +163,20 @@ router.get('/admin/rto-records', canViewRto, listRtoRecords);
 router.post('/admin/rto-records', canCreateRto, createRtoRecord);
 router.put('/admin/rto-records/:id', canUpdateRto, updateRtoRecord);
 router.delete('/admin/rto-records/:id', canDeleteRto, deleteRtoRecord);
+router.post('/admin/rto-records/:id/lock', canUpdateRto, lockRtoRecord);
+
+// Sell Account records and normalized payment ledger
+router.get('/admin/sell-accounts', canViewSell, listSellAccountRecords);
+router.post('/admin/sell-accounts', canCreateSell, createSellAccountRecord);
+router.post('/admin/sell-accounts/save-and-start-rto', canCreateSell, canCreateRto, saveAndStartSellAccountRtoRecord);
+router.get('/admin/sell-accounts/:id', canViewSell, getSellAccountRecord);
+router.put('/admin/sell-accounts/:id', canUpdateSell, updateSellAccountRecord);
+router.post('/admin/sell-accounts/:id/lock', canUpdateSell, lockSellAccountRecord);
+router.post('/admin/sell-accounts/:id/save-and-start-rto', canUpdateSell, canCreateRto, updateAndStartSellAccountRtoRecord);
+router.post('/admin/sell-accounts/:id/start-rto', canUpdateSell, canCreateRto, startSellAccountRtoRecord);
+router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
+router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
+router.delete('/admin/sell-accounts/:id/payments/:paymentId', canDeleteSell, deleteSellAccountPaymentRecord);
 
 // Applications
 router.get('/admin/applications', canViewApplications, getAdminApplications);

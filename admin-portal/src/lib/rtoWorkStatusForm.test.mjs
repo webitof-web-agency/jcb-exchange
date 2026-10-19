@@ -60,23 +60,22 @@ test('filters state and city options case-insensitively', () => {
   assert.deepEqual(filterSelectOptions(options, ''), options);
 });
 
-test('exposes all RTO workflow statuses for the add/edit form', () => {
+test('exposes only the five canonical RTO workflow statuses', () => {
   assert.deepEqual(getRtoStatusOptions(), [
-    { value: 'PENDING', label: 'Pending' },
-    { value: 'IN_PROGRESS', label: 'In Progress' },
-    { value: 'DOCUMENT_REQUIRED', label: 'Document Required' },
-    { value: 'SUBMITTED', label: 'Submitted' },
-    { value: 'APPROVED', label: 'Approved' },
-    { value: 'REJECTED', label: 'Rejected' },
-    { value: 'COMPLETED', label: 'Completed' },
-    { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'RTO_WORK_STARTED', label: 'RTO Work Start' },
+    { value: 'RTO_WORK_IN_PROGRESS', label: 'RTO Work Progress' },
+    { value: 'RTO_WORK_FAILED', label: 'RTO Work Failed / Errors' },
+    { value: 'RTO_WORK_COMPLETED', label: 'RTO Work Completed' },
+    { value: 'DEAL_DONE', label: 'Deal Done' },
   ]);
-  assert.equal(normalizeRtoStatus('APPROVED'), 'APPROVED');
+  assert.equal(normalizeRtoStatus('APPROVED'), 'RTO_WORK_STARTED');
+  assert.equal(normalizeRtoStatus(' in_progress '), 'RTO_WORK_IN_PROGRESS');
 });
 
 test('normalizes invalid API status values to the safe initial status', () => {
-  assert.equal(normalizeRtoStatus(''), 'PENDING');
-  assert.equal(normalizeRtoStatus('UNKNOWN'), 'PENDING');
+  assert.equal(normalizeRtoStatus('PENDING'), 'RTO_WORK_IN_PROGRESS');
+  assert.equal(normalizeRtoStatus(''), 'RTO_WORK_IN_PROGRESS');
+  assert.equal(normalizeRtoStatus('UNKNOWN'), 'RTO_WORK_IN_PROGRESS');
 });
 
 test('normalizes remarks without destroying meaningful multiline content', () => {

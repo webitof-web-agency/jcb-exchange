@@ -19,6 +19,7 @@ test('maps chassis-to-RC response into partner listing fields and compliance dat
     vehicleCategoryDescription: 'Motor Car(LMV)',
     makerDescription: 'HYUNDAI MOTOR INDIA LTD',
     makerModel: 'I20 SPORTZ CRDI',
+    ownerName: 'TARSEM SINGH',
     manufacturingDateFormatted: '2018-10',
     registrationDate: '2019-01-26',
     registration_valid_upto: '2034-01-25',
@@ -44,6 +45,7 @@ test('maps chassis-to-RC response into partner listing fields and compliance dat
     manufacturingYear: '2018',
     registrationDate: '2019-01-26',
     registrationUpto: '2034-01-25',
+    ownerName: 'TARSEM SINGH',
     previousOwners: '2',
     titleSuggestion: 'HYUNDAI MOTOR INDIA LTD I20 SPORTZ CRDI',
     insuranceExpiry: '2099-01-20',
@@ -99,6 +101,7 @@ test('maps RC Full response into the same listing autofill contract', () => {
     maker_description: 'JCB',
     maker_model: '3DX',
     vehicle_category_description: 'Backhoe Loader',
+    owner_name: 'TARSEM SINGH',
     manufacturing_date_formatted: '2020-04',
     registration_date: '2020-06-01',
   });
@@ -106,6 +109,7 @@ test('maps RC Full response into the same listing autofill contract', () => {
   assert.equal(mapped.registrationNo, 'DL01AB1234');
   assert.equal(mapped.chassisOrSerialNo, 'CHASSIS123456');
   assert.equal(mapped.titleSuggestion, 'JCB 3DX');
+  assert.equal(mapped.ownerName, 'TARSEM SINGH');
 });
 
 test('rejects a provider response whose identity does not match the requested source', () => {

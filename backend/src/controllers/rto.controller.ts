@@ -1,6 +1,11 @@
 import { NextFunction, Request, Response } from 'express';
 import { Prisma, RtoHirePurchaseStatus, RtoHsrpStatus, RtoValidityStatus, RtoWorkStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { normalizeRtoWorkStatus, rtoStatusStorageValues } from '../services/rtoStatus';
+import { syncSellAccountFromRto } from '../services/sellAccount.service';
+import { lockRtoWorkRecord } from '../services/sellAccount.service';
+import { assertRecordEditable, RecordLockedError } from '../services/recordLock';
+import { getLinkedRecordDeletionPolicy } from '../services/linkedRecordDeletion';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -16,13 +21,25 @@ const money = (value: unknown) => {
 const validEnum = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
   allowed.includes(String(value) as T) ? String(value) as T : fallback;
 
-const serialize = (record: any) => ({
-  ...record,
-  rtoExpenses: Number(record.rtoExpenses),
-  rtoExpensesAdvance: Number(record.rtoExpensesAdvance),
-  vehicleMaintenanceCost: Number(record.vehicleMaintenanceCost),
-  rtoExpensesBalance: Math.max(0, Number(record.rtoExpenses) - Number(record.rtoExpensesAdvance)),
-});
+const serialize = (record: any, lockedByName?: string | null) => {
+  const { sellAccount, listing, ...baseRecord } = record;
+  const linkedBrandName = text(sellAccount?.brandName) || text(listing?.brand?.name);
+  const linkedVehicleType = text(sellAccount?.vehicleType) || text(listing?.category?.name);
+  const linkedVehicleModel = text(sellAccount?.vehicleModel) || text(listing?.model?.name);
+
+  return {
+    ...baseRecord,
+    lockedByName: lockedByName || null,
+    brandName: text(baseRecord.brandName) || linkedBrandName,
+    vehicleType: text(baseRecord.vehicleType) || linkedVehicleType,
+    vehicleModel: text(baseRecord.vehicleModel) || linkedVehicleModel,
+    rtoStatus: normalizeRtoWorkStatus(record.rtoStatus),
+    rtoExpenses: Number(baseRecord.rtoExpenses),
+    rtoExpensesAdvance: Number(baseRecord.rtoExpensesAdvance),
+    vehicleMaintenanceCost: Number(baseRecord.vehicleMaintenanceCost),
+    rtoExpensesBalance: Math.max(0, Number(baseRecord.rtoExpenses) - Number(baseRecord.rtoExpensesAdvance)),
+  };
+};
 
 const buildPayload = (body: any, existing?: any) => {
   const value = (key: string) => body[key] !== undefined ? body[key] : existing?.[key];
@@ -32,6 +49,7 @@ const buildPayload = (body: any, existing?: any) => {
   const pucStatus = validEnum(value('pucStatus'), Object.values(RtoValidityStatus), existing?.pucStatus || RtoValidityStatus.NOT_AVAILABLE);
 
   return {
+    listingId: body.listingId !== undefined ? (text(body.listingId) || null) : (existing?.listingId || null),
     customerName: text(value('customerName')),
     customerNumber: phone(value('customerNumber')),
     vehicleNumber: text(value('vehicleNumber')).toUpperCase(),
@@ -66,7 +84,7 @@ const buildPayload = (body: any, existing?: any) => {
     rtoExpenses: money(value('rtoExpenses')),
     rtoExpensesAdvance: money(value('rtoExpensesAdvance')),
     documentSendDate: body.documentSendDate !== undefined ? dateOrNull(body.documentSendDate) : existing?.documentSendDate,
-    rtoStatus: validEnum(value('rtoStatus'), Object.values(RtoWorkStatus), existing?.rtoStatus || RtoWorkStatus.PENDING),
+    rtoStatus: normalizeRtoWorkStatus(value('rtoStatus') ?? existing?.rtoStatus ?? RtoWorkStatus.RTO_WORK_IN_PROGRESS),
     noteSheet: body.noteSheet !== undefined ? text(body.noteSheet) || null : existing?.noteSheet,
     vehicleMaintenanceCost: money(value('vehicleMaintenanceCost')),
     hourRunning: body.hourRunning !== undefined && body.hourRunning !== '' ? Number(body.hourRunning) : existing?.hourRunning || null,
@@ -100,9 +118,12 @@ export const listRtoRecords = async (req: Request, res: Response, next: NextFunc
   try {
     const q = text(req.query.q).toLowerCase();
     const status = text(req.query.status);
+    const normalizedStatus = status ? normalizeRtoWorkStatus(status) : '';
     const records = await prisma.vehicleRtoRecord.findMany({
       where: {
-        ...(status && Object.values(RtoWorkStatus).includes(status as RtoWorkStatus) ? { rtoStatus: status as RtoWorkStatus } : {}),
+        ...(normalizedStatus
+          ? { rtoStatus: { in: rtoStatusStorageValues[normalizedStatus] || [normalizedStatus] } }
+          : {}),
         ...(q ? { OR: [
           { customerName: { contains: q, mode: 'insensitive' } },
           { vehicleNumber: { contains: q, mode: 'insensitive' } },
@@ -111,9 +132,30 @@ export const listRtoRecords = async (req: Request, res: Response, next: NextFunc
           { rtoAgentName: { contains: q, mode: 'insensitive' } },
         ] } : {}),
       },
+      include: {
+        sellAccount: {
+          select: {
+            brandName: true,
+            vehicleType: true,
+            vehicleModel: true,
+          },
+        },
+        listing: {
+          select: {
+            brand: { select: { name: true } },
+            category: { select: { name: true } },
+            model: { select: { name: true } },
+          },
+        },
+      },
       orderBy: { updatedAt: 'desc' },
     });
-    res.json({ success: true, records: records.map(serialize) });
+    const lockedByIds = [...new Set(records.map((record) => text(record.lockedById)).filter(Boolean))];
+    const lockedByUsers = lockedByIds.length
+      ? await prisma.user.findMany({ where: { id: { in: lockedByIds } }, select: { id: true, name: true, email: true, mobile: true } })
+      : [];
+    const lockedByNames = new Map(lockedByUsers.map((user) => [user.id, text(user.name) || text(user.email) || text(user.mobile) || 'User']));
+    res.json({ success: true, records: records.map((record) => serialize(record, lockedByNames.get(text(record.lockedById)) || null)) });
   } catch (error) { next(error); }
 };
 
@@ -122,6 +164,10 @@ export const createRtoRecord = async (req: Request, res: Response, next: NextFun
     const payload = buildPayload(req.body);
     const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
+    if (payload.listingId) {
+      const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
+      if (!listing) return res.status(400).json({ success: false, error: 'Linked listing was not found.' });
+    }
     const record = await prisma.vehicleRtoRecord.create({ data: payload });
     res.status(201).json({ success: true, record: serialize(record) });
   } catch (error) { next(error); }
@@ -132,18 +178,74 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
     const id = text(req.params.id);
     const existing = await prisma.vehicleRtoRecord.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    assertRecordEditable(existing.isLocked);
+    if (existing.sellAccountId) {
+      const linkedSellAccount = await prisma.sellAccount.findUnique({ where: { id: existing.sellAccountId }, select: { isLocked: true } });
+      assertRecordEditable(linkedSellAccount?.isLocked);
+    }
     const payload = buildPayload(req.body, existing);
     const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
-    const record = await prisma.vehicleRtoRecord.update({ where: { id }, data: payload });
+    if (payload.listingId) {
+      const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
+      if (!listing) return res.status(400).json({ success: false, error: 'Linked listing was not found.' });
+    }
+    const record = await prisma.$transaction(async (tx) => {
+      const updated = await tx.vehicleRtoRecord.update({ where: { id }, data: payload });
+      if (updated.sellAccountId) {
+        await syncSellAccountFromRto(tx, updated.sellAccountId, req.user?.id);
+      }
+      return updated;
+    });
     res.json({ success: true, record: serialize(record) });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
+    next(error);
+  }
 };
 
 export const deleteRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = text(req.params.id);
-    await prisma.vehicleRtoRecord.delete({ where: { id } });
-    res.json({ success: true, message: 'RTO record deleted successfully.' });
-  } catch (error) { next(error); }
+    const deleted = await prisma.$transaction(async (tx) => {
+      const existing = await tx.vehicleRtoRecord.findUnique({
+        where: { id },
+        select: { id: true, isLocked: true, sellAccountId: true },
+      });
+      if (!existing) return false;
+
+      const linkedSellAccount = existing.sellAccountId
+        ? await tx.sellAccount.findUnique({ where: { id: existing.sellAccountId }, select: { id: true, isLocked: true } })
+        : null;
+      const policy = getLinkedRecordDeletionPolicy({
+        source: 'RTO',
+        hasLinkedRto: Boolean(linkedSellAccount),
+        isLocked: existing.isLocked || Boolean(linkedSellAccount?.isLocked),
+      });
+      if (policy.action === 'BLOCK') assertRecordEditable(true);
+
+      await tx.vehicleRtoRecord.delete({ where: { id } });
+      if (policy.action === 'DELETE_LINKED_PAIR' && linkedSellAccount) {
+        await tx.sellAccount.delete({ where: { id: linkedSellAccount.id } });
+      }
+      return true;
+    });
+    if (!deleted) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    res.json({ success: true, message: 'RTO record and connected Sell Account deleted successfully.' });
+  } catch (error) {
+    if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
+    next(error);
+  }
+};
+
+export const lockRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const record = await lockRtoWorkRecord(text(req.params.id), req.user?.id);
+    if (!record) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    res.json({ success: true, record: serialize(record) });
+  } catch (error) {
+    if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
+    if (error instanceof Error && error.message.includes('Only records with Deal Done')) return res.status(400).json({ success: false, error: error.message });
+    next(error);
+  }
 };

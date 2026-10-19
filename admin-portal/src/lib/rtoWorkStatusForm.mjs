@@ -11,15 +11,39 @@ const legacyValidityLabels = {
 };
 
 const rtoStatusOptions = [
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'DOCUMENT_REQUIRED', label: 'Document Required' },
-  { value: 'SUBMITTED', label: 'Submitted' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'REJECTED', label: 'Rejected' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'RTO_WORK_STARTED', label: 'RTO Work Start' },
+  { value: 'RTO_WORK_IN_PROGRESS', label: 'RTO Work Progress' },
+  { value: 'RTO_WORK_FAILED', label: 'RTO Work Failed / Errors' },
+  { value: 'RTO_WORK_COMPLETED', label: 'RTO Work Completed' },
+  { value: 'DEAL_DONE', label: 'Deal Done' },
 ];
+
+const rtoStatusLabels = {
+  PENDING: 'RTO Work Progress',
+  IN_PROGRESS: 'RTO Work Progress',
+  DOCUMENT_REQUIRED: 'RTO Work Start',
+  SUBMITTED: 'RTO Work Start',
+  APPROVED: 'RTO Work Start',
+  REJECTED: 'RTO Work Failed / Errors',
+  COMPLETED: 'RTO Work Completed',
+  CANCELLED: 'RTO Work Failed / Errors',
+  RTO_WORK_STARTED: 'RTO Work Start',
+  RTO_WORK_IN_PROGRESS: 'RTO Work Progress',
+  RTO_WORK_FAILED: 'RTO Work Failed / Errors',
+  RTO_WORK_COMPLETED: 'RTO Work Completed',
+  DEAL_DONE: 'Deal Done',
+};
+
+const legacyStatusMap = {
+  PENDING: 'RTO_WORK_IN_PROGRESS',
+  IN_PROGRESS: 'RTO_WORK_IN_PROGRESS',
+  DOCUMENT_REQUIRED: 'RTO_WORK_STARTED',
+  SUBMITTED: 'RTO_WORK_STARTED',
+  APPROVED: 'RTO_WORK_STARTED',
+  REJECTED: 'RTO_WORK_FAILED',
+  CANCELLED: 'RTO_WORK_FAILED',
+  COMPLETED: 'RTO_WORK_COMPLETED',
+};
 
 const hsrpStatusOptions = [
   { value: 'YES', label: 'Yes' },
@@ -41,8 +65,19 @@ export const normalizeHsrpStatus = (value) => {
 
 export const getRtoStatusOptions = () => rtoStatusOptions;
 
-export const normalizeRtoStatus = (value) =>
-  rtoStatusOptions.some((option) => option.value === value) ? value : 'PENDING';
+export const getRtoStatusLabel = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  const canonical = legacyStatusMap[normalized] || normalized;
+  return rtoStatusLabels[canonical] || rtoStatusLabels.RTO_WORK_IN_PROGRESS;
+};
+
+export const normalizeRtoStatus = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  const canonical = legacyStatusMap[normalized] || normalized;
+  return rtoStatusOptions.some((option) => option.value === canonical)
+    ? canonical
+    : 'RTO_WORK_IN_PROGRESS';
+};
 
 export const normalizeRemark = (value) =>
   typeof value === 'string' ? value.trim() : '';

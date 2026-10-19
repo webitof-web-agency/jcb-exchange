@@ -5,27 +5,33 @@ import { ComponentType, useEffect, useState } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, CheckCircle2, Clock, Car, User, Phone,
-  FileText, DollarSign, AlertTriangle, Edit2, X, TrendingUp, Download
+  FileText, DollarSign, AlertTriangle, Edit2, X, TrendingUp, Download, LockKeyhole
 } from 'lucide-react';
-import { SellAccountRecord } from '../page';
-import type { SellAccountDocument, SellAccountDocuments } from '../page';
+import { normalizeServerSellAccount, SellAccountRecord } from '../page';
+import type { SellAccountApiRecord, SellAccountDocument, SellAccountDocuments } from '../page';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import api from '@/lib/api';
 import { FileUploadField } from '@/components/upload/FileUploadField';
 import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import { normalizeSellAccountDocuments, SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
-import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, normalizeSellAccountChassisNumber, omitSellAccountEngineNumber, toEditableAmount, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
+import { calculateSellAccountFinance, getSellAccountTaxLines, GST_RATE_PERCENT } from '@/lib/sellAccountFinance.mjs';
+import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, normalizeSellAccountChassisNumber, omitSellAccountEngineNumber, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
 import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
 import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from 'react-toastify';
 
-type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealStatus: SellAccountRecord['dealStatus'] | 'COMPLETED' | 'CANCELLED' | 'PENDING' };
+type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealStatus: SellAccountRecord['dealStatus'] | 'IN_PROGRESS' | 'CLOSE' | 'COMPLETED' | 'CANCELLED' | 'PENDING' };
 
 const DEAL_STATUS_CONFIG: Record<SellAccountRecord['dealStatus'], { label: string; bg: string; text: string; border: string; icon: ComponentType<{ className?: string }> }> = {
   OPEN: { label: 'Open', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', icon: AlertTriangle },
-  IN_PROGRESS: { label: 'In Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
-  CLOSE: { label: 'Close', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
+  PARTIAL_PAYMENT_RECEIVED: { label: 'Partial Payment Received', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', icon: Clock },
+  FULL_PAYMENT: { label: 'Full Payment', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: CheckCircle2 },
+  RTO_WORK_STARTED: { label: 'RTO Work Start', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200', icon: Clock },
+  RTO_WORK_IN_PROGRESS: { label: 'RTO Work Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
+  RTO_WORK_FAILED: { label: 'RTO Work Failed / Errors', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', icon: AlertTriangle },
+  RTO_WORK_COMPLETED: { label: 'RTO Work Completed', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
+  DEAL_DONE: { label: 'Deal Done', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
 };
 
 const formatDate = (dateStr: string) => {
@@ -216,69 +222,49 @@ export default function SellAccountDetailView() {
   }, []);
 
   useEffect(() => {
-    const loadTimer = window.setTimeout(() => {
-      if (id) {
-        const saved = localStorage.getItem('jcb_sell_accounts_records');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved) as StoredSellAccountRecord[];
-            const found = parsed.find((r) => r.id === id);
-            if (found) {
-                const migrated: SellAccountRecord = {
-                  ...(omitSellAccountEngineNumber(found) as Omit<StoredSellAccountRecord, 'engineNumber'>),
-                  brandName: found.brandName || '',
-                  chassisNumber: normalizeSellAccountChassisNumber(found.chassisNumber),
-                  documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
-                dealStatus: found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' ? 'CLOSE' : found.dealStatus === 'PENDING' ? 'OPEN' : found.dealStatus
-              };
-              setRecord(migrated);
-            }
-          } catch { }
+    let cancelled = false;
+    const loadRecord = async () => {
+      if (!id) return;
+      try {
+        const response = await api.get<{ record?: SellAccountApiRecord }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(id)}`);
+        if (response.data?.record && !cancelled) {
+          setRecord(normalizeServerSellAccount(response.data.record));
+          setLoading(false);
+          return;
         }
-        setLoading(false);
+      } catch (error) {
+        console.warn('Sell Account API detail unavailable; checking local draft records.', error);
       }
-    }, 0);
-    return () => window.clearTimeout(loadTimer);
-  }, [id]);
 
-  // Open edit modal
-  const openEdit = () => {
-    if (!record) return;
-    const fd: EditFormData = {
-      ownerName: record.ownerName,
-      ownerNumber: record.ownerNumber,
-      vehicleNumber: record.vehicleNumber,
-      chassisNumber: record.chassisNumber || '',
-      sellDate: record.sellDate,
-      vehicleType: record.vehicleType,
-      brandName: record.brandName || '',
-      vehicleModel: record.vehicleModel,
-      sellerName: record.sellerName,
-      sellerNumber: record.sellerNumber,
-      purchaserName: record.purchaserName,
-      purchaserNumber: record.purchaserNumber,
-      purchaseAmount: record.purchaseAmount,
-      sellAmount: record.sellAmount,
-      transferDetails: record.transferDetails,
-      balanceAmount: record.balanceAmount,
-      expenses: record.expenses,
-      netProfit: record.netProfit,
-      dealStatus: record.dealStatus,
-      noteSheet: record.noteSheet,
-      documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
+      const saved = localStorage.getItem('jcb_sell_accounts_records');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as StoredSellAccountRecord[];
+          const found = parsed.find((r) => r.id === id);
+          if (found) {
+            const normalizedStatus: SellAccountRecord['dealStatus'] = found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' || found.dealStatus === 'CLOSE'
+              ? 'DEAL_DONE'
+              : found.dealStatus === 'PENDING'
+                ? 'OPEN'
+                : found.dealStatus === 'IN_PROGRESS'
+                  ? 'RTO_WORK_IN_PROGRESS'
+                  : found.dealStatus;
+            const migrated: SellAccountRecord = {
+              ...(omitSellAccountEngineNumber(found) as Omit<StoredSellAccountRecord, 'engineNumber'>),
+              brandName: found.brandName || '',
+              chassisNumber: normalizeSellAccountChassisNumber(found.chassisNumber),
+              documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
+              dealStatus: normalizedStatus,
+            };
+            if (!cancelled) setRecord(migrated);
+          }
+        } catch { }
+      }
+      if (!cancelled) setLoading(false);
     };
-    setEditData(fd);
-    setRawInputs({
-      purchaseAmount: toEditableAmount(record.purchaseAmount),
-      sellAmount: toEditableAmount(record.sellAmount),
-      expenses: toEditableAmount(record.expenses),
-      balanceAmount: toEditableAmount(record.balanceAmount),
-    });
-    setEditErrors({});
-    setPendingReplacedDocuments({});
-    setActiveDocumentUploads(0);
-    setIsEditOpen(true);
-  };
+    void loadRecord();
+    return () => { cancelled = true; };
+  }, [id]);
 
   // Handle edit form change
   const handleEditChange = (field: keyof EditFormData, rawValue: string | number | SellAccountRecord['dealStatus']) => {
@@ -378,6 +364,34 @@ export default function SellAccountDetailView() {
     if (!validateEdit()) return;
 
     try {
+      const apiPayload = {
+        ...editData,
+        listingId: record.listingId || null,
+        listingTitle: record.listingTitle || '',
+        sellerDate: editData.sellerDate || record.sellerDate || record.sellDate,
+        purchaserDate: editData.purchaserDate || record.purchaserDate || record.sellDate,
+        sellerState: editData.sellerState || record.sellerState || '',
+        purchaserState: editData.purchaserState || record.purchaserState || '',
+        remarks: editData.remarks || editData.noteSheet || record.remarks || '',
+        payments: record.payments || [],
+        documents: editData.documents,
+      };
+      const response = await api.put<{ record?: SellAccountApiRecord }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}`, apiPayload);
+      if (response.data?.record) {
+        const updatedRecord = normalizeServerSellAccount(response.data.record);
+        setRecord(updatedRecord);
+        await deleteDocumentFiles(Object.values(pendingReplacedDocuments).flat());
+        setPendingReplacedDocuments({});
+        setIsEditOpen(false);
+        toast.success(getAccountSaveSuccessToast('Sell Account', 'edit'));
+        return;
+      }
+      throw new Error('Sell Account update did not return a record.');
+    } catch (error) {
+      console.warn('Sell Account API detail update failed; retaining local draft fallback.', error);
+    }
+
+    try {
       const saved = localStorage.getItem('jcb_sell_accounts_records');
       const parsed = saved ? JSON.parse(saved) as SellAccountRecord[] : [];
       const updatedRecord = { ...record, ...editData };
@@ -419,6 +433,15 @@ export default function SellAccountDetailView() {
   }
 
   const statusInfo = DEAL_STATUS_CONFIG[record.dealStatus] || DEAL_STATUS_CONFIG['OPEN'];
+  const finance = calculateSellAccountFinance({
+    sellAmount: record.sellAmount,
+    purchaseAmount: record.purchaseAmount,
+    expenses: record.expenses,
+    taxMode: record.taxMode,
+    sellerState: record.sellerState,
+    purchaserState: record.purchaserState,
+    payments: record.payments,
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
@@ -434,16 +457,17 @@ export default function SellAccountDetailView() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Sell Account Details</h1>
             <p className="text-sm font-medium text-gray-500 mt-0.5">Record ID: {record.id}</p>
+            {record.isLocked ? <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600"><LockKeyhole className="h-4 w-4" />Locked — view only</p> : null}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={openEdit}
+          {!record.isLocked ? <button
+            onClick={() => router.push(`${listPath}?editId=${encodeURIComponent(record.id)}`)}
             className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 hover:border-blue-300"
           >
             <Edit2 className="h-4 w-4" />
             Edit
-          </button>
+          </button> : <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600"><LockKeyhole className="h-4 w-4" />View only</div>}
           <div className={`flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 font-semibold shrink-0 ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}>
             <statusInfo.icon className="h-4 w-4" />
             {statusInfo.label}
@@ -506,7 +530,7 @@ export default function SellAccountDetailView() {
           </h3>
           <div className="space-y-4">
             <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4 flex items-start gap-3 hover:bg-gray-50 transition-colors">
-               <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
+              <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
                 <User className="w-5 h-5 text-amber-600" />
               </div>
               <div>
@@ -518,7 +542,7 @@ export default function SellAccountDetailView() {
               </div>
             </div>
             <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4 flex items-start gap-3 hover:bg-gray-50 transition-colors">
-               <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
+              <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
                 <User className="w-5 h-5 text-blue-600" />
               </div>
               <div>
@@ -562,6 +586,44 @@ export default function SellAccountDetailView() {
               Balance Amount: <span className="font-semibold text-gray-700">₹{record.balanceAmount.toLocaleString('en-IN')}</span>
             </div>
           )}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 md:col-span-2 shadow-xs">
+          <div className={`grid grid-cols-2 gap-3 sm:grid-cols-2 ${finance.gst.isIntraState ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+            {/* 1. Gross */}
+            <div className="rounded-xl border border-blue-100 bg-white p-3.5 shadow-2xs">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Gross</p>
+              <p className={`text-base font-extrabold mt-1 ${finance.gst.netProfitBeforeGst >= 0 ? 'text-gray-950' : 'text-rose-600'}`}>
+                ₹{finance.gst.netProfitBeforeGst.toLocaleString('en-IN')}
+              </p>
+            </div>
+
+            {/* 2. Taxable Value */}
+            <div className="rounded-xl border border-blue-100 bg-white p-3.5 shadow-2xs">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Taxable Value</p>
+              <p className="text-base font-extrabold text-blue-950 mt-1">₹{finance.gst.taxableAmount.toLocaleString('en-IN')}</p>
+            </div>
+
+            {/* 3. GST Component(s): IGST (18%) OR CGST (9%) + SGST (9%) */}
+            {getSellAccountTaxLines(finance.gst).map((taxLine) => (
+              <div key={taxLine.key} className="rounded-xl border border-blue-200 bg-white p-3.5 shadow-2xs">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">{taxLine.label}</p>
+                <p className="text-base font-extrabold text-blue-950 mt-1">₹{taxLine.amount.toLocaleString('en-IN')}</p>
+              </div>
+            ))}
+
+            {/* 4. Final Net Profit */}
+            <div className="rounded-xl border border-emerald-200 bg-white p-3.5 shadow-2xs">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Final Net Profit</p>
+              <p className={`text-base font-extrabold mt-1 ${finance.gst.netProfitAfterGst >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                ₹{finance.gst.netProfitAfterGst.toLocaleString('en-IN')}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 md:col-span-2">
+          <div className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs text-gray-500">Vehicle purchaser received (Customer)</p><p className="font-bold text-gray-900">₹{finance.payments.purchaserReceived.toLocaleString('en-IN')}</p></div>
+          <div className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs text-gray-500">Payment status</p><p className="font-bold text-gray-900">{finance.payments.purchaserPaymentStatus}</p></div>
         </div>
 
         {/* Deed Documents */}
@@ -906,20 +968,12 @@ export default function SellAccountDetailView() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Deal Status *</label>
-                    <SearchableSelect
-                      options={[
-                        { id: 'OPEN', name: 'Open' },
-                        { id: 'IN_PROGRESS', name: 'In Progress' },
-                        { id: 'CLOSE', name: 'Close' }
-                      ]}
-                      value={editData.dealStatus}
-                      displayValue={editData.dealStatus === 'OPEN' ? 'Open' : editData.dealStatus === 'IN_PROGRESS' ? 'In Progress' : 'Close'}
-                      onChange={(opt) => handleEditChange('dealStatus', String(opt.id))}
-                      searchable={false}
-                      className={`w-full bg-gray-50 font-semibold ${editErrors.dealStatus ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.dealStatus && <p className="text-[11px] text-rose-500 mt-1">{editErrors.dealStatus}</p>}
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Deal Status</label>
+                    <div className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${DEAL_STATUS_CONFIG[editData.dealStatus].bg} ${DEAL_STATUS_CONFIG[editData.dealStatus].text} ${DEAL_STATUS_CONFIG[editData.dealStatus].border}`}>
+                      {(() => { const StatusIcon = DEAL_STATUS_CONFIG[editData.dealStatus].icon; return <StatusIcon className="h-4 w-4" />; })()}
+                      {DEAL_STATUS_CONFIG[editData.dealStatus].label}
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500">Automatically derived from payment receipts and RTO progress.</p>
                   </div>
 
                   <div>

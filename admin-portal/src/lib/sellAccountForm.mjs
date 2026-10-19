@@ -62,6 +62,8 @@ export const getSellAccountValidationErrors = (formData = {}, { isEditing = fals
   if (!isEditing && !text(formData.brandName)) errors.brandName = 'Brand is required';
   if (!text(formData.vehicleModel)) errors.vehicleModel = 'Vehicle Model is required';
   if (!text(formData.sellDate)) errors.sellDate = 'Sell Date is required';
+  if (!text(formData.purchaserDate)) errors.purchaserDate = 'Purchaser date is required';
+  if (!text(formData.sellerDate)) errors.sellerDate = 'Seller date is required';
   if (!text(formData.sellerName)) errors.sellerName = 'Seller Name is required';
   if (digits(formData.sellerNumber).length < 10) errors.sellerNumber = 'Valid 10-digit phone required';
   if (!text(formData.purchaserName)) errors.purchaserName = 'Purchaser Name is required';
@@ -70,7 +72,6 @@ export const getSellAccountValidationErrors = (formData = {}, { isEditing = fals
   if (!(Number(formData.sellAmount) > 0)) errors.sellAmount = 'Sell amount must be greater than 0';
   if (!text(formData.dealStatus)) errors.dealStatus = 'Deal Status is required';
   if (!text(formData.transferDetails)) errors.transferDetails = 'Transfer Details are required';
-  if (!text(formData.noteSheet)) errors.noteSheet = 'Remark is required';
 
   return errors;
 };

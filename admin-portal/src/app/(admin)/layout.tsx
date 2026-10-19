@@ -701,7 +701,7 @@ export default function AdminLayout({
             <XIcon className="w-5 h-5" />
           </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
           {visibleNavItems
             .filter((item) => !item.href.endsWith('/footer') && !item.href.endsWith('/translations') && !item.href.endsWith('/settings'))
             .map((item) => {
@@ -1068,7 +1068,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-100 overscroll-contain pb-12 sm:pb-16 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

@@ -104,3 +104,8 @@ test('persists HSRP Not required as the API enum value', () => {
   assert.equal(validateListingRtoDetails(input), null);
   assert.equal(buildListingRtoData(input, {}).hsrpStatus, RtoHsrpStatus.NOT_APPLICABLE);
 });
+
+test('normalizes legacy pending listing RTO records to work in progress', () => {
+  assert.equal(buildListingRtoData(validInput, {}, { rtoStatus: 'PENDING' }).rtoStatus, 'RTO_WORK_IN_PROGRESS');
+  assert.equal(buildListingRtoData(validInput, {}).rtoStatus, 'RTO_WORK_IN_PROGRESS');
+});

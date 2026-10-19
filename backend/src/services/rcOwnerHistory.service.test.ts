@@ -175,6 +175,7 @@ test('sanitizes RC Full data before returning it to listing forms', () => {
     vehicleEngineNumber: 'ENGINE123',
     makerDescription: 'JCB',
     makerModel: '3DX',
+    ownerName: 'PRIVATE OWNER',
   });
 });
 
