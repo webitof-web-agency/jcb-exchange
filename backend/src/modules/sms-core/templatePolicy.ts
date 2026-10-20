@@ -7,6 +7,7 @@ const SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
   CUSTOMER_PRIME_APPROVED: ['subscriptionId', 'status', 'customerName'],
   CUSTOMER_PRIME_REJECTED: ['subscriptionId', 'status', 'customerName'],
   MARKETPLACE_NEW_LISTING_PUBLISHED: ['listingId', 'listingTitle', 'vehicleShortTitle', 'listingStatus', 'sourceEntityType', 'sourceEntityId'],
+  VEHICLE_SALE_INVOICE: ['customerName', 'vehicleTitle', 'registrationNumber', 'invoiceNumber', 'invoiceAmount', 'invoiceUrl'],
   RECRUITMENT_APPLICATION_RECEIVED: ['candidateName', 'applicationRef', 'jobId', 'jobTitle'],
   RECRUITMENT_NEW_APPLICATION_SUPERADMIN: ['applicationRef', 'candidateName', 'jobId', 'jobTitle'],
   RECRUITMENT_NEW_APPLICATION_RECRUITER: ['applicationRef', 'candidateName', 'jobId', 'jobTitle'],

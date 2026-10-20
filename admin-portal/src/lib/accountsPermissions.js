@@ -16,8 +16,8 @@
 export const accountsNavItems = [
   {
     key: 'rto-work-status',
-    labelKey: 'admin.rtoWorkStatus',
-    defaultLabel: 'RTO Work Status',
+    labelKey: 'admin.rtoWork',
+    defaultLabel: 'RTO Work',
     permissions: ['accounts.rto.read', 'accounts.rto.crud'],
     createPermissions: ['accounts.rto.create', 'accounts.rto.crud'],
     updatePermissions: ['accounts.rto.update', 'accounts.rto.crud'],
@@ -26,8 +26,8 @@ export const accountsNavItems = [
   },
   {
     key: 'sell-accounts',
-    labelKey: 'admin.sellAccounts',
-    defaultLabel: 'Sell Accounts',
+    labelKey: 'admin.soldVehicles',
+    defaultLabel: 'Sold Vehicles',
     permissions: ['accounts.sell.read', 'accounts.sell.crud'],
     createPermissions: ['accounts.sell.create', 'accounts.sell.crud'],
     updatePermissions: ['accounts.sell.update', 'accounts.sell.crud'],

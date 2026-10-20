@@ -25,6 +25,7 @@ import mobileToRcLookupRoutes from './mobileToRcLookup.routes';
 import rcMobileNumberCheckRoutes from './rcMobileNumberCheck.routes';
 import mobileToPanLookupRoutes from './mobileToPanLookup.routes';
 import apiWalletBillingRoutes from './apiWalletBilling.routes';
+import publicInvoiceRoutes from './publicInvoice.routes';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -56,6 +57,8 @@ router.use('/mobile-to-rc', mobileToRcLookupRoutes);
 router.use('/rc-mobile-number-check', rcMobileNumberCheckRoutes);
 router.use('/mobile-to-pan', mobileToPanLookupRoutes);
 router.use('/api-billing', apiWalletBillingRoutes);
+// Unauthenticated, token-protected customer invoice links.
+router.use('/public', publicInvoiceRoutes);
 
 router.post('/users/fcm-token', requireAuth, saveFcmToken);
 

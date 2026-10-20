@@ -33,6 +33,7 @@ export const marketplaceSmsEvents = [
   'MARKETPLACE_NEW_LISTING_PUBLISHED',
   'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
+  'VEHICLE_SALE_INVOICE',
 ] as const;
 
 export type MarketplaceSmsEvent = (typeof marketplaceSmsEvents)[number];
@@ -331,9 +332,10 @@ type SmsDispatchInput = {
   recipientType: string;
   recipientPhone?: string | null;
   payloadSnapshot?: Record<string, unknown>;
+  dedupeSuffix?: string | undefined;
 };
 
-const buildDedupeKey = (input: SmsDispatchInput, recipientPhone: string) => `sms:${input.eventCode}:${input.relatedEntityType}:${input.relatedEntityId}:${input.recipientType}:${recipientPhone}`;
+const buildDedupeKey = (input: SmsDispatchInput, recipientPhone: string) => `sms:${input.eventCode}:${input.relatedEntityType}:${input.relatedEntityId}:${input.recipientType}:${recipientPhone}${input.dedupeSuffix ? `:${input.dedupeSuffix}` : ''}`;
 
 export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
   try {

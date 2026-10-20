@@ -20,7 +20,7 @@ const getPrimePlanName = (settingsSnapshot: unknown) => {
   return `JCB Exchange Prime - ${planDurationLabel}`;
 };
 
-const loadInvoiceLogo = async (logoUrl?: string | null) => {
+export const loadInvoiceLogo = async (logoUrl?: string | null) => {
   if (!logoUrl || !/^https?:\/\//i.test(logoUrl)) return null;
 
   const controller = new AbortController();

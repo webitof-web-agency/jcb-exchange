@@ -1,89 +1,38 @@
 'use client';
 
 import Image from 'next/image';
-import { ComponentType, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import {
-  ArrowLeft, CheckCircle2, Clock, Car, User, Phone,
-  FileText, DollarSign, AlertTriangle, Edit2, X, TrendingUp, Download, LockKeyhole
+  ArrowLeft, ArrowRight, ClipboardCheck, Car, Copy, Download, Edit2, FileText, Handshake, IndianRupee,
+  Loader2, LockKeyhole, Phone, Receipt, Send, ShoppingCart, User, Wallet, AlertTriangle,
 } from 'lucide-react';
-import { normalizeServerSellAccount, SellAccountRecord } from '../page';
-import type { SellAccountApiRecord, SellAccountDocument, SellAccountDocuments } from '../page';
-import SearchableSelect from '@/components/ui/SearchableSelect';
-import api from '@/lib/api';
-import { FileUploadField } from '@/components/upload/FileUploadField';
-import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
-import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
-import { normalizeSellAccountDocuments, SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
-import { calculateSellAccountFinance, getSellAccountTaxLines, GST_RATE_PERCENT } from '@/lib/sellAccountFinance.mjs';
-import { calculateSellAccountNetProfit, getSellAccountValidationErrors, normalizeAmountInput, normalizeSellAccountChassisNumber, omitSellAccountEngineNumber, upsertSellAccountRecord } from '@/lib/sellAccountForm.mjs';
-import { getAccountSaveErrorToast, getAccountSaveSuccessToast } from '@/lib/accountSaveMessages.mjs';
-import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from 'react-toastify';
-
-type StoredSellAccountRecord = Omit<SellAccountRecord, 'dealStatus'> & { dealStatus: SellAccountRecord['dealStatus'] | 'IN_PROGRESS' | 'CLOSE' | 'COMPLETED' | 'CANCELLED' | 'PENDING' };
-
-const DEAL_STATUS_CONFIG: Record<SellAccountRecord['dealStatus'], { label: string; bg: string; text: string; border: string; icon: ComponentType<{ className?: string }> }> = {
-  OPEN: { label: 'Open', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', icon: AlertTriangle },
-  PARTIAL_PAYMENT_RECEIVED: { label: 'Partial Payment Received', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', icon: Clock },
-  FULL_PAYMENT: { label: 'Full Payment', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: CheckCircle2 },
-  RTO_WORK_STARTED: { label: 'RTO Work Start', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200', icon: Clock },
-  RTO_WORK_IN_PROGRESS: { label: 'RTO Work Progress', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', icon: Clock },
-  RTO_WORK_FAILED: { label: 'RTO Work Failed / Errors', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', icon: AlertTriangle },
-  RTO_WORK_COMPLETED: { label: 'RTO Work Completed', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
-  DEAL_DONE: { label: 'Deal Done', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
-};
-
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '';
-  const parts = dateStr.split('T')[0].split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  }
-  return dateStr;
-};
-
-const sanitizePhoneNumber = (val: string) => val.replace(/\D/g, '').slice(0, 10);
-const sanitizeVehicleNumber = (val: string) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15);
-type EditFormData = Omit<SellAccountRecord, 'id' | 'createdAt'>;
-type SellAccountDocumentKey = keyof SellAccountDocuments;
-
-const initialRawInputs = {
-  purchaseAmount: '',
-  sellAmount: '',
-  expenses: '',
-  balanceAmount: '',
-};
-
-function EditPdfField({
-  label,
-  document,
-  onUploaded,
-  onUploadStateChange,
-}: {
-  label: string;
-  document?: SellAccountDocument | null;
-  onUploaded: (file: UploadedFileResult) => void;
-  onUploadStateChange: (uploading: boolean) => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-semibold text-gray-700">{label}</label>
-      <FileUploadField
-        accept={SELL_ACCOUNT_DOCUMENT_ACCEPT}
-        visibility="secure"
-        uploadedFileName={document?.originalName}
-        uploadedFileMimeType={document?.mimeType}
-        uploadedFileUrl={document?.fileUrl}
-        onUploaded={onUploaded}
-        onUploadStateChange={onUploadStateChange}
-        helperText={t('sellAccounts.documentHelper', 'PDF up to 3MB or JPG, PNG, WEBP up to 5MB.')}
-      />
-    </div>
-  );
-}
+import api from '@/lib/api';
+import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
+import { normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
+import { calculateSellAccountFinance, getSellAccountTaxLines, GST_RATE_PERCENT, SELL_ACCOUNT_EXPENSE_FIELDS } from '@/lib/sellAccountFinance.mjs';
+import { getSourceTypeLabel, JCB_EXCHANGE_COMPANY_NAME } from '@/lib/soldVehicleParties.mjs';
+import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
+import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
+import { hasAnyPermission } from '@/lib/permissionUtils';
+import { getAccountUpdatePermissions } from '@/lib/accountsPermissions';
+import { useAuthStore } from '@/store/authStore';
+import BrandLoader from '@/components/ui/BrandLoader';
+import {
+  accountsPortalBase,
+  DEAL_STATUS_CONFIG,
+  formatDisplayDate as formatDate,
+  formatInr,
+  normalizeServerSellAccount,
+  normalizeSellAccountRecord,
+  type SellAccountApiRecord,
+  type SellAccountDocument,
+  type SellAccountDocuments,
+  type SellAccountExpenseBreakdown,
+  type SellAccountRecord,
+  type StoredSellAccountRecord,
+} from '@/components/accounts/sold-vehicle/soldVehicleModel';
 
 function SecurePdfDocument({ label, document }: { label: string; document?: SellAccountDocument | null }) {
   const [viewerUrl, setViewerUrl] = useState('');
@@ -97,10 +46,7 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
   }, [viewerUrl]);
 
   const fetchDocumentBlob = async () => {
-    if (!document?.fileUrl) {
-      throw new Error('Document file is not available.');
-    }
-
+    if (!document?.fileUrl) throw new Error('Document file is not available.');
     const response = await api.get(normalizeSecureDocumentPath(document.fileUrl), { responseType: 'blob' });
     const documentMimeType = isImage
       ? (document.mimeType?.startsWith('image/') ? document.mimeType : response.data.type || 'image/*')
@@ -113,8 +59,7 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
     setLoading(true);
     setError('');
     try {
-      const blob = await fetchDocumentBlob();
-      setViewerUrl(URL.createObjectURL(blob));
+      setViewerUrl(URL.createObjectURL(await fetchDocumentBlob()));
     } catch {
       setError('Unable to load this document.');
     } finally {
@@ -127,15 +72,12 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
     setDownloading(true);
     setError('');
     try {
-      const blob = await fetchDocumentBlob();
-      const downloadUrl = URL.createObjectURL(blob);
+      const downloadUrl = URL.createObjectURL(await fetchDocumentBlob());
       const anchor = window.document.createElement('a');
       const requestedName = document.originalName || document.fileName || `${label}.${isImage ? 'jpg' : 'pdf'}`;
       const safeName = requestedName.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').trim() || `${label}.pdf`;
       anchor.href = downloadUrl;
-      anchor.download = /\.(?:pdf|jpe?g|png|webp|gif)$/i.test(safeName)
-        ? safeName
-        : `${safeName}.${isImage ? 'jpg' : 'pdf'}`;
+      anchor.download = /\.(?:pdf|jpe?g|png|webp|gif)$/i.test(safeName) ? safeName : `${safeName}.${isImage ? 'jpg' : 'pdf'}`;
       window.document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -148,30 +90,73 @@ function SecurePdfDocument({ label, document }: { label: string; document?: Sell
   };
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-2.5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
-          <p className="truncate text-xs text-gray-700">{document?.originalName || 'No PDF uploaded'}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+          <p className="truncate text-xs text-gray-700">{document?.originalName || 'Not uploaded'}</p>
         </div>
         {document ? (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <button type="button" onClick={() => void openDocument()} disabled={loading || downloading} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-gray-950 disabled:opacity-60">
-              {loading ? 'Loading...' : viewerUrl ? 'Loaded' : isImage ? 'View Image' : 'View PDF'}
+          <div className="flex shrink-0 gap-1.5">
+            <button type="button" onClick={() => void openDocument()} disabled={loading || downloading} className="rounded-md bg-amber-500 px-2.5 py-1 text-[11px] font-bold text-gray-950 disabled:opacity-60">
+              {loading ? 'Loading...' : viewerUrl ? 'Loaded' : 'View'}
             </button>
-            <button type="button" onClick={() => void downloadDocument()} disabled={loading || downloading} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 disabled:opacity-60">
-              <Download className="h-3.5 w-3.5" />
-              {downloading ? 'Downloading...' : 'Download'}
+            <button type="button" onClick={() => void downloadDocument()} disabled={loading || downloading} className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 disabled:opacity-60">
+              <Download className="h-3 w-3" />{downloading ? '...' : 'Download'}
             </button>
           </div>
         ) : null}
       </div>
-      {error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
+      {error ? <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p> : null}
       {viewerUrl ? (
         isImage
-          ? <Image src={viewerUrl} alt={label} width={800} height={450} unoptimized className="mt-3 max-h-72 w-full rounded-lg border border-gray-200 bg-white object-contain p-1" />
-          : <iframe title={label} src={viewerUrl} className="mt-3 h-56 w-full rounded-lg border border-gray-200 bg-white" />
+          ? <Image src={viewerUrl} alt={label} width={800} height={450} unoptimized className="mt-2 max-h-64 w-full rounded-md border border-gray-200 bg-white object-contain p-1" />
+          : <iframe title={label} src={viewerUrl} className="mt-2 h-56 w-full rounded-md border border-gray-200 bg-white" />
       ) : null}
+    </div>
+  );
+}
+
+function Card({ icon, title, children, className = '', aside }: { icon: ReactNode; title: string; children: ReactNode; className?: string; aside?: ReactNode }) {
+  return (
+    <section className={`rounded-xl border border-gray-200 bg-white shadow-xs ${className}`}>
+      <header className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
+        <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-700">{icon}{title}</h3>
+        {aside}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
+
+function Detail({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className={`mt-0.5 truncate ${strong ? 'text-base font-extrabold text-gray-950' : 'text-sm font-semibold text-gray-800'}`}>{value || '—'}</p>
+    </div>
+  );
+}
+
+function PartyCard({ tone, icon, title, name, phone, lines }: { tone: 'amber' | 'dark' | 'blue'; icon: ReactNode; title: string; name: string; phone?: string; lines: Array<[string, ReactNode]> }) {
+  const tones = {
+    amber: 'border-amber-200 bg-amber-50/40',
+    dark: 'border-gray-900/10 bg-gray-950 text-white',
+    blue: 'border-blue-200 bg-blue-50/40',
+  };
+  return (
+    <div className={`rounded-lg border p-3 ${tones[tone]}`}>
+      <p className={`mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider ${tone === 'dark' ? 'text-amber-400' : tone === 'amber' ? 'text-amber-900' : 'text-blue-900'}`}>{icon}{title}</p>
+      <p className={`truncate text-sm font-bold ${tone === 'dark' ? 'text-white' : 'text-gray-950'}`}>{name || '—'}</p>
+      {phone ? <a href={`tel:${phone}`} className={`mt-0.5 inline-flex items-center gap-1 text-xs font-medium hover:underline ${tone === 'dark' ? 'text-gray-300' : 'text-blue-600'}`}><Phone className="h-3 w-3" />{phone}</a> : null}
+      <dl className="mt-2 space-y-0.5 text-xs">
+        {lines.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-2">
+            <dt className={tone === 'dark' ? 'text-gray-400' : 'text-gray-500'}>{label}</dt>
+            <dd className={`truncate text-right font-semibold ${tone === 'dark' ? 'text-white' : 'text-gray-800'}`}>{value || '—'}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -181,45 +166,17 @@ export default function SellAccountDetailView() {
   const pathname = usePathname();
   const params = useParams();
   const id = params?.id as string;
-  const listPath = pathname.startsWith('/employee')
-    ? '/employee/accounts/sell-accounts'
-    : pathname.startsWith('/admin')
-      ? '/admin/accounts/sell-accounts'
-      : '/superadmin/accounts/sell-accounts';
+  const portal = accountsPortalBase(pathname);
+  const listPath = `${portal}/accounts/sell-accounts`;
+  const rtoBasePath = `${portal}/accounts/rto-work-status`;
+  const currentUser = useAuthStore((state) => state.user);
+  const canUpdate = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN'
+    || hasAnyPermission(currentUser?.permissions || [], getAccountUpdatePermissions('sell-accounts'));
 
   const [record, setRecord] = useState<SellAccountRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
-  const { t } = useTranslation();
-
-  // Edit modal state
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editData, setEditData] = useState<EditFormData | null>(null);
-  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
-  const [rawInputs, setRawInputs] = useState(initialRawInputs);
-  const [pendingReplacedDocuments, setPendingReplacedDocuments] = useState<Partial<Record<SellAccountDocumentKey, SellAccountDocument[]>>>({});
-  const [activeDocumentUploads, setActiveDocumentUploads] = useState(0);
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const [categoriesResult, brandsResult] = await Promise.allSettled([
-          api.get('/master/categories'),
-          api.get('/master/brands'),
-        ]);
-        if (categoriesResult.status === 'fulfilled') {
-          setCategories(categoriesResult.value.data.data || []);
-        }
-        if (brandsResult.status === 'fulfilled') {
-          setBrands(brandsResult.value.data.data || []);
-        }
-      } catch (err) {
-        console.error('Failed to load categories', err);
-      }
-    };
-    fetchCategories();
-  }, []);
+  const [invoiceBusy, setInvoiceBusy] = useState<'download' | 'resend' | null>(null);
+  const [latestInvoiceUrl, setLatestInvoiceUrl] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -233,32 +190,14 @@ export default function SellAccountDetailView() {
           return;
         }
       } catch (error) {
-        console.warn('Sell Account API detail unavailable; checking local draft records.', error);
+        console.warn('Sold Vehicle API detail unavailable; checking local draft records.', error);
       }
-
-      const saved = localStorage.getItem('jcb_sell_accounts_records');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as StoredSellAccountRecord[];
-          const found = parsed.find((r) => r.id === id);
-          if (found) {
-            const normalizedStatus: SellAccountRecord['dealStatus'] = found.dealStatus === 'COMPLETED' || found.dealStatus === 'CANCELLED' || found.dealStatus === 'CLOSE'
-              ? 'DEAL_DONE'
-              : found.dealStatus === 'PENDING'
-                ? 'OPEN'
-                : found.dealStatus === 'IN_PROGRESS'
-                  ? 'RTO_WORK_IN_PROGRESS'
-                  : found.dealStatus;
-            const migrated: SellAccountRecord = {
-              ...(omitSellAccountEngineNumber(found) as Omit<StoredSellAccountRecord, 'engineNumber'>),
-              brandName: found.brandName || '',
-              chassisNumber: normalizeSellAccountChassisNumber(found.chassisNumber),
-              documents: normalizeSellAccountDocuments(found) as SellAccountDocuments,
-              dealStatus: normalizedStatus,
-            };
-            if (!cancelled) setRecord(migrated);
-          }
-        } catch { }
+      try {
+        const parsed = JSON.parse(localStorage.getItem('jcb_sell_accounts_records') || '[]') as StoredSellAccountRecord[];
+        const found = Array.isArray(parsed) ? parsed.find((item) => item.id === id) : null;
+        if (found && !cancelled) setRecord(normalizeSellAccountRecord(found));
+      } catch {
+        // Legacy browser cache only.
       }
       if (!cancelled) setLoading(false);
     };
@@ -266,763 +205,293 @@ export default function SellAccountDetailView() {
     return () => { cancelled = true; };
   }, [id]);
 
-  // Handle edit form change
-  const handleEditChange = (field: keyof EditFormData, rawValue: string | number | SellAccountRecord['dealStatus']) => {
-    let value = rawValue;
-
-    if (field === 'ownerNumber' || field === 'sellerNumber' || field === 'purchaserNumber') {
-      value = sanitizePhoneNumber(String(rawValue));
-    } else if (field === 'vehicleNumber') {
-      value = sanitizeVehicleNumber(String(rawValue));
-    } else if (field === 'chassisNumber') {
-      value = normalizeSellAccountChassisNumber(rawValue);
-    } else if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses' || field === 'balanceAmount') {
-      const normalizedAmount = normalizeAmountInput(String(rawValue));
-      setRawInputs((prev) => ({ ...prev, [field]: normalizedAmount.raw }));
-      value = normalizedAmount.value;
-    }
-
-    setEditData((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, [field]: value };
-      if (field === 'purchaseAmount' || field === 'sellAmount' || field === 'expenses') {
-        updated.netProfit = calculateSellAccountNetProfit(updated.sellAmount, updated.purchaseAmount, updated.expenses);
-      }
-      return updated;
-    });
-
-    if (editErrors[field]) {
-      setEditErrors((prev) => ({ ...prev, [field]: '' }));
-    }
-  };
-
-  const getDocuments = (data: Pick<SellAccountRecord, 'documents'>): SellAccountDocuments =>
-    normalizeSellAccountDocuments(data) as SellAccountDocuments;
-
-  const deleteDocumentFiles = async (documents: Array<SellAccountDocument | null | undefined>) => {
-    const uniqueUrls = [...new Set(documents.map((document) => document?.fileUrl).filter(Boolean))] as string[];
-    await Promise.allSettled(uniqueUrls.map((fileUrl) => deleteSecureFileFromServer(fileUrl)));
-  };
-
-  const handleDocumentUploaded = (key: SellAccountDocumentKey, file: UploadedFileResult) => {
-    if (!editData) return;
-    const previous = getDocuments(editData)[key];
-    if (previous && previous.fileUrl !== file.fileUrl) {
-      setPendingReplacedDocuments((current) => ({
-        ...current,
-        [key]: [...(current[key] || []), previous],
-      }));
-    }
-    setEditData((current) => current ? {
-      ...current,
-      documents: {
-        ...getDocuments(current),
-        [key]: file,
-      },
-    } : current);
-  };
-
-  const handleDocumentUploadStateChange = (uploading: boolean) => {
-    setActiveDocumentUploads((count) => Math.max(0, count + (uploading ? 1 : -1)));
-  };
-
-  const closeEdit = async () => {
-    if (editData) {
-      const currentDocuments = getDocuments(editData);
-      const originalDocuments = record ? getDocuments(record) : null;
-      const uploadedDuringSession = Object.values(currentDocuments).filter((document) => {
-        if (!document) return false;
-        return !originalDocuments || !Object.values(originalDocuments).some((item) => item?.fileUrl === document.fileUrl);
-      });
-      await deleteDocumentFiles(uploadedDuringSession);
-    }
-    setIsEditOpen(false);
-    setPendingReplacedDocuments({});
-    setActiveDocumentUploads(0);
-  };
-
-  // Validate edit form
-  const validateEdit = () => {
-    if (!editData) return false;
-    const errors = getSellAccountValidationErrors(editData, { isEditing: true }) as unknown as Record<string, string>;
-    setEditErrors(errors);
-    if (Object.keys(errors).length > 0) {
-      toast.error('Please complete the required fields before saving.');
-    }
-    return Object.keys(errors).length === 0;
-  };
-
-  // Submit edit
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!record || !editData) return;
-    if (activeDocumentUploads > 0) {
-      setEditErrors((current) => ({ ...current, documents: 'Please wait until all document uploads finish.' }));
-      toast.info('Please wait until all document uploads finish.');
-      return;
-    }
-    if (!validateEdit()) return;
-
-    try {
-      const apiPayload = {
-        ...editData,
-        listingId: record.listingId || null,
-        listingTitle: record.listingTitle || '',
-        sellerDate: editData.sellerDate || record.sellerDate || record.sellDate,
-        purchaserDate: editData.purchaserDate || record.purchaserDate || record.sellDate,
-        sellerState: editData.sellerState || record.sellerState || '',
-        purchaserState: editData.purchaserState || record.purchaserState || '',
-        remarks: editData.remarks || editData.noteSheet || record.remarks || '',
-        payments: record.payments || [],
-        documents: editData.documents,
-      };
-      const response = await api.put<{ record?: SellAccountApiRecord }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}`, apiPayload);
-      if (response.data?.record) {
-        const updatedRecord = normalizeServerSellAccount(response.data.record);
-        setRecord(updatedRecord);
-        await deleteDocumentFiles(Object.values(pendingReplacedDocuments).flat());
-        setPendingReplacedDocuments({});
-        setIsEditOpen(false);
-        toast.success(getAccountSaveSuccessToast('Sell Account', 'edit'));
-        return;
-      }
-      throw new Error('Sell Account update did not return a record.');
-    } catch (error) {
-      console.warn('Sell Account API detail update failed; retaining local draft fallback.', error);
-    }
-
-    try {
-      const saved = localStorage.getItem('jcb_sell_accounts_records');
-      const parsed = saved ? JSON.parse(saved) as SellAccountRecord[] : [];
-      const updatedRecord = { ...record, ...editData };
-      const updated = upsertSellAccountRecord(parsed, updatedRecord);
-      localStorage.setItem('jcb_sell_accounts_records', JSON.stringify(updated));
-      setRecord(updatedRecord);
-    } catch {
-      setEditErrors((current) => ({ ...current, documents: 'Unable to save this record. Please try again.' }));
-      toast.error(getAccountSaveErrorToast('Sell Account'));
-      return;
-    }
-    await deleteDocumentFiles(Object.values(pendingReplacedDocuments).flat());
-    setPendingReplacedDocuments({});
-    setIsEditOpen(false);
-    toast.success(getAccountSaveSuccessToast('Sell Account', 'edit'));
-  };
-
-  if (loading) {
-    return (
-      <div className="flex h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-amber-500 border-t-transparent"></div>
-      </div>
-    );
-  }
+  if (loading) return <BrandLoader variant="section" size="sm" bg="light" text="Loading sold vehicle..." />;
 
   if (!record) {
     return (
       <div className="flex h-[400px] flex-col items-center justify-center space-y-4">
         <AlertTriangle className="h-12 w-12 text-gray-400" />
         <p className="text-lg font-medium text-gray-600">Record not found</p>
-        <button
-          onClick={() => router.push(listPath)}
-          className="text-blue-600 hover:underline font-medium"
-        >
-          Go back to list
-        </button>
+        <button onClick={() => router.push(listPath)} className="font-medium text-blue-600 hover:underline">Go back to list</button>
       </div>
     );
   }
 
-  const statusInfo = DEAL_STATUS_CONFIG[record.dealStatus] || DEAL_STATUS_CONFIG['OPEN'];
+  const statusInfo = DEAL_STATUS_CONFIG[record.dealStatus] || DEAL_STATUS_CONFIG.OPEN;
+  const StatusIcon = statusInfo.icon;
+  const saleExchangeValue = record.saleType === 'EXCHANGE' ? record.saleExchangeValue || 0 : 0;
+  const purchaseExchangeValue = record.purchaseType === 'EXCHANGE' ? record.purchaseExchangeValue || 0 : 0;
   const finance = calculateSellAccountFinance({
     sellAmount: record.sellAmount,
     purchaseAmount: record.purchaseAmount,
     expenses: record.expenses,
-    taxMode: record.taxMode,
     sellerState: record.sellerState,
     purchaserState: record.purchaserState,
+    saleExchangeValue,
+    purchaseExchangeValue,
     payments: record.payments,
   });
+  const documents = normalizeSellAccountDocuments(record) as SellAccountDocuments;
+  const rtoProgress = summarizeTransferTasks((record.rtoRecord?.taskStatuses || []).map((status) => ({ status })));
+  const breakdown = record.expenseBreakdown as SellAccountExpenseBreakdown | undefined;
+  const deliveryChannels = record.invoiceDelivery?.channels || [];
+
+  const downloadInvoice = async () => {
+    setInvoiceBusy('download');
+    try {
+      await downloadAuthedFile(`/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}/invoice`, `Invoice-${record.invoiceNumber || record.id}.pdf`);
+    } catch (error) {
+      toast.error(await readBlobErrorMessage(error, 'Unable to download the invoice.'));
+    } finally {
+      setInvoiceBusy(null);
+    }
+  };
+
+  const resendInvoice = async () => {
+    if (!window.confirm('Send the invoice again to the customer on WhatsApp and SMS? A fresh link will be created and the old link will stop working.')) return;
+    setInvoiceBusy('resend');
+    try {
+      const response = await api.post<{ record?: SellAccountApiRecord; delivery?: { invoiceUrl?: string; anySent?: boolean } }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}/invoice/resend`);
+      if (response.data?.record) setRecord(normalizeServerSellAccount(response.data.record));
+      setLatestInvoiceUrl(response.data?.delivery?.invoiceUrl || '');
+      if (response.data?.delivery?.anySent) toast.success('Invoice sent to the customer.');
+      else toast.warn('A new invoice link was created, but WhatsApp/SMS could not be sent. Check the automation settings.');
+    } catch (error) {
+      toast.error(await readBlobErrorMessage(error, 'Unable to resend the invoice.'));
+    } finally {
+      setInvoiceBusy(null);
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+    <div className="mx-auto w-full max-w-[1600px] space-y-3 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push(listPath)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-gray-500 shadow-sm border border-gray-200 transition hover:bg-gray-50 hover:text-gray-900 shrink-0"
-          >
-            <ArrowLeft className="h-5 w-5" />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-xs">
+        <div className="flex min-w-0 items-center gap-3">
+          <button onClick={() => router.push(listPath)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900" aria-label="Back">
+            <ArrowLeft className="h-4 w-4" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sell Account Details</h1>
-            <p className="text-sm font-medium text-gray-500 mt-0.5">Record ID: {record.id}</p>
-            {record.isLocked ? <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600"><LockKeyhole className="h-4 w-4" />Locked — view only</p> : null}
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-extrabold text-gray-950">
+              {record.listingTitle || [record.brandName, record.vehicleModel].filter(Boolean).join(' ') || 'Sold Vehicle'}
+              <span className="ml-2 text-sm font-bold text-amber-700">{record.vehicleNumber}</span>
+            </h1>
+            <p className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-gray-500">
+              <span>{record.recordNumber || record.id}</span>
+              {record.invoiceNumber ? <span>· Invoice {record.invoiceNumber}</span> : null}
+              {record.isLocked ? <span className="inline-flex items-center gap-1 font-semibold text-slate-600"><LockKeyhole className="h-3.5 w-3.5" />Locked — view only</span> : null}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {!record.isLocked ? <button
-            onClick={() => router.push(`${listPath}?editId=${encodeURIComponent(record.id)}`)}
-            className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 hover:border-blue-300"
-          >
-            <Edit2 className="h-4 w-4" />
-            Edit
-          </button> : <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600"><LockKeyhole className="h-4 w-4" />View only</div>}
-          <div className={`flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 font-semibold shrink-0 ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}>
-            <statusInfo.icon className="h-4 w-4" />
-            {statusInfo.label}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}>
+            <StatusIcon className="h-3.5 w-3.5" />{statusInfo.label}
+          </span>
+          {record.rtoRecord?.id ? (
+            <button type="button" onClick={() => router.push(`${rtoBasePath}/${encodeURIComponent(record.rtoRecord!.id)}${record.isLocked ? '' : '/edit'}`)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
+              <ClipboardCheck className="h-3.5 w-3.5" />RTO Work{rtoProgress.total ? ` · ${rtoProgress.done}/${rtoProgress.total}` : ''}
+            </button>
+          ) : null}
+          {!record.isLocked && canUpdate ? (
+            <button onClick={() => router.push(`${listPath}/${encodeURIComponent(record.id)}/edit`)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">
+              <Edit2 className="h-3.5 w-3.5" />Edit
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Vehicle & Owner Details */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-gray-100 pb-2">
-            <Car className="h-4 w-4" /> Vehicle & Owner Details
-          </h3>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Registration Number</p>
-                <p className="font-bold text-gray-900 text-lg mt-0.5">{record.vehicleNumber}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Chassis Number</p>
-                <p className="font-bold text-gray-900 mt-0.5">{record.chassisNumber || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehicle Model</p>
-                <p className="font-bold text-gray-900 mt-0.5">{record.vehicleModel}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brand</p>
-                <p className="font-medium text-gray-800 mt-0.5">{record.brandName || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</p>
-                <p className="font-medium text-gray-800 mt-0.5">{record.vehicleType}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sell Date</p>
-                <p className="font-medium text-gray-800 mt-0.5">{formatDate(record.sellDate)}</p>
-              </div>
-            </div>
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 mt-2 flex items-start gap-3">
-              <div className="p-2 bg-white rounded-lg shadow-sm shrink-0">
-                <User className="w-5 h-5 text-gray-400" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Owner</p>
-                <p className="font-bold text-gray-900">{record.ownerName}</p>
-                <a href={`tel:${record.ownerNumber}`} className="mt-1 flex w-fit items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline">
-                  <Phone className="h-3.5 w-3.5 text-blue-500" /> {record.ownerNumber}
-                </a>
-              </div>
-            </div>
-          </div>
+      {/* Vehicle */}
+      <Card icon={<Car className="h-4 w-4" />} title="Vehicle & Owner">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+          <Detail label="Registration No." value={record.vehicleNumber} strong />
+          <Detail label="Chassis No." value={record.chassisNumber} />
+          <Detail label="Model" value={record.vehicleModel} />
+          <Detail label="Brand" value={record.brandName} />
+          <Detail label="Category" value={record.vehicleType} />
+          <Detail label="RC Owner" value={record.ownerName} />
+          <Detail label="Owner Mobile" value={record.ownerNumber ? <a href={`tel:${record.ownerNumber}`} className="text-blue-600 hover:underline">{record.ownerNumber}</a> : ''} />
+          <Detail label="Sell Date" value={formatDate(record.purchaserDate || record.sellDate)} />
         </div>
+      </Card>
 
-        {/* Seller & Purchaser Details */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-gray-100 pb-2">
-            <User className="h-4 w-4" /> Parties Involved
-          </h3>
-          <div className="space-y-4">
-            <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4 flex items-start gap-3 hover:bg-gray-50 transition-colors">
-              <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
-                <User className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Seller</p>
-                <p className="font-bold text-gray-900">{record.sellerName}</p>
-                <a href={`tel:${record.sellerNumber}`} className="mt-1 flex w-fit items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline">
-                  <Phone className="h-3.5 w-3.5 text-blue-500" /> {record.sellerNumber}
-                </a>
-              </div>
-            </div>
-            <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4 flex items-start gap-3 hover:bg-gray-50 transition-colors">
-              <div className="p-2 bg-white rounded-lg shadow-sm shrink-0 border border-gray-100">
-                <User className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Purchaser</p>
-                <p className="font-bold text-gray-900">{record.purchaserName}</p>
-                <a href={`tel:${record.purchaserNumber}`} className="mt-1 flex w-fit items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline">
-                  <Phone className="h-3.5 w-3.5 text-blue-500" /> {record.purchaserNumber}
-                </a>
-              </div>
-            </div>
-          </div>
+      {/* Deal flow */}
+      <Card icon={<Handshake className="h-4 w-4" />} title="Purchase → Broker → Sale">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,0.7fr)_auto_minmax(0,1fr)]">
+          <PartyCard
+            tone="amber"
+            icon={<ShoppingCart className="h-3.5 w-3.5" />}
+            title={`Purchased from · ${getSourceTypeLabel(record.sourceType)}`}
+            name={record.sellerName}
+            phone={record.sellerNumber}
+            lines={[
+              ['Date', formatDate(record.sellerDate)],
+              ['Location', [record.sellerCity, record.sellerState].filter(Boolean).join(', ')],
+              ['Type', record.purchaseType === 'EXCHANGE' ? 'Exchange' : 'Purchase'],
+              ['Amount', formatInr(record.purchaseAmount)],
+              ...(record.purchaseType === 'EXCHANGE' ? [['Exchange vehicle', `${record.purchaseExchangeVehicle || '—'} (${formatInr(purchaseExchangeValue)})`] as [string, ReactNode]] : []),
+            ]}
+          />
+          <div className="hidden items-center text-gray-300 lg:flex"><ArrowRight className="h-5 w-5" /></div>
+          <PartyCard
+            tone="dark"
+            icon={<Handshake className="h-3.5 w-3.5" />}
+            title={`Broker · ${JCB_EXCHANGE_COMPANY_NAME}`}
+            name={record.brokerName || JCB_EXCHANGE_COMPANY_NAME}
+            phone={record.brokerNumber}
+            lines={[
+              ['Margin (incl. GST)', formatInr(finance.gst.marginAmount)],
+              [`GST ${GST_RATE_PERCENT}%`, formatInr(finance.gst.gstAmount)],
+              ['Final profit', formatInr(finance.gst.netProfitAfterGst)],
+            ]}
+          />
+          <div className="hidden items-center text-gray-300 lg:flex"><ArrowRight className="h-5 w-5" /></div>
+          <PartyCard
+            tone="blue"
+            icon={<User className="h-3.5 w-3.5" />}
+            title="Sold to customer"
+            name={record.purchaserName}
+            phone={record.purchaserNumber}
+            lines={[
+              ['Date', formatDate(record.purchaserDate || record.sellDate)],
+              ['Location', [record.purchaserCity, record.purchaserState].filter(Boolean).join(', ')],
+              ['Type', record.saleType === 'EXCHANGE' ? 'Exchange' : 'Sell'],
+              ['Amount', formatInr(record.sellAmount)],
+              ...(record.saleType === 'EXCHANGE' ? [['Exchange vehicle', `${record.saleExchangeVehicle || '—'} (${formatInr(saleExchangeValue)})`] as [string, ReactNode]] : []),
+            ]}
+          />
         </div>
+      </Card>
 
-        {/* Financial Breakdown */}
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/30 p-5 shadow-sm md:col-span-2">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-800">
-            <DollarSign className="h-4 w-4" /> Financial Breakdown
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="rounded-xl bg-white p-4 shadow-sm border border-amber-100/50 hover:border-amber-300 transition-colors text-center">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Purchase Amount</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">₹{record.purchaseAmount.toLocaleString('en-IN')}</p>
+      {/* Finance */}
+      <Card
+        icon={<IndianRupee className="h-4 w-4" />}
+        title="Financial Breakdown"
+        aside={<span className="text-[11px] font-semibold text-gray-500">{finance.gst.stateClassification} · margin scheme</span>}
+      >
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+          {([
+            ['Purchase', record.purchaseAmount, ''],
+            ['Sell', record.sellAmount, ''],
+            ['Margin (incl. GST)', finance.gst.marginAmount, ''],
+            ...getSellAccountTaxLines(finance.gst).map((line) => [line.label, line.amount, 'blue'] as [string, number, string]),
+            ['Margin after GST', finance.gst.taxableAmount, ''],
+            ['Expenses', record.expenses, ''],
+            ['Final profit', finance.gst.netProfitAfterGst, 'emerald'],
+          ] as Array<[string, number, string]>).map(([label, value, accent]) => (
+            <div key={label} className={`rounded-lg border px-3 py-2 ${accent === 'blue' ? 'border-blue-200 bg-blue-50/60' : accent === 'emerald' ? 'border-emerald-200 bg-emerald-50/70' : 'border-gray-200 bg-gray-50/60'}`}>
+              <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+              <p className={`mt-0.5 text-base font-extrabold tabular-nums ${value < 0 ? 'text-rose-600' : accent === 'emerald' ? 'text-emerald-700' : 'text-gray-950'}`}>{formatInr(value)}</p>
             </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm border border-amber-100/50 hover:border-amber-300 transition-colors text-center">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Sell Amount</p>
-              <p className="mt-1 text-xl font-bold text-emerald-700">₹{record.sellAmount.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm border border-amber-100/50 hover:border-amber-300 transition-colors text-center">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Expenses</p>
-              <p className="mt-1 text-xl font-bold text-gray-800">₹{record.expenses.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm border border-amber-300 bg-amber-50 hover:border-amber-400 transition-colors text-center">
-              <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Net Profit</p>
-              <p className={`mt-1 text-2xl font-black ${record.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                ₹{record.netProfit.toLocaleString('en-IN')}
-              </p>
-            </div>
+          ))}
+        </div>
+        {breakdown && record.expenses > 0 ? (
+          <p className="mt-2 text-xs text-gray-600">
+            Expenses: {SELL_ACCOUNT_EXPENSE_FIELDS.filter((field) => Number(breakdown[field.key as keyof SellAccountExpenseBreakdown] || 0) > 0)
+              .map((field) => `${field.key === 'other' && breakdown.otherLabel ? breakdown.otherLabel : field.label} ${formatInr(Number(breakdown[field.key as keyof SellAccountExpenseBreakdown]))}`)
+              .join(' · ')}
+          </p>
+        ) : null}
+      </Card>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {/* Payments */}
+        <Card icon={<Wallet className="h-4 w-4" />} title="Payments" aside={<span className="text-[11px] font-bold text-gray-600">{finance.payments.purchaserPaymentStatus}</span>}>
+          <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Detail label="Customer pays (cash)" value={formatInr(finance.payments.customerCashReceivable)} />
+            <Detail label="Received" value={formatInr(finance.payments.purchaserReceived)} />
+            <Detail label="Customer balance" value={formatInr(finance.payments.purchaserBalance)} />
+            <Detail label="Seller balance" value={formatInr(finance.payments.sellerBalance)} />
           </div>
-          {record.balanceAmount > 0 && (
-            <div className="mt-3 text-right text-sm text-gray-500">
-              Balance Amount: <span className="font-semibold text-gray-700">₹{record.balanceAmount.toLocaleString('en-IN')}</span>
+          {(record.payments || []).length ? (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th></tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(record.payments || []).map((payment, index) => (
+                    <tr key={payment.id || index}>
+                      <td className="px-2.5 py-1.5 font-semibold">{payment.side === 'PURCHASER_RECEIPT' ? 'Customer' : 'Seller'}</td>
+                      <td className="px-2.5 py-1.5 font-bold tabular-nums">{formatInr(payment.amount)}</td>
+                      <td className="px-2.5 py-1.5">{formatDate(payment.paymentDate)}</td>
+                      <td className="px-2.5 py-1.5">{payment.method.replace('_', ' ')}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : <p className="text-xs text-gray-500">No payments recorded.</p>}
+        </Card>
+
+        {/* Invoice */}
+        <Card icon={<Receipt className="h-4 w-4" />} title="Customer Invoice">
+          {record.invoiceNumber ? (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <Detail label="Invoice No." value={record.invoiceNumber} strong />
+                <Detail label="Generated" value={formatDate(record.invoiceGeneratedAt || '')} />
+                <Detail label="Last sent" value={record.invoiceSentAt ? formatDate(record.invoiceSentAt) : 'Not sent'} />
+              </div>
+              {deliveryChannels.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {deliveryChannels.map((channel) => (
+                    <span key={channel.channel} title={channel.detail || undefined} className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channel.sent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+                      {channel.channel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}: {channel.sent ? 'Sent' : channel.status.replaceAll('_', ' ').toLowerCase()}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={invoiceBusy !== null} onClick={() => void downloadInvoice()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-60">
+                  {invoiceBusy === 'download' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Download PDF
+                </button>
+                {canUpdate ? (
+                  <button type="button" disabled={invoiceBusy !== null} onClick={() => void resendInvoice()} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60">
+                    {invoiceBusy === 'resend' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Resend to customer
+                  </button>
+                ) : null}
+              </div>
+              {latestInvoiceUrl ? (
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                  <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-gray-600">{latestInvoiceUrl}</p>
+                  <button type="button" onClick={() => { void navigator.clipboard?.writeText(latestInvoiceUrl); toast.success('Link copied.'); }} className="rounded-md p-1 text-gray-500 hover:bg-white" aria-label="Copy invoice link"><Copy className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : null}
+              <p className="text-[11px] text-gray-500">The customer link only works for 180 days and only the latest link is valid.</p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              The invoice is generated automatically when the sale is completed from the RTO workspace (all transfer tasks done and full payment received).
+            </p>
           )}
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 md:col-span-2 shadow-xs">
-          <div className={`grid grid-cols-2 gap-3 sm:grid-cols-2 ${finance.gst.isIntraState ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
-            {/* 1. Gross */}
-            <div className="rounded-xl border border-blue-100 bg-white p-3.5 shadow-2xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Gross</p>
-              <p className={`text-base font-extrabold mt-1 ${finance.gst.netProfitBeforeGst >= 0 ? 'text-gray-950' : 'text-rose-600'}`}>
-                ₹{finance.gst.netProfitBeforeGst.toLocaleString('en-IN')}
-              </p>
-            </div>
-
-            {/* 2. Taxable Value */}
-            <div className="rounded-xl border border-blue-100 bg-white p-3.5 shadow-2xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Taxable Value</p>
-              <p className="text-base font-extrabold text-blue-950 mt-1">₹{finance.gst.taxableAmount.toLocaleString('en-IN')}</p>
-            </div>
-
-            {/* 3. GST Component(s): IGST (18%) OR CGST (9%) + SGST (9%) */}
-            {getSellAccountTaxLines(finance.gst).map((taxLine) => (
-              <div key={taxLine.key} className="rounded-xl border border-blue-200 bg-white p-3.5 shadow-2xs">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">{taxLine.label}</p>
-                <p className="text-base font-extrabold text-blue-950 mt-1">₹{taxLine.amount.toLocaleString('en-IN')}</p>
-              </div>
-            ))}
-
-            {/* 4. Final Net Profit */}
-            <div className="rounded-xl border border-emerald-200 bg-white p-3.5 shadow-2xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Final Net Profit</p>
-              <p className={`text-base font-extrabold mt-1 ${finance.gst.netProfitAfterGst >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                ₹{finance.gst.netProfitAfterGst.toLocaleString('en-IN')}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 md:col-span-2">
-          <div className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs text-gray-500">Vehicle purchaser received (Customer)</p><p className="font-bold text-gray-900">₹{finance.payments.purchaserReceived.toLocaleString('en-IN')}</p></div>
-          <div className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs text-gray-500">Payment status</p><p className="font-bold text-gray-900">{finance.payments.purchaserPaymentStatus}</p></div>
-        </div>
-
-        {/* Deed Documents */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm md:col-span-2">
-          <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-sm font-bold uppercase tracking-wider text-amber-700">
-            <FileText className="h-4 w-4" /> Purchase & Sell Deed Documents
-          </h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Purchase Deed PDFs</p>
-              <SecurePdfDocument label="Purchase Deed Document" document={getDocuments(record).purchaseDeed} />
-              <SecurePdfDocument label="Aadhaar Card" document={getDocuments(record).purchaseAadhaarCard} />
-              <SecurePdfDocument label="PAN Card" document={getDocuments(record).purchasePanCard} />
-              <SecurePdfDocument label="GST Certificate" document={getDocuments(record).purchaseGstCertificate} />
-            </div>
-            <div className="space-y-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Sell Deed PDFs</p>
-              <SecurePdfDocument label="Sell Deed Document" document={getDocuments(record).sellDeed} />
-              <SecurePdfDocument label="Aadhaar Card" document={getDocuments(record).sellAadhaarCard} />
-              <SecurePdfDocument label="PAN Card" document={getDocuments(record).sellPanCard} />
-              <SecurePdfDocument label="GST Certificate" document={getDocuments(record).sellGstCertificate} />
-            </div>
-          </div>
-        </div>
-
-        {/* Transfer Details & Remark */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm md:col-span-2">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-gray-100 pb-2">
-            <FileText className="h-4 w-4" /> Transfer Details & Remark
-          </h3>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Transfer Details</p>
-              <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
-                <p className="text-sm font-medium text-gray-900">{record.transferDetails || 'No transfer details specified.'}</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Remark</p>
-              <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
-                <p className="text-sm text-gray-900 whitespace-pre-wrap font-medium">{record.noteSheet || 'No additional notes.'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        </Card>
       </div>
 
-      {/* EDIT MODAL */}
-      {isEditOpen && editData && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-200 space-y-6 max-h-[90vh] overflow-y-auto my-auto animate-in fade-in zoom-in duration-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200/60 w-fit mb-1">
-                  Editing: {record.id}
-                </div>
-                <h3 className="text-xl font-bold text-gray-900">Edit Sell Account Record</h3>
-              </div>
-              <button
-                onClick={() => void closeEdit()}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEditSubmit} className="space-y-6">
-              {/* SECTION 1: VEHICLE & OWNER DETAILS */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
-                  <Car className="w-4 h-4" /> 1. Vehicle & Owner Details
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Owner Name *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ramesh Patel"
-                      value={editData.ownerName}
-                      onChange={(e) => handleEditChange('ownerName', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 ${editErrors.ownerName ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.ownerName && <p className="text-[11px] text-rose-500 mt-1">{editErrors.ownerName}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Owner Mobile Number *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 9876543210"
-                      maxLength={10}
-                      value={editData.ownerNumber}
-                      onChange={(e) => handleEditChange('ownerNumber', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 ${editErrors.ownerNumber ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.ownerNumber && <p className="text-[11px] text-rose-500 mt-1">{editErrors.ownerNumber}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Registration Number *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. MH-12-AB-1234"
-                      value={editData.vehicleNumber}
-                      onChange={(e) => handleEditChange('vehicleNumber', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 ${editErrors.vehicleNumber ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.vehicleNumber && <p className="text-[11px] text-rose-500 mt-1">{editErrors.vehicleNumber}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Chassis Number</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. JCB3DX2026CHASSIS"
-                      maxLength={40}
-                      value={editData.chassisNumber || ''}
-                      onChange={(e) => handleEditChange('chassisNumber', e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.category', 'Category')} *</label>
-                    <SearchableSelect
-                      options={categories.map((cat) => ({ id: cat.name, name: cat.name }))}
-                      value={editData.vehicleType}
-                      displayValue={editData.vehicleType || t('listingDetails.selectCategory', 'Select Category')}
-                      onChange={(opt) => handleEditChange('vehicleType', String(opt.id))}
-                      searchable={true}
-                      placeholder={t('listingDetails.selectCategory', 'Select Category')}
-                      className={`w-full bg-gray-50 ${editErrors.vehicleType ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.vehicleType && <p className="text-[11px] text-rose-500 mt-1">{editErrors.vehicleType}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.brand', 'Brand')} *</label>
-                    <SearchableSelect
-                      options={brands.map((brand) => ({ id: brand.id, name: brand.name }))}
-                      value={editData.brandName}
-                      displayValue={editData.brandName || t('listingDetails.selectBrand', 'Select Brand')}
-                      onChange={(option) => handleEditChange('brandName', option.name)}
-                      searchable
-                      placeholder={t('listingDetails.selectBrand', 'Select Brand')}
-                      className={`w-full bg-gray-50 ${editErrors.brandName ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.brandName && <p className="text-[11px] text-rose-500 mt-1">{editErrors.brandName}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">{t('listingDetails.model', 'Vehicle Model')} *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. JCB 3DX Super 2023"
-                      value={editData.vehicleModel}
-                      onChange={(e) => handleEditChange('vehicleModel', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 ${editErrors.vehicleModel ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.vehicleModel && <p className="text-[11px] text-rose-500 mt-1">{editErrors.vehicleModel}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Sell Date *</label>
-                    <input
-                      type="date"
-                      value={editData.sellDate}
-                      onChange={(e) => handleEditChange('sellDate', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 ${editErrors.sellDate ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.sellDate && <p className="text-[11px] text-rose-500 mt-1">{editErrors.sellDate}</p>}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 2: SELLER & PURCHASER DETAILS */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
-                  <User className="w-4 h-4" /> 2. Seller & Purchaser Details
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200/80 space-y-3">
-                    <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">Seller Information</p>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Seller Name *</label>
-                      <input
-                        type="text"
-                        placeholder="Seller Name"
-                        value={editData.sellerName}
-                        onChange={(e) => handleEditChange('sellerName', e.target.value)}
-                        className={`w-full px-3 py-2 bg-white border rounded-xl text-sm ${editErrors.sellerName ? 'border-rose-500' : 'border-gray-200'}`}
-                      />
-                      {editErrors.sellerName && <p className="text-[11px] text-rose-500 mt-1">{editErrors.sellerName}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Seller Mobile Number *</label>
-                      <input
-                        type="text"
-                        placeholder="10-digit Mobile"
-                        maxLength={10}
-                        value={editData.sellerNumber}
-                        onChange={(e) => handleEditChange('sellerNumber', e.target.value)}
-                        className={`w-full px-3 py-2 bg-white border rounded-xl text-sm ${editErrors.sellerNumber ? 'border-rose-500' : 'border-gray-200'}`}
-                      />
-                      {editErrors.sellerNumber && <p className="text-[11px] text-rose-500 mt-1">{editErrors.sellerNumber}</p>}
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200/80 space-y-3">
-                    <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">Purchaser Information</p>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Purchaser Name *</label>
-                      <input
-                        type="text"
-                        placeholder="Purchaser Name"
-                        value={editData.purchaserName}
-                        onChange={(e) => handleEditChange('purchaserName', e.target.value)}
-                        className={`w-full px-3 py-2 bg-white border rounded-xl text-sm ${editErrors.purchaserName ? 'border-rose-500' : 'border-gray-200'}`}
-                      />
-                      {editErrors.purchaserName && <p className="text-[11px] text-rose-500 mt-1">{editErrors.purchaserName}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Purchaser Mobile Number *</label>
-                      <input
-                        type="text"
-                        placeholder="10-digit Mobile"
-                        maxLength={10}
-                        value={editData.purchaserNumber}
-                        onChange={(e) => handleEditChange('purchaserNumber', e.target.value)}
-                        className={`w-full px-3 py-2 bg-white border rounded-xl text-sm ${editErrors.purchaserNumber ? 'border-rose-500' : 'border-gray-200'}`}
-                      />
-                      {editErrors.purchaserNumber && <p className="text-[11px] text-rose-500 mt-1">{editErrors.purchaserNumber}</p>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 3: FINANCIAL BREAKDOWN */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" /> 3. Financial Breakdown & Calculation
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Purchase Amount (₹) *</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={rawInputs.purchaseAmount}
-                      onChange={(e) => handleEditChange('purchaseAmount', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${editErrors.purchaseAmount ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.purchaseAmount && <p className="text-[11px] text-rose-500 mt-1">{editErrors.purchaseAmount}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Sell Amount (₹) *</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={rawInputs.sellAmount}
-                      onChange={(e) => handleEditChange('sellAmount', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${editErrors.sellAmount ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.sellAmount && <p className="text-[11px] text-rose-500 mt-1">{editErrors.sellAmount}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Expenses (₹)</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={rawInputs.expenses}
-                      onChange={(e) => handleEditChange('expenses', e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Balance Amount (₹)</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={rawInputs.balanceAmount}
-                      onChange={(e) => handleEditChange('balanceAmount', e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                    />
-                  </div>
-                </div>
-
-                {/* Live Auto Net Profit Banner */}
-                <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 font-medium text-amber-900">
-                    <TrendingUp className="w-4 h-4 text-amber-600" />
-                    <span>Auto Calculated Net Profit:</span>
-                    <span className="text-xs text-amber-700">(Sell Amount - Purchase Amount - Expenses)</span>
-                  </div>
-                  <div className={`text-base font-bold ${editData.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    ₹{editData.netProfit.toLocaleString('en-IN')}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 4: PURCHASE DEED */}
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 border-b border-amber-100 pb-1 text-xs font-bold uppercase tracking-wider text-amber-700">
-                  <FileText className="h-4 w-4" /> 4. Purchase Deed
-                </h4>
-                {editErrors.documents ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{editErrors.documents}</p> : null}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <EditPdfField label="Purchase Deed Document" document={editData.documents?.purchaseDeed} onUploaded={(file) => handleDocumentUploaded('purchaseDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="Aadhaar Card Document" document={editData.documents?.purchaseAadhaarCard} onUploaded={(file) => handleDocumentUploaded('purchaseAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="PAN Card Document" document={editData.documents?.purchasePanCard} onUploaded={(file) => handleDocumentUploaded('purchasePanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="GST Certificate Document" document={editData.documents?.purchaseGstCertificate} onUploaded={(file) => handleDocumentUploaded('purchaseGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                </div>
-              </div>
-
-              {/* SECTION 5: SELL DEED */}
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 border-b border-amber-100 pb-1 text-xs font-bold uppercase tracking-wider text-amber-700">
-                  <FileText className="h-4 w-4" /> 5. Sell Deed
-                </h4>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <EditPdfField label="Sell Deed Document" document={editData.documents?.sellDeed} onUploaded={(file) => handleDocumentUploaded('sellDeed', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="Aadhaar Card Document" document={editData.documents?.sellAadhaarCard} onUploaded={(file) => handleDocumentUploaded('sellAadhaarCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="PAN Card Document" document={editData.documents?.sellPanCard} onUploaded={(file) => handleDocumentUploaded('sellPanCard', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                  <EditPdfField label="GST Certificate Document" document={editData.documents?.sellGstCertificate} onUploaded={(file) => handleDocumentUploaded('sellGstCertificate', file)} onUploadStateChange={handleDocumentUploadStateChange} />
-                </div>
-              </div>
-
-              {/* SECTION 6: STATUS, TRANSFER DETAILS & REMARK */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 border-b border-amber-100 pb-1 flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> 6. Status, Transfer Details & Remark
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Deal Status</label>
-                    <div className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${DEAL_STATUS_CONFIG[editData.dealStatus].bg} ${DEAL_STATUS_CONFIG[editData.dealStatus].text} ${DEAL_STATUS_CONFIG[editData.dealStatus].border}`}>
-                      {(() => { const StatusIcon = DEAL_STATUS_CONFIG[editData.dealStatus].icon; return <StatusIcon className="h-4 w-4" />; })()}
-                      {DEAL_STATUS_CONFIG[editData.dealStatus].label}
-                    </div>
-                    <p className="mt-1 text-[11px] text-gray-500">Automatically derived from payment receipts and RTO progress.</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Transfer Details *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. NOC pending at RTO, Hypothecation removed"
-                      value={editData.transferDetails}
-                      onChange={(e) => handleEditChange('transferDetails', e.target.value)}
-                      className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm ${editErrors.transferDetails ? 'border-rose-500' : 'border-gray-200'}`}
-                    />
-                    {editErrors.transferDetails && <p className="text-[11px] text-rose-500 mt-1">{editErrors.transferDetails}</p>}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Remark *</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Enter remark, inspection observations, payment terms, or transfer notes..."
-                    value={editData.noteSheet}
-                    onChange={(e) => handleEditChange('noteSheet', e.target.value)}
-                    className={`w-full px-3 py-2 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${editErrors.noteSheet ? 'border-rose-500' : 'border-gray-200'}`}
-                  />
-                  {editErrors.noteSheet && <p className="text-[11px] text-rose-500 mt-1">{editErrors.noteSheet}</p>}
-                </div>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => void closeEdit()}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={activeDocumentUploads > 0}
-                  className="px-6 py-2 text-sm font-bold text-gray-900 bg-[#FFC107] hover:bg-amber-400 rounded-xl transition-all shadow-md shadow-amber-500/20"
-                >
-                  {activeDocumentUploads > 0 ? 'Uploading PDFs...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
+      {/* Documents */}
+      <Card icon={<FileText className="h-4 w-4" />} title="Deeds & Documents">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Purchase side</p>
+            <SecurePdfDocument label="Purchase Deed" document={documents.purchaseDeed} />
+            <SecurePdfDocument label="Aadhaar Card" document={documents.purchaseAadhaarCard} />
+            <SecurePdfDocument label="PAN Card" document={documents.purchasePanCard} />
+            <SecurePdfDocument label="GST Certificate" document={documents.purchaseGstCertificate} />
+          </div>
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-800">Sale side</p>
+            <SecurePdfDocument label="Sell Deed" document={documents.sellDeed} />
+            <SecurePdfDocument label="Aadhaar Card" document={documents.sellAadhaarCard} />
+            <SecurePdfDocument label="PAN Card" document={documents.sellPanCard} />
+            <SecurePdfDocument label="GST Certificate" document={documents.sellGstCertificate} />
           </div>
         </div>
-      )}
+      </Card>
+
+      <Card icon={<FileText className="h-4 w-4" />} title="Transfer Details & Remark">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm font-medium text-gray-900">{record.transferDetails || 'No transfer details specified.'}</div>
+          <div className="whitespace-pre-wrap rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm text-gray-900">{record.noteSheet || 'No additional notes.'}</div>
+        </div>
+      </Card>
     </div>
   );
 }

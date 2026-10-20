@@ -6,6 +6,21 @@ import { syncSellAccountFromRto } from '../services/sellAccount.service';
 import { lockRtoWorkRecord } from '../services/sellAccount.service';
 import { assertRecordEditable, RecordLockedError } from '../services/recordLock';
 import { getLinkedRecordDeletionPolicy } from '../services/linkedRecordDeletion';
+import { serializeRtoRecord } from '../services/rtoRecordSerializer';
+import { recordRtoStatusChange } from '../services/rtoTransferStore';
+import { normalizeRemark } from '../services/rtoTransferTasks';
+import {
+  assertTasksAllowStatus,
+  getRtoTransferWorkspace,
+  initializeRtoTransferTasks,
+  RtoTransferError,
+  runRtoComplianceCheck,
+  updateRtoTransferTask,
+  listRtoTransferTasks as loadRtoTransferTasks,
+} from '../services/rtoTransfer.service';
+import { RcOwnerHistoryError } from '../services/rcOwnerHistory.service';
+import { getAppSettings } from '../utils/appSettings';
+import { renderRtoTransferCertificatePdf } from '../utils/rtoTransferCertificate';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -21,25 +36,7 @@ const money = (value: unknown) => {
 const validEnum = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
   allowed.includes(String(value) as T) ? String(value) as T : fallback;
 
-const serialize = (record: any, lockedByName?: string | null) => {
-  const { sellAccount, listing, ...baseRecord } = record;
-  const linkedBrandName = text(sellAccount?.brandName) || text(listing?.brand?.name);
-  const linkedVehicleType = text(sellAccount?.vehicleType) || text(listing?.category?.name);
-  const linkedVehicleModel = text(sellAccount?.vehicleModel) || text(listing?.model?.name);
-
-  return {
-    ...baseRecord,
-    lockedByName: lockedByName || null,
-    brandName: text(baseRecord.brandName) || linkedBrandName,
-    vehicleType: text(baseRecord.vehicleType) || linkedVehicleType,
-    vehicleModel: text(baseRecord.vehicleModel) || linkedVehicleModel,
-    rtoStatus: normalizeRtoWorkStatus(record.rtoStatus),
-    rtoExpenses: Number(baseRecord.rtoExpenses),
-    rtoExpensesAdvance: Number(baseRecord.rtoExpensesAdvance),
-    vehicleMaintenanceCost: Number(baseRecord.vehicleMaintenanceCost),
-    rtoExpensesBalance: Math.max(0, Number(baseRecord.rtoExpenses) - Number(baseRecord.rtoExpensesAdvance)),
-  };
-};
+const serialize = serializeRtoRecord;
 
 const buildPayload = (body: any, existing?: any) => {
   const value = (key: string) => body[key] !== undefined ? body[key] : existing?.[key];
@@ -192,8 +189,25 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
       const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
       if (!listing) return res.status(400).json({ success: false, error: 'Linked listing was not found.' });
     }
+    const previousStatus = normalizeRtoWorkStatus(existing.rtoStatus);
+    const statusChanged = payload.rtoStatus !== previousStatus;
+    const statusRemark = normalizeRemark(req.body?.statusRemark);
+    if (statusChanged && statusRemark.length < 3) {
+      return res.status(400).json({ success: false, error: 'A remark is required when changing the RTO status.', code: 'STATUS_REMARK_REQUIRED' });
+    }
+    if (statusChanged && payload.rtoStatus === RtoWorkStatus.DEAL_DONE && existing.sellAccountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Use "Complete Sale" in the RTO workspace to mark a Sold Vehicle deal done — it issues the invoice and locks both records.',
+        code: 'USE_COMPLETE_SALE',
+      });
+    }
+    if (statusChanged) await assertTasksAllowStatus(prisma, id, payload.rtoStatus);
     const record = await prisma.$transaction(async (tx) => {
       const updated = await tx.vehicleRtoRecord.update({ where: { id }, data: payload });
+      if (statusChanged) {
+        await recordRtoStatusChange(tx, { rtoRecordId: id, oldStatus: previousStatus, newStatus: payload.rtoStatus, remark: statusRemark, actorId: req.user?.id });
+      }
       if (updated.sellAccountId) {
         await syncSellAccountFromRto(tx, updated.sellAccountId, req.user?.id);
       }
@@ -202,6 +216,7 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
     res.json({ success: true, record: serialize(record) });
   } catch (error) {
     if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
+    if (error instanceof RtoTransferError) return res.status(error.statusCode).json({ success: false, error: error.message });
     next(error);
   }
 };
@@ -237,7 +252,7 @@ export const deleteRtoRecord = async (req: Request, res: Response, next: NextFun
     res.json({
       success: true,
       message: deleted === 'pair'
-        ? 'RTO record and connected Sell Account deleted successfully.'
+        ? 'RTO record and connected Sold Vehicle record deleted successfully.'
         : 'RTO record deleted successfully.',
     });
   } catch (error) {
@@ -256,4 +271,93 @@ export const lockRtoRecord = async (req: Request, res: Response, next: NextFunct
     if (error instanceof Error && error.message.includes('Only records with Deal Done')) return res.status(400).json({ success: false, error: error.message });
     next(error);
   }
+};
+
+const sendWorkspaceError = (error: unknown, res: Response, next: NextFunction) => {
+  if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
+  if (error instanceof RtoTransferError) return res.status(error.statusCode).json({ success: false, error: error.message });
+  if (error instanceof RcOwnerHistoryError) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+  if (error instanceof Error && /remark is required/i.test(error.message)) return res.status(400).json({ success: false, error: error.message });
+  return next(error);
+};
+
+export const getRtoRecordWorkspace = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await getRtoTransferWorkspace(text(req.params.id));
+    if (!workspace) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const listAllRtoTransferTasks = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tasks = await loadRtoTransferTasks();
+    res.json({ success: true, tasks });
+  } catch (error) { next(error); }
+};
+
+export const initializeRtoRecordTasks = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, ...(await initializeRtoTransferTasks(text(req.params.id), req.user?.id)) });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const updateRtoRecordTask = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await updateRtoTransferTask(text(req.params.id), text(req.params.taskId), req.body || {}, req.user?.id);
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const checkRtoRecordCompliance = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await runRtoComplianceCheck(text(req.params.id), 'RECORD', req.user!.id);
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const checkRtoRecordComplianceWithRcApi = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await runRtoComplianceCheck(text(req.params.id), 'RC_API', req.user!.id);
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const downloadRtoTransferCertificate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await getRtoTransferWorkspace(text(req.params.id));
+    if (!workspace) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    if (!workspace.progress.allDone) {
+      return res.status(400).json({ success: false, error: `Transfer is not complete yet. Pending: ${workspace.progress.pendingLabels.join(', ')}.` });
+    }
+    const settings = await getAppSettings();
+    const { record, sellAccount, tasks } = workspace;
+    const lastUpdate = tasks.reduce((latest, task) => {
+      const updatedAt = new Date(task.updatedAt);
+      return updatedAt > latest ? updatedAt : latest;
+    }, new Date(0));
+    const buffer = await renderRtoTransferCertificatePdf({
+      companyName: settings.companyInvoice.companyName || 'JCB Exchange',
+      companyAddress: [settings.companyInvoice.address, settings.companyInvoice.city, settings.companyInvoice.state].filter(Boolean).join(', '),
+      vehicle: {
+        registrationNumber: record.vehicleNumber,
+        brand: record.brandName,
+        model: record.vehicleModel,
+        category: record.vehicleType,
+        chassisNumber: sellAccount?.chassisNumber || '',
+      },
+      previousOwner: { name: sellAccount?.ownerName || record.sellerName, mobile: '' },
+      newOwner: { name: sellAccount?.purchaserName || record.purchaserName, mobile: sellAccount?.purchaserNumber || record.purchaserNumber },
+      rtoOffice: record.rtoOffice,
+      rtoAgent: [record.rtoAgentName, record.rtoAgentCity].filter(Boolean).join(', '),
+      dealReference: sellAccount?.recordNumber || '',
+      tasks: tasks.map((task) => ({ label: task.label, status: task.status, remark: task.remark || '', updatedAt: task.updatedAt, optional: task.isOptional })),
+      completedAt: lastUpdate,
+    });
+    const fileName = `Ownership-Transfer-${String(record.vehicleNumber || record.id).replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(buffer);
+  } catch (error) { sendWorkspaceError(error, res, next); }
 };

@@ -1188,6 +1188,34 @@ enum SellAccountTaxMode {
   EXCLUSIVE
 }
 
+// Who the vehicle was bought from before JCB Exchange (the broker) sold it on.
+enum SellAccountSourceType {
+  PARTNER
+  AGENT
+  DIRECT_CUSTOMER
+  JCB_EXCHANGE
+}
+
+enum SellAccountPurchaseType {
+  PURCHASE
+  EXCHANGE
+}
+
+enum SellAccountSaleType {
+  SELL
+  EXCHANGE
+}
+
+enum RtoTransferTaskStatus {
+  PENDING
+  DOCUMENT_EXPIRED
+  RENEWAL_IN_PROGRESS
+  TRANSFER_INITIATED
+  ISSUE_REPORTED
+  TRANSFERRED
+  NOT_REQUIRED
+}
+
 model SellAccount {
   id                    String                 @id @default(uuid())
   recordNumber          String                 @unique
@@ -1209,6 +1237,18 @@ model SellAccount {
   purchaserNumber       String?
   sellerState            String?
   purchaserState        String?
+  sellerCity            String?
+  purchaserCity         String?
+  sourceType            SellAccountSourceType?
+  purchaseType          SellAccountPurchaseType @default(PURCHASE)
+  saleType              SellAccountSaleType    @default(SELL)
+  purchaseExchangeValue Decimal                @default(0) @db.Decimal(14, 2)
+  purchaseExchangeVehicle String?
+  saleExchangeValue     Decimal                @default(0) @db.Decimal(14, 2)
+  saleExchangeVehicle   String?
+  brokerName            String?
+  brokerNumber          String?
+  expenseBreakdown      Json?
   purchaseAmount        Decimal                @db.Decimal(14, 2)
   sellAmount            Decimal                @db.Decimal(14, 2)
   expenses              Decimal                @default(0) @db.Decimal(14, 2)
@@ -1227,6 +1267,14 @@ model SellAccount {
   lockedById            String?
   dealStatus            SellAccountDealStatus  @default(OPEN)
   rtoStatusSnapshot     String                 @default("PENDING")
+  completedAt           DateTime?
+  invoiceNumber         String?                @unique
+  invoiceGeneratedAt    DateTime?
+  // Only a SHA-256 hash of the public invoice link token is stored.
+  invoiceTokenHash      String?                @unique
+  invoiceTokenExpiresAt DateTime?
+  invoiceSentAt         DateTime?
+  invoiceDelivery       Json?
   createdById           String?
   updatedById           String?
   createdAt             DateTime               @default(now())
@@ -1317,17 +1365,69 @@ model VehicleRtoRecord {
   noteSheet              String?               @db.Text
   vehicleMaintenanceCost Decimal               @default(0) @db.Decimal(12, 2)
   hourRunning            Int?
+  complianceSnapshot     Json?
+  complianceCheckedAt    DateTime?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
   listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   sellAccount SellAccount? @relation(fields: [sellAccountId], references: [id], onDelete: SetNull)
+  transferTasks RtoTransferTask[]
+  statusLogs    VehicleRtoStatusLog[]
 
   @@index([vehicleNumber])
   @@index([rtoStatus])
   @@index([isLocked])
   @@index([documentSendDate])
   @@index([rtoAgentState, rtoAgentCity])
+}
+
+model VehicleRtoStatusLog {
+  id          String   @id @default(uuid())
+  rtoRecordId String
+  oldStatus   String?
+  newStatus   String
+  remark      String   @db.Text
+  changedById String?
+  createdAt   DateTime @default(now())
+
+  rtoRecord VehicleRtoRecord @relation(fields: [rtoRecordId], references: [id], onDelete: Cascade)
+
+  @@index([rtoRecordId, createdAt])
+}
+
+model RtoTransferTask {
+  id          String                @id @default(uuid())
+  rtoRecordId String
+  taskKey     String
+  label       String
+  isOptional  Boolean               @default(false)
+  sortOrder   Int                   @default(0)
+  status      RtoTransferTaskStatus @default(PENDING)
+  remark      String?               @db.Text
+  updatedById String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  rtoRecord VehicleRtoRecord     @relation(fields: [rtoRecordId], references: [id], onDelete: Cascade)
+  logs      RtoTransferTaskLog[]
+
+  @@unique([rtoRecordId, taskKey])
+  @@index([status])
+}
+
+model RtoTransferTaskLog {
+  id          String                 @id @default(uuid())
+  taskId      String
+  oldStatus   RtoTransferTaskStatus?
+  newStatus   RtoTransferTaskStatus
+  remark      String                 @db.Text
+  changedById String?
+  createdAt   DateTime               @default(now())
+
+  task RtoTransferTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }
 
 model AnalyticsEvent {

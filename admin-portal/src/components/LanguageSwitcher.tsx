@@ -69,7 +69,7 @@ export default function LanguageSwitcher({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-label={t('common.language')}
-        className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all duration-150 focus:outline-none ${
+        className={`inline-flex items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-2.5 py-0.5 sm:py-1 text-xs font-semibold transition-all duration-150 focus:outline-none ${
           isDark
             ? 'border border-white/20 bg-neutral-900 text-white hover:bg-neutral-800 hover:border-white/30 active:bg-neutral-800'
             : 'border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100'

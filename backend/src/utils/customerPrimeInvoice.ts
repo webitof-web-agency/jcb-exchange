@@ -75,7 +75,7 @@ export const buildCustomerPrimeInvoiceData = ({
   };
 };
 
-const numberToWordsInr = (num: number): string => {
+export const numberToWordsInr = (num: number): string => {
   const rounded = Math.round(num);
   if (rounded === 0) return 'Zero Rupees Only';
 

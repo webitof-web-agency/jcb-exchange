@@ -6,9 +6,11 @@ import {
   calculateSellAccountPaymentSummary,
   deriveSellAccountDealStatus,
   getSellAccountTaxLines,
+  normalizeExpenseBreakdown,
+  sumExpenseBreakdown,
 } from './sellAccountFinance.mjs';
 
-test('calculates GST at 18 percent on profit for an intra-state sale', () => {
+test('calculates 18 percent GST on the margin (not net of expenses) for an intra-state sale', () => {
   const breakdown = calculateSellAccountGst({
     sellAmount: 118000,
     purchaseAmount: 90000,
@@ -19,13 +21,14 @@ test('calculates GST at 18 percent on profit for an intra-state sale', () => {
   });
 
   assert.equal(GST_RATE_PERCENT, 18);
-  assert.equal(breakdown.taxableAmount, 19491.53);
-  assert.equal(breakdown.gstAmount, 3508.47);
-  assert.equal(breakdown.cgst, 1754.24);
-  assert.equal(breakdown.sgst, 1754.23);
+  assert.equal(breakdown.marginAmount, 28000);
+  assert.equal(breakdown.taxableAmount, 23728.81);
+  assert.equal(breakdown.gstAmount, 4271.19);
+  assert.equal(breakdown.cgst, 2135.59);
+  assert.equal(breakdown.sgst, 2135.6);
   assert.equal(breakdown.igst, 0);
   assert.equal(breakdown.netProfitBeforeGst, 23000);
-  assert.equal(breakdown.netProfitAfterGst, 19491.53);
+  assert.equal(breakdown.netProfitAfterGst, 18728.81);
 });
 
 test('keeps the entered sell amount payable while calculating GST on profit', () => {
@@ -58,17 +61,17 @@ test('calculates IGST for an inter-state sale using inclusive profit tax', () =>
     purchaserState: 'Maharashtra',
   });
 
-  assert.equal(breakdown.taxableAmount, 29661.02);
-  assert.equal(breakdown.gstAmount, 5338.98);
-  assert.equal(breakdown.igst, 5338.98);
+  assert.equal(breakdown.taxableAmount, 33898.31);
+  assert.equal(breakdown.gstAmount, 6101.69);
+  assert.equal(breakdown.igst, 6101.69);
   assert.equal(breakdown.cgst, 0);
   assert.equal(breakdown.sgst, 0);
   assert.equal(breakdown.grossSaleAmount, 100000);
   assert.equal(breakdown.netProfitBeforeGst, 35000);
-  assert.equal(breakdown.netProfitAfterGst, 29661.02);
+  assert.equal(breakdown.netProfitAfterGst, 28898.31);
 });
 
-test('does not charge GST when purchase cost and expenses exceed the sale amount', () => {
+test('still owes GST on a positive margin when expenses turn the deal into a loss', () => {
   const breakdown = calculateSellAccountGst({
     sellAmount: 100000,
     purchaseAmount: 90000,
@@ -77,10 +80,41 @@ test('does not charge GST when purchase cost and expenses exceed the sale amount
     purchaserState: 'Chhattisgarh',
   });
 
-  assert.equal(breakdown.taxableAmount, 0);
-  assert.equal(breakdown.gstAmount, 0);
+  assert.equal(breakdown.taxableAmount, 8474.58);
+  assert.equal(breakdown.gstAmount, 1525.42);
   assert.equal(breakdown.netProfitBeforeGst, -5000);
-  assert.equal(breakdown.netProfitAfterGst, -5000);
+  assert.equal(breakdown.netProfitAfterGst, -6525.42);
+});
+
+test('does not charge GST when the vehicle is sold below its purchase price', () => {
+  const breakdown = calculateSellAccountGst({ sellAmount: 90000, purchaseAmount: 100000, expenses: 2000 });
+  assert.equal(breakdown.marginAmount, -10000);
+  assert.equal(breakdown.gstAmount, 0);
+  assert.equal(breakdown.netProfitAfterGst, -12000);
+});
+
+test('matches the 10 lakh to 12 lakh broker example', () => {
+  const breakdown = calculateSellAccountGst({ purchaseAmount: 1000000, sellAmount: 1200000, sellerState: 'Chhattisgarh', purchaserState: 'Odisha' });
+  assert.equal(breakdown.marginAmount, 200000);
+  assert.equal(breakdown.gstAmount, 30508.47);
+  assert.equal(breakdown.igst, 30508.47);
+  assert.equal(breakdown.netProfitAfterGst, 169491.53);
+});
+
+test('nets an exchanged vehicle off the cash receivable', () => {
+  const summary = calculateSellAccountPaymentSummary({
+    sellAmount: 1200000,
+    saleExchangeValue: 300000,
+    payments: [{ side: 'PURCHASER_RECEIPT', amount: 900000 }],
+  });
+  assert.equal(summary.customerCashReceivable, 900000);
+  assert.equal(summary.purchaserPaymentStatus, 'FULL');
+});
+
+test('sums the itemised expense breakdown', () => {
+  const breakdown = normalizeExpenseBreakdown({ transport: '12000', paperwork: 1500, rtoWork: 4000, other: -1, otherLabel: ' Crane ' });
+  assert.equal(breakdown.otherLabel, 'Crane');
+  assert.equal(sumExpenseBreakdown(breakdown), 17500);
 });
 
 test('returns only the applicable GST components for the selected state classification', () => {

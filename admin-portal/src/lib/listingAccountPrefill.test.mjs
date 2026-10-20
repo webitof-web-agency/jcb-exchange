@@ -14,7 +14,7 @@ test('builds internal account links only for non-partner portal roles', () => {
   assert.equal(isInternalAccountLinkRole('PARTNER'), false);
   assert.equal(
     buildAccountModuleUrl('/employee/listings', 'rto-work-status', 'listing-1'),
-    '/employee/accounts/rto-work-status?listingId=listing-1',
+    '/employee/accounts/rto-work-status/new?listingId=listing-1',
   );
 });
 

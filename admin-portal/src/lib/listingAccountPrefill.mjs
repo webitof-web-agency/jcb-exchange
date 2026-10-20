@@ -47,7 +47,8 @@ export const buildAccountModuleUrl = (pathname, module, listingId) => {
       : 'superadmin';
   const params = new URLSearchParams();
   if (listingId) params.set('listingId', listingId);
-  return `/` + portal + `/accounts/` + module + (params.toString() ? `?${params.toString()}` : '');
+  // A listing link opens the create page, which redirects to the linked record if one exists.
+  return `/` + portal + `/accounts/` + module + (params.toString() ? `/new?${params.toString()}` : '');
 };
 
 export const getListingAccountPrefill = (listing = {}) => {

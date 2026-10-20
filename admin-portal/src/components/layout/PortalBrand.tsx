@@ -10,6 +10,7 @@ type PortalBrandProps = {
   className?: string;
   showSubtitle?: boolean;
   logoSrc?: string;
+  maxHeightClassName?: string;
 };
 
 export default function PortalBrand({
@@ -18,13 +19,14 @@ export default function PortalBrand({
   subtitle,
   className = '',
   showSubtitle = true,
-  logoSrc = '/adminlogo.png',
+  logoSrc = '/Logo-white.webp',
+  maxHeightClassName,
 }: PortalBrandProps) {
 
   const wrapperClass = size === 'footer'
     ? 'max-w-[240px] sm:max-w-[360px]'
     : 'max-w-[160px] sm:max-w-[190px]';
-  const maxHeightClass = size === 'footer' ? 'max-h-[80px]' : 'max-h-[56px]';
+  const maxHeightClass = maxHeightClassName ?? (size === 'footer' ? 'max-h-[80px]' : 'max-h-[56px]');
 
   return (
     <div className={`flex flex-col items-center justify-center text-center ${className}`}>

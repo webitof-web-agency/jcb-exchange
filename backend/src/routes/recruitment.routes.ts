@@ -51,7 +51,20 @@ import {
 } from '../controllers/recruitment.controller';
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
-import { createRtoRecord, deleteRtoRecord, listRtoRecords, lockRtoRecord, updateRtoRecord } from '../controllers/rto.controller';
+import {
+  checkRtoRecordCompliance,
+  checkRtoRecordComplianceWithRcApi,
+  createRtoRecord,
+  deleteRtoRecord,
+  downloadRtoTransferCertificate,
+  getRtoRecordWorkspace,
+  initializeRtoRecordTasks,
+  listRtoRecords,
+  lockRtoRecord,
+  listAllRtoTransferTasks,
+  updateRtoRecord,
+  updateRtoRecordTask,
+} from '../controllers/rto.controller';
 import {
   addSellAccountPaymentRecord,
   createSellAccountRecord,
@@ -64,6 +77,9 @@ import {
   updateAndStartSellAccountRtoRecord,
   updateSellAccountRecord,
   lockSellAccountRecord,
+  completeSellAccountSale,
+  resendSellAccountInvoice,
+  downloadSellAccountInvoice,
 } from '../controllers/sellAccount.controller';
 
 const router = Router();
@@ -160,10 +176,18 @@ router.delete('/admin/jobs/:id', canDeleteJobs, deleteJob);
 
 // RTO work records
 router.get('/admin/rto-records', canViewRto, listRtoRecords);
+router.get('/admin/rto-transfer-tasks', canViewRto, listAllRtoTransferTasks);
 router.post('/admin/rto-records', canCreateRto, createRtoRecord);
 router.put('/admin/rto-records/:id', canUpdateRto, updateRtoRecord);
 router.delete('/admin/rto-records/:id', canDeleteRto, deleteRtoRecord);
 router.post('/admin/rto-records/:id/lock', canUpdateRto, lockRtoRecord);
+router.get('/admin/rto-records/:id/workspace', canViewRto, getRtoRecordWorkspace);
+router.post('/admin/rto-records/:id/transfer-tasks', canUpdateRto, initializeRtoRecordTasks);
+router.patch('/admin/rto-records/:id/transfer-tasks/:taskId', canUpdateRto, updateRtoRecordTask);
+router.post('/admin/rto-records/:id/compliance', canUpdateRto, checkRtoRecordCompliance);
+// A fresh RC lookup is billed to the API wallet, so it also needs the RC verification permission.
+router.post('/admin/rto-records/:id/compliance/rc-api', canUpdateRto, requireAdminOrEmployeePermissions(['rc.full.read']), checkRtoRecordComplianceWithRcApi);
+router.get('/admin/rto-records/:id/transfer-certificate', canViewRto, downloadRtoTransferCertificate);
 
 // Sell Account records and normalized payment ledger
 router.get('/admin/sell-accounts', canViewSell, listSellAccountRecords);
@@ -174,6 +198,9 @@ router.put('/admin/sell-accounts/:id', canUpdateSell, updateSellAccountRecord);
 router.post('/admin/sell-accounts/:id/lock', canUpdateSell, lockSellAccountRecord);
 router.post('/admin/sell-accounts/:id/save-and-start-rto', canUpdateSell, canCreateRto, updateAndStartSellAccountRtoRecord);
 router.post('/admin/sell-accounts/:id/start-rto', canUpdateSell, canCreateRto, startSellAccountRtoRecord);
+router.post('/admin/sell-accounts/:id/complete', canUpdateSell, canUpdateRto, completeSellAccountSale);
+router.post('/admin/sell-accounts/:id/invoice/resend', canUpdateSell, resendSellAccountInvoice);
+router.get('/admin/sell-accounts/:id/invoice', canViewSell, downloadSellAccountInvoice);
 router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
 router.delete('/admin/sell-accounts/:id/payments/:paymentId', canDeleteSell, deleteSellAccountPaymentRecord);

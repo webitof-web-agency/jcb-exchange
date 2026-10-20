@@ -24,6 +24,7 @@ import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
+import { buildVehicleSaleInvoicePdf } from './vehicleSaleInvoice.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -39,6 +40,7 @@ export const marketplaceWhatsAppEvents = [
   'MARKETPLACE_NEW_LISTING_PUBLISHED',
   'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
+  'VEHICLE_SALE_INVOICE',
 ] as const;
 
 
@@ -525,6 +527,21 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
         },
         ...(Array.isArray(templateComponents) ? templateComponents : []),
       ];
+    } else if (eventCode === 'VEHICLE_SALE_INVOICE') {
+      if (!messageLog.relatedEntityId) throw new Error('Sold Vehicle record is missing for invoice delivery.');
+      const invoice = await buildVehicleSaleInvoicePdf(messageLog.relatedEntityId);
+      const uploadedMedia = await uploadWhatsAppDocument({
+        accessToken,
+        phoneNumberId: settings.phoneNumberId!,
+        graphApiVersion: graphApiVersion(settings.graphApiVersion),
+      }, invoice.buffer, invoice.fileName);
+      deliveryComponents = [
+        {
+          type: 'header',
+          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: invoice.fileName } }],
+        },
+        ...(Array.isArray(templateComponents) ? templateComponents : []),
+      ];
     } else if (eventCode === 'CUSTOMER_PRIME_APPROVED') {
       if (!messageLog.relatedEntityId) throw new Error('Prime subscription is missing for invoice delivery.');
       const invoice = await buildCustomerPrimeInvoicePdfForSubscription(messageLog.relatedEntityId);
@@ -622,10 +639,12 @@ type AutomationDispatchInput = {
   recipientPhone?: string | null | undefined;
   templateComponents?: unknown;
   payloadSnapshot?: Record<string, unknown>;
+  // Lets an intentional re-send (e.g. a refreshed invoice link) bypass the one-message-per-event guard.
+  dedupeSuffix?: string | undefined;
 };
 
 const buildDedupeKey = (input: AutomationDispatchInput, recipientPhone: string) =>
-  `${input.eventCode}:${input.relatedEntityType}:${input.relatedEntityId}:${input.recipientType}:${recipientPhone}`;
+  `${input.eventCode}:${input.relatedEntityType}:${input.relatedEntityId}:${input.recipientType}:${recipientPhone}${input.dedupeSuffix ? `:${input.dedupeSuffix}` : ''}`;
 
 export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput) => {
   try {

@@ -13,8 +13,11 @@ import {
 } from '../services/sellAccount.service';
 import { RecordLockedError } from '../services/recordLock';
 import { RtoHandoffRequiredError } from '../services/linkedRecordDeletion';
+import { completeVehicleSale, resendVehicleSaleInvoice, VehicleSaleCompletionError } from '../services/vehicleSaleCompletion.service';
+import { buildVehicleSaleInvoicePdf } from '../services/vehicleSaleInvoice.service';
+import { getPublicApiBaseUrl } from '../utils/publicApiUrl';
 
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to process Sell Account request.';
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to process Sold Vehicle request.';
 const errorStatus = (error: unknown) => {
   if (error instanceof RecordLockedError) return 423;
   if (error instanceof RtoHandoffRequiredError) return 409;
@@ -28,7 +31,7 @@ export const listSellAccountRecords = async (req: Request, res: Response, next: 
 export const getSellAccountRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await getSellAccount(String(req.params.id));
-    if (!record) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!record) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true, record });
   } catch (error) { next(error); }
 };
@@ -40,7 +43,7 @@ export const createSellAccountRecord = async (req: Request, res: Response, next:
 export const updateSellAccountRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await updateSellAccount(String(req.params.id), req.body, req.user?.id);
-    if (!record) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!record) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true, record });
   } catch (error) {
     const status = errorStatus(error);
@@ -51,7 +54,7 @@ export const updateSellAccountRecord = async (req: Request, res: Response, next:
 export const startSellAccountRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await startRtoWork(String(req.params.id), req.user?.id);
-    if (!result) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) });
@@ -61,7 +64,7 @@ export const startSellAccountRtoRecord = async (req: Request, res: Response, nex
 export const saveAndStartSellAccountRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await saveAndStartRtoWork(undefined, req.body, req.user?.id);
-    if (!result) return res.status(404).json({ success: false, error: 'Sell Account could not be created.' });
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle could not be created.' });
     res.status(201).json({ success: true, ...result });
   } catch (error) {
     res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) });
@@ -71,7 +74,7 @@ export const saveAndStartSellAccountRtoRecord = async (req: Request, res: Respon
 export const updateAndStartSellAccountRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await saveAndStartRtoWork(String(req.params.id), req.body, req.user?.id);
-    if (!result) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) });
@@ -81,7 +84,7 @@ export const updateAndStartSellAccountRtoRecord = async (req: Request, res: Resp
 export const deleteSellAccountRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const deleted = await deleteSellAccount(String(req.params.id), req.user?.id);
-    if (!deleted) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!deleted) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true });
   } catch (error) {
     res.status(errorStatus(error)).json({
@@ -95,7 +98,7 @@ export const deleteSellAccountRecord = async (req: Request, res: Response, next:
 export const addSellAccountPaymentRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await addSellAccountPayment(String(req.params.id), req.body, req.user?.id);
-    if (!record) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!record) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.status(201).json({ success: true, record });
   } catch (error) { res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) }); }
 };
@@ -111,9 +114,46 @@ export const deleteSellAccountPaymentRecord = async (req: Request, res: Response
 export const lockSellAccountRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await lockSellAccount(String(req.params.id), req.user?.id);
-    if (!record) return res.status(404).json({ success: false, error: 'Sell Account not found.' });
+    if (!record) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
     res.json({ success: true, record });
   } catch (error) {
     res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) });
+  }
+};
+
+const completionErrorStatus = (error: unknown) => {
+  if (error instanceof VehicleSaleCompletionError) return error.statusCode;
+  return errorStatus(error);
+};
+
+export const completeSellAccountSale = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await completeVehicleSale(String(req.params.id), req.body || {}, req.user?.id, getPublicApiBaseUrl(req));
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(completionErrorStatus(error)).json({ success: false, error: errorMessage(error) });
+  }
+};
+
+export const resendSellAccountInvoice = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await resendVehicleSaleInvoice(String(req.params.id), getPublicApiBaseUrl(req));
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(completionErrorStatus(error)).json({ success: false, error: errorMessage(error) });
+  }
+};
+
+export const downloadSellAccountInvoice = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const invoice = await buildVehicleSaleInvoicePdf(String(req.params.id));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${invoice.fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(invoice.buffer);
+  } catch (error) {
+    res.status(400).json({ success: false, error: errorMessage(error) });
   }
 };

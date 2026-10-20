@@ -10,7 +10,7 @@ import type { InvoiceSettings } from './SubscriptionInvoicePDFTemplate';
 // The invoice is rendered on a white background, so use the existing dark
 // JCB mark as the last-resort fallback. The old frontheadlogo asset belongs
 // to the separate frontend app and is not available in this portal bundle.
-const INVOICE_LOGO_FALLBACK = '/loadinglogo.png';
+const INVOICE_LOGO_FALLBACK = '/Logo-black.webp';
 
 export type LiveInvoicePaymentData = {
   id: string;

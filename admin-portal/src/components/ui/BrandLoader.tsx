@@ -63,8 +63,8 @@ function ArcRing({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
   );
 }
 
-function LoaderLogo({ ring }: { ring: number }) {
-  const activeLogoUrl = '/loadinglogo.png';
+function LoaderLogo({ ring, bg }: { ring: number; bg: BrandLoaderBg }) {
+  const activeLogoUrl = bg === 'dark' ? '/Logo-white.webp' : '/Logo-black.webp';
 
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -92,6 +92,7 @@ function Spinner({ size, bg }: { size: BrandLoaderSize; bg: BrandLoaderBg }) {
         <LoaderLogo
           key="static-loading-logo"
           ring={ring}
+          bg={bg}
         />
       )}
     </div>

@@ -19,13 +19,13 @@ export function ApiWalletHeader({ summary, status }: { summary: ApiBillingSummar
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 shadow-2xs transition-all hover:shadow-xs sm:px-3 ${tone}`}
+      className={`flex items-center gap-1.5 rounded-lg border px-2 py-0.5 shadow-2xs transition-all hover:shadow-xs sm:px-2.5 ${tone}`}
       role="status"
       aria-label={summary ? `API wallet balance ${formatApiWalletBalance(summary.wallet.balanceRupees)}` : 'API wallet is loading'}
       title={summary ? `API Wallet: ${formatApiWalletBalance(summary.wallet.balanceRupees)} (${statusLabel})` : 'Loading API Wallet'}
     >
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg shadow-2xs ${iconTone}`}>
-        <WalletCards className="h-4 w-4" aria-hidden="true" />
+      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md shadow-2xs ${iconTone}`}>
+        <WalletCards className="h-3 w-3" aria-hidden="true" />
       </span>
       <span className="text-xs font-extrabold text-slate-950 sm:text-sm tracking-tight whitespace-nowrap">
         {summary ? formatApiWalletBalance(summary.wallet.balanceRupees) : (

@@ -126,7 +126,7 @@ function DefaultTermsFallback() {
       <section className="space-y-3">
         <h2 className="text-lg font-bold text-gray-900 sm:text-xl">2. RTO Record Management & Accuracy</h2>
         <p>
-          Users and administrative operators updating RTO Work Status records certify that all tax validity, fitness certificates, insurance details, and hire purchase agreements conform to official regional transport office standards in India.
+          Users and administrative operators updating RTO Work records certify that all tax validity, fitness certificates, insurance details, and hire purchase agreements conform to official regional transport office standards in India.
         </p>
       </section>
 

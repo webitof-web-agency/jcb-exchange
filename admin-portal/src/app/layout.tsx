@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
   // Force dynamic evaluation at request time to fetch latest branding settings
   await cookies();
   const branding = await getPortalBranding();
-  const faviconUrl = branding.faviconUrl || '/icon.png';
+  const faviconUrl = branding.faviconUrl || '/Favicon.png';
   const iconType = getIconType(faviconUrl);
 
   return {

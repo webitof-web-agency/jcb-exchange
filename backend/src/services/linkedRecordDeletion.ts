@@ -15,7 +15,7 @@ export const getLinkedRecordDeletionPolicy = ({ source, hasLinkedRto, isLocked }
     return {
       action: 'BLOCK',
       code: 'RECORD_LOCKED',
-      message: 'This record is locked and can only be viewed. Delete it from the RTO Work Status section.',
+      message: 'This record is locked and can only be viewed. Delete it from the RTO Work section.',
     };
   }
 
@@ -23,7 +23,7 @@ export const getLinkedRecordDeletionPolicy = ({ source, hasLinkedRto, isLocked }
     return {
       action: 'BLOCK',
       code: 'RTO_HANDOFF_REQUIRED',
-      message: 'This Sell Account was transferred to RTO Work Status. Delete it from the RTO Work Status section first.',
+      message: 'This Sold Vehicle was transferred to RTO Work. Delete it from the RTO Work section first.',
     };
   }
 
@@ -36,7 +36,7 @@ export class RtoHandoffRequiredError extends Error {
   readonly statusCode = 409;
 
   constructor() {
-    super('This Sell Account was transferred to RTO Work Status. Delete it from the RTO Work Status section first.');
+    super('This Sold Vehicle was transferred to RTO Work. Delete it from the RTO Work section first.');
     this.name = 'RtoHandoffRequiredError';
   }
 }

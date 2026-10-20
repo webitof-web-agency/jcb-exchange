@@ -7,6 +7,9 @@ import {
   SellAccountDealStatus,
   SellAccountPaymentMethod,
   SellAccountPaymentSide,
+  SellAccountPurchaseType,
+  SellAccountSaleType,
+  SellAccountSourceType,
   SellAccountTaxMode,
 } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -14,11 +17,14 @@ import {
   calculateSellAccountGst,
   calculateSellAccountPaymentSummary,
   deriveSellAccountDealStatus,
+  normalizeSellAccountExpenseBreakdown,
+  sumSellAccountExpenseBreakdown,
   type SellAccountDealStatus as FinanceDealStatus,
 } from './sellAccountFinance';
 import { normalizeRtoWorkStatus, statusForSellAccountHandoff } from './rtoStatus';
 import { assertDealDoneBeforeLock, assertRecordEditable } from './recordLock';
 import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linkedRecordDeletion';
+import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -36,6 +42,19 @@ const validEnum = <T extends string>(value: unknown, allowed: readonly T[], fall
 const jsonValue = (value: unknown) => (value && typeof value === 'object' ? value as Prisma.InputJsonValue : undefined);
 
 const asFinanceStatus = (value: SellAccountDealStatus): FinanceDealStatus => value as FinanceDealStatus;
+
+const exchangeValues = (record: any) => ({
+  purchaseExchangeValue: record.purchaseType === SellAccountPurchaseType.EXCHANGE ? Number(record.purchaseExchangeValue || 0) : 0,
+  saleExchangeValue: record.saleType === SellAccountSaleType.EXCHANGE ? Number(record.saleExchangeValue || 0) : 0,
+});
+
+export const paymentSummaryForRecord = (record: any, payments: Array<{ side: string; amount: unknown }>) =>
+  calculateSellAccountPaymentSummary({
+    sellAmount: Number(record.sellAmount),
+    purchaseAmount: Number(record.purchaseAmount),
+    ...exchangeValues(record),
+    payments: payments.map((item) => ({ side: item.side, amount: Number(item.amount) })),
+  });
 
 // Records are hard-deleted, so a row count can point at a number that is still in use.
 // Continue from the highest existing sequence for the year instead.
@@ -60,7 +79,7 @@ const assertListingAvailable = async (listingId: string | null, currentId?: stri
     where: { listingId, ...(currentId ? { NOT: { id: currentId } } : {}) },
     select: { recordNumber: true },
   });
-  if (linked) throw new Error(`This listing is already linked to Sell Account ${linked.recordNumber}.`);
+  if (linked) throw new Error(`This listing is already linked to Sold Vehicle record ${linked.recordNumber}.`);
 };
 
 type RtoState = {
@@ -81,7 +100,9 @@ const normalizeRtoState = (value?: RtoState | string): RtoState => {
   };
 };
 
-const serialize = (record: any, rtoStateInput?: RtoState | string, dealStatusOverride?: SellAccountDealStatus) => {
+const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatusOverride?: SellAccountDealStatus) => {
+  // The public invoice token hash is a credential and never leaves the server.
+  const { invoiceTokenHash, ...record } = rawRecord;
   const rtoState = normalizeRtoState(rtoStateInput);
   const isDraft = record.isDraft === true;
   const payments = (record.payments || []).map((payment: any) => ({
@@ -92,10 +113,11 @@ const serialize = (record: any, rtoStateInput?: RtoState | string, dealStatusOve
     sellAmount: Number(record.sellAmount),
     purchaseAmount: Number(record.purchaseAmount),
     expenses: Number(record.expenses),
-    // Sell Account policy: GST is inclusive in the profit margin and extracted from it.
+    // Sell Account policy: GST is inclusive in the margin and extracted from it.
     taxMode: SellAccountTaxMode.INCLUSIVE,
     sellerState: record.sellerState || '',
     purchaserState: record.purchaserState || '',
+    ...exchangeValues(record),
     payments,
   };
   const gst = calculateSellAccountGst(financeInput);
@@ -107,9 +129,12 @@ const serialize = (record: any, rtoStateInput?: RtoState | string, dealStatusOve
   );
   return {
     ...record,
+    hasPublicInvoiceLink: Boolean(invoiceTokenHash) && (!record.invoiceTokenExpiresAt || new Date(record.invoiceTokenExpiresAt) > new Date()),
     purchaseAmount: Number(record.purchaseAmount),
     sellAmount: Number(record.sellAmount),
     expenses: Number(record.expenses),
+    purchaseExchangeValue: Number(record.purchaseExchangeValue || 0),
+    saleExchangeValue: Number(record.saleExchangeValue || 0),
     balanceAmount: paymentSummary.purchaserBalance,
     netProfit: gst.netProfitBeforeGst,
     netProfitAfterGst: gst.netProfitAfterGst,
@@ -132,7 +157,19 @@ const buildPayload = (body: any, existing?: any) => {
   if (!sellDate && !isDraft) throw new Error('Sell Date is required and must be valid.');
   const purchaseAmount = money(value('purchaseAmount'));
   const sellAmount = money(value('sellAmount'));
-  const expenses = money(value('expenses'));
+  const expenseBreakdown = body.expenseBreakdown !== undefined
+    ? normalizeSellAccountExpenseBreakdown(body.expenseBreakdown)
+    : normalizeSellAccountExpenseBreakdown(existing?.expenseBreakdown);
+  // An itemised breakdown is the source of truth for the expenses total.
+  const expenses = expenseBreakdown ? new Prisma.Decimal(sumSellAccountExpenseBreakdown(expenseBreakdown)) : money(value('expenses'));
+  const purchaseType = validEnum(value('purchaseType'), Object.values(SellAccountPurchaseType), SellAccountPurchaseType.PURCHASE);
+  const saleType = validEnum(value('saleType'), Object.values(SellAccountSaleType), SellAccountSaleType.SELL);
+  const sourceTypeValue = value('sourceType');
+  const sourceType = Object.values(SellAccountSourceType).includes(String(sourceTypeValue) as SellAccountSourceType)
+    ? String(sourceTypeValue) as SellAccountSourceType
+    : null;
+  const purchaseExchangeValue = purchaseType === SellAccountPurchaseType.EXCHANGE ? money(value('purchaseExchangeValue')) : new Prisma.Decimal(0);
+  const saleExchangeValue = saleType === SellAccountSaleType.EXCHANGE ? money(value('saleExchangeValue')) : new Prisma.Decimal(0);
   const taxMode = SellAccountTaxMode.INCLUSIVE;
   const gst = calculateSellAccountGst({
     sellAmount: Number(sellAmount),
@@ -162,6 +199,18 @@ const buildPayload = (body: any, existing?: any) => {
     purchaserNumber: phone(value('purchaserNumber')) || null,
     sellerState: text(value('sellerState')) || null,
     purchaserState: text(value('purchaserState')) || null,
+    sellerCity: text(value('sellerCity')) || null,
+    purchaserCity: text(value('purchaserCity')) || null,
+    sourceType,
+    purchaseType,
+    saleType,
+    purchaseExchangeValue,
+    purchaseExchangeVehicle: purchaseType === SellAccountPurchaseType.EXCHANGE ? text(value('purchaseExchangeVehicle')) || null : null,
+    saleExchangeValue,
+    saleExchangeVehicle: saleType === SellAccountSaleType.EXCHANGE ? text(value('saleExchangeVehicle')) || null : null,
+    brokerName: text(value('brokerName')) || null,
+    brokerNumber: phone(value('brokerNumber')) || null,
+    expenseBreakdown: expenseBreakdown ? expenseBreakdown as Prisma.InputJsonValue : Prisma.DbNull,
     purchaseAmount,
     sellAmount,
     expenses,
@@ -191,6 +240,14 @@ const validatePayload = (payload: ReturnType<typeof buildPayload>) => {
   if (Number(payload.purchaseAmount) <= 0 || Number(payload.sellAmount) <= 0) return 'Purchase and sell amounts must be greater than 0.';
   if (payload.sellerState && !payload.purchaserState) return 'Purchaser state is required when seller state is provided.';
   if (payload.purchaserState && !payload.sellerState) return 'Seller state is required when purchaser state is provided.';
+  if (payload.purchaseType === SellAccountPurchaseType.EXCHANGE) {
+    if (Number(payload.purchaseExchangeValue) <= 0) return 'Enter the value of the vehicle given in exchange on the purchase side.';
+    if (Number(payload.purchaseExchangeValue) > Number(payload.purchaseAmount)) return 'Purchase exchange value cannot exceed the purchase amount.';
+  }
+  if (payload.saleType === SellAccountSaleType.EXCHANGE) {
+    if (Number(payload.saleExchangeValue) <= 0) return 'Enter the value of the customer vehicle taken in exchange.';
+    if (Number(payload.saleExchangeValue) > Number(payload.sellAmount)) return 'Sale exchange value cannot exceed the sell amount.';
+  }
   return null;
 };
 
@@ -211,7 +268,7 @@ const getRtoState = async (client: any, sellAccountId: string, listingId: string
 const include = {
   payments: { orderBy: { paymentDate: 'asc' as const } },
   statusHistory: { orderBy: { createdAt: 'asc' as const } },
-  rtoRecord: { select: { id: true, listingId: true, sellAccountId: true, rtoStatus: true, updatedAt: true, isLocked: true, lockedAt: true } },
+  rtoRecord: { select: { id: true, listingId: true, sellAccountId: true, rtoStatus: true, updatedAt: true, isLocked: true, lockedAt: true, transferTasks: { select: { status: true } } } },
 };
 
 const buildPaymentPayload = (value: any, actorId?: string) => {
@@ -232,7 +289,7 @@ const buildPaymentPayload = (value: any, actorId?: string) => {
 const syncStatus = async (tx: any, record: any, actorId?: string) => {
   const rtoState = await getRtoState(tx, record.id, record.listingId);
   const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: record.id } });
-  const summary = calculateSellAccountPaymentSummary({ sellAmount: Number(record.sellAmount), purchaseAmount: Number(record.purchaseAmount), payments: payments.map((item: any) => ({ side: item.side, amount: Number(item.amount) })) });
+  const summary = paymentSummaryForRecord(record, payments);
   const nextStatus = deriveSellAccountDealStatus(summary.purchaserPaymentStatus, rtoState.status, rtoState.linked) as SellAccountDealStatus;
   if (record.isLocked) {
     return { nextStatus: record.dealStatus, rtoStatus: record.rtoStatusSnapshot || rtoState.status, rtoState };
@@ -256,7 +313,7 @@ export const syncSellAccountFromRto = async (tx: any, sellAccountId: string, act
   return syncStatus(tx, current, actorId);
 };
 
-const ensureRtoRecord = async (tx: any, current: any) => {
+const ensureRtoRecord = async (tx: any, current: any, actorId?: string) => {
   const handoffVehicleData = (existing: any) => ({
     customerName: existing.customerName || current.ownerName || current.sellerName || 'Customer',
     customerNumber: existing.customerNumber || current.ownerNumber || current.sellerNumber || '',
@@ -278,7 +335,7 @@ const ensureRtoRecord = async (tx: any, current: any) => {
     });
     if (existingListingRto) {
       if (existingListingRto.sellAccountId && existingListingRto.sellAccountId !== current.id) {
-        throw new Error('This listing is already linked to another Sell Account.');
+        throw new Error('This listing is already linked to another Sold Vehicle.');
       }
       rtoRecord = await tx.vehicleRtoRecord.update({
         where: { id: existingListingRto.id },
@@ -335,10 +392,24 @@ const ensureRtoRecord = async (tx: any, current: any) => {
         rtoExpensesAdvance: 0,
         documentSendDate: null,
         rtoStatus: RtoWorkStatus.RTO_WORK_STARTED,
-        noteSheet: `Started from Sell Account ${current.recordNumber}.`,
+        noteSheet: `Started from Sold Vehicle record ${current.recordNumber}.`,
         vehicleMaintenanceCost: 0,
         hourRunning: null,
       },
+    });
+  }
+
+  // The ownership-transfer checklist starts with whatever the saved validity data already
+  // shows (e.g. expired insurance is flagged immediately). Existing tasks are kept as-is.
+  const compliance = evaluateStoredRtoCompliance(rtoRecord, current);
+  const createdTasks = await ensureRtoTransferTasks(tx, rtoRecord.id, compliance, actorId);
+  if (createdTasks > 0) {
+    await recordRtoStatusChange(tx, {
+      rtoRecordId: rtoRecord.id,
+      oldStatus: null,
+      newStatus: rtoRecord.rtoStatus,
+      remark: `RTO work started from Sold Vehicle record ${current.recordNumber}.`,
+      actorId,
     });
   }
 
@@ -395,7 +466,7 @@ export const createSellAccount = async (body: unknown, actorId?: string) => {
     }
     const withPayments = await tx.sellAccount.findUnique({ where: { id: created.id }, include });
     if (!payload.isDraft) {
-      await tx.sellAccountStatusHistory.create({ data: { sellAccountId: created.id, newStatus: SellAccountDealStatus.OPEN, changedById: actorId || null, reason: 'Sell Account created.' } });
+      await tx.sellAccountStatusHistory.create({ data: { sellAccountId: created.id, newStatus: SellAccountDealStatus.OPEN, changedById: actorId || null, reason: 'Sold Vehicle created.' } });
     }
     return withPayments || created;
   });
@@ -479,7 +550,7 @@ export const addSellAccountPayment = async (id: string, body: any, actorId?: str
   const record = await prisma.$transaction(async (tx) => {
     await tx.sellAccountPayment.create({ data: { sellAccountId: id, ...buildPaymentPayload({ ...body, side, method, paymentDate }, actorId) } });
     const current = await tx.sellAccount.findUnique({ where: { id }, include });
-    if (!current) throw new Error('Sell Account not found.');
+    if (!current) throw new Error('Sold Vehicle not found.');
     await syncStatus(tx, current, actorId);
     return tx.sellAccount.findUnique({ where: { id }, include });
   });
@@ -526,13 +597,9 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
     }
 
     const current = await tx.sellAccount.findUnique({ where: { id: record.id }, include });
-    if (!current) throw new Error('Sell Account could not be saved.');
+    if (!current) throw new Error('Sold Vehicle could not be saved.');
     const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: current.id } });
-    const summary = calculateSellAccountPaymentSummary({
-      sellAmount: Number(current.sellAmount),
-      purchaseAmount: Number(current.purchaseAmount),
-      payments: payments.map((item: any) => ({ side: item.side, amount: Number(item.amount) })),
-    });
+    const summary = paymentSummaryForRecord(current, payments);
     if (summary.purchaserPaymentStatus !== 'FULL') {
       throw new Error('Full purchaser payment is required before starting RTO work.');
     }
@@ -543,12 +610,12 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
           sellAccountId: current.id,
           newStatus: SellAccountDealStatus.OPEN,
           changedById: actorId || null,
-          reason: 'Sell Account created and handed over to RTO.',
+          reason: 'Sold Vehicle created and handed over to RTO.',
         },
       });
     }
 
-    const rtoRecord = await ensureRtoRecord(tx, current);
+    const rtoRecord = await ensureRtoRecord(tx, current, actorId);
     const synced = await syncStatus(tx, current, actorId);
     const refreshed = await tx.sellAccount.findUnique({ where: { id: current.id }, include });
     return {
@@ -566,19 +633,15 @@ export const startRtoWork = async (id: string, actorId?: string) => {
     });
     if (!current) return null;
     assertRecordEditable(current.isLocked);
-    if (current.isDraft) throw new Error('Save the Sell Account record before starting RTO work.');
+    if (current.isDraft) throw new Error('Save the Sold Vehicle record before starting RTO work.');
 
     const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: current.id } });
-    const summary = calculateSellAccountPaymentSummary({
-      sellAmount: Number(current.sellAmount),
-      purchaseAmount: Number(current.purchaseAmount),
-      payments: payments.map((item: any) => ({ side: item.side, amount: Number(item.amount) })),
-    });
+    const summary = paymentSummaryForRecord(current, payments);
     if (summary.purchaserPaymentStatus !== 'FULL') {
       throw new Error('Full purchaser payment is required before starting RTO work.');
     }
 
-    const rtoRecord = await ensureRtoRecord(tx, current);
+    const rtoRecord = await ensureRtoRecord(tx, current, actorId);
 
     const synced = await syncStatus(tx, current, actorId);
     const refreshed = await tx.sellAccount.findUnique({ where: { id: current.id }, include });

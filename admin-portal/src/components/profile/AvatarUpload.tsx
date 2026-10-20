@@ -10,7 +10,7 @@ import type { User } from '@/store/authStore';
 type AvatarUploadProps = {
   user: User | null;
   onUploaded: (user: User) => void;
-  size?: 'header' | 'profile';
+  size?: 'header' | 'profile' | 'header-compact';
 };
 
 const getAvatarUrl = (avatarUrl?: string | null) => {
@@ -33,7 +33,7 @@ const getErrorMessage = (error: unknown) => {
 };
 
 export function UserAvatar({ user, size = 'header' }: Omit<AvatarUploadProps, 'onUploaded'>) {
-  const sizeClass = size === 'profile' ? 'h-20 w-20 rounded-2xl text-2xl' : 'h-8 w-8 sm:h-9 sm:w-9 rounded-full text-sm';
+  const sizeClass = size === 'profile' ? 'h-20 w-20 rounded-2xl text-2xl' : size === 'header-compact' ? 'h-7 w-7 rounded-full text-xs font-bold' : 'h-8 w-8 sm:h-9 sm:w-9 rounded-full text-sm';
   const avatarUrl = getAvatarUrl(user?.avatarUrl);
 
   return (

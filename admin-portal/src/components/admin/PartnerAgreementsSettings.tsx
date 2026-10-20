@@ -201,7 +201,7 @@ export default function PartnerAgreementsSettings() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex h-12 w-24 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-2">
-              <PortalBrand href="/employee/partner-agreements" showSubtitle={false} logoSrc="/adminloginlogo.png" />
+              <PortalBrand href="/employee/partner-agreements" showSubtitle={false} logoSrc="/Logo-white.webp" />
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Partner Agreements</h1>

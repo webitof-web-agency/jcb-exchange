@@ -5,7 +5,7 @@ import { Download, X, FileText } from 'lucide-react';
 import api from '@/lib/api';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 
-const INVOICE_LOGO_FALLBACK = '/frontheadlogo.png';
+const INVOICE_LOGO_FALLBACK = '/Logo-black.webp';
 
 export type InvoiceSettings = {
   companyName: string | null;

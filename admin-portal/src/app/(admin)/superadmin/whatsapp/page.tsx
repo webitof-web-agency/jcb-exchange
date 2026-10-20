@@ -193,6 +193,7 @@ const marketplaceEventDetails: Record<string, { title: string; recipient: string
   MARKETPLACE_NEW_LISTING_PUBLISHED: { title: 'New vehicle listing', recipient: 'Opted-in active customers', preview: 'Notifies opted-in customers when a listing is published.' },
   MARKETPLACE_NEW_PAYMENT_SUPERADMIN: { title: 'New payment received (Admin)', recipient: 'Superadmin', preview: 'Admin audit copy when a buyer submits a payment receipt for review.' },
   MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: { title: 'KYC submitted for review (Admin)', recipient: 'Superadmin', preview: 'Alerts admin when a partner submits KYC documents for verification.' },
+  VEHICLE_SALE_INVOICE: { title: 'Vehicle sale invoice', recipient: 'Customer (vehicle buyer)', preview: 'Sent when a sale is completed. Template needs a DOCUMENT header (invoice PDF) and 6 body variables: {{1}} customer name, {{2}} vehicle, {{3}} registration no., {{4}} invoice no., {{5}} amount, {{6}} invoice link.' },
 };
 
 const recruitmentEventDetails: Record<string, { title: string; recipient: string; preview: string }> = {
@@ -249,7 +250,7 @@ function WhatsAppPhonePreview({
   const { t } = useTranslation();
   const wt: WhatsAppCopy = (key, defaultText, params) => t(`whatsappModule.${key}`, defaultText, params);
   const { logoUrl, darkLogoUrl } = useSiteLogo();
-  const displayLogo = logoUrl || darkLogoUrl || '/icon.png';
+  const displayLogo = logoUrl || darkLogoUrl || '/Favicon.png';
   const metaBodyText = getMetaTemplateBody(components);
 
   const getSampleBody = () => {

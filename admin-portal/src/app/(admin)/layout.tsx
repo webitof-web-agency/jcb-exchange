@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
@@ -12,12 +12,11 @@ import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useIdleAutoLogout } from '@/hooks/useIdleAutoLogout';
 import { accountsNavItems } from '@/lib/accountsPermissions';
-import { insertAccountsNavItem } from '@/lib/adminNavigation';
 import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
-import { LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, Wallet, WalletCards, BookOpen, ScanLine, FileText } from 'lucide-react';
+import { Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
@@ -51,6 +50,8 @@ const navItems = [
   { href: '/superadmin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
   { href: '/superadmin/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare },
   { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
+  { href: '/superadmin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
+  { href: '/superadmin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
   { href: '/superadmin/partners', labelKey: 'admin.partners', icon: List },
   { href: '/superadmin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
   { href: '/superadmin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
@@ -72,6 +73,8 @@ const adminNavItems = [
   { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
   { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
+  { href: '/admin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
+  { href: '/admin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
 ];
 
 const employeeModuleNavItems = [
@@ -90,6 +93,8 @@ const employeeModuleNavItems = [
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
   { href: '/employee/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards, permissions: ['finance.read', 'finance.manage'] },
+  { href: '/employee/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText, permissions: ['accounts.sell.read', 'accounts.sell.crud'] },
+  { href: '/employee/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo, permissions: ['accounts.rto.read', 'accounts.rto.crud'] },
   { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
   { href: '/employee/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText, permissions: employeePartnerAgreementPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
@@ -101,10 +106,11 @@ const recruitmentNavItems = [
   { key: 'dashboard', labelKey: 'admin.recruitmentDashboard', defaultLabel: 'Dashboard', permissions: ['recruitment.dashboard.read'] },
   { key: 'jobs', labelKey: 'admin.recruitmentJobs', defaultLabel: 'Jobs', permissions: ['recruitment.jobs.read'] },
   { key: 'applications', labelKey: 'admin.recruitmentApplications', defaultLabel: 'Applications', permissions: ['recruitment.applications.read'] },
-  { key: 'departments', labelKey: 'admin.recruitmentDepartments', defaultLabel: 'Departments', permissions: ['recruitment.departments.read'] },
   { key: 'interviews', labelKey: 'admin.recruitmentInterviews', defaultLabel: 'Interviews', permissions: ['recruitment.interviews.read'] },
   { key: 'offers', labelKey: 'admin.recruitmentOffers', defaultLabel: 'Offers', permissions: ['recruitment.offers.read'] },
+  { key: 'departments', labelKey: 'admin.recruitmentDepartments', defaultLabel: 'Departments', permissions: ['recruitment.departments.read'] },
   { key: 'pipeline', labelKey: 'admin.recruitmentPipeline', defaultLabel: 'Pipeline Stages', permissions: ['recruitment.pipeline.read'] },
+  { key: 'settings', labelKey: 'admin.recruitmentSettings', defaultLabel: 'Recruitment Settings', permissions: ['recruitment.settings.read', 'recruitment.settings.update'] },
 ];
 
 const getRequiredPermissionsForPath = (pathname: string) => {
@@ -172,10 +178,15 @@ export default function AdminLayout({
   const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
   const billing = useApiBillingSummary();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [usersMenuExpansion, setUsersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
     value: null,
+  });
+  const [sidebarSectionExpansion, setSidebarSectionExpansion] = useState<{ pathname: string; values: Record<string, boolean> }>({
+    pathname: '',
+    values: {},
   });
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
@@ -214,6 +225,12 @@ export default function AdminLayout({
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
   const isEmployee = user?.role === 'EMPLOYEE';
+  const totalPendingNotifications =
+    (badges.enquiries || 0) +
+    (badges.verifications || 0) +
+    (badges.listingsPendingApproval || 0) +
+    (badges.recruitmentApplications || 0) +
+    (badges.recruitmentInterviews || 0);
   const userPermissions = useMemo(() => user?.permissions || [], [user?.permissions]);
   const userPermissionKey = userPermissions.join('|');
   const employeeHomeHref = useMemo(() => getEmployeeLandingPath(userPermissions), [userPermissions]);
@@ -249,15 +266,20 @@ export default function AdminLayout({
       : accountsNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions))),
     [isSuperAdmin, user?.role, userPermissions]
   );
-  const isAccountsSectionActive = pathname.startsWith('/superadmin/accounts') || pathname.startsWith('/employee/accounts') || pathname.startsWith('/admin/accounts');
-  const [accountsMenuExpansion, setAccountsMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+
+  const isPartnersSectionActive =
+    pathname.startsWith('/superadmin/partners') ||
+    pathname.startsWith('/employee/partners') ||
+    pathname.startsWith('/superadmin/partner-agreements') ||
+    pathname.startsWith('/employee/partner-agreements');
+  const [partnersMenuExpansion, setPartnersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
     value: null,
   });
-  const isAccountsMenuExpanded = accountsMenuExpansion.pathname === pathname
-    ? accountsMenuExpansion.value
+  const isPartnersMenuExpanded = partnersMenuExpansion.pathname === pathname
+    ? partnersMenuExpansion.value
     : null;
-  const isAccountsDropdownExpanded = isAccountsMenuExpanded ?? isAccountsSectionActive;
+  const isPartnersDropdownExpanded = isPartnersMenuExpanded ?? isPartnersSectionActive;
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -544,17 +566,7 @@ export default function AdminLayout({
   const uniqueBaseVisibleNavItems = baseVisibleNavItems.filter(
     (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
   );
-  const accountsMenuItem = {
-    href: `${isSuperAdmin ? '/superadmin' : isEmployee ? '/employee' : '/admin'}/accounts`,
-    labelKey: 'admin.accounts',
-    defaultLabel: 'Accounts',
-    icon: Wallet,
-    kind: 'accounts' as const,
-  };
-  const visibleNavItems = visibleAccountsNavItems.length > 0
-    ? insertAccountsNavItem(uniqueBaseVisibleNavItems, accountsMenuItem)
-    : uniqueBaseVisibleNavItems;
-  const portalTitle = isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle');
+  const visibleNavItems = uniqueBaseVisibleNavItems;
   const displayName = user.name || (isSuperAdmin ? t('admin.superAdminPortalTitle') : isEmployee ? t('admin.employeePortalTitle') : t('admin.portalTitle'));
   const translatedRoleLabel =
     user?.role === 'SUPER_ADMIN'
@@ -567,14 +579,20 @@ export default function AdminLayout({
   const pageTitleMap: Record<string, string> = {
     '/superadmin/dashboard': t('admin.superAdminDashboard'),
     '/superadmin/analytics': t('admin.analytics'),
-    '/superadmin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
-    '/superadmin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/superadmin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
+    '/superadmin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/superadmin/invoices': t('admin.invoices', 'Invoices'),
+    '/superadmin/tasks': t('admin.tasks', 'Tasks'),
     '/superadmin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
-    '/admin/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
-    '/admin/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
+    '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/admin/invoices': t('admin.invoices', 'Invoices'),
+    '/admin/tasks': t('admin.tasks', 'Tasks'),
     '/admin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
-    '/employee/accounts/rto-work-status': t('admin.rtoWorkStatus', 'RTO Work Status'),
-    '/employee/accounts/sell-accounts': t('admin.sellAccounts', 'Sell Accounts'),
+    '/employee/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
+    '/employee/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/employee/invoices': t('admin.invoices', 'Invoices'),
+    '/employee/tasks': t('admin.tasks', 'Tasks'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
     '/superadmin/identity-hub': t('admin.identityHub', 'Identity Hub'),
@@ -647,8 +665,8 @@ export default function AdminLayout({
   };
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
-    if (pathname.includes('/accounts/sell-accounts/')) return t('admin.sellAccount', 'Sell Account');
-    if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWorkStatus', 'RTO Work Status');
+    if (pathname.includes('/accounts/sell-accounts/')) return t('admin.soldVehicle', 'Sold Vehicle');
+    if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWork', 'RTO Work');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
     if (pathname.startsWith('/superadmin/analytics/') || pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');
@@ -678,6 +696,159 @@ export default function AdminLayout({
   const isUsersDropdownExpanded = isUsersMenuExpanded ?? isUsersSectionActive;
   const usersListHref = isEmployee ? '/employee/users' : '/superadmin/users';
   const rolesListHref = isEmployee ? '/employee/users/roles' : '/superadmin/users/roles';
+  const routePrefix = isSuperAdmin ? '/superadmin' : isEmployee ? '/employee' : '/admin';
+  const getVisibleNavItem = (suffix: string) => visibleNavItems.find((item) => item.href.endsWith(suffix));
+  const dashboardNavItem = getVisibleNavItem('/dashboard');
+  const partnersNavItem = getVisibleNavItem('/partners');
+  const partnerAgreementsNavItem = getVisibleNavItem('/partner-agreements');
+  const canShowPartnersMenu = Boolean(partnersNavItem || partnerAgreementsNavItem);
+  const canShowSettingsLink = isSuperAdmin || Boolean(getVisibleNavItem('/settings'));
+  const canShowUsersMenu = isSuperAdmin || (isEmployee && (employeeCanSeeUsers || employeeCanSeeRoles));
+  // Sold Vehicles and RTO Work sit right after Listings in Daily Operations.
+  const accountsSidebarIcons = { 'sell-accounts': HandCoins, 'rto-work-status': ClipboardCheck } as const;
+  const accountsSidebarItems = (['sell-accounts', 'rto-work-status'] as const)
+    .map((key) => visibleAccountsNavItems.find((item) => item.key === key))
+    .filter((item) => item !== undefined)
+    .map((item) => ({
+      href: `${routePrefix}/accounts/${item.key}`,
+      labelKey: item.labelKey,
+      defaultLabel: item.defaultLabel,
+      icon: accountsSidebarIcons[item.key],
+    }));
+  const hasDailyOperationsNav = accountsSidebarItems.length > 0 || [
+    '/enquiries',
+    '/listings',
+    '/tasks',
+    '/verifications',
+    '/identity-hub',
+    '/vehicle-transport',
+    '/visitors',
+  ].some((suffix) => Boolean(getVisibleNavItem(suffix))) || canShowPartnersMenu;
+  const hasFinanceNav = ['/finance/expenses', '/recurrence', '/invoices'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  const hasReportsNav = Boolean(getVisibleNavItem('/analytics'));
+  const hasCommunicationsNav = ['/whatsapp', '/sms'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  const hasContentNav = ['/blogs', '/categories', '/brands', '/footer', '/translations'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  const hasAdministrationNav = canShowUsersMenu || canShowSettingsLink;
+  const isRouteUnder = (suffix: string) => pathname === `${routePrefix}${suffix}` || pathname.startsWith(`${routePrefix}${suffix}/`);
+  const sidebarSectionActive: Record<string, boolean> = {
+    finance: ['/finance', '/recurrence', '/invoices'].some(isRouteUnder),
+    reports: isRouteUnder('/analytics'),
+    recruitment: isRecruitmentSectionActive,
+    communications: ['/whatsapp', '/sms'].some(isRouteUnder),
+    content: ['/blogs', '/categories', '/brands', '/footer', '/translations'].some(isRouteUnder),
+    administration: isUsersSectionActive || pathname === settingsHref,
+  };
+  // Sections stay collapsed by default; the section holding the current page opens automatically.
+  const isSidebarSectionExpanded = (key: string) => {
+    const override = sidebarSectionExpansion.pathname === pathname ? sidebarSectionExpansion.values[key] : undefined;
+    return override ?? Boolean(sidebarSectionActive[key]);
+  };
+  const toggleSidebarSection = (key: string) => {
+    const nextValue = !isSidebarSectionExpanded(key);
+    setSidebarSectionExpansion((current) => ({
+      pathname,
+      values: { ...(current.pathname === pathname ? current.values : {}), [key]: nextValue },
+    }));
+  };
+
+  const getNavBadgeCount = (href: string) => {
+    if (href.includes('enquiries')) return badges.enquiries || 0;
+    if (href.includes('listings')) return badges.listingsPendingApproval || 0;
+    if (href.includes('verifications')) return pathname.startsWith(href) ? 0 : badges.verifications;
+    if (href.includes('visitors')) return badges.visitors || 0;
+    if (href.includes('recurrence')) return badges.recurrence || 0;
+    return 0;
+  };
+
+  const sectionLabelClassName = 'text-[11px] font-semibold uppercase tracking-[0.12em]';
+
+  const renderSectionLabel = (label: string) => (
+    <p className={`px-4 pb-2 pt-4 text-gray-500 ${sectionLabelClassName}`}>
+      {label}
+    </p>
+  );
+
+  const renderCollapsibleSectionLabel = (key: string, label: string, badgeCount = 0) => {
+    const isExpanded = isSidebarSectionExpanded(key);
+    const isGroupActive = Boolean(sidebarSectionActive[key]);
+
+    return (
+      <>
+        <div className="mx-4 mb-2 mt-3 h-px bg-white/[0.06]" />
+        <button
+          type="button"
+          onClick={() => toggleSidebarSection(key)}
+          aria-expanded={isExpanded}
+          className="group flex w-full items-center gap-2 rounded-md px-4 py-2 text-left transition-colors duration-150 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FFC107]/60"
+        >
+          <span
+            className={`flex-1 transition-colors duration-150 ${sectionLabelClassName} ${isGroupActive ? 'text-gray-200' : 'text-gray-500 group-hover:text-gray-300'}`}
+          >
+            {label}
+          </span>
+          {!isExpanded && badgeCount > 0 ? (
+            <span className="min-w-[1.25rem] rounded-full bg-red-500/90 px-1.5 py-px text-center text-[10px] font-semibold leading-4 text-white">
+              {badgeCount > 99 ? '99+' : badgeCount}
+            </span>
+          ) : null}
+          <ChevronRight
+            className={`h-3.5 w-3.5 shrink-0 text-gray-600 transition-all duration-200 group-hover:text-gray-400 ${isExpanded ? 'rotate-90' : ''}`}
+          />
+        </button>
+      </>
+    );
+  };
+
+  const renderCollapsibleSectionBody = (key: string, content: ReactNode) => {
+    const isExpanded = isSidebarSectionExpanded(key);
+
+    return (
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+        inert={!isExpanded}
+      >
+        <div className="min-h-0 space-y-1 overflow-hidden">{content}</div>
+      </div>
+    );
+  };
+
+  const renderStandardNavItem = (item: ((typeof visibleNavItems)[number] & { defaultLabel?: string }) | undefined) => {
+    if (!item) return null;
+
+    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    const Icon = item.icon;
+    const badgeCount = getNavBadgeCount(item.href);
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setIsMobileMenuOpen(false)}
+        className={`flex items-center justify-between rounded-lg border px-4 py-2.5 transition-all duration-200 ${isActive
+          ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+          : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+          }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Icon className={`h-5 w-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+            {badgeCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+              </span>
+            ) : null}
+          </div>
+          <span>{item.defaultLabel ? t(item.labelKey, item.defaultLabel) : t(item.labelKey)}</span>
+        </div>
+        {badgeCount > 0 ? (
+          <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </span>
+        ) : null}
+      </Link>
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
@@ -690,9 +861,9 @@ export default function AdminLayout({
       )}
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-5 sm:p-6 border-b border-white/10">
+        <div className="p-[10px] border-b border-white/10">
           <div>
-            <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} subtitle={portalTitle} />
+            <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[70px]" />
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
@@ -702,108 +873,107 @@ export default function AdminLayout({
           </button>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
-          {visibleNavItems
-            .filter((item) => !item.href.endsWith('/footer') && !item.href.endsWith('/translations') && !item.href.endsWith('/settings'))
-            .map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              const isAccountsMenu = item.kind === 'accounts';
+          {renderStandardNavItem(dashboardNavItem)}
 
-              let badgeCount = 0;
-              if (item.href.includes('enquiries')) {
-                badgeCount = (badges.enquiries || 0);
-              }
-              else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
-              else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
-              else if (item.href.includes('visitors')) badgeCount = (badges.visitors || 0);
-              else if (item.href.includes('recurrence')) badgeCount = (badges.recurrence || 0);
+          {hasDailyOperationsNav ? (
+            <section className="space-y-1">
+              {renderSectionLabel('Daily Operations')}
+              {renderStandardNavItem(getVisibleNavItem('/enquiries'))}
+              {renderStandardNavItem(getVisibleNavItem('/listings'))}
+              {accountsSidebarItems.map((item) => renderStandardNavItem(item))}
+              {renderStandardNavItem(getVisibleNavItem('/tasks'))}
+              {renderStandardNavItem(getVisibleNavItem('/verifications'))}
+              {renderStandardNavItem(getVisibleNavItem('/identity-hub'))}
+              {renderStandardNavItem(getVisibleNavItem('/vehicle-transport'))}
 
-              return (
-                <div key={item.href} className="space-y-2">
-                  {isAccountsMenu ? (
-                    <div className="space-y-1 mb-1">
-                      <button
-                        type="button"
-                        onClick={() => setAccountsMenuExpansion({
-                          pathname,
-                          value: !isAccountsDropdownExpanded,
-                        })}
-                        className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isAccountsSectionActive
-                            ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                            : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                          }`}
-                      >
-                        <span className="flex items-center gap-3">
-                          <Wallet className={`h-5 w-5 ${isAccountsSectionActive ? 'text-[#FFC107]' : ''}`} />
-                          <span>{t('admin.accounts', 'Accounts')}</span>
-                        </span>
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform duration-200 ${isAccountsDropdownExpanded ? 'rotate-180' : ''} ${isAccountsSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
+              {canShowPartnersMenu ? (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setPartnersMenuExpansion({
+                      pathname,
+                      value: !isPartnersDropdownExpanded,
+                    })}
+                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isPartnersSectionActive
+                      ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                      : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <List className={`h-5 w-5 ${isPartnersSectionActive ? 'text-[#FFC107]' : ''}`} />
+                      <span>{t('admin.partners', 'Partners')}</span>
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-200 ${isPartnersDropdownExpanded ? 'rotate-180' : ''} ${isPartnersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'}`}
+                    />
+                  </button>
+
+                  {isPartnersDropdownExpanded ? (
+                    <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                      {partnersNavItem ? (
+                        <Link
+                          href={partnersNavItem.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === partnersNavItem.href || pathname.startsWith(`${partnersNavItem.href}/`)
+                            ? 'bg-[#FFC107]/10 font-semibold text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
                             }`}
-                        />
-                      </button>
-
-                      {isAccountsDropdownExpanded ? (
-                        <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
-                          {visibleAccountsNavItems.map((subItem) => {
-                            const prefix = isEmployee ? '/employee' : isAdmin ? '/admin' : '/superadmin';
-                            const href = `${prefix}/accounts/${subItem.key}`;
-                            const isSubActive = pathname === href || pathname.startsWith(`${href}/`);
-
-                            return (
-                              <Link
-                                key={subItem.key}
-                                href={href}
-                                onClick={() => setIsMobileMenuOpen(false)}
-                                className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isSubActive
-                                    ? 'bg-[#FFC107]/10 font-semibold text-white'
-                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                                  }`}
-                              >
-                                <span className={`h-1.5 w-1.5 rounded-full ${isSubActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
-                                <span>{t(subItem.labelKey, subItem.defaultLabel)}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          <span>All Partners</span>
+                        </Link>
+                      ) : null}
+                      {partnerAgreementsNavItem ? (
+                        <Link
+                          href={partnerAgreementsNavItem.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === partnerAgreementsNavItem.href
+                            ? 'bg-[#FFC107]/10 font-semibold text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                            }`}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          <span>{t('admin.partnerAgreements', 'Partner Agreements')}</span>
+                        </Link>
                       ) : null}
                     </div>
                   ) : null}
-
-                  {!isAccountsMenu ? (
-                    <Link
-                      href={item.href}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
-                        ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
-                        : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                        }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
-                          {badgeCount > 0 && (
-                            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                            </span>
-                          )}
-                        </div>
-                        <span>{t(item.labelKey)}</span>
-                      </div>
-                      {badgeCount > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                          {badgeCount > 99 ? '99+' : badgeCount}
-                        </span>
-                      )}
-                    </Link>
-                  ) : null}
                 </div>
-              );
-            })}
+              ) : null}
+
+              {renderStandardNavItem(getVisibleNavItem('/visitors'))}
+            </section>
+          ) : null}
+
+          {hasFinanceNav ? (
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel('finance', 'Finance & Accounts', badges.recurrence || 0)}
+              {renderCollapsibleSectionBody('finance', (
+              <>
+              {renderStandardNavItem(getVisibleNavItem('/invoices'))}
+              {renderStandardNavItem(getVisibleNavItem('/finance/expenses'))}
+              {renderStandardNavItem(getVisibleNavItem('/recurrence'))}
+              </>
+              ))}
+            </section>
+          ) : null}
+
+          {hasReportsNav ? (
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel('reports', 'Reports')}
+              {renderCollapsibleSectionBody('reports', renderStandardNavItem(getVisibleNavItem('/analytics')))}
+            </section>
+          ) : null}
 
           {visibleRecruitmentNavItems.length > 0 ? (
-            <div className="space-y-1">
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel(
+                'recruitment',
+                'Recruitment',
+                (badges.recruitmentApplications || 0) + (badges.recruitmentInterviews || 0),
+              )}
+              {renderCollapsibleSectionBody('recruitment', (
+              <>
               <button
                 type="button"
                 onClick={() => setRecruitmentMenuExpansion({
@@ -871,109 +1041,114 @@ export default function AdminLayout({
                   })}
                 </div>
               ) : null}
-            </div>
+              </>
+              ))}
+            </section>
           ) : null}
 
-          {visibleNavItems
-            .filter((item) => item.href.endsWith('/footer') || item.href.endsWith('/translations') || item.href.endsWith('/settings'))
-            .map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
+          {hasCommunicationsNav ? (
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel('communications', 'Communications')}
+              {renderCollapsibleSectionBody('communications', (
+                <>
+                  {renderStandardNavItem(getVisibleNavItem('/whatsapp'))}
+                  {renderStandardNavItem(getVisibleNavItem('/sms'))}
+                </>
+              ))}
+            </section>
+          ) : null}
 
-              let badgeCount = 0;
-              if (item.href.includes('enquiries')) {
-                badgeCount = (badges.enquiries || 0);
-              }
-              else if (item.href.includes('listings')) badgeCount = badges.listingsPendingApproval || 0;
-              else if (item.href.includes('verifications')) badgeCount = pathname.startsWith(item.href) ? 0 : badges.verifications;
-              else if (item.href.includes('visitors')) badgeCount = (badges.visitors || 0);
-              else if (item.href.includes('recurrence')) badgeCount = (badges.recurrence || 0);
+          {hasContentNav ? (
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel('content', 'Content & Website')}
+              {renderCollapsibleSectionBody('content', (
+                <>
+                  {renderStandardNavItem(getVisibleNavItem('/blogs'))}
+                  {renderStandardNavItem(getVisibleNavItem('/categories'))}
+                  {renderStandardNavItem(getVisibleNavItem('/brands'))}
+                  {renderStandardNavItem(getVisibleNavItem('/footer'))}
+                  {renderStandardNavItem(getVisibleNavItem('/translations'))}
+                </>
+              ))}
+            </section>
+          ) : null}
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
-                    ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                    }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
-                      {badgeCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                        </span>
-                      )}
-                    </div>
-                    <span>{t(item.labelKey)}</span>
-                  </div>
-                  {badgeCount > 0 && (
-                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                      {badgeCount > 99 ? '99+' : badgeCount}
+          {hasAdministrationNav ? (
+            <section className="space-y-1">
+              {renderCollapsibleSectionLabel('administration', 'Administration')}
+              {renderCollapsibleSectionBody('administration', (
+              <>
+              {canShowUsersMenu ? (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setUsersMenuExpansion({
+                      pathname,
+                      value: !isUsersDropdownExpanded,
+                    })}
+                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isUsersSectionActive
+                      ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                      : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Users className={`h-5 w-5 ${isUsersSectionActive ? 'text-[#FFC107]' : ''}`} />
+                      <span>{t('admin.users')}</span>
                     </span>
-                  )}
-                </Link>
-              );
-            })}
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'}`}
+                    />
+                  </button>
 
-          {isSuperAdmin || (isEmployee && (employeeCanSeeUsers || employeeCanSeeRoles)) ? (
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => setUsersMenuExpansion({
-                  pathname,
-                  value: !isUsersDropdownExpanded,
-                })}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isUsersSectionActive
-                    ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                    : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                <span className="flex items-center gap-3">
-                  <Users className={`h-5 w-5 ${isUsersSectionActive ? 'text-[#FFC107]' : ''}`} />
-                  <span>{t('admin.users')}</span>
-                </span>
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
-                    }`}
-                />
-              </button>
-
-              {isUsersDropdownExpanded ? (
-                <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
-                  {isSuperAdmin || employeeCanSeeUsers ? (
-                    <Link
-                      href={usersListHref}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === usersListHref
-                          ? 'bg-[#FFC107]/10 font-semibold text-white'
-                          : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                        }`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      <span>{t('common.allUsers')}</span>
-                    </Link>
-                  ) : null}
-                  {isSuperAdmin || employeeCanSeeRoles ? (
-                    <Link
-                      href={rolesListHref}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === rolesListHref
-                          ? 'bg-[#FFC107]/10 font-semibold text-white'
-                          : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                        }`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      <span>{t('common.usersRole')}</span>
-                    </Link>
+                  {isUsersDropdownExpanded ? (
+                    <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                      {isSuperAdmin || employeeCanSeeUsers ? (
+                        <Link
+                          href={usersListHref}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === usersListHref
+                            ? 'bg-[#FFC107]/10 font-semibold text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                            }`}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          <span>{t('common.allUsers')}</span>
+                        </Link>
+                      ) : null}
+                      {isSuperAdmin || employeeCanSeeRoles ? (
+                        <Link
+                          href={rolesListHref}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === rolesListHref
+                            ? 'bg-[#FFC107]/10 font-semibold text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                            }`}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          <span>{t('common.usersRole')}</span>
+                        </Link>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
-            </div>
+
+              {canShowSettingsLink ? (
+                <Link
+                  href={settingsHref}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 transition-all duration-200 ${pathname === settingsHref
+                    ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+                    : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                >
+                  <Settings className={`h-5 w-5 ${pathname === settingsHref ? 'text-[#FFC107]' : ''}`} />
+                  <span>{t('common.settings')}</span>
+                </Link>
+              ) : null}
+              </>
+              ))}
+            </section>
           ) : null}
         </nav>
         <div className="p-4 border-t border-white/10 shrink-0">
@@ -988,32 +1163,144 @@ export default function AdminLayout({
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="bg-white border-b border-gray-200 p-3 sm:p-4 flex justify-between items-center shrink-0">
+        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-4 lg:px-5 py-1.5 sm:py-2 flex justify-between items-center shrink-0 z-30 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg shrink-0"
+              className="lg:hidden p-1.5 -ml-1 text-slate-600 hover:bg-slate-100 rounded-lg shrink-0"
+              title="Open Navigation Menu"
             >
-              <Menu className="w-6 h-6 sm:w-6 sm:h-6" />
+              <Menu className="w-5 h-5 text-slate-700" />
             </button>
-            {customHeader || <h1 className="font-bold text-[17px] sm:text-xl text-gray-900 truncate">{pageTitle}</h1>}
+            {customHeader || (
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="font-bold text-sm sm:text-base text-slate-900 truncate tracking-tight">{pageTitle}</h1>
+                <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200 shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
+                </span>
+              </div>
+            )}
           </div>
-          <div className="ml-2 flex items-center gap-3 shrink-0">
+          <div className="ml-2 flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Quick Public Site Link */}
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View Public Marketplace Frontend"
+              className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors shrink-0"
+            >
+              <ExternalLink className="w-3 h-3 text-slate-500" />
+              <span>Public Site</span>
+            </a>
+
+            {/* Notification Bell Dropdown */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                className={`relative p-1.5 rounded-lg border transition-all ${
+                  isNotificationOpen
+                    ? "bg-amber-50 text-amber-900 border-amber-300"
+                    : "text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                }`}
+                title="Pending Tasks & Action Items"
+              >
+                <Bell className="w-4 h-4 text-slate-600" />
+                {totalPendingNotifications > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-slate-950 ring-2 ring-white">
+                    {totalPendingNotifications > 99 ? "99+" : totalPendingNotifications}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 animate-in fade-in duration-150">
+                    <div className="p-2.5 bg-slate-50 flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900">Operational Action Items</span>
+                      <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                        {totalPendingNotifications} total
+                      </span>
+                    </div>
+                    <div className="p-1.5 space-y-0.5 text-xs">
+                      {badges.verifications > 0 && (
+                        <Link
+                          href="/superadmin/verifications"
+                          onClick={() => setIsNotificationOpen(false)}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-orange-50 text-slate-700 hover:text-orange-950 transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <ShieldCheck className="w-3.5 h-3.5 text-orange-600" />
+                            <span>KYC Pending</span>
+                          </span>
+                          <span className="font-bold text-orange-800 bg-orange-100 px-1.5 py-0.5 rounded text-[10px]">
+                            {badges.verifications}
+                          </span>
+                        </Link>
+                      )}
+                      {badges.listingsPendingApproval > 0 && (
+                        <Link
+                          href="/superadmin/listings"
+                          onClick={() => setIsNotificationOpen(false)}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 text-slate-700 hover:text-blue-950 transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Truck className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Listings Review</span>
+                          </span>
+                          <span className="font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded text-[10px]">
+                            {badges.listingsPendingApproval}
+                          </span>
+                        </Link>
+                      )}
+                      {badges.enquiries > 0 && (
+                        <Link
+                          href="/superadmin/enquiries"
+                          onClick={() => setIsNotificationOpen(false)}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-purple-50 text-slate-700 hover:text-purple-950 transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <MessagesSquare className="w-3.5 h-3.5 text-purple-600" />
+                            <span>New Leads</span>
+                          </span>
+                          <span className="font-bold text-purple-800 bg-purple-100 px-1.5 py-0.5 rounded text-[10px]">
+                            {badges.enquiries}
+                          </span>
+                        </Link>
+                      )}
+                      {totalPendingNotifications === 0 && (
+                        <div className="py-4 text-center text-xs text-slate-400">
+                          All operational queues are clear!
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </> 
+              )}
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
             <ApiWalletHeader {...billing} />
             <LanguageSwitcher />
+
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
 
             {/* Profile Dropdown Container */}
             <div className="relative shrink-0">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-2 sm:gap-3 focus:outline-none hover:bg-gray-50 p-1 sm:p-1.5 sm:pr-3 rounded-full transition-colors border border-transparent hover:border-gray-200"
+                className="flex items-center gap-1.5 sm:gap-2 focus:outline-none hover:bg-slate-50 px-1.5 py-1 rounded-lg transition-colors border border-transparent hover:border-slate-200"
               >
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-bold text-gray-900">{displayName}</p>
-                  <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{translatedRoleLabel}</span>
+                  <p className="text-xs font-bold text-slate-900 leading-tight">{displayName}</p>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold leading-none">{translatedRoleLabel}</span>
                 </div>
-                <UserAvatar user={user} size="header" />
-                <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
+                <UserAvatar user={user} size="header-compact" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
               </button>
 
               {/* Dropdown Menu */}
@@ -1068,7 +1355,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
+        <div className="p-3 sm:p-4 lg:p-4.5 overflow-y-auto flex-1 custom-scrollbar bg-gray-100 overscroll-contain pb-10 sm:pb-12">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

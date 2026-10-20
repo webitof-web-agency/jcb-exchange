@@ -16,12 +16,14 @@ type PortalActionDropdownProps = {
   items: DropdownItem[];
   trigger?: ReactNode;
   align?: 'right' | 'left';
+  buttonClassName?: string;
 };
 
 export default function PortalActionDropdown({
   items,
   trigger,
   align = 'right',
+  buttonClassName,
 }: PortalActionDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left?: number; right?: number } | null>(null);
@@ -90,7 +92,10 @@ export default function PortalActionDropdown({
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none cursor-pointer"
+        className={
+          buttonClassName ||
+          'inline-flex items-center justify-center rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none cursor-pointer'
+        }
       >
         {trigger || <MoreVertical className="h-5 w-5" />}
       </button>

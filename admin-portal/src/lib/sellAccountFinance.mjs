@@ -1,5 +1,12 @@
 export const GST_RATE_PERCENT = 18;
 
+export const SELL_ACCOUNT_EXPENSE_FIELDS = [
+  { key: 'transport', label: 'Vehicle transport' },
+  { key: 'paperwork', label: 'Paperwork' },
+  { key: 'rtoWork', label: 'RTO work' },
+  { key: 'other', label: 'Other' },
+];
+
 const number = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
@@ -20,6 +27,23 @@ const sameState = (sellerState, purchaserState) => {
   return Boolean(seller && purchaser && seller === purchaser);
 };
 
+export const createEmptyExpenseBreakdown = () => ({ transport: 0, paperwork: 0, rtoWork: 0, other: 0, otherLabel: '' });
+
+export const normalizeExpenseBreakdown = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return {
+    transport: roundMoney(value.transport),
+    paperwork: roundMoney(value.paperwork),
+    rtoWork: roundMoney(value.rtoWork),
+    other: roundMoney(value.other),
+    otherLabel: typeof value.otherLabel === 'string' ? value.otherLabel.trim().slice(0, 120) : '',
+  };
+};
+
+export const sumExpenseBreakdown = (breakdown) => roundMoney(
+  SELL_ACCOUNT_EXPENSE_FIELDS.reduce((total, field) => total + number(breakdown?.[field.key]), 0),
+);
+
 export const getSellAccountTaxLines = ({ isIntraState = false, cgst = 0, sgst = 0, igst = 0 } = {}) => (
   isIntraState
     ? [
@@ -29,6 +53,12 @@ export const getSellAccountTaxLines = ({ isIntraState = false, cgst = 0, sgst = 
     : [{ key: 'igst', label: 'IGST (18%)', ratePercent: 18, amount: igst }]
 );
 
+/**
+ * Margin scheme for second-hand goods (Rule 32(5), CGST Rules 2017): GST is due on the
+ * margin (sell - purchase), which is GST-inclusive, so the tax is extracted from it.
+ * Expenses are not deducted from the GST base; they only reduce the final profit.
+ * Mirrors backend/src/services/sellAccountFinance.ts.
+ */
 export const calculateSellAccountGst = ({
   sellAmount = 0,
   purchaseAmount = 0,
@@ -40,21 +70,22 @@ export const calculateSellAccountGst = ({
   const purchase = roundMoney(purchaseAmount);
   const operatingExpenses = roundMoney(expenses);
   const rate = GST_RATE_PERCENT / 100;
-  const netProfitBeforeGst = roundSignedMoney(enteredSaleAmount - purchase - operatingExpenses);
-  // The entered profit is GST-inclusive. Extract the GST from the profit base.
-  const taxableAmount = roundMoney(Math.max(netProfitBeforeGst, 0) / (1 + rate));
-  const gstAmount = roundMoney(Math.max(netProfitBeforeGst, 0) - taxableAmount);
+  const marginAmount = roundSignedMoney(enteredSaleAmount - purchase);
+  const taxableAmount = roundMoney(Math.max(marginAmount, 0) / (1 + rate));
+  const gstAmount = roundMoney(Math.max(marginAmount, 0) - taxableAmount);
   // GST is tracked separately; the purchaser still pays the entered sell amount.
   const grossSaleAmount = enteredSaleAmount;
   const intraState = sameState(sellerState, purchaserState);
   const cgst = intraState ? roundMoney(gstAmount / 2) : 0;
   const sgst = intraState ? roundMoney(gstAmount - cgst) : 0;
   const igst = intraState ? 0 : gstAmount;
-  const netProfitAfterGst = netProfitBeforeGst >= 0 ? taxableAmount : netProfitBeforeGst;
+  const netProfitBeforeGst = roundSignedMoney(marginAmount - operatingExpenses);
 
   return {
     gstRatePercent: GST_RATE_PERCENT,
     taxMode: 'INCLUSIVE',
+    marginAmount,
+    expenses: operatingExpenses,
     taxableAmount,
     gstAmount,
     grossSaleAmount,
@@ -62,7 +93,7 @@ export const calculateSellAccountGst = ({
     sgst,
     igst,
     netProfitBeforeGst,
-    netProfitAfterGst,
+    netProfitAfterGst: roundSignedMoney(netProfitBeforeGst - gstAmount),
     isIntraState: intraState,
     stateClassification: intraState ? 'CGST + SGST' : 'IGST',
   };
@@ -71,11 +102,13 @@ export const calculateSellAccountGst = ({
 export const calculateSellAccountPaymentSummary = ({
   sellAmount = 0,
   purchaseAmount = 0,
-  taxMode = 'INCLUSIVE',
+  saleExchangeValue = 0,
+  purchaseExchangeValue = 0,
   payments = [],
 } = {}) => {
-  const expectedSale = roundMoney(sellAmount);
-  const expectedPurchase = roundMoney(purchaseAmount);
+  // Exchange vehicles are part of the deal value but not cash.
+  const expectedSale = roundMoney(Math.max(number(sellAmount) - number(saleExchangeValue), 0));
+  const expectedPurchase = roundMoney(Math.max(number(purchaseAmount) - number(purchaseExchangeValue), 0));
   const safePayments = Array.isArray(payments) ? payments : [];
   const purchaserReceived = roundMoney(safePayments
     .filter((payment) => payment?.side === 'PURCHASER_RECEIPT')
@@ -86,19 +119,22 @@ export const calculateSellAccountPaymentSummary = ({
   const purchaserBalance = roundMoney(Math.max(expectedSale - purchaserReceived, 0));
   const sellerBalance = roundMoney(Math.max(expectedPurchase - sellerPaid, 0));
 
-  const paymentStatus = (received, expected) => {
+  const paymentStatus = (received, expected, dealValue) => {
+    if (expected <= 0) return number(dealValue) > 0 ? 'FULL' : 'UNPAID';
     if (received <= 0) return 'UNPAID';
-    if (expected > 0 && received >= expected) return 'FULL';
+    if (received >= expected) return 'FULL';
     return 'PARTIAL';
   };
 
   return {
+    customerCashReceivable: expectedSale,
+    sellerCashPayable: expectedPurchase,
     purchaserReceived,
     purchaserBalance,
-    purchaserPaymentStatus: paymentStatus(purchaserReceived, expectedSale),
+    purchaserPaymentStatus: paymentStatus(purchaserReceived, expectedSale, sellAmount),
     sellerPaid,
     sellerBalance,
-    sellerPaymentStatus: paymentStatus(sellerPaid, expectedPurchase),
+    sellerPaymentStatus: paymentStatus(sellerPaid, expectedPurchase, purchaseAmount),
   };
 };
 

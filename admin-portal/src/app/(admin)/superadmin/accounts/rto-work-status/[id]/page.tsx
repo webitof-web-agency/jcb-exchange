@@ -14,6 +14,7 @@ import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 import { normalizeRtoStatus } from '@/lib/rtoWorkStatusForm.mjs';
 import { getRtoDetailActionState } from '@/lib/rtoDetailView.mjs';
+import RemarkDialog from '@/components/accounts/RemarkDialog';
 
 type RtoRecord = {
   id: string;
@@ -95,6 +96,7 @@ export default function RtoRecordDetailView() {
   const [loading, setLoading] = useState(true);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!statusDropdownOpen) return;
@@ -120,7 +122,17 @@ export default function RtoRecordDetailView() {
     };
   }, [statusDropdownOpen]);
 
-  const handleQuickStatusChange = async (nextStatus: string) => {
+  const requestStatusChange = (nextStatus: string) => {
+    if (!record || !canUpdateRto || record.isLocked || updatingStatus || record.rtoStatus === nextStatus) return;
+    if (nextStatus === 'DEAL_DONE' && record.sellAccountId) {
+      toast.info('Finish the transfer tasks and use "Complete Sale" in the RTO workspace to mark this deal done.');
+      router.push(`${listPath}/${encodeURIComponent(record.id)}/edit`);
+      return;
+    }
+    setPendingStatus(nextStatus);
+  };
+
+  const handleQuickStatusChange = async (nextStatus: string, statusRemark: string) => {
     if (!record || !canUpdateRto || record.isLocked || updatingStatus || record.rtoStatus === nextStatus) return;
     const prevStatus = record.rtoStatus;
     setUpdatingStatus(true);
@@ -129,8 +141,13 @@ export default function RtoRecordDetailView() {
       const response = await api.put(`/recruitment/admin/rto-records/${record.id}`, {
         ...record,
         rtoStatus: nextStatus,
+        statusRemark,
       });
       if (!response.data?.success) throw new Error(response.data?.error || 'Failed to update status');
+      if (nextStatus === 'DEAL_DONE') {
+        const lockResponse = await api.post(`/recruitment/admin/rto-records/${record.id}/lock`);
+        if (!lockResponse.data?.success) throw new Error(lockResponse.data?.error || 'Unable to lock the record.');
+      }
       const updated = {
         ...record,
         ...response.data.record,
@@ -150,10 +167,13 @@ export default function RtoRecordDetailView() {
       } catch {
         // ignore cache write error
       }
+      if (nextStatus === 'DEAL_DONE') setRecord({ ...updated, isLocked: true });
+      setPendingStatus(null);
       toast.success(`RTO Status updated to "${STATUS_CONFIG[nextStatus]?.label || nextStatus}"`);
     } catch (err: unknown) {
       setRecord({ ...record, rtoStatus: prevStatus });
-      toast.error(err instanceof Error ? err.message : 'Failed to update RTO status.');
+      const apiMessage = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+      toast.error(typeof apiMessage === 'string' ? apiMessage : err instanceof Error ? err.message : 'Failed to update RTO status.');
     } finally {
       setUpdatingStatus(false);
       setStatusDropdownOpen(false);
@@ -237,12 +257,12 @@ export default function RtoRecordDetailView() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">RTO Work Status Details</h1>
+            <h1 className="text-2xl font-bold text-gray-900">RTO Work Details</h1>
             <p className="text-sm font-medium text-gray-500 mt-0.5">Registration: <span className="font-bold text-gray-900">{record.vehicleNumber}</span></p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {detailActions.canEdit ? <button type="button" onClick={() => router.push(`${listPath}?edit=${encodeURIComponent(record.id)}`)} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-amber-600"><Pencil className="h-4 w-4" />Edit Record</button> : null}
+          {detailActions.canEdit ? <button type="button" onClick={() => router.push(`${listPath}/${encodeURIComponent(record.id)}/edit`)} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-amber-600"><Pencil className="h-4 w-4" />Transfer Workspace / Edit</button> : null}
           {detailActions.canChangeStatus ? (
             <div className="relative" data-rto-detail-status-dropdown>
               <button
@@ -277,7 +297,7 @@ export default function RtoRecordDetailView() {
                         onClick={() => {
                           setStatusDropdownOpen(false);
                           if (!isSelected) {
-                            void handleQuickStatusChange(key);
+                            requestStatusChange(key);
                           }
                         }}
                         className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition cursor-pointer ${
@@ -518,6 +538,16 @@ export default function RtoRecordDetailView() {
           </div>
         </div>
       </div>
+      {pendingStatus ? (
+        <RemarkDialog
+          title={`Change status to "${STATUS_CONFIG[pendingStatus]?.label || pendingStatus}"`}
+          description={pendingStatus === 'DEAL_DONE' ? 'Deal Done locks this record: nobody can edit, delete or change its status afterwards.' : 'The remark is saved in the status activity.'}
+          confirmLabel={pendingStatus === 'DEAL_DONE' ? 'Save & lock' : 'Update status'}
+          busy={updatingStatus}
+          onCancel={() => setPendingStatus(null)}
+          onConfirm={(remark) => handleQuickStatusChange(pendingStatus, remark)}
+        />
+      ) : null}
     </div>
   );
 }

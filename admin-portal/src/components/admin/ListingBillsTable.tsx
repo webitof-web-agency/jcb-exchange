@@ -97,7 +97,7 @@ export default function ListingBillsTable() {
       const customerEmail = payload.customerEmail || bill.payment?.buyer?.email || bill.payment?.partner?.email || '';
       const customerMobile = payload.customerMobile || bill.payment?.buyer?.mobile || bill.payment?.partner?.mobile || '';
       const customerState = payload.customerState || bill.payment?.buyer?.state || '';
-      const logoUrl = payload.logoUrl || '/loadinglogo.png';
+      const logoUrl = payload.logoUrl || '/Logo-black.webp';
 
       const fallbackSettings = {
         companyName: 'JCB EXCHANGE HUB PRIVATE LIMITED',

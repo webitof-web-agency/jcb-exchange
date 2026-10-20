@@ -30,11 +30,13 @@ import {
   SELL_VEHICLE_AVAILABILITY_OPTIONS,
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
+import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 
 type ListingFormState = {
   category: string;
@@ -1270,15 +1272,18 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     try {
-      const response = await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', {
-        chassis_number: chassisNumber,
-      });
+      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber);
+      const cachedResponse = getVerificationCache<ChassisVerificationResponse>(cacheKey);
+      const response = cachedResponse
+        ? { data: { ...cachedResponse, cacheHit: true } }
+        : await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber });
       if (requestId !== chassisVerificationRequestRef.current) return;
 
       const verificationRecordId = response.data.record?.id || '';
       if (!response.data.success || !verificationRecordId) {
         throw new Error('Vehicle verification did not return a usable verification record.');
       }
+      if (!cachedResponse) setVerificationCache(cacheKey, response.data);
 
       const mapped = mapProviderVehicleToListing(response.data.result || {});
       const identityMismatch = getProviderVehicleIdentityMismatch('CHASSIS', form.registrationNo, chassisNumber, mapped);
@@ -1368,15 +1373,18 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     try {
-      const response = await api.post<VehicleVerificationResponse>('/listings/vehicle-verification/rc-full', {
-        id_number: registrationNumber,
-      });
+      const cacheKey = buildVerificationCacheKey('rc-full', registrationNumber);
+      const cachedResponse = getVerificationCache<VehicleVerificationResponse>(cacheKey);
+      const response = cachedResponse
+        ? { data: { ...cachedResponse, cacheHit: true } }
+        : await api.post<VehicleVerificationResponse>('/listings/vehicle-verification/rc-full', { id_number: registrationNumber });
       if (requestId !== chassisVerificationRequestRef.current) return;
 
       const verificationRecordId = response.data.record?.id || '';
       if (!response.data.success || !verificationRecordId) {
         throw new Error('Vehicle verification did not return a usable verification record.');
       }
+      if (!cachedResponse) setVerificationCache(cacheKey, response.data);
 
       const mapped = mapProviderVehicleToListing(response.data.result || {});
       const identityMismatch = getProviderVehicleIdentityMismatch('RC_FULL', registrationNumber, form.chassisOrSerialNo, mapped);
@@ -1776,6 +1784,11 @@ export default function PartnerListingsPage() {
     : null;
   const editingVerification = verificationStatusMeta(editingListingRecord?.vehicleVerification?.status);
   const chassisButtonState = getVehicleVerificationButtonState('CHASSIS', verificationLoadingSource, vehicleVerificationSource);
+  // Fields that RC / chassis verification can fill carry the AI badge; solid once actually filled.
+  const vehicleVerificationFilled = chassisVerificationStatus === 'VERIFIED';
+  const vehicleApiFill = listingVerificationPolicy?.enabled ? { source: 'RC / chassis verification', filled: vehicleVerificationFilled } : null;
+  const registrationApiFill = listingVerificationPolicy?.chassisEnabled ? { source: 'chassis verification', filled: vehicleVerificationFilled && vehicleVerificationSource === 'CHASSIS' } : null;
+  const chassisApiFill = listingVerificationPolicy?.registrationEnabled ? { source: 'registration (RC) verification', filled: vehicleVerificationFilled && vehicleVerificationSource === 'RC_FULL' } : null;
   const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
 
   return (
@@ -2058,17 +2071,18 @@ export default function PartnerListingsPage() {
                     <Truck className="h-4 w-4" />
                     <h3 className="text-base font-semibold">Equipment Details</h3>
                   </div>
+                  {listingVerificationPolicy?.enabled ? <div className="-mt-2 mb-4"><ApiFillLegend /></div> : null}
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
                     <Field className="order-2" label={`Chassis / Serial No.${listingVerificationPolicy?.required ? ' *' : ''}`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
+                        <ApiFillBox apiFill={chassisApiFill} className="min-w-0 flex-1"><input
                           value={form.chassisOrSerialNo}
                           onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
                           className={fieldClassName}
                           aria-describedby={listingVerificationPolicy?.enabled ? 'partner-chassis-verification-status' : undefined}
                           aria-required={listingVerificationPolicy?.required === true}
                           placeholder="Enter chassis number first"
-                        />
+                        /></ApiFillBox>
                         {listingVerificationPolicy?.chassisEnabled ? (
                         <button
                           type="button"
@@ -2093,14 +2107,14 @@ export default function PartnerListingsPage() {
                     </Field>
                     <Field className="order-1" label={'Registration No.' + (listingVerificationPolicy?.registrationRequired ? ' *' : '')}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
+                        <ApiFillBox apiFill={registrationApiFill} className="min-w-0 flex-1"><input
                           value={form.registrationNo}
                           onChange={(event) => updateField('registrationNo', event.target.value)}
                           className={fieldClassName}
                           placeholder="e.g. DL01AB1234"
                           aria-describedby={listingVerificationPolicy?.enabled ? 'partner-vehicle-verification-status' : undefined}
                           aria-required={listingVerificationPolicy?.registrationRequired === true}
-                        />
+                        /></ApiFillBox>
                         {listingVerificationPolicy?.registrationEnabled ? (
                           <button
                             type="button"
@@ -2116,7 +2130,7 @@ export default function PartnerListingsPage() {
                     </Field>
                   </div>
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label="Vehicle Name">
+                    <Field label="Vehicle Name" apiFill={vehicleApiFill}>
                       <input
                         value={form.title}
                         onChange={(event) => updateField('title', event.target.value)}
@@ -2127,7 +2141,7 @@ export default function PartnerListingsPage() {
                         This name is used as the main listing title on the marketplace.
                       </p>
                     </Field>
-                    <Field label="Owner Name">
+                    <Field label="Owner Name" apiFill={vehicleApiFill}>
                       <input
                         value={form.ownerName}
                         onChange={(event) => updateField('ownerName', event.target.value)}
@@ -2140,7 +2154,7 @@ export default function PartnerListingsPage() {
                     </Field>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label="Category *">
+                    <Field label="Category *" apiFill={vehicleApiFill}>
                       <select required value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
                         <option value="">Select category</option>
                         {categories.map((option) => (
@@ -2150,7 +2164,7 @@ export default function PartnerListingsPage() {
                         ))}
                       </select>
                     </Field>
-                    <Field label="Brand *">
+                    <Field label="Brand *" apiFill={vehicleApiFill}>
                       <SearchableSelect
                         options={brands}
                         value={form.brand}
@@ -2161,7 +2175,7 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="Model">
+                    <Field label="Model" apiFill={vehicleApiFill}>
                       <input value={form.model} onChange={(event) => updateField('model', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Horse Power">
@@ -2179,27 +2193,27 @@ export default function PartnerListingsPage() {
                         <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-500 select-none">HP</span>
                       </div>
                     </Field>
-                    <Field label="Manufacture Year">
+                    <Field label="Manufacture Year" apiFill={vehicleApiFill}>
                       <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label="Registration Date">
+                    <Field label="Registration Date" apiFill={vehicleApiFill}>
                       <input type="date" value={form.registrationDate} onChange={(event) => updateField('registrationDate', event.target.value)} className={fieldClassName} />
                     </Field>
-                    <Field label="Registration Upto">
+                    <Field label="Registration Upto" apiFill={vehicleApiFill}>
                       <input type="date" value={form.registrationUpto} onChange={(event) => updateField('registrationUpto', event.target.value)} className={fieldClassName} />
                     </Field>
                     {form.rtoDetails.insuranceStatus === 'VALID' && (
-                      <Field label="Insurance Expiry Date">
+                      <Field label="Insurance Expiry Date" apiFill={vehicleApiFill}>
                         <input type="date" value={form.insuranceExpiry} onChange={(event) => updateField('insuranceExpiry', event.target.value)} className={fieldClassName} />
                       </Field>
                     )}
-                    <Field label="Engine Number">
+                    <Field label="Engine Number" apiFill={vehicleApiFill}>
                       <input value={form.engineNumber} onChange={(event) => updateField('engineNumber', event.target.value)} className={fieldClassName} maxLength={40} />
                     </Field>
                     <Field label="Meter Reading">
                       <input value={form.operatingHours} onChange={(event) => updateField('operatingHours', event.target.value)} className={fieldClassName} placeholder="Hours / km" />
                     </Field>
-                    <Field label="No. of Owners">
+                    <Field label="No. of Owners" apiFill={vehicleApiFill}>
                       <input type="number" value={form.previousOwners} onChange={(event) => updateField('previousOwners', event.target.value)} className={fieldClassName} />
                     </Field>
                     <Field label="Condition">
@@ -2212,7 +2226,7 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="Fuel Type">
+                    <Field label="Fuel Type" apiFill={vehicleApiFill}>
                       <SearchableSelect
                         options={fuelTypes.map((option) => ({ id: option, name: localizedFuelType(option) }))}
                         value={form.fuelType}
@@ -2244,6 +2258,8 @@ export default function PartnerListingsPage() {
                   </div>
 
                 <ListingRtoFields
+                  apiFillSource={vehicleApiFill?.source || ''}
+                  apiFilled={Boolean(vehicleApiFill?.filled)}
                   value={form.rtoDetails}
                   onChange={updateRtoField}
                   insuranceExpiry={form.insuranceExpiry}
@@ -2563,8 +2579,10 @@ export default function PartnerListingsPage() {
 function Field({
   label,
   children,
+  apiFill = null,
   className,
 }: {
+  apiFill?: { source: string; filled?: boolean } | null;
   label: string;
   children: React.ReactNode;
   className?: string;
@@ -2572,7 +2590,7 @@ function Field({
   return (
     <label className={`block ${className || ''}`}>
       <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
-      {children}
+      <ApiFillBox apiFill={apiFill}>{children}</ApiFillBox>
     </label>
   );
 }

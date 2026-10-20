@@ -2,7 +2,30 @@
 
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Truck, X, Upload, ImagePlus, PlayCircle, Trash2, UserCheck, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import {
+  Truck,
+  X,
+  Upload,
+  ImagePlus,
+  PlayCircle,
+  Trash2,
+  UserCheck,
+  Sparkles,
+  CheckCircle2,
+  Loader2,
+  ShieldCheck,
+  MapPin,
+  Eye,
+  Camera,
+  LayoutGrid,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  TrendingUp,
+  Handshake,
+} from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
@@ -10,8 +33,19 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
 import ListingRtoFields from '@/components/sell/ListingRtoFields';
-import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import {
+  buildListingRtoDetails,
+  emptyListingRtoForm,
+  hasListingRtoInput,
+  sanitizeListingRtoForm,
+  validateListingRtoForm,
+  type ListingRtoFormState,
+} from '@/lib/listingRtoForm';
+import {
+  handleAlphanumericKeyDown,
+  handleDigitOnlyKeyDown,
+  handleTextOnlyKeyDown,
   isValidDigitsOnlyValue,
   isValidDateValue,
   isValidPinCodeValue,
@@ -30,6 +64,7 @@ import {
 } from '@/lib/sellVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
+import { getListingVerificationDisplay } from '@/lib/listingVerificationDisplay.mjs';
 import { isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import {
@@ -127,10 +162,23 @@ type ListingRecord = {
   } | null;
   rtoRecords?: Array<{
     vehicleNumber?: string | null;
-    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus']; financerName?: string | null; taxStatus: ListingRtoFormState['taxStatus']; taxValidUntil?: string | null;
-    fitnessStatus: ListingRtoFormState['fitnessStatus']; fitnessValidUntil?: string | null; insuranceStatus: ListingRtoFormState['insuranceStatus']; insuranceValidUntil?: string | null;
-    pucStatus: ListingRtoFormState['pucStatus']; pucValidUntil?: string | null; hsrpStatus: ListingRtoFormState['hsrpStatus']; hsrpNumber?: string | null; rtoOffice?: string | null; rtoAgentName?: string | null;
-    rtoExpenses?: number | string; vehicleMaintenanceCost?: number | string; hourRunning?: number | null;
+    hirePurchaseStatus: ListingRtoFormState['hirePurchaseStatus'];
+    financerName?: string | null;
+    taxStatus: ListingRtoFormState['taxStatus'];
+    taxValidUntil?: string | null;
+    fitnessStatus: ListingRtoFormState['fitnessStatus'];
+    fitnessValidUntil?: string | null;
+    insuranceStatus: ListingRtoFormState['insuranceStatus'];
+    insuranceValidUntil?: string | null;
+    pucStatus: ListingRtoFormState['pucStatus'];
+    pucValidUntil?: string | null;
+    hsrpStatus: ListingRtoFormState['hsrpStatus'];
+    hsrpNumber?: string | null;
+    rtoOffice?: string | null;
+    rtoAgentName?: string | null;
+    rtoExpenses?: number | string;
+    vehicleMaintenanceCost?: number | string;
+    hourRunning?: number | null;
   }>;
 };
 
@@ -247,6 +295,8 @@ export type EditableListing = {
     status?: 'NOT_VERIFIED' | 'API_VERIFIED' | 'MANUALLY_MODIFIED' | 'REVERIFICATION_REQUIRED' | null;
   } | null;
 };
+
+type ModalTabKey = 'equipment' | 'rto' | 'media' | 'pricing' | 'sale' | 'all';
 
 const initialForm: ListingFormState = {
   category: '',
@@ -421,7 +471,7 @@ const buildMediaPreviewState = (
 };
 
 const fieldClassName =
-  'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
+  'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107]';
 
 const normalizeMasterName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -662,6 +712,9 @@ export default function SellVehicleModal({
 }) {
   const { t } = useTranslation();
   const [form, setForm] = useState<ListingFormState>(initialForm);
+  const [modalTab, setModalTab] = useState<ModalTabKey>('equipment');
+  const [sampleGuideSlot, setSampleGuideSlot] = useState<MediaSlotKey | null>(null);
+  const [guideLanguage, setGuideLanguage] = useState<'both' | 'en' | 'hi'>('both');
   const modalFormRef = useRef<HTMLFormElement | null>(null);
   const soldSectionRef = useRef<HTMLDivElement | null>(null);
   const buyerNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -669,7 +722,7 @@ export default function SellVehicleModal({
   const [brands, setBrands] = useState<Option[]>([]);
   const [states, setStates] = useState<Option[]>([]);
   const [cities, setCities] = useState<Option[]>([]);
-  const [, setListings] = useState<ListingRecord[]>([]);
+  const [listings, setListings] = useState<ListingRecord[]>([]);
   const [mediaState, setMediaState] = useState<MediaSlotState>(createEmptyMediaState);
   const [previewState, setPreviewState] = useState<MediaPreviewState>(createEmptyPreviewState);
   const [saving, setSaving] = useState(false);
@@ -691,32 +744,30 @@ export default function SellVehicleModal({
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
   const showToast = useToastStore((state) => state.showToast);
   const { token, user, hasHydrated, setAuthModalOpen } = useAuthStore();
-  const imageUploadHelper = `${t('sellModal.autoCompressed')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.inputMaxSuffix')}`;
-  const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-compressed video (muted).')} ${t('sellModal.maxLabel')} ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB ${t('sellModal.andLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`;
-  const localizedMediaLabels: Record<MediaSlotKey, string> = {
-    'front-view': t('sellModal.mediaSlots.frontView'),
-    'rear-view': t('sellModal.mediaSlots.rearView'),
-    'left-side': t('sellModal.mediaSlots.leftSide'),
-    'right-side': t('sellModal.mediaSlots.rightSide'),
-    'front-left-angle': t('sellModal.mediaSlots.frontLeftAngle'),
-    'front-right-angle': t('sellModal.mediaSlots.frontRightAngle'),
-    'rear-left-angle': t('sellModal.mediaSlots.rearLeftAngle'),
-    'rear-right-angle': t('sellModal.mediaSlots.rearRightAngle'),
-    'chassis-number': t('sellModal.mediaSlots.chassisNumber'),
-    'meter-reading': t('sellModal.mediaSlots.meterReading'),
-    'dashboard-front': t('sellModal.mediaSlots.dashboardFront'),
-    'dashboard-left': t('sellModal.mediaSlots.dashboardLeft'),
-    'dashboard-right': t('sellModal.mediaSlots.dashboardRight'),
-    'walkaround-video': t('sellModal.mediaSlots.walkaroundVideo'),
+  const imageUploadHelper = `${t('sellModal.autoCompressed', 'Auto-compressed')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB max`;
+  const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-compressed video (muted).')} Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB, ${MAX_LISTING_VIDEO_DURATION_SECONDS}s`;
+
+  const localizedAvailability = (value: string) => {
+    switch (value.toUpperCase()) {
+      case 'AVAILABLE':
+        return 'Available';
+      case 'SOLD':
+        return 'Sold Vehicle';
+      case 'PENDING':
+        return 'Pending Moderation';
+      case 'RESERVED':
+        return 'Reserved';
+      default:
+        return value;
+    }
   };
-  const localizedAvailability = (value: string) => t(`sellModal.availability.${value}`);
   const localizedCondition = (value: string) => t(`machineDetails.conditionOptions.${value}`, value);
   const localizedFuelType = (value: string) => t(`machineDetails.fuelOptions.${value}`, value);
   const localizedStatus = (value: string) => {
     const upper = value.toUpperCase();
-    if (upper === 'DRAFT') return t('sellModal.status.saved');
+    if (upper === 'DRAFT') return t('sellModal.status.saved', 'Saved Draft');
     const knownStatuses = ['PUBLISHED', 'PAUSED', 'PENDING_APPROVAL', 'CHANGES_REQUESTED', 'RESERVED', 'SOLD'];
-    return knownStatuses.includes(upper) ? t(`sellModal.status.${upper}`) : upper;
+    return knownStatuses.includes(upper) ? t(`sellModal.status.${upper}`, upper) : upper;
   };
 
   useEffect(() => {
@@ -780,10 +831,7 @@ export default function SellVehicleModal({
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : t('sellModal.loadDataFailed'));
-        }
-      } finally {
-        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : t('sellModal.loadDataFailed', 'Failed to load form metadata.'));
         }
       }
     };
@@ -829,7 +877,9 @@ export default function SellVehicleModal({
       })
       .catch((err) => console.error('Failed to load cities', err));
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [form.selectedStateId]);
 
   useEffect(() => {
@@ -844,10 +894,10 @@ export default function SellVehicleModal({
       })
       .catch((err) => console.error('Failed to load buyer cities', err));
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [form.selectedBuyerStateId]);
-
-
 
   function resetFormState() {
     chassisVerificationRequestRef.current += 1;
@@ -864,12 +914,16 @@ export default function SellVehicleModal({
     setVehicleVerificationSource('');
     setVerificationLoadingSource('');
     setChassisVerificationId('');
+    setModalTab('equipment');
+    setSampleGuideSlot(null);
   }
 
   const openEditModal = useCallback((listing: EditableListing) => {
     chassisVerificationRequestRef.current += 1;
     setMessage('');
     setError('');
+    setModalTab('equipment');
+    setSampleGuideSlot(null);
 
     const parsedDetails = parseListingDescription(listing.description);
     originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
@@ -913,7 +967,7 @@ export default function SellVehicleModal({
           ? String(linkedRto.insuranceValidUntil).split('T')[0]
           : ''
         : parsedDetails.insuranceExpiry,
-      selectedStateId: '', // To be handled optimally if we only have names
+      selectedStateId: '',
       selectedCityId: '',
       buyerName: listing.saleRecord?.buyerName || '',
       buyerPhone: listing.saleRecord?.buyerPhone || '',
@@ -1242,7 +1296,7 @@ export default function SellVehicleModal({
     let shouldCloseAfterSave = false;
 
     if (!hasHydrated) {
-      setError(t('sellModal.verifySession'));
+      setError(t('sellModal.verifySession', 'Please verify your session.'));
       return;
     }
 
@@ -1250,7 +1304,7 @@ export default function SellVehicleModal({
       if (token && !isUsableAuthToken(token)) {
         useAuthStore.getState().logout();
       }
-      setError(t('sellModal.signInRequired'));
+      setError(t('sellModal.signInRequired', 'Please sign in to proceed.'));
       setAuthModalOpen(true, 'login');
       return;
     }
@@ -1269,7 +1323,7 @@ export default function SellVehicleModal({
       const safeError = vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.';
       setError(safeError);
       showToast({
-        title: t('sellModal.notSubmitted'),
+        title: t('sellModal.notSubmitted', 'Not Submitted'),
         description: safeError,
         variant: 'error',
       });
@@ -1287,7 +1341,7 @@ export default function SellVehicleModal({
     if (mediaRequirementError) {
       setError(mediaRequirementError);
       showToast({
-        title: t('sellModal.notSubmitted'),
+        title: t('sellModal.notSubmitted', 'Not Submitted'),
         description: mediaRequirementError,
         variant: 'error',
       });
@@ -1325,7 +1379,7 @@ export default function SellVehicleModal({
       setError(validationError);
       setForm(sanitizedForm);
       showToast({
-        title: t('sellModal.notSubmitted'),
+        title: t('sellModal.notSubmitted', 'Not Submitted'),
         description: validationError,
         variant: 'error',
       });
@@ -1404,13 +1458,13 @@ export default function SellVehicleModal({
 
       if (sanitizedForm.currentAvailability === 'SOLD') {
         if (!sanitizedForm.buyerName.trim()) {
-          throw new Error(t('sellModal.buyerNameRequired'));
+          throw new Error(t('sellModal.buyerNameRequired', 'Buyer name is required for sold vehicles.'));
         }
         if (!sanitizedForm.buyerPhone.trim()) {
-          throw new Error(t('sellModal.buyerPhoneRequired'));
+          throw new Error(t('sellModal.buyerPhoneRequired', 'Buyer phone is required for sold vehicles.'));
         }
         if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
-          throw new Error(t('sellModal.soldPriceRequired'));
+          throw new Error(t('sellModal.soldPriceRequired', 'Final sold price is required.'));
         }
 
         payload.buyerDetails = {
@@ -1461,10 +1515,10 @@ export default function SellVehicleModal({
           : [...current, { id: savedBrandId, name: savedBrand.name }]);
       }
       const successMessage =
-        response.data.message || (editingListingId ? t('sellModal.updatedSuccessfully') : t('sellModal.postedSuccessfully'));
+        response.data.message || (editingListingId ? t('sellModal.updatedSuccessfully', 'Vehicle listing updated successfully.') : t('sellModal.postedSuccessfully', 'Vehicle listing submitted successfully.'));
       setMessage(successMessage);
       showToast({
-        title: editingListingId ? t('sellModal.vehicleUpdated') : t('sellModal.vehicleSubmitted'),
+        title: editingListingId ? t('sellModal.vehicleUpdated', 'Vehicle Updated') : t('sellModal.vehicleSubmitted', 'Vehicle Submitted'),
         description: successMessage,
         variant: 'success',
       });
@@ -1477,14 +1531,14 @@ export default function SellVehicleModal({
         setAuthModalOpen(true, 'login');
       }
       const submitErrorMessage = isSessionExpired
-        ? t('sellModal.signInRequired')
+        ? t('sellModal.signInRequired', 'Please sign in to proceed.')
         : getApiErrorMessage(
           submitError,
-          editingListingId ? t('sellModal.updateFailed') : t('sellModal.postFailed')
+          editingListingId ? t('sellModal.updateFailed', 'Failed to update vehicle.') : t('sellModal.postFailed', 'Failed to post vehicle.')
         );
       setError(submitErrorMessage);
       showToast({
-        title: editingListingId ? t('sellModal.vehicleUpdateFailed') : t('sellModal.vehicleSubmitFailed'),
+        title: editingListingId ? t('sellModal.vehicleUpdateFailed', 'Update Failed') : t('sellModal.vehicleSubmitFailed', 'Submit Failed'),
         description: submitErrorMessage,
         variant: 'error',
       });
@@ -1510,351 +1564,849 @@ export default function SellVehicleModal({
       if (viewListing?.id === deleteListingRecord.id) {
         setViewListing(null);
       }
-      setMessage(response.data.message || t('sellModal.deletedSuccessfully'));
+      setMessage(response.data.message || t('sellModal.deletedSuccessfully', 'Listing deleted successfully.'));
       setDeleteListingRecord(null);
     } catch (deleteError) {
-      setError(getApiErrorMessage(deleteError, t('sellModal.deleteFailed')));
+      setError(getApiErrorMessage(deleteError, t('sellModal.deleteFailed', 'Failed to delete listing.')));
     } finally {
       setDeletingListingId(null);
     }
   };
 
   const chassisButtonState = getVehicleVerificationButtonState('CHASSIS', verificationLoadingSource, vehicleVerificationSource);
+  // Fields that RC / chassis verification can fill carry the AI badge; solid once actually filled.
+  const vehicleVerificationFilled = chassisVerificationStatus === 'VERIFIED';
+  const vehicleApiFill = listingVerificationPolicy?.enabled ? { source: 'RC / chassis verification', filled: vehicleVerificationFilled } : null;
+  const registrationApiFill = listingVerificationPolicy?.chassisEnabled ? { source: 'chassis verification', filled: vehicleVerificationFilled && vehicleVerificationSource === 'CHASSIS' } : null;
+  const chassisApiFill = listingVerificationPolicy?.registrationEnabled ? { source: 'registration (RC) verification', filled: vehicleVerificationFilled && vehicleVerificationSource === 'RC_FULL' } : null;
   const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
+
+  const editingListingRecord = editingListingId
+    ? (listingToEdit?.id === editingListingId ? listingToEdit : listings.find((item) => item.id === editingListingId) || null)
+    : null;
+  const editingVerification = getListingVerificationDisplay(editingListingRecord?.vehicleVerification?.status);
 
   return (
     <>
-      {isOpen ? (
-        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-6 backdrop-blur-sm">
-          <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">{editingListingId ? t('sellModal.editVehicle') : t('sellModal.addVehicle')}</h2>
-              </div>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {isOpen && (() => {
+        const uploadedMediaCount = mediaSlots.filter((slot) => Boolean(mediaState[slot.key] || previewState[slot.key])).length;
+        const hasRequiredMedia = Boolean((mediaState['front-view'] || previewState['front-view']) && (mediaState['walkaround-video'] || previewState['walkaround-video']));
+        const modalTabs: { key: ModalTabKey; label: string; icon: typeof Truck; badge?: string; badgeColor?: string }[] = [
+          { key: 'equipment', label: 'Equipment & Specs', icon: Truck },
+          { key: 'rto', label: 'RTO Compliance', icon: ShieldCheck },
+          {
+            key: 'media',
+            label: 'Media Uploads',
+            icon: Upload,
+            badge: `${uploadedMediaCount}/14`,
+            badgeColor: hasRequiredMedia ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800',
+          },
+          { key: 'pricing', label: 'Price & Location', icon: MapPin },
+          ...(form.currentAvailability === 'SOLD'
+            ? [
+                {
+                  key: 'sale' as ModalTabKey,
+                  label: 'Buyer & Sale',
+                  icon: UserCheck,
+                  badge: 'SOLD',
+                  badgeColor: 'bg-rose-100 text-rose-800',
+                },
+              ]
+            : []),
+        ];
+        const tabKeys = modalTabs.map((t) => t.key);
+        const activeTabIndex = Math.max(0, tabKeys.indexOf(modalTab));
+        const handleNextTab = () => {
+          if (activeTabIndex < tabKeys.length - 1) {
+            setModalTab(tabKeys[activeTabIndex + 1]);
+          }
+        };
+        const handlePrevTab = () => {
+          if (activeTabIndex > 0) {
+            setModalTab(tabKeys[activeTabIndex - 1]);
+          }
+        };
 
-            <form ref={modalFormRef} onSubmit={handleSubmit} className="overflow-y-auto px-6 py-5">
-              <div className="grid gap-6">
-                {message ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                    {message}
-                  </div>
-                ) : null}
-                <section className="rounded-2xl border border-gray-200 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-gray-900">
-                    <Truck className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">{t('sellModal.equipmentDetails')}</h3>
-                  </div>
-                  <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field className="order-2" label={`${t('sellModal.chassisSerialNumber')}${listingVerificationPolicy?.chassisRequired ? ' *' : ''}`}>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          value={form.chassisOrSerialNo}
-                          onChange={(event) => updateField('chassisOrSerialNo', event.target.value)}
-                          className={fieldClassName}
-                          aria-describedby={listingVerificationPolicy?.chassisEnabled ? 'chassis-verification-status' : undefined}
-                          aria-required={listingVerificationPolicy?.chassisRequired === true}
-                        />
-                        {listingVerificationPolicy?.chassisEnabled ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleChassisVerification()}
-                            disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
-                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
-                          >
-                            {chassisButtonState.isLoading ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
-                                <span>Checking…</span>
-                              </>
-                            ) : chassisButtonState.isVerified ? (
-                              <>
-                                <CheckCircle2 className="h-4 w-4 text-emerald-800" />
-                                <span>Verified</span>
-                              </>
-                            ) : chassisButtonState.isLocked ? (
-                              <span>Filled from vehicle number</span>
-                            ) : (
-                              <>
-                                <Sparkles className="h-4 w-4 text-gray-900" />
-                                <span>Verify</span>
-                              </>
-                            )}
-                          </button>
-                        ) : null}
-                      </div>
-                      {listingVerificationPolicy?.chassisEnabled ? (
-                        <p
-                          id="chassis-verification-status"
-                          className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisButtonState.isVerified
-                              ? 'text-emerald-600'
-                              : chassisVerificationStatus === 'FAILED'
-                                ? 'text-red-600'
-                                : 'text-gray-500'
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs">
+            <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-5 py-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900">
+                    {editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}
+                  </h2>
+                  {editingListingId ? (
+                    <>
+                      <span className="rounded-md border border-amber-300/80 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                        {form.registrationNo || editingListingRecord?.title || 'Vehicle'}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${editingVerification.className}`}>
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {editingVerification.label}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  {uploadingCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Uploading ({uploadingCount})
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-700 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Tabs Bar */}
+              <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex items-center gap-1">
+                  {modalTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = modalTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setModalTab(tab.key)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                          isActive
+                            ? 'bg-gray-900 text-white shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-[#FFC107]' : 'text-gray-400'}`} />
+                        <span>{tab.label}</span>
+                        {tab.badge ? (
+                          <span
+                            className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                              isActive ? 'bg-white/20 text-white' : tab.badgeColor || 'bg-gray-200 text-gray-700'
                             }`}
-                        >
-                          {chassisButtonState.isVerified
-                            ? '✓ Verified successfully. API-backed vehicle details were filled.'
-                            : vehicleVerificationSource === 'RC_FULL'
-                              ? 'Chassis was auto-filled from vehicle-number verification.'
-                              : verificationLoadingSource === 'CHASSIS'
-                                ? 'Verifying chassis number...'
-                                : chassisVerificationStatus === 'FAILED'
-                                  ? '✕ Verification failed. Correct the chassis number and try again.'
-                                  : listingVerificationPolicy.chassisRequired
-                                    ? 'Verification is required before posting this vehicle.'
-                                    : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
-                        </p>
-                      ) : (
-                        <p className="mt-1.5 text-xs font-medium text-gray-500">
-                          Manual listing mode is active. Chassis verification and auto-fill are disabled.
-                        </p>
-                      )}
-                    </Field>
-                    <Field className="order-1" label={`${t('sellModal.registrationNumber', 'Registration No.')}${listingVerificationPolicy?.registrationRequired ? ' *' : ''}`}>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
+                          >
+                            {tab.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalTab(modalTab === 'all' ? 'equipment' : 'all')}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                      modalTab === 'all'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-gray-200 bg-white'
+                    }`}
+                    title={modalTab === 'all' ? 'Switch back to tabbed view' : 'Show all sections in one scrollable page'}
+                  >
+                    <LayoutGrid className="h-3 w-3" />
+                    <span>{modalTab === 'all' ? 'Tab View' : 'View All'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Content */}
+              <form ref={modalFormRef} onSubmit={handleSubmit} noValidate className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {/* Tab 1: Equipment & Specs */}
+                <div className={modalTab !== 'equipment' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}>
+                  {listingVerificationPolicy?.enabled ? <ApiFillLegend /> : null}
+                  {/* Verification Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {/* Registration No. */}
+                    <div className="rounded-xl border border-gray-200 bg-white p-2.5 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-gray-800">
+                          Registration No.{listingVerificationPolicy?.registrationRequired ? ' *' : ''}
+                        </span>
+                        {registrationButtonState.isVerified ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            <CheckCircle2 className="h-3 w-3" /> Verified
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">e.g. DL01AB1234</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ApiFillBox apiFill={registrationApiFill} className="min-w-0 flex-1"><input
                           value={form.registrationNo}
-                          onChange={(event) => updateField('registrationNo', event.target.value)}
+                          maxLength={15}
+                          onKeyDown={(e) => handleAlphanumericKeyDown(e, true)}
+                          onChange={(event) => updateField('registrationNo', event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 15))}
                           className={fieldClassName}
-                          placeholder={t('sellModal.vehicleNumberPlaceholder', 'e.g. DL01AB1234')}
-                          aria-describedby={listingVerificationPolicy?.registrationEnabled ? 'vehicle-number-verification-status' : undefined}
-                          aria-required={listingVerificationPolicy?.registrationRequired === true}
-                        />
+                          placeholder="e.g. DL01AB1234"
+                          aria-describedby={listingVerificationPolicy?.enabled ? 'sell-vehicle-verification-status' : undefined}
+                        /></ApiFillBox>
                         {listingVerificationPolicy?.registrationEnabled ? (
                           <button
                             type="button"
                             onClick={() => void handleVehicleNumberVerification()}
                             disabled={registrationButtonState.isLoading || registrationButtonState.isLocked || !form.registrationNo.trim()}
-                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#FFC107]"
+                            className="h-[34px] shrink-0 inline-flex items-center justify-center gap-1 px-3 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-2xs hover:bg-[#e5b100] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >
                             {registrationButtonState.isLoading ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
-                                <span>Checking...</span>
-                              </>
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying</>
                             ) : registrationButtonState.isVerified ? (
-                              <>
-                                <CheckCircle2 className="h-4 w-4 text-emerald-800" />
-                                <span>Verified</span>
-                              </>
+                              <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-900" /> Verified</>
                             ) : registrationButtonState.isLocked ? (
-                              <span>Filled from chassis</span>
+                              <span className="text-[11px]">Auto-filled</span>
                             ) : (
-                              <>
-                                <Sparkles className="h-4 w-4 text-gray-900" />
-                                <span>Verify</span>
-                              </>
+                              <><Sparkles className="h-3.5 w-3.5" /> Verify</>
                             )}
                           </button>
                         ) : null}
                       </div>
                       {listingVerificationPolicy?.registrationEnabled ? (
-                        <p
-                          id="vehicle-number-verification-status"
-                          className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' && vehicleVerificationSource !== 'CHASSIS' ? 'text-red-600' : 'text-gray-500'}`}
-                        >
-                          {registrationButtonState.isVerified
-                            ? '✓ Verified using vehicle number. Details were auto-filled.'
-                            : vehicleVerificationSource === 'CHASSIS'
-                              ? 'Vehicle number was auto-filled from chassis verification.'
-                              : verificationLoadingSource === 'RC_FULL'
-                                ? 'Verifying vehicle number...'
-                                : listingVerificationPolicy.registrationRequired
-                                  ? 'RC Full verification is required before posting this vehicle.'
-                                  : 'Vehicle-number verification is optional. Use it to auto-fill available RC details.'}
+                        <p id="sell-vehicle-verification-status" className={`text-[10px] font-medium truncate ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-400'}`}>
+                          {registrationButtonState.isVerified ? '✓ Verified using RC. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Verify to auto-fill vehicle details.'}
                         </p>
                       ) : null}
-                    </Field>
+                    </div>
+
+                    {/* Chassis / Serial No. */}
+                    <div className="rounded-xl border border-gray-200 bg-white p-2.5 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-gray-800">
+                          Chassis / Serial No.{listingVerificationPolicy?.required ? ' *' : ''}
+                        </span>
+                        {chassisButtonState.isVerified ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            <CheckCircle2 className="h-3 w-3" /> Verified
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">17-digit Chassis / Serial</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ApiFillBox apiFill={chassisApiFill} className="min-w-0 flex-1"><input
+                          value={form.chassisOrSerialNo}
+                          maxLength={30}
+                          onKeyDown={(e) => handleAlphanumericKeyDown(e, false)}
+                          onChange={(event) => updateField('chassisOrSerialNo', event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30))}
+                          className={fieldClassName}
+                          placeholder="Enter chassis number"
+                          aria-describedby={listingVerificationPolicy?.enabled ? 'sell-chassis-verification-status' : undefined}
+                        /></ApiFillBox>
+                        {listingVerificationPolicy?.chassisEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleChassisVerification()}
+                            disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
+                            className="h-[34px] shrink-0 inline-flex items-center justify-center gap-1 px-3 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-2xs hover:bg-[#e5b100] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            {chassisButtonState.isLoading ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying</>
+                            ) : chassisButtonState.isVerified ? (
+                              <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-900" /> Verified</>
+                            ) : chassisButtonState.isLocked ? (
+                              <span className="text-[11px]">Auto-filled</span>
+                            ) : (
+                              <><Sparkles className="h-3.5 w-3.5" /> Verify</>
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
+                      {listingVerificationPolicy?.chassisEnabled ? (
+                        <p id="sell-chassis-verification-status" className={`text-[10px] font-medium truncate ${chassisButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-400'}`}>
+                          {chassisButtonState.isVerified ? '✓ Verified successfully. Details were filled.' : vehicleVerificationSource === 'RC_FULL' ? 'Auto-filled from registration verification.' : verificationLoadingSource === 'CHASSIS' ? 'Verifying chassis number...' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct chassis number.' : 'Verify chassis to fetch vehicle records.'}
+                        </p>
+                      ) : (
+                        <p className="text-[10px] font-medium text-gray-400 truncate">
+                          {listingVerificationPolicy?.registrationEnabled ? 'Registration verification can auto-fill chassis.' : 'Manual listing mode active.'}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="mb-4 grid gap-4 md:grid-cols-2">
-                    <Field label={t('sellModal.vehicleName')}>
+
+                  {/* Title and Owner */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <Field label="Vehicle Name / Listing Title" hint="Marketplace title" apiFill={vehicleApiFill}>
                       <input
                         value={form.title}
+                        maxLength={120}
                         onChange={(event) => updateField('title', event.target.value)}
                         className={fieldClassName}
-                        placeholder={t('sellModal.vehicleNamePlaceholder')}
+                        placeholder="e.g. JCB 3DX Plus Super"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        {t('sellModal.vehicleNameHelp')}
-                      </p>
                     </Field>
-                    <Field label="Owner Name">
+                    <Field label="Owner Name" apiFill={vehicleApiFill}>
                       <input
                         value={form.ownerName}
-                        onChange={(event) => updateField('ownerName', event.target.value)}
+                        maxLength={80}
+                        onKeyDown={handleTextOnlyKeyDown}
+                        onChange={(event) => updateField('ownerName', event.target.value.replace(/[^A-Za-z\s.]/g, '').slice(0, 80))}
                         className={fieldClassName}
                         placeholder="Vehicle owner name"
                       />
-                      <p className="mt-1 text-xs text-gray-500">
-                        Auto-filled after registration or chassis verification.
-                      </p>
                     </Field>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label={`${t('sellModal.category')} *`}>
-                      <select required value={form.category} onChange={(event) => updateField('category', event.target.value)} className={fieldClassName}>
-                        <option value="">{t('sellModal.selectCategory')}</option>
-                        {categories.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label={`${t('sellModal.brand')} *`}>
-                      <SearchableSelect
-                        options={brands}
-                        value={form.brand}
-                        displayValue={form.brand}
-                        onChange={(option) => updateField('brand', option.name)}
-                        required
-                        placeholder={t('sellModal.selectBrand')}
-                        searchPlaceholder={t('sellModal.searchOptions')}
-                        noResultsText={t('sellModal.noResults')}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label={t('sellModal.model')}>
-                      <input value={form.model} onChange={(event) => updateField('model', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.variant')}>
-                      <input value={form.variant} onChange={(event) => updateField('variant', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.grossPower')}>
-                      <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition">
+
+                  {/* Specifications Grid */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 border-b border-gray-100 pb-2">
+                      <Truck className="h-3.5 w-3.5 text-amber-500" />
+                      <span>Machine Specifications & Classification</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                      <Field label="Category *" apiFill={vehicleApiFill}>
+                        <select
+                          required
+                          value={form.category}
+                          onChange={(event) => updateField('category', event.target.value)}
+                          className={fieldClassName}
+                        >
+                          <option value="">Select category</option>
+                          {categories.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+
+                      <Field label="Brand *" apiFill={vehicleApiFill}>
+                        <SearchableSelect
+                          options={brands}
+                          value={form.brand}
+                          displayValue={form.brand}
+                          onChange={(option) => updateField('brand', option.name)}
+                          required
+                          size="sm"
+                          placeholder="Select brand"
+                          className="bg-[#F8FAFC]"
+                        />
+                      </Field>
+
+                      <Field label="Model" apiFill={vehicleApiFill}>
+                        <input
+                          value={form.model}
+                          maxLength={60}
+                          onChange={(event) => updateField('model', event.target.value)}
+                          className={fieldClassName}
+                          placeholder="e.g. 3DX"
+                        />
+                      </Field>
+
+                      <Field label="Horse Power">
+                        <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-[#F8FAFC] focus-within:border-[#FFC107] transition h-[34px]">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={5}
+                            value={form.grossPower}
+                            onChange={(event) => updateField('grossPower', event.target.value.replace(/\D/g, '').slice(0, 5))}
+                            onKeyDown={handleDigitOnlyKeyDown}
+                            className="flex-1 bg-transparent px-2.5 text-xs text-gray-900 outline-none"
+                            placeholder="e.g. 76"
+                          />
+                          <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-500 select-none">
+                            HP
+                          </span>
+                        </div>
+                      </Field>
+
+                      <Field label="Manufacture Year" apiFill={vehicleApiFill}>
                         <input
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          value={form.grossPower}
-                          onChange={(event) => updateField('grossPower', event.target.value.replace(/[^0-9]/g, ''))}
-                          onKeyDown={(event) => { if (!/[0-9]|Backspace|Delete|ArrowLeft|ArrowRight|Tab|Home|End/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault(); }}
-                          className="flex-1 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none"
-                          placeholder="e.g. 170"
+                          maxLength={4}
+                          value={form.manufacturingYear}
+                          onChange={(event) => updateField('manufacturingYear', event.target.value.replace(/\D/g, '').slice(0, 4))}
+                          onKeyDown={handleDigitOnlyKeyDown}
+                          className={fieldClassName}
+                          placeholder="YYYY (e.g. 2021)"
                         />
-                        <span className="shrink-0 border-l border-gray-200 bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-500 select-none">HP</span>
-                      </div>
-                    </Field>
-                    <Field label={t('sellModal.manufactureYear')}>
-                      <input type="number" value={form.manufacturingYear} onChange={(event) => updateField('manufacturingYear', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.registrationDate')}>
-                      <input type="date" value={form.registrationDate} onChange={(event) => updateField('registrationDate', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.registrationUpto')}>
-                      <input type="date" value={form.registrationUpto} onChange={(event) => updateField('registrationUpto', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    {form.rtoDetails.insuranceStatus === 'VALID' && (
-                      <Field label={t('sellModal.insuranceExpiryDate')}>
-                        <input type="date" value={form.insuranceExpiry} onChange={(event) => updateField('insuranceExpiry', event.target.value)} className={fieldClassName} />
                       </Field>
-                    )}
-                    <Field label={t('sellModal.engineNumber', 'Engine Number')}>
-                      <input value={form.engineNumber} onChange={(event) => updateField('engineNumber', event.target.value)} className={fieldClassName} maxLength={40} />
-                    </Field>
-                    <Field label={t('sellModal.meterReading')}>
-                      <input value={form.operatingHours} onChange={(event) => updateField('operatingHours', event.target.value)} className={fieldClassName} placeholder={t('sellModal.meterReadingPlaceholder')} />
-                    </Field>
-                    <Field label={t('sellModal.numberOfOwners')}>
-                      <input type="number" value={form.previousOwners} onChange={(event) => updateField('previousOwners', event.target.value)} className={fieldClassName} />
-                    </Field>
-                    <Field label={t('sellModal.condition')}>
-                      <SearchableSelect
-                        options={conditions.map((option) => ({ id: option, name: localizedCondition(option) }))}
-                        value={form.condition}
-                        onChange={(opt) => updateField('condition', String(opt.id))}
-                        placeholder={t('sellModal.selectCondition')}
-                        searchable={false}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label={t('sellModal.fuelType')}>
-                      <SearchableSelect
-                        options={fuelTypes.map((option) => ({ id: option, name: localizedFuelType(option) }))}
-                        value={form.fuelType}
-                        onChange={(opt) => updateField('fuelType', String(opt.id))}
-                        placeholder={t('sellModal.selectFuelType')}
-                        searchable={false}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label={t('sellModal.currentAvailability')}>
-                      <SearchableSelect
-                        options={(form.currentAvailability === 'PENDING' ? ['PENDING'] : SELL_VEHICLE_AVAILABILITY_OPTIONS).map((option) => ({ id: option, name: localizedAvailability(option) }))}
-                        value={form.currentAvailability}
-                        onChange={(opt) => {
-                          const val = String(opt.id);
-                          updateField('currentAvailability', val);
-                          if (val === 'SOLD') {
-                            setTimeout(() => {
-                              soldSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }, 100);
-                          }
-                        }}
-                        disabled={form.currentAvailability === 'PENDING'}
-                        placeholder={t('sellModal.currentAvailability')}
-                        searchable={false}
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
+
+                      <Field label="Registration Date" apiFill={vehicleApiFill}>
+                        <input
+                          type="date"
+                          value={form.registrationDate}
+                          onChange={(event) => updateField('registrationDate', event.target.value)}
+                          className={fieldClassName}
+                        />
+                      </Field>
+
+                      <Field label="Registration Upto" apiFill={vehicleApiFill}>
+                        <input
+                          type="date"
+                          value={form.registrationUpto}
+                          onChange={(event) => updateField('registrationUpto', event.target.value)}
+                          className={fieldClassName}
+                        />
+                      </Field>
+
+                      {form.rtoDetails.insuranceStatus === 'VALID' && (
+                        <Field label="Insurance Expiry Date" apiFill={vehicleApiFill}>
+                          <input
+                            type="date"
+                            value={form.insuranceExpiry}
+                            onChange={(event) => updateField('insuranceExpiry', event.target.value)}
+                            className={fieldClassName}
+                          />
+                        </Field>
+                      )}
+
+                      <Field label="Engine Number" apiFill={vehicleApiFill}>
+                        <input
+                          value={form.engineNumber}
+                          maxLength={40}
+                          onKeyDown={(e) => handleAlphanumericKeyDown(e, true)}
+                          onChange={(event) => updateField('engineNumber', event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 40))}
+                          className={fieldClassName}
+                          placeholder="Engine serial number"
+                        />
+                      </Field>
+
+                      <Field label="Meter Reading / Hours" hint="Digits only">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={8}
+                          value={form.operatingHours}
+                          onChange={(event) => updateField('operatingHours', event.target.value.replace(/\D/g, '').slice(0, 8))}
+                          onKeyDown={handleDigitOnlyKeyDown}
+                          className={fieldClassName}
+                          placeholder="e.g. 1500"
+                        />
+                      </Field>
+
+                      <Field label="No. of Owners" apiFill={vehicleApiFill}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={2}
+                          value={form.previousOwners}
+                          onChange={(event) => updateField('previousOwners', event.target.value.replace(/\D/g, '').slice(0, 2))}
+                          onKeyDown={handleDigitOnlyKeyDown}
+                          className={fieldClassName}
+                          placeholder="e.g. 1"
+                        />
+                      </Field>
+
+                      <Field label="Condition">
+                        <SearchableSelect
+                          options={conditions.map((option) => ({ id: option, name: localizedCondition(option) }))}
+                          value={form.condition}
+                          onChange={(opt) => updateField('condition', String(opt.id))}
+                          placeholder="Select condition"
+                          searchable={false}
+                          size="sm"
+                          className="bg-[#F8FAFC]"
+                        />
+                      </Field>
+
+                      <Field label="Fuel Type" apiFill={vehicleApiFill}>
+                        <SearchableSelect
+                          options={fuelTypes.map((option) => ({ id: option, name: localizedFuelType(option) }))}
+                          value={form.fuelType}
+                          onChange={(opt) => updateField('fuelType', String(opt.id))}
+                          placeholder="Select fuel type"
+                          searchable={false}
+                          size="sm"
+                          className="bg-[#F8FAFC]"
+                        />
+                      </Field>
+                    </div>
                   </div>
 
-                  <ListingRtoFields
-                    value={form.rtoDetails}
-                    onChange={updateRtoField}
-                    insuranceExpiry={form.insuranceExpiry}
-                    onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
-                    required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
-                  />
-
-                  {form.currentAvailability === 'SOLD' && (
-                    <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
-                      <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
-                        <UserCheck className="h-4 w-4 text-rose-600" />
-                        <h4 className="text-xs font-bold uppercase tracking-wider">{t('sellModal.buyerRecordTitle')}</h4>
+                  {/* Current Availability Toggle */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                            form.currentAvailability === 'SOLD'
+                              ? 'bg-rose-100 text-rose-600'
+                              : form.currentAvailability === 'PENDING'
+                              ? 'bg-amber-100 text-amber-600'
+                              : 'bg-emerald-100 text-emerald-600'
+                          }`}
+                        >
+                          {form.currentAvailability === 'SOLD' ? (
+                            <Handshake className="h-5 w-5" />
+                          ) : form.currentAvailability === 'PENDING' ? (
+                            <AlertCircle className="h-5 w-5" />
+                          ) : (
+                            <CheckCircle2 className="h-5 w-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-900">Current Availability</span>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                form.currentAvailability === 'SOLD'
+                                  ? 'border border-rose-200 bg-rose-50 text-rose-700'
+                                  : form.currentAvailability === 'PENDING'
+                                  ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                                  : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full animate-pulse ${
+                                  form.currentAvailability === 'SOLD'
+                                    ? 'bg-rose-500'
+                                    : form.currentAvailability === 'PENDING'
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
+                                }`}
+                              />
+                              {localizedAvailability(form.currentAvailability)}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500">
+                            {form.currentAvailability === 'SOLD'
+                              ? 'Machine is marked as Sold. Confidential buyer & sale details enabled in Buyer & Sale tab.'
+                              : form.currentAvailability === 'PENDING'
+                              ? 'Listing is awaiting moderation approval or verification.'
+                              : 'Machine is active and available for inquiries & purchase on marketplace.'}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label={t('sellModal.buyerName')}>
+                      <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50/90 p-1 self-start sm:self-auto shrink-0">
+                        {form.currentAvailability === 'PENDING' && (
+                          <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-2xs">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            <span>Pending Moderation</span>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateField('currentAvailability', 'AVAILABLE');
+                            if (modalTab === 'sale') {
+                              setModalTab('equipment');
+                            }
+                          }}
+                          disabled={form.currentAvailability === 'PENDING'}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                            form.currentAvailability === 'AVAILABLE'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          <CheckCircle2 className={`h-3.5 w-3.5 ${form.currentAvailability === 'AVAILABLE' ? 'text-white' : 'text-gray-400'}`} />
+                          <span>Available</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateField('currentAvailability', 'SOLD');
+                            setModalTab('sale');
+                            setTimeout(() => {
+                              soldSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              buyerNameInputRef.current?.focus();
+                            }, 100);
+                          }}
+                          disabled={form.currentAvailability === 'PENDING'}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                            form.currentAvailability === 'SOLD'
+                              ? 'bg-rose-600 text-white shadow-xs'
+                              : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          <Handshake className={`h-3.5 w-3.5 ${form.currentAvailability === 'SOLD' ? 'text-white' : 'text-gray-400'}`} />
+                          <span>Sold Vehicle</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tab 2: RTO Compliance */}
+                <div className={modalTab !== 'rto' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                        <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+                        <span>RTO Documents & Compliance</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400">
+                        Tax, Fitness, Insurance, HSRP, and Loan NOC status
+                      </span>
+                    </div>
+                    <ListingRtoFields
+                      apiFillSource={vehicleApiFill?.source || ''}
+                      apiFilled={Boolean(vehicleApiFill?.filled)}
+                      compact={true}
+                      value={form.rtoDetails}
+                      onChange={updateRtoField}
+                      insuranceExpiry={form.insuranceExpiry}
+                      onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                      required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                    />
+                  </div>
+                </div>
+
+                {/* Tab 3: Media Uploads */}
+                <div className={modalTab !== 'media' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                        <Upload className="h-3.5 w-3.5 text-amber-500" />
+                        <span>Media Gallery (14 High-Density Slots)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            hasRequiredMedia
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-amber-200 bg-amber-50 text-amber-800'
+                          }`}
+                        >
+                          {uploadedMediaCount} of 14 uploaded {hasRequiredMedia ? '✓ Required ready' : '(Front photo & Video required)'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-2">
+                      {mediaSlots.map((slot) => (
+                        <ListingMediaUploadBox
+                          key={slot.key}
+                          slotKey={slot.key}
+                          label={slot.label}
+                          kind={slot.kind}
+                          uploadedFile={mediaState[slot.key]}
+                          previewUrl={previewState[slot.key]}
+                          helperText={slot.kind === 'video' ? videoUploadHelper : imageUploadHelper}
+                          onUploaded={(file) =>
+                            setMediaState((current) => ({
+                              ...current,
+                              [slot.key]: file,
+                            }))
+                          }
+                          onPreviewReady={(previewUrl) =>
+                            setPreviewState((current) => ({
+                              ...current,
+                              [slot.key]: previewUrl,
+                            }))
+                          }
+                          onClear={() => {
+                            setMediaState((current) => ({
+                              ...current,
+                              [slot.key]: null,
+                            }));
+                            setPreviewState((current) => ({
+                              ...current,
+                              [slot.key]: '',
+                            }));
+                          }}
+                          onUploadingChange={(isUploading) =>
+                            setUploadingCount((current) => current + (isUploading ? 1 : -1))
+                          }
+                          onOpenSampleGuide={(key) => setSampleGuideSlot(key)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tab 4: Price & Location */}
+                <div className={modalTab !== 'pricing' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 border-b border-gray-100 pb-2">
+                      <MapPin className="h-3.5 w-3.5 text-amber-500" />
+                      <span>Pricing & Machine Location</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                      <Field label="Price (₹) *">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          required
+                          maxLength={10}
+                          value={form.price}
+                          onKeyDown={handleDigitOnlyKeyDown}
+                          onChange={(event) => updateField('price', event.target.value.replace(/\D/g, '').slice(0, 10))}
+                          className={fieldClassName}
+                          placeholder="e.g. 1850000"
+                        />
+                      </Field>
+
+                      <div className="flex flex-col justify-end">
+                        <label className="flex h-[34px] items-center gap-2 rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 cursor-pointer select-none transition hover:bg-white hover:border-[#FFC107]">
+                          <input
+                            type="checkbox"
+                            checked={form.isNegotiable}
+                            onChange={(e) => updateField('isNegotiable', e.target.checked)}
+                            className="w-3.5 h-3.5 text-amber-500 rounded border-gray-300 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-semibold text-gray-700">Price is Negotiable</span>
+                        </label>
+                      </div>
+
+                      <Field label="State *">
+                        <SearchableSelect
+                          options={states}
+                          value={form.selectedStateId || form.state}
+                          displayValue={form.state}
+                          onChange={(option) => {
+                            updateField('state', option.name);
+                            updateField('selectedStateId', String(option.id));
+                            updateField('city', '');
+                            updateField('selectedCityId', '');
+                          }}
+                          placeholder="Select state"
+                          required
+                          size="sm"
+                          className="bg-[#F8FAFC]"
+                        />
+                      </Field>
+
+                      <Field label="City *">
+                        <SearchableSelect
+                          options={cities}
+                          value={form.selectedCityId || form.city}
+                          displayValue={form.city}
+                          onChange={(option) => {
+                            updateField('city', option.name);
+                            updateField('selectedCityId', String(option.id));
+                          }}
+                          placeholder={form.selectedStateId ? 'Select city' : 'Select state first'}
+                          disabled={!form.selectedStateId}
+                          required
+                          size="sm"
+                          className="bg-[#F8FAFC]"
+                        />
+                      </Field>
+
+                      <Field label="PIN Code *">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          required
+                          maxLength={6}
+                          value={form.pinCode}
+                          onKeyDown={handleDigitOnlyKeyDown}
+                          onChange={(event) => updateField('pinCode', event.target.value.replace(/\D/g, '').slice(0, 6))}
+                          className={fieldClassName}
+                          placeholder="6-digit PIN"
+                        />
+                      </Field>
+
+                      <Field label="Address *" className="col-span-2 sm:col-span-1 lg:col-span-2">
+                        <input
+                          required
+                          value={form.address}
+                          onChange={(event) => updateField('address', event.target.value)}
+                          className={fieldClassName}
+                          placeholder="Physical location address"
+                        />
+                      </Field>
+
+                      <Field label="Nearby Landmark *">
+                        <input
+                          required
+                          value={form.nearbyLandmark}
+                          onChange={(event) => updateField('nearbyLandmark', event.target.value)}
+                          className={fieldClassName}
+                          placeholder="Highway / Toll / Chowk"
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                      <Field label="Short Description" hint="Machine condition & highlights">
+                        <textarea
+                          value={form.description}
+                          onChange={(event) => updateField('description', event.target.value)}
+                          rows={3}
+                          className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107]"
+                          placeholder="Short machine condition, issues, and selling points"
+                        />
+                      </Field>
+
+                      <Field label="Additional Description" hint="Technical specs, tyres, cabin features">
+                        <textarea
+                          value={form.additionalDescription}
+                          onChange={(event) => updateField('additionalDescription', event.target.value)}
+                          rows={3}
+                          className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107]"
+                          placeholder="Detailed specifications, tyre life %, cabin features, etc."
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tab 5: Buyer & Sale Record (Confidential) */}
+                {form.currentAvailability === 'SOLD' && (
+                  <section
+                    ref={soldSectionRef}
+                    className={modalTab !== 'sale' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}
+                  >
+                    <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3 shadow-2xs space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-rose-200/80 pb-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
+                          <UserCheck className="h-4 w-4 text-rose-600" />
+                          <span>Buyer & Sale Record (Confidential)</span>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-200">
+                          Marked Sold
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        <Field label="Buyer Name *">
                           <input
                             ref={buyerNameInputRef}
                             type="text"
+                            maxLength={80}
                             value={form.buyerName}
-                            onChange={(event) => updateField('buyerName', event.target.value)}
-                            placeholder={t('sellModal.buyerNamePlaceholder')}
+                            onKeyDown={handleTextOnlyKeyDown}
+                            onChange={(event) => updateField('buyerName', event.target.value.replace(/[^A-Za-z\s.]/g, '').slice(0, 80))}
+                            placeholder="e.g. Ramesh Sharma"
                             className={fieldClassName}
                           />
                         </Field>
 
-                        <Field label={t('sellModal.buyerPhone')}>
+                        <Field label="Buyer Mobile Number *">
                           <input
                             type="tel"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={10}
                             value={form.buyerPhone}
-                            onChange={(event) => updateField('buyerPhone', event.target.value)}
-                            placeholder={t('sellModal.buyerPhonePlaceholder')}
+                            onKeyDown={handleDigitOnlyKeyDown}
+                            onChange={(event) => updateField('buyerPhone', event.target.value.replace(/\D/g, '').slice(0, 10))}
+                            placeholder="10-digit mobile"
                             className={fieldClassName}
                           />
                         </Field>
 
-                        <Field label={t('sellModal.finalSoldPrice')}>
+                        <Field label="Final Sold Price (₹) *">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={10}
                             value={form.soldPrice}
-                            onChange={(event) => updateField('soldPrice', event.target.value)}
+                            onKeyDown={handleDigitOnlyKeyDown}
+                            onChange={(event) => updateField('soldPrice', event.target.value.replace(/\D/g, '').slice(0, 10))}
                             placeholder="e.g. 2450000"
                             className={fieldClassName}
                           />
                         </Field>
 
-                        <Field label={t('sellModal.saleDate')}>
+                        <Field label="Sale Date *">
                           <input
                             type="date"
                             value={form.soldAt}
@@ -1863,7 +2415,7 @@ export default function SellVehicleModal({
                           />
                         </Field>
 
-                        <Field label={t('sellModal.buyerState')}>
+                        <Field label="Buyer State">
                           <SearchableSelect
                             options={states}
                             value={form.selectedBuyerStateId || form.buyerState}
@@ -1874,12 +2426,13 @@ export default function SellVehicleModal({
                               updateField('buyerCity', '');
                               updateField('selectedBuyerCityId', '');
                             }}
-                            placeholder={t('sellModal.selectState')}
+                            placeholder="Select buyer state"
+                            size="sm"
                             className="bg-[#F8FAFC]"
                           />
                         </Field>
 
-                        <Field label={t('sellModal.buyerCity')}>
+                        <Field label="Buyer City">
                           <SearchableSelect
                             options={form.selectedBuyerStateId ? buyerCities : []}
                             value={form.selectedBuyerCityId || form.buyerCity}
@@ -1888,211 +2441,480 @@ export default function SellVehicleModal({
                               updateField('buyerCity', option.name);
                               updateField('selectedBuyerCityId', String(option.id));
                             }}
-                            placeholder={form.selectedBuyerStateId ? t('sellModal.selectCity') : t('sellModal.selectStateFirst')}
+                            placeholder={form.selectedBuyerStateId ? 'Select buyer city' : 'Select state first'}
                             disabled={!form.selectedBuyerStateId}
+                            size="sm"
                             className="bg-[#F8FAFC]"
                           />
                         </Field>
                       </div>
                     </div>
-                  )}
-                </section>
 
-                <section className="rounded-2xl border border-gray-200 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-gray-900">
-                    <Upload className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">{t('sellModal.mediaUploads')} *</h3>
-                  </div>
-                  <p className="mb-4 text-xs font-medium text-gray-500">
-                    At least one vehicle image and one video are required. Each selected video is compressed before upload.
-                  </p>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {mediaSlots.map((slot) => (
-                      <ListingMediaUploadBox
-                        key={slot.key}
-                        slotKey={slot.key}
-                        label={localizedMediaLabels[slot.key]}
-                        kind={slot.kind}
-                        uploadedFile={mediaState[slot.key]}
-                        previewUrl={previewState[slot.key]}
-                        helperText={slot.kind === 'video' ? videoUploadHelper : imageUploadHelper}
-                        onUploaded={(file) =>
-                          setMediaState((current) => ({
-                            ...current,
-                            [slot.key]: file,
-                          }))
-                        }
-                        onPreviewReady={(previewUrl) =>
-                          setPreviewState((current) => ({
-                            ...current,
-                            [slot.key]: previewUrl,
-                          }))
-                        }
-                        onClear={() => {
-                          setMediaState((current) => ({
-                            ...current,
-                            [slot.key]: null,
-                          }));
-                          setPreviewState((current) => ({
-                            ...current,
-                            [slot.key]: '',
-                          }));
-                        }
-                        }
-                        onUploadingChange={(isUploading) =>
-                          setUploadingCount((current) => current + (isUploading ? 1 : -1))
-                        }
-                      />
-                    ))}
-                  </div>
-                </section>
+                    {/* Commercial & Deal Settlement Insights */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                      {/* Deal Financials */}
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                          <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+                            <TrendingUp className="h-3.5 w-3.5 text-emerald-600" /> Deal Financials
+                          </span>
+                          <span className="text-[10px] font-semibold text-gray-400">INR (₹)</span>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between items-center text-gray-500">
+                            <span>Listed Price:</span>
+                            <span className="font-semibold text-gray-800">
+                              {form.price ? `₹${Number(form.price).toLocaleString('en-IN')}` : 'Not set'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-gray-500">
+                            <span>Final Sold Price:</span>
+                            <span className="font-bold text-emerald-700">
+                              {form.soldPrice ? `₹${Number(form.soldPrice).toLocaleString('en-IN')}` : 'Enter sold price'}
+                            </span>
+                          </div>
+                          {form.price && form.soldPrice && (
+                            <div className="flex justify-between items-center pt-1 border-t border-gray-100 text-[11px]">
+                              <span className="text-gray-500">Margin / Discount:</span>
+                              {Number(form.soldPrice) - Number(form.price) >= 0 ? (
+                                <span className="font-bold text-emerald-600">
+                                  +₹{(Number(form.soldPrice) - Number(form.price)).toLocaleString('en-IN')} (Gain)
+                                </span>
+                              ) : (
+                                <span className="font-bold text-rose-600">
+                                  -₹{(Number(form.price) - Number(form.soldPrice)).toLocaleString('en-IN')} (Discount)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                <section className="rounded-2xl border border-gray-200 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-gray-900">
-                    <ImagePlus className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">{t('sellModal.priceAndLocation')}</h3>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Field label={`${t('sellModal.price')} *`}>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={form.price}
-                        onChange={(event) => updateField('price', event.target.value)}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.price')}
-                      />
-                    </Field>
-                    <div className="flex items-end pb-1 md:pb-3">
-                      <label className="flex items-center gap-2 cursor-pointer pt-2">
-                        <input
-                          type="checkbox"
-                          checked={form.isNegotiable}
-                          onChange={(e) => updateField('isNegotiable', e.target.checked)}
-                          className="w-4 h-4 text-jcb-yellow rounded border-gray-300 focus:ring-jcb-yellow"
-                        />
-                        <span className="text-sm font-medium text-gray-700">{t('sellModal.priceNegotiable')}</span>
-                      </label>
+                      {/* Compliance Status */}
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                          <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+                            <ShieldCheck className="h-3.5 w-3.5 text-blue-600" /> Compliance Status
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">RTO Ready</span>
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between text-gray-600 text-[11px]">
+                            <span>RC Transfer Status:</span>
+                            <span className="font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[10px]">
+                              Pending Transfer
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-gray-600 text-[11px]">
+                            <span>Vehicle Delivery:</span>
+                            <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px]">
+                              Ready for Handover
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-gray-600 text-[11px]">
+                            <span>Payment Settlement:</span>
+                            <span className="font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
+                              Recorded in Portal
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Destination Summary */}
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                          <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 text-amber-600" /> Destination
+                          </span>
+                          <span className="text-[10px] font-semibold text-gray-400">Buyer Location</span>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <p className="text-[11px] text-gray-700 font-semibold truncate">
+                            {form.buyerName ? `Buyer: ${form.buyerName}` : 'Buyer name not entered'}
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {form.buyerPhone ? `Contact: +91 ${form.buyerPhone}` : 'Phone: —'}
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            Location: {[form.buyerCity, form.buyerState].filter(Boolean).join(', ') || 'State / City not selected'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <Field label={`${t('sellModal.state')} *`}>
-                      <SearchableSelect
-                        options={states}
-                        value={form.selectedStateId || form.state}
-                        displayValue={form.state}
-                        onChange={(option) => {
-                          updateField('state', option.name);
-                          updateField('selectedStateId', String(option.id));
-                          updateField('city', '');
-                          updateField('selectedCityId', '');
-                        }}
-                        placeholder={t('sellModal.selectState')}
-                        searchPlaceholder={t('sellModal.searchOptions')}
-                        noResultsText={t('sellModal.noResults')}
-                        required
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label={`${t('sellModal.address', 'Address')} *`}>
-                      <input
-                        required
-                        value={form.address}
-                        onChange={(event) => updateField('address', event.target.value)}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.address', 'Address')}
-                      />
-                    </Field>
-                    <Field label={`${t('sellModal.city')} *`}>
-                      <SearchableSelect
-                        options={cities}
-                        value={form.selectedCityId || form.city}
-                        displayValue={form.city}
-                        onChange={(option) => {
-                          updateField('city', option.name);
-                          updateField('selectedCityId', String(option.id));
-                        }}
-                        placeholder={form.selectedStateId ? t('sellModal.selectCity') : t('sellModal.selectStateFirst')}
-                        searchPlaceholder={t('sellModal.searchOptions')}
-                        noResultsText={t('sellModal.noResults')}
-                        disabled={!form.selectedStateId}
-                        required
-                        className="bg-[#F8FAFC]"
-                      />
-                    </Field>
-                    <Field label={`${t('sellModal.pinCode')} *`}>
-                      <input
-                        required
-                        maxLength={6}
-                        value={form.pinCode}
-                        onChange={(event) => updateField('pinCode', event.target.value)}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.pinCode')}
-                      />
-                    </Field>
-                    <Field label={`${t('sellModal.nearbyLandmark')} *`}>
-                      <input
-                        required
-                        value={form.nearbyLandmark}
-                        onChange={(event) => updateField('nearbyLandmark', event.target.value)}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.nearbyLandmark')}
-                      />
-                    </Field>
-                  </div>
-                  <div className="mt-4">
-                    <Field label={t('sellModal.description')}>
-                      <textarea
-                        value={form.description}
-                        onChange={(event) => updateField('description', event.target.value)}
-                        rows={4}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.descriptionPlaceholder')}
-                      />
-                    </Field>
-                  </div>
-                  <div className="mt-4">
-                    <Field label={t('sellModal.additionalDescription')}>
-                      <textarea
-                        value={form.additionalDescription}
-                        onChange={(event) => updateField('additionalDescription', event.target.value)}
-                        rows={4}
-                        className={fieldClassName}
-                        placeholder={t('sellModal.additionalDescriptionPlaceholder')}
-                      />
-                    </Field>
-                  </div>
-                </section>
-              </div>
+                  </section>
+                )}
 
-              <div className="sticky bottom-0 mt-6 border-t border-gray-100 bg-white pt-4">
-                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  {error ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:max-w-md">
-                      {error}
-                    </div>
-                  ) : <div />}
-                  <div className="flex items-center gap-3">
+                {/* Sticky Footer */}
+                <div className="sticky bottom-0 -mx-5 -mb-4 mt-4 border-t border-gray-200 bg-white/95 backdrop-blur-xs px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    {error ? (
+                      <div className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 max-w-md">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                        <span className="truncate">{error}</span>
+                      </div>
+                    ) : modalTab !== 'all' ? (
+                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                        <span>Step {activeTabIndex + 1} of {tabKeys.length}:</span>
+                        <span className="font-bold text-gray-800">{modalTabs[activeTabIndex]?.label}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center gap-2 ml-auto">
+                    {modalTab !== 'all' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handlePrevTab}
+                          disabled={activeTabIndex <= 0}
+                          className="h-[34px] px-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                          <span>Prev</span>
+                        </button>
+
+                        {activeTabIndex < tabKeys.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={handleNextTab}
+                            className="h-[34px] px-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
+                          >
+                            <span>Next</span>
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="rounded-lg border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      className="h-[34px] px-3.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
                     >
-                      {t('sellModal.cancel')}
+                      Cancel
                     </button>
+
                     <button
                       type="submit"
                       disabled={saving || uploadingCount > 0}
-                      className="rounded-lg bg-[#FFC107] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-[34px] px-4 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-xs hover:bg-[#E5AD06] transition flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                     >
-                      {saving ? (editingListingId ? t('sellModal.updating') : t('sellModal.adding', 'Adding...')) : uploadingCount > 0 ? t('sellModal.waitingForUploads') : editingListingId ? t('sellModal.update') : t('sellModal.add', 'Add')}
+                      {saving ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {editingListingId ? 'Updating...' : 'Adding...'}</>
+                      ) : uploadingCount > 0 ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading...</>
+                      ) : (
+                        <><Check className="h-3.5 w-3.5" /> {editingListingId ? 'Update Vehicle' : 'Add Vehicle'}</>
+                      )}
                     </button>
                   </div>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      ) : null}
+        );
+      })()}
+
+      {sampleGuideSlot && (() => {
+        const activeSampleMedia = getSellVehicleSampleMedia(sampleGuideSlot);
+        if (!activeSampleMedia) return null;
+        const activeSlotIndex = mediaSlots.findIndex((s) => s.key === sampleGuideSlot);
+        const handlePrevSample = () => {
+          if (activeSlotIndex > 0) {
+            setSampleGuideSlot(mediaSlots[activeSlotIndex - 1].key);
+          } else {
+            setSampleGuideSlot(mediaSlots[mediaSlots.length - 1].key);
+          }
+        };
+        const handleNextSample = () => {
+          if (activeSlotIndex < mediaSlots.length - 1) {
+            setSampleGuideSlot(mediaSlots[activeSlotIndex + 1].key);
+          } else {
+            setSampleGuideSlot(mediaSlots[0].key);
+          }
+        };
+
+        return typeof window !== 'undefined'
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-[9999999] flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-sm animate-in fade-in duration-150"
+                onClick={() => setSampleGuideSlot(null)}
+              >
+                <div
+                  className="relative flex flex-col w-full max-w-5xl xl:max-w-6xl max-h-[92vh] overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/90 px-4 sm:px-5 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shrink-0">
+                        {activeSampleMedia.kind === 'video' ? (
+                          <PlayCircle className="h-4 w-4" />
+                        ) : (
+                          <Camera className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <h3 className="text-sm sm:text-base font-bold text-gray-900">
+                            {guideLanguage === 'hi'
+                              ? activeSampleMedia.titleHi
+                              : guideLanguage === 'en'
+                              ? activeSampleMedia.title
+                              : `${activeSampleMedia.title} (${activeSampleMedia.titleHi})`}
+                          </h3>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                              activeSampleMedia.required
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}
+                          >
+                            {activeSampleMedia.required
+                              ? guideLanguage === 'hi'
+                                ? 'आवश्यक'
+                                : guideLanguage === 'en'
+                                ? 'Required'
+                                : 'Required / जरूरी'
+                              : guideLanguage === 'hi'
+                              ? 'अनुशंसित'
+                              : guideLanguage === 'en'
+                              ? 'Recommended'
+                              : 'Recommended / अनुशंसित'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 font-medium">
+                          {guideLanguage === 'hi'
+                            ? activeSampleMedia.subtitleHi
+                            : guideLanguage === 'en'
+                            ? activeSampleMedia.subtitle
+                            : `${activeSampleMedia.subtitle} • ${activeSampleMedia.subtitleHi}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Language Switcher */}
+                      <div className="hidden xs:flex sm:flex items-center rounded-lg border border-gray-200 bg-gray-100 p-0.5 text-xs font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => setGuideLanguage('both')}
+                          className={`px-2 py-0.5 rounded-md text-[11px] transition cursor-pointer ${
+                            guideLanguage === 'both' ? 'bg-white text-gray-900 shadow-2xs font-bold' : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                        >
+                          हिंदी + EN
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGuideLanguage('hi')}
+                          className={`px-2 py-0.5 rounded-md text-[11px] transition cursor-pointer ${
+                            guideLanguage === 'hi' ? 'bg-white text-gray-900 shadow-2xs font-bold' : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                        >
+                          हिंदी
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGuideLanguage('en')}
+                          className={`px-2 py-0.5 rounded-md text-[11px] transition cursor-pointer ${
+                            guideLanguage === 'en' ? 'bg-white text-gray-900 shadow-2xs font-bold' : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                        >
+                          English
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setSampleGuideSlot(null)}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/80 hover:text-gray-700 transition cursor-pointer"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Modal Body: Left Media Preview + Right Guide Details */}
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                      {/* Visual Preview */}
+                      <div className="md:col-span-7 flex flex-col gap-2">
+                        <div className="relative aspect-4/3 w-full overflow-hidden rounded-xl bg-gray-950 border border-gray-800 shadow-md flex items-center justify-center">
+                          {activeSampleMedia.kind === 'video' ? (
+                            <video
+                              src={activeSampleMedia.src}
+                              controls
+                              autoPlay
+                              loop
+                              playsInline
+                              className="h-full w-full object-contain"
+                            />
+                          ) : (
+                            <Image
+                              src={activeSampleMedia.src}
+                              alt={activeSampleMedia.title}
+                              fill
+                              unoptimized
+                              className="object-contain"
+                            />
+                          )}
+
+                          {/* Angle / Distance Badge Overlay */}
+                          <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-0.5 rounded-md bg-black/80 backdrop-blur-xs px-2.5 py-1 text-[10px] font-bold text-white shadow-xs">
+                            <div>
+                              Angle: {activeSampleMedia.angle}
+                              {guideLanguage !== 'en' && activeSampleMedia.angleHi ? (
+                                <span className="text-amber-300 font-normal ml-1">({activeSampleMedia.angleHi})</span>
+                              ) : null}
+                            </div>
+                            <div>
+                              Distance: {activeSampleMedia.distance}
+                              {guideLanguage !== 'en' && activeSampleMedia.distanceHi ? (
+                                <span className="text-amber-300 font-normal ml-1">({activeSampleMedia.distanceHi})</span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="absolute bottom-2.5 right-2.5 z-10 rounded-md bg-emerald-600/95 backdrop-blur-xs px-2 py-0.5 text-[10px] font-bold text-white shadow-xs flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>
+                              {guideLanguage === 'hi'
+                                ? 'वेरीफाइड संदर्भ फोटो'
+                                : guideLanguage === 'en'
+                                ? 'Verified Reference Sample'
+                                : 'Verified Reference / वेरीफाइड संदर्भ'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-center text-gray-500 italic">
+                          {guideLanguage === 'hi'
+                            ? 'ऊपर दिया गया सैंपल फोटो सही एंगल, फ्रेमिंग और पर्याप्त रोशनी को दर्शाता है।'
+                            : guideLanguage === 'en'
+                            ? 'Above preview demonstrates the ideal angle, framing, and lighting for this upload slot.'
+                            : 'Above preview demonstrates ideal angle & lighting. / ऊपर दिया गया सैंपल सही एंगल व फ्रेमिंग दर्शाता है।'}
+                        </p>
+                      </div>
+
+                      {/* Guide Notes & Inspection Checklist */}
+                      <div className="md:col-span-5 space-y-3">
+                        {/* Guide Note Card */}
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2 shadow-2xs">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-amber-600" />
+                            {guideLanguage === 'hi'
+                              ? 'फोटो कैसे खींचें (निर्देश)'
+                              : guideLanguage === 'en'
+                              ? 'WHAT TO CAPTURE'
+                              : 'WHAT TO CAPTURE / फोटो कैसे खींचें'}
+                          </span>
+                          {(guideLanguage === 'both' || guideLanguage === 'en') && (
+                            <p className="text-xs text-gray-800 leading-relaxed font-medium">
+                              {activeSampleMedia.guideNote}
+                            </p>
+                          )}
+                          {(guideLanguage === 'both' || guideLanguage === 'hi') && activeSampleMedia.guideNoteHi && (
+                            <p
+                              className={`text-xs text-amber-950 leading-relaxed font-semibold ${
+                                guideLanguage === 'both' ? 'pt-1.5 border-t border-amber-200/70' : ''
+                              }`}
+                            >
+                              {guideLanguage === 'both' && (
+                                <span className="text-[10px] text-amber-700 font-bold block mb-0.5">🇮🇳 हिंदी निर्देश:</span>
+                              )}
+                              {activeSampleMedia.guideNoteHi}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Pro Tips / Checklist Card */}
+                        <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2 shadow-2xs">
+                          <span className="text-[11px] font-bold text-gray-900 flex items-center gap-1">
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            {guideLanguage === 'hi'
+                              ? 'जरूरी टिप्स व जांच'
+                              : guideLanguage === 'en'
+                              ? 'Inspection & Quality Tips'
+                              : 'Inspection & Quality Tips / जरूरी टिप्स'}
+                          </span>
+                          <ul className="space-y-2">
+                            {activeSampleMedia.tips?.map((tip: string, idx: number) => {
+                              const tipHi = activeSampleMedia.tipsHi?.[idx];
+                              return (
+                                <li key={idx} className="flex items-start gap-2 text-xs">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                  <div className="space-y-0.5">
+                                    {(guideLanguage === 'both' || guideLanguage === 'en') && (
+                                      <span className="text-gray-800 font-medium block">{tip}</span>
+                                    )}
+                                    {(guideLanguage === 'both' || guideLanguage === 'hi') && tipHi && (
+                                      <span className="text-emerald-900 font-semibold block text-[11px]">{tipHi}</span>
+                                    )}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+
+                        {/* Technical Spec Box */}
+                        <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-2.5 flex items-center justify-between text-[11px] text-gray-600">
+                          <span>
+                            <strong className="text-gray-800">{guideLanguage === 'hi' ? 'मान्य फॉर्मेट:' : 'Allowed / मान्य:'}</strong>{' '}
+                            {activeSampleMedia.kind === 'video' ? 'MP4, WebM (Max 120s)' : 'JPG, PNG, WebP (Max 5MB)'}
+                          </span>
+                          <span className="font-bold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded">
+                            {guideLanguage === 'hi'
+                              ? 'लैंडस्केप मोड (आड़ा)'
+                              : guideLanguage === 'en'
+                              ? 'Landscape Mode'
+                              : 'Landscape Mode / लैंडस्केप'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modal Footer: Prev / Next / Close */}
+                  <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/80 px-4 sm:px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={handlePrevSample}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      <span>{guideLanguage === 'hi' ? 'पिछला' : guideLanguage === 'en' ? 'Previous' : 'Previous / पिछला'}</span>
+                    </button>
+
+                    <span className="text-xs font-bold text-gray-600">
+                      Slot {activeSlotIndex + 1} of {mediaSlots.length}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleNextSample}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+                      >
+                        <span>{guideLanguage === 'hi' ? 'अगला' : guideLanguage === 'en' ? 'Next' : 'Next / अगला'}</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSampleGuideSlot(null)}
+                        className="rounded-lg bg-gray-900 px-4 py-1.5 text-xs font-bold text-white hover:bg-gray-800 transition cursor-pointer shadow-xs"
+                      >
+                        {guideLanguage === 'hi' ? 'समझ गया, बंद करें' : guideLanguage === 'en' ? 'Got it, Close' : 'Got it, Close / समझ गया'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )
+          : null;
+      })()}
 
       {viewListing ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-6 backdrop-blur-sm">
@@ -2117,12 +2939,12 @@ export default function SellVehicleModal({
                 const brandModel = [viewListing.brand?.name, viewListing.model?.name].filter(Boolean).join(' ');
                 const availability = listingStatusToAvailability(viewListing.status);
                 const summaryCards = [
-                  { label: t('sellModal.price'), value: formatCurrency(viewListing.price) + (viewListing.isNegotiable ? ` (${t('sellModal.negotiable')})` : '') },
-                  { label: t('sellModal.statusLabel'), value: localizedStatus(viewListing.status) },
-                  { label: t('sellModal.availabilityLabel'), value: localizedAvailability(availability) },
-                  { label: t('sellModal.year'), value: String(viewListing.manufacturingYear || t('sellModal.na')) },
-                  { label: t('sellModal.condition'), value: viewListing.condition || t('sellModal.na') },
-                  { label: t('sellModal.operatingHoursLabel'), value: viewListing.operatingHours ? String(viewListing.operatingHours) : t('sellModal.na') },
+                  { label: t('sellModal.price', 'Price'), value: formatCurrency(viewListing.price) + (viewListing.isNegotiable ? ' (Negotiable)' : '') },
+                  { label: t('sellModal.statusLabel', 'Status'), value: localizedStatus(viewListing.status) },
+                  { label: t('sellModal.availabilityLabel', 'Availability'), value: localizedAvailability(availability) },
+                  { label: t('sellModal.year', 'Year'), value: String(viewListing.manufacturingYear || 'N/A') },
+                  { label: t('sellModal.condition', 'Condition'), value: viewListing.condition || 'N/A' },
+                  { label: t('sellModal.operatingHoursLabel', 'Hours'), value: viewListing.operatingHours ? String(viewListing.operatingHours) : 'N/A' },
                 ];
 
                 return (
@@ -2135,61 +2957,61 @@ export default function SellVehicleModal({
                         </div>
                       ))}
                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.vehicleName')}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.vehicleName', 'Vehicle Name')}</p>
                         <p className="mt-1 text-lg font-bold text-gray-900">{viewListing.title}</p>
-                        <p className="mt-1 text-sm text-gray-600">{brandModel || t('sellModal.na')}</p>
+                        <p className="mt-1 text-sm text-gray-600">{brandModel || 'N/A'}</p>
                       </div>
                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.location')}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.location', 'Location')}</p>
                         <p className="mt-1 text-lg font-bold text-gray-900">{viewListing.locationCity}, {viewListing.locationState}</p>
                       </div>
                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.category')}</p>
-                        <p className="mt-1 text-lg font-bold text-gray-900">{viewListing.category?.name || t('sellModal.na')}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('sellModal.category', 'Category')}</p>
+                        <p className="mt-1 text-lg font-bold text-gray-900">{viewListing.category?.name || 'N/A'}</p>
                       </div>
                     </div>
 
                     <div className="mb-8 grid gap-6 lg:grid-cols-2">
                       <section className="rounded-2xl border border-gray-100 bg-white p-5">
-                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.registrationIdentity')}</h3>
+                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.registrationIdentity', 'Registration & Identity')}</h3>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <DetailItem label={t('sellModal.variant')} value={parsedDetails.variant || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationDate')} value={parsedDetails.registrationDate || parsedDetails.registrationYear || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationUpto')} value={parsedDetails.registrationUpto || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.registrationNumber', 'Registration No.')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || t('sellModal.na')} />
-                          <DetailItem label="Owner Name" value={viewListing.ownerName || parsedDetails.ownerName || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.chassisSerialNumber')} value={parsedDetails.chassisOrSerialNo || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.variant', 'Variant')} value={parsedDetails.variant || 'N/A'} />
+                          <DetailItem label={t('sellModal.registrationDate', 'Registration Date')} value={parsedDetails.registrationDate || parsedDetails.registrationYear || 'N/A'} />
+                          <DetailItem label={t('sellModal.registrationUpto', 'Registration Upto')} value={parsedDetails.registrationUpto || 'N/A'} />
+                          <DetailItem label={t('sellModal.registrationNumber', 'Registration No.')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || 'N/A'} />
+                          <DetailItem label="Owner Name" value={viewListing.ownerName || parsedDetails.ownerName || 'N/A'} />
+                          <DetailItem label={t('sellModal.chassisSerialNumber', 'Chassis/Serial No.')} value={parsedDetails.chassisOrSerialNo || 'N/A'} />
                           <DetailItem
                             label={t('sellModal.engineNumber', 'Engine Number')}
-                            value={viewListing.engineNumber || viewListing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber || t('sellModal.na')}
+                            value={viewListing.engineNumber || viewListing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber || 'N/A'}
                           />
-                          <DetailItem label={t('sellModal.previousOwners')} value={parsedDetails.previousOwners || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.insuranceExpiry')} value={viewListing.rtoRecords?.[0] && viewListing.rtoRecords[0].insuranceStatus !== 'VALID' ? t('sellModal.na') : parsedDetails.insuranceExpiry || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.previousOwners', 'Owners')} value={parsedDetails.previousOwners || 'N/A'} />
+                          <DetailItem label={t('sellModal.insuranceExpiry', 'Insurance Expiry')} value={viewListing.rtoRecords?.[0] && viewListing.rtoRecords[0].insuranceStatus !== 'VALID' ? 'N/A' : parsedDetails.insuranceExpiry || 'N/A'} />
                         </div>
                       </section>
 
                       <section className="rounded-2xl border border-gray-100 bg-white p-5">
-                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.mechanicalLocation')}</h3>
+                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.mechanicalLocation', 'Location & Mechanics')}</h3>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <DetailItem label={t('sellModal.fuelType')} value={parsedDetails.fuelType || t('sellModal.na')} />
-                          {parsedDetails.transmission ? <DetailItem label={t('sellModal.transmission')} value={parsedDetails.transmission} /> : null}
-                          <DetailItem label={t('sellModal.grossPower')} value={viewListing.grossPower || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.address', 'Address')} value={viewListing.address || parsedDetails.address || parsedDetails.district || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.pinCode')} value={parsedDetails.pinCode || t('sellModal.na')} />
-                          <DetailItem label={t('sellModal.nearbyLandmark')} value={parsedDetails.nearbyLandmark || t('sellModal.na')} />
+                          <DetailItem label={t('sellModal.fuelType', 'Fuel Type')} value={parsedDetails.fuelType || 'N/A'} />
+                          {parsedDetails.transmission ? <DetailItem label={t('sellModal.transmission', 'Transmission')} value={parsedDetails.transmission} /> : null}
+                          <DetailItem label={t('sellModal.grossPower', 'Power')} value={viewListing.grossPower || 'N/A'} />
+                          <DetailItem label={t('sellModal.address', 'Address')} value={viewListing.address || parsedDetails.address || parsedDetails.district || 'N/A'} />
+                          <DetailItem label={t('sellModal.pinCode', 'PIN Code')} value={parsedDetails.pinCode || 'N/A'} />
+                          <DetailItem label={t('sellModal.nearbyLandmark', 'Landmark')} value={parsedDetails.nearbyLandmark || 'N/A'} />
                         </div>
                       </section>
                     </div>
 
                     {(parsedDetails.rawDescription || viewListing.description || viewListing.additionalDescription) && (
                       <div className="mb-8 rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.description')}</h3>
+                        <h3 className="text-base font-bold text-gray-900">{t('sellModal.description', 'Description')}</h3>
                         <p className="mt-3 whitespace-pre-line text-sm leading-6 text-gray-700">
-                          {parsedDetails.rawDescription || viewListing.description || t('sellModal.noDescription')}
+                          {parsedDetails.rawDescription || viewListing.description || 'No description provided.'}
                         </p>
                         {viewListing.additionalDescription && (
                           <>
-                            <h4 className="mt-6 text-sm font-bold text-gray-900">{t('sellModal.additionalDescription')}</h4>
+                            <h4 className="mt-6 text-sm font-bold text-gray-900">{t('sellModal.additionalDescription', 'Additional Description')}</h4>
                             <p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-700">
                               {viewListing.additionalDescription}
                             </p>
@@ -2201,7 +3023,7 @@ export default function SellVehicleModal({
                 );
               })()}
 
-              <h3 className="mb-4 text-lg font-bold text-gray-900">{t('sellModal.mediaCount', { count: viewListing.media.length })}</h3>
+              <h3 className="mb-4 text-lg font-bold text-gray-900">Media ({viewListing.media.length})</h3>
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {viewListing.media.map((m) => (
                   <div key={m.id} className="relative aspect-video overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
@@ -2218,7 +3040,7 @@ export default function SellVehicleModal({
                         />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10">
                           <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-black opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                            {t('sellModal.viewFull')}
+                            View Full
                           </span>
                         </div>
                       </a>
@@ -2232,14 +3054,14 @@ export default function SellVehicleModal({
       ) : null}
 
       {deleteListingRecord && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
               <Trash2 className="h-6 w-6 text-red-600" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">{t('sellModal.deleteListing')}</h3>
+            <h3 className="text-lg font-bold text-gray-900">Delete Listing</h3>
             <p className="mt-2 text-sm text-gray-500">
-              {t('sellModal.deleteListingConfirm', { title: deleteListingRecord.title })}
+              Are you sure you want to delete <span className="font-semibold text-gray-700">{deleteListingRecord.title}</span>? This action cannot be undone.
             </p>
             <div className="mt-6 flex gap-3">
               <button
@@ -2247,14 +3069,14 @@ export default function SellVehicleModal({
                 disabled={deletingListingId === deleteListingRecord.id}
                 className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
               >
-                {t('sellModal.cancel')}
+                Cancel
               </button>
               <button
                 onClick={() => void handleDeleteListing()}
                 disabled={deletingListingId === deleteListingRecord.id}
                 className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
               >
-                {deletingListingId === deleteListingRecord.id ? t('sellModal.deleting') : t('sellModal.delete')}
+                {deletingListingId === deleteListingRecord.id ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
@@ -2267,16 +3089,29 @@ export default function SellVehicleModal({
 function Field({
   label,
   children,
+  apiFill = null,
   className,
+  hint,
 }: {
+  apiFill?: { source: string; filled?: boolean } | null;
   label: string;
   children: React.ReactNode;
   className?: string;
+  hint?: string;
 }) {
+  const isRequired = label.trim().endsWith('*');
+  const cleanLabel = isRequired ? label.trim().replace(/\s*\*$/, '') : label;
+
   return (
     <label className={`block ${className || ''}`}>
-      <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
-      {children}
+      <div className="mb-1 flex items-center justify-between gap-1">
+        <span className="text-[11px] font-semibold text-gray-700 truncate">
+          {cleanLabel}
+          {isRequired ? <span className="ml-0.5 text-rose-500 font-bold">*</span> : null}
+        </span>
+        {hint ? <span className="text-[9.5px] text-gray-400 font-medium truncate">{hint}</span> : null}
+      </div>
+      <ApiFillBox apiFill={apiFill}>{children}</ApiFillBox>
     </label>
   );
 }
@@ -2301,41 +3136,39 @@ function ListingMediaUploadBox({
   label,
   kind,
   previewUrl,
-  helperText,
   uploadedFile,
   onUploaded,
   onPreviewReady,
   onClear,
   onUploadingChange,
+  onOpenSampleGuide,
 }: {
   slotKey: MediaSlotKey;
   label: string;
   kind: 'image' | 'video';
   previewUrl: string;
-  helperText: string;
+  helperText?: string;
   uploadedFile: UploadedFileResult | null;
   onUploaded: (file: UploadedFileResult) => void;
   onPreviewReady: (previewUrl: string) => void;
   onClear: () => void;
   onUploadingChange: (isUploading: boolean) => void;
+  onOpenSampleGuide: (slotKey: MediaSlotKey) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const { token, setAuthModalOpen } = useAuthStore();
-  const { t } = useTranslation();
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
   const hasUploadedPreview = Boolean(previewUrl);
 
   const handleChange = async (file?: File) => {
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     if (!token || !isUsableAuthToken(token)) {
       if (token && !isUsableAuthToken(token)) {
         useAuthStore.getState().logout();
       }
-      setError(t('sellModal.signInToUpload'));
+      setError('Please sign in to upload photos or videos.');
       setAuthModalOpen(true, 'login');
       return;
     }
@@ -2360,29 +3193,38 @@ function ListingMediaUploadBox({
       }
     } catch (uploadError) {
       if (axios.isAxiosError(uploadError) && isAuthenticationFailure(uploadError)) {
-        setError(t('sellModal.uploadSessionExpired'));
+        setError('Session expired. Please sign in again.');
         useAuthStore.getState().logout();
         setAuthModalOpen(true, 'login');
         return;
       }
-
-      setError(uploadError instanceof Error ? uploadError.message : t('sellModal.uploadSelectedFileFailed'));
+      setError(uploadError instanceof Error ? uploadError.message : 'Upload failed.');
     } finally {
       setUploading(false);
       onUploadingChange(false);
     }
   };
 
+  const cleanLabel = label.replace(/\s*\([^)]*\)/, '');
+
   return (
-    <div className="space-y-2">
-      <label className="relative flex min-h-[154px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 p-4 transition hover:border-[#FFC107] hover:bg-[#FFC107]/5">
+    <div className="relative group flex flex-col">
+      <label
+        className={`relative flex h-24 sm:h-28 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border transition-all ${
+          hasUploadedPreview
+            ? 'border-emerald-400/80 bg-gray-950 shadow-2xs hover:border-emerald-500'
+            : kind === 'video'
+            ? 'border-dashed border-amber-300 bg-amber-50/50 hover:bg-amber-100/50 hover:border-amber-400'
+            : 'border-dashed border-gray-200 bg-gray-50/70 hover:bg-amber-50/30 hover:border-amber-300'
+        }`}
+      >
         {hasUploadedPreview ? (
           <Image
             src={previewUrl}
             alt={label}
             fill
             unoptimized
-            className="rounded-xl object-cover"
+            className="rounded-xl object-cover transition duration-300 group-hover:scale-105"
           />
         ) : sampleMedia?.kind === 'image' ? (
           <Image
@@ -2391,7 +3233,7 @@ function ListingMediaUploadBox({
             fill
             unoptimized
             aria-hidden="true"
-            className="rounded-xl object-cover opacity-45"
+            className="rounded-xl object-cover opacity-20"
           />
         ) : sampleMedia?.kind === 'video' ? (
           <video
@@ -2402,61 +3244,127 @@ function ListingMediaUploadBox({
             playsInline
             preload="metadata"
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover opacity-45"
+            className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover opacity-20"
           />
         ) : null}
 
+        {/* Video Preview Overlay */}
         {hasUploadedPreview && kind === 'video' ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/10">
-            <div className="flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-[#111827] shadow-lg">
-              <PlayCircle className="h-5 w-5" />
-              <span className="text-xs font-semibold uppercase tracking-[0.18em]">{t('sellModal.preview')}</span>
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/25">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-gray-950 shadow-md">
+              <PlayCircle className="h-4 w-4 text-gray-900" />
             </div>
           </div>
         ) : null}
 
-        {!hasUploadedPreview && sampleMedia ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 shadow-sm">
-            Example
-          </div>
-        ) : null}
+        {/* Top Badges */}
+        <div className="absolute top-1.5 left-1.5 right-1.5 z-20 flex items-center justify-between pointer-events-none">
+          <span
+            className={`rounded px-1.5 py-0.2 text-[8.5px] font-extrabold uppercase tracking-wider ${
+              kind === 'video'
+                ? 'bg-amber-400 text-gray-950 shadow-2xs'
+                : hasUploadedPreview
+                ? 'bg-black/60 text-white backdrop-blur-xs'
+                : 'bg-gray-200 text-gray-700'
+            }`}
+          >
+            {kind === 'video' ? 'Video' : 'Photo'}
+          </span>
 
-        <div className={`relative z-20 flex flex-col items-center ${hasUploadedPreview || sampleMedia ? 'rounded-lg bg-white/90 px-3 py-2 shadow-sm' : ''}`}>
-          <Upload className="mb-2 h-5 w-5 text-gray-400" />
-          <span className="text-center text-xs font-medium text-gray-600">{label}</span>
-          {uploadedFile ? (
-            <span className="mt-1 text-center text-[11px] text-gray-500">
-              {kind === 'video'
-                ? uploadedFile.originalName || `${t('sellModal.maxLabel')} ${MAX_LISTING_VIDEO_DURATION_SECONDS} ${t('sellModal.secondsShort')}`
-                : `${t('sellModal.maxLabel')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB`}
-            </span>
-          ) : null}
-          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">{t('sellModal.optimizingUploading', 'Optimizing & uploading...')}</span> : null}
+          <div className="flex items-center gap-1 pointer-events-auto">
+            {/* Sample Guide Preview Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenSampleGuide(slotKey);
+              }}
+              title="Click to view full sample photo & photography guide"
+              className="inline-flex items-center gap-0.5 rounded bg-black/65 hover:bg-black text-white px-1.5 py-0.5 text-[8.5px] font-bold shadow-xs backdrop-blur-xs transition cursor-pointer"
+            >
+              <Eye className="h-2.5 w-2.5 text-amber-300" />
+              <span>Sample</span>
+            </button>
+
+            {hasUploadedPreview && (
+              <span className="flex items-center gap-0.5 rounded-full bg-emerald-600 px-1.5 py-0.2 text-[8.5px] font-bold text-white shadow-2xs">
+                <CheckCircle2 className="h-2.5 w-2.5" />
+                <span>OK</span>
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Center UI for empty slot */}
+        {!hasUploadedPreview && (
+          <div className="relative z-10 flex flex-col items-center px-1 text-center">
+            <Upload className="mb-0.5 h-3.5 w-3.5 text-gray-400 group-hover:text-amber-600 transition" />
+            <span className="text-[10.5px] font-bold text-gray-800 leading-tight truncate max-w-[95px]">
+              {cleanLabel}
+            </span>
+            <span className="text-[8.5px] text-gray-400 font-medium mt-0.5">
+              {kind === 'video' ? 'Max 120s' : 'Max 5MB'}
+            </span>
+          </div>
+        )}
+
+        {/* Bottom Title on Uploaded Card */}
+        {hasUploadedPreview && (
+          <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center p-1 bg-gradient-to-t from-black/80 via-black/30 to-transparent">
+            <span className="text-[9.5px] font-bold text-white truncate text-center drop-shadow-xs">
+              {cleanLabel}
+            </span>
+          </div>
+        )}
+
+        {uploading && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 rounded-xl text-white">
+            <Loader2 className="h-4 w-4 animate-spin text-amber-400 mb-1" />
+            <span className="text-[9px] font-bold text-amber-300">Uploading...</span>
+          </div>
+        )}
 
         <input
           type="file"
           accept={kind === 'video' ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov' : 'image/jpeg,image/png,image/webp'}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10"
           onChange={(event) => void handleChange(event.target.files?.[0])}
           disabled={uploading}
         />
       </label>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-gray-500">{helperText}</p>
-        {uploadedFile ? (
+      {/* Footer link: Title, Guide & Remove button */}
+      <div className="mt-1 flex items-center justify-between px-0.5">
+        <span className="text-[9.5px] text-gray-600 font-semibold truncate max-w-[65px]" title={label}>
+          {cleanLabel}
+        </span>
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onClear}
-            className="text-[11px] font-semibold text-red-600 transition hover:text-red-700"
+            onClick={() => onOpenSampleGuide(slotKey)}
+            title="Read guide note & preview sample"
+            className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 hover:text-amber-800 hover:underline transition cursor-pointer"
           >
-            {t('sellModal.remove')}
+            <Eye className="h-2.5 w-2.5" />
+            <span>Guide</span>
           </button>
-        ) : null}
+          {uploadedFile && (
+            <>
+              <span className="text-gray-300 text-[8px]">•</span>
+              <button
+                type="button"
+                onClick={onClear}
+                className="text-[9px] font-bold text-rose-600 hover:text-rose-700 hover:underline transition cursor-pointer"
+              >
+                Remove
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {error ? <p className="text-xs font-medium text-red-600">{error}</p> : null}
+      {error ? <p className="mt-0.5 text-[9px] font-medium text-red-600">{error}</p> : null}
     </div>
   );
 }

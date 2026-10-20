@@ -68,7 +68,9 @@ import {
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
+import { ApiFillBox } from '@/components/ui/ApiFillBadge';
 import { getListingRtoOptionalTextFields } from '@/lib/listingRtoDisplay';
+import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 
 type ListingDetail = {
   id: string;
@@ -148,6 +150,7 @@ type ListingDetail = {
 
 type ChassisVerificationResponse = {
   success: boolean;
+  cacheHit?: boolean;
   record?: { id?: string };
   result?: Record<string, unknown> | null;
 };
@@ -584,11 +587,11 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
     || (section === 'technical' && JSON.stringify(current.rtoDetails) !== JSON.stringify(base.rtoDetails));
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, apiFill = null }: { label: string; children: React.ReactNode; apiFill?: { source: string; filled?: boolean } | null }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</span>
-      {children}
+      <ApiFillBox apiFill={apiFill}>{children}</ApiFillBox>
     </label>
   );
 }
@@ -611,6 +614,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingSection, setSavingSection] = useState<DetailSection | null>(null);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
+  // Fields chassis verification can fill carry the AI badge; solid once actually filled.
+  const vehicleApiFill = { source: 'chassis verification', filled: chassisVerificationStatus === 'VERIFIED' };
   const [chassisVerificationId, setChassisVerificationId] = useState('');
   const [categories, setCategories] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -851,10 +856,15 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     setChassisVerificationStatus('VERIFYING');
     setError(null);
     try {
-      const response = await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber });
-      const recordId = response.data.record?.id || '';
-      if (!response.data.success || !recordId) throw new Error('Vehicle verification did not return a usable verification record.');
-      const mapped = mapChassisToRcVehicle(response.data.result || {});
+      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber);
+      const cachedResponse = getVerificationCache<ChassisVerificationResponse>(cacheKey);
+      const responseData: ChassisVerificationResponse = cachedResponse
+        ? { ...cachedResponse, cacheHit: true }
+        : (await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber })).data;
+      const recordId = responseData.record?.id || '';
+      if (!responseData.success || !recordId) throw new Error('Vehicle verification did not return a usable verification record.');
+      if (!cachedResponse) setVerificationCache(cacheKey, responseData);
+      const mapped = mapChassisToRcVehicle(responseData.result || {});
       const normalizeIdentity = (value: string) => value.toUpperCase().replace(/\s+/g, '');
       if (normalizeIdentity(mapped.chassisOrSerialNo || chassisNumber) !== normalizeIdentity(chassisNumber)) {
         throw new Error('The verified chassis number does not match the entered chassis number.');
@@ -900,7 +910,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       } : current);
       setChassisVerificationId(recordId);
       setChassisVerificationStatus('VERIFIED');
-      setMessage('Vehicle verified. Available details have been auto-filled.');
+      setMessage(responseData.cacheHit
+        ? 'Vehicle verification loaded from the temporary cache.'
+        : 'Vehicle verified. Available details have been auto-filled.');
     } catch (verificationError: unknown) {
       setChassisVerificationId('');
       setChassisVerificationStatus('FAILED');
@@ -1812,7 +1824,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label={t('listingDetails.category')}>
+              <Field label={t('listingDetails.category')} apiFill={vehicleApiFill}>
                 {isEditing ? (
                   <SearchableSelect
                     options={categories}
@@ -1829,7 +1841,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 )}
               </Field>
 
-              <Field label={t('listingDetails.brand')}>
+              <Field label={t('listingDetails.brand')} apiFill={vehicleApiFill}>
                 {isEditing ? (
                   <SearchableSelect
                     options={brands}
@@ -1843,7 +1855,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 )}
               </Field>
 
-              <Field label={t('listingDetails.model')}>
+              <Field label={t('listingDetails.model')} apiFill={vehicleApiFill}>
                 {isEditing ? (
                   <input value={form.modelName} onChange={(event) => updateForm('modelName', event.target.value)} className={inputClassName} />
                 ) : (
@@ -1851,7 +1863,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                 )}
               </Field>
 
-              <Field label={t('listingDetails.year')}>
+              <Field label={t('listingDetails.year')} apiFill={vehicleApiFill}>
                 {isEditing ? (
                   <SearchableSelect
                     options={YEAR_SELECT_OPTIONS}
@@ -2036,13 +2048,13 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
             {isEditing ? (
               <div className="grid gap-4 h-[320px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                <Field label={t('listingDetails.variant')}>
+                <Field label={t('listingDetails.variant')} apiFill={vehicleApiFill}>
                   <input value={form.variant} onChange={(event) => updateForm('variant', event.target.value)} className={inputClassName} />
                 </Field>
                 <Field label={t('listingDetails.operatingHours')}>
                   <input value={form.operatingHours} onChange={(event) => updateForm('operatingHours', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.fuelType')}>
+                <Field label={t('listingDetails.fuelType')} apiFill={vehicleApiFill}>
                   <SearchableSelect
                     options={fuelOptions.map((opt) => ({ id: opt.value, name: opt.label }))}
                     value={form.fuelType}
@@ -2086,30 +2098,32 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                     {chassisVerificationStatus === 'VERIFIED' ? 'API details loaded. You may still edit fields; changes are audited.' : chassisVerificationStatus === 'FAILED' ? 'Verification failed. Correct the chassis number and try again.' : 'Changing chassis or engine requires verification before saving.'}
                   </p>
                 </Field>
-                <Field label={t('listingDetails.engineNumber', 'Engine Number')}>
+                <Field label={t('listingDetails.engineNumber', 'Engine Number')} apiFill={vehicleApiFill}>
                   <input value={form.engineNumber} onChange={(event) => updateForm('engineNumber', event.target.value)} className={inputClassName} maxLength={40} />
                 </Field>
-                <Field label={t('listingDetails.ownerName', 'Owner Name')}>
+                <Field label={t('listingDetails.ownerName', 'Owner Name')} apiFill={vehicleApiFill}>
                   <input value={form.ownerName} onChange={(event) => updateForm('ownerName', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationNo', 'Registration No.') }>
+                <Field label={t('listingDetails.registrationNo', 'Registration No.') } apiFill={vehicleApiFill}>
                   <input value={form.registrationNo} onChange={(event) => updateForm('registrationNo', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationDate', 'Registration Date')}>
+                <Field label={t('listingDetails.registrationDate', 'Registration Date')} apiFill={vehicleApiFill}>
                   <input type="date" value={form.registrationDate} onChange={(event) => updateForm('registrationDate', event.target.value)} className={inputClassName} />
                 </Field>
-                <Field label={t('listingDetails.registrationUpto', 'Registration Upto')}>
+                <Field label={t('listingDetails.registrationUpto', 'Registration Upto')} apiFill={vehicleApiFill}>
                   <input type="date" value={form.registrationUpto} onChange={(event) => updateForm('registrationUpto', event.target.value)} className={inputClassName} />
                 </Field>
                 {form.rtoDetails.insuranceStatus === 'VALID' && (
-                  <Field label={t('listingDetails.insuranceExpiry')}>
+                  <Field label={t('listingDetails.insuranceExpiry')} apiFill={vehicleApiFill}>
                     <input type="date" value={form.insuranceExpiry} onChange={(event) => updateForm('insuranceExpiry', event.target.value)} className={inputClassName} />
                   </Field>
                 )}
-                <Field label={t('listingDetails.numberOfOwners')}>
+                <Field label={t('listingDetails.numberOfOwners')} apiFill={vehicleApiFill}>
                   <input value={form.previousOwners} onChange={(event) => updateForm('previousOwners', event.target.value)} className={inputClassName} />
                 </Field>
                 <ListingRtoFields
+                  apiFillSource={vehicleApiFill?.source || ''}
+                  apiFilled={Boolean(vehicleApiFill?.filled)}
                   value={form.rtoDetails}
                   onChange={(key, value) => updateForm('rtoDetails', { ...form.rtoDetails, [key]: value })}
                   insuranceExpiry={form.insuranceExpiry}

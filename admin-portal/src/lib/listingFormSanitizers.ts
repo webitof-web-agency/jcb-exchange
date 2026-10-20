@@ -14,16 +14,16 @@ export const sanitizeDigitsOnly = (value: string, maxLength?: number) => {
 };
 
 export const sanitizeTextOnly = (value: string, maxLength = 120) =>
-  collapseSpaces(value.replace(/[^A-Za-z\s.'&/-]/g, '')).slice(0, maxLength);
+  collapseSpaces(value.replace(/[^A-Za-z\s.]/g, '')).slice(0, maxLength);
 
 export const sanitizeMixedText = (value: string, maxLength = 160) =>
   collapseSpaces(value.replace(/[^A-Za-z0-9\s.,&()/#%+\-]/g, '')).slice(0, maxLength);
 
 export const sanitizeUppercaseCode = (value: string, maxLength = 40) =>
-  collapseSpaces(value.toUpperCase().replace(/[^A-Z0-9\s/-]/g, '')).slice(0, maxLength);
+  value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, maxLength);
 
 export const sanitizeEngineNumber = (value: string, maxLength = 40) =>
-  collapseSpaces(value.toUpperCase().replace(/[^A-Z0-9\s./-]/g, '')).slice(0, maxLength).trim();
+  value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, maxLength);
 
 export const SELL_VEHICLE_AVAILABILITY_OPTIONS = ['AVAILABLE', 'SOLD'] as const;
 
@@ -41,16 +41,21 @@ const digitFieldMaxLength: Partial<Record<string, number>> = {
   price: 10,
   manufacturingYear: 4,
   registrationYear: 4,
+  grossPower: 5,
   operatingHours: 8,
   pinCode: 6,
-  previousOwners: 3,
+  previousOwners: 2,
   buyerPhone: 10,
   soldPrice: 10,
+  rtoExpenses: 9,
+  vehicleMaintenanceCost: 9,
 };
 
 const textOnlyFields = new Set([
   'district',
   'buyerName',
+  'ownerName',
+  'rtoAgentName',
 ]);
 
 const mixedTextFields = new Set([
@@ -60,7 +65,6 @@ const mixedTextFields = new Set([
   'model',
   'modelName',
   'variant',
-  'grossPower',
   'nearbyLandmark',
   'locationState',
   'locationCity',
@@ -68,6 +72,8 @@ const mixedTextFields = new Set([
   'city',
   'buyerState',
   'buyerCity',
+  'financerName',
+  'rtoOffice',
 ]);
 
 const multilineFields = new Set([
@@ -79,7 +85,89 @@ const multilineFields = new Set([
 const uppercaseCodeFields = new Set([
   'registrationNo',
   'chassisOrSerialNo',
+  'engineNumber',
+  'hsrpNumber',
 ]);
+
+export const handleDigitOnlyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (
+    [
+      'Backspace',
+      'Delete',
+      'Tab',
+      'Escape',
+      'Enter',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+    ].includes(e.key) ||
+    ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x', 'z', 'A', 'C', 'V', 'X', 'Z'].includes(e.key))
+  ) {
+    return;
+  }
+
+  // Block any non-digit character (including 'e', 'E', '+', '-', '.', and symbols)
+  if (!/^\d$/.test(e.key)) {
+    e.preventDefault();
+  }
+};
+
+export const handleAlphanumericKeyDown = (
+  e: React.KeyboardEvent<HTMLInputElement>,
+  allowHyphen = false,
+) => {
+  if (
+    [
+      'Backspace',
+      'Delete',
+      'Tab',
+      'Escape',
+      'Enter',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+    ].includes(e.key) ||
+    ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x', 'z', 'A', 'C', 'V', 'X', 'Z'].includes(e.key))
+  ) {
+    return;
+  }
+
+  const valid = allowHyphen ? /^[a-zA-Z0-9-]$/.test(e.key) : /^[a-zA-Z0-9]$/.test(e.key);
+  if (!valid) {
+    e.preventDefault();
+  }
+};
+
+export const handleTextOnlyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (
+    [
+      'Backspace',
+      'Delete',
+      'Tab',
+      'Escape',
+      'Enter',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+    ].includes(e.key) ||
+    ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x', 'z', 'A', 'C', 'V', 'X', 'Z'].includes(e.key))
+  ) {
+    return;
+  }
+
+  if (!/^[a-zA-Z\s.]$/.test(e.key)) {
+    e.preventDefault();
+  }
+};
 
 export const sanitizeListingFieldValue = (field: string, value: string) => {
   if (field === 'address') {

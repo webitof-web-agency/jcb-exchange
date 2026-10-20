@@ -1,7 +1,9 @@
-﻿'use client';
+'use client';
 
 import type { ChangeEvent } from 'react';
 import type { ListingRtoFormState } from '@/lib/listingRtoForm';
+import { handleDigitOnlyKeyDown } from '@/lib/listingFormSanitizers';
+import { ApiFillBox } from '@/components/ui/ApiFillBadge';
 
 const inputClass = 'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
 
@@ -15,13 +17,27 @@ const validityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired'], ['NOT_AVAIL
 const taxValidityOptions = [['VALID', 'Valid'], ['EXPIRED', 'Expired'], ['LIFETIME', 'LLT'], ['NOT_AVAILABLE', 'Not available']] as const;
 const hsrpOptions = [['YES', 'Yes'], ['NO', 'No'], ['NOT_APPLICABLE', 'Not required'], ['PENDING', 'Pending']] as const;
 
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required: boolean }) {
+function Field({
+  label,
+  children,
+  required,
+  compact = false,
+  apiFill = null,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required: boolean;
+  compact?: boolean;
+  apiFill?: { source: string; filled?: boolean } | null;
+}) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <span className={compact
+        ? "mb-1 block text-[11px] font-semibold text-gray-600"
+        : "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500"}>
         {label} {required ? <span className="text-red-500">*</span> : null}
       </span>
-      {children}
+      <ApiFillBox apiFill={apiFill}>{children}</ApiFillBox>
     </label>
   );
 }
@@ -32,13 +48,25 @@ export default function ListingRtoFields({
   insuranceExpiry,
   onInsuranceExpiryChange,
   required = true,
+  compact = false,
+  apiFillSource = '',
+  apiFilled = false,
 }: {
   value: ListingRtoFormState;
   onChange: <K extends keyof ListingRtoFormState>(key: K, next: ListingRtoFormState[K]) => void;
   insuranceExpiry: string;
   onInsuranceExpiryChange: (next: string) => void;
   required?: boolean;
+  compact?: boolean;
+  /** Shows the AI badge on fields that vehicle verification can fill. */
+  apiFillSource?: string;
+  apiFilled?: boolean;
 }) {
+  const apiFill = apiFillSource ? { source: apiFillSource, filled: apiFilled } : null;
+  const currentInputClass = compact
+    ? 'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107] h-[34px]'
+    : inputClass;
+
   const makeSelect = <K extends keyof ListingRtoFormState>(
     key: K,
     items: readonly (readonly [string, string])[],
@@ -48,7 +76,7 @@ export default function ListingRtoFields({
       onChange={(e: ChangeEvent<HTMLSelectElement>) =>
         onChange(key, e.target.value as ListingRtoFormState[K])
       }
-      className={inputClass}
+      className={currentInputClass}
     >
       {key === 'hirePurchaseStatus' && value[key] === 'TERMINATED' ? (
         <option value="TERMINATED" hidden>Existing value: Terminated</option>
@@ -64,8 +92,8 @@ export default function ListingRtoFields({
     dateKey: D,
     label: string,
   ) => (
-    <Field label={label} required={required}>
-      <div className="space-y-2">
+    <Field label={label} required={required} compact={compact} apiFill={apiFill}>
+      <div className={compact ? "space-y-1.5" : "space-y-2"}>
         <select
           value={String(value[statusKey])}
           onChange={(e: ChangeEvent<HTMLSelectElement>) => {
@@ -73,7 +101,7 @@ export default function ListingRtoFields({
             onChange(statusKey, next);
             if (next !== 'VALID') onChange(dateKey, '' as ListingRtoFormState[D]);
           }}
-          className={inputClass}
+          className={currentInputClass}
         >
           {validityOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
@@ -83,11 +111,11 @@ export default function ListingRtoFields({
             required={required}
             value={String(value[dateKey] || '')}
             onChange={(e) => onChange(dateKey, e.target.value as ListingRtoFormState[D])}
-            className={inputClass}
+            className={currentInputClass}
           />
         ) : value[statusKey] === 'NOT_AVAILABLE' ? (
-          <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
-            No valid date was returned by the verification provider. You may enter it manually by selecting a status.
+          <p className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] text-gray-500">
+            No valid date returned. You may enter it manually.
           </p>
         ) : null}
       </div>
@@ -97,25 +125,27 @@ export default function ListingRtoFields({
   const isLlt = value.taxStatus === 'LIFETIME';
 
   return (
-    <section className="rounded-2xl border border-gray-200 p-5">
-      <div className="mb-4 flex items-center gap-2 text-gray-900">
-        <h3 className="text-base font-semibold">RTO &amp; Vehicle Compliance</h3>
+    <section className={`border border-gray-200 ${compact ? 'rounded-xl p-3.5 sm:p-4 bg-white' : 'rounded-2xl p-5'}`}>
+      <div className={`${compact ? 'mb-2.5' : 'mb-4'} flex items-center gap-2 text-gray-900`}>
+        <h3 className={`${compact ? 'text-sm font-bold' : 'text-base font-semibold'}`}>RTO &amp; Vehicle Compliance</h3>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Field label="Hire Purchase" required={required}>
+      <div className={`grid ${compact ? 'gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'gap-4 md:grid-cols-2 xl:grid-cols-3'}`}>
+        <Field label="Hire Purchase" required={required} compact={compact} apiFill={apiFill}>
           {makeSelect('hirePurchaseStatus', hirePurchaseOptions)}
         </Field>
-        <Field label="Financer Name" required={false}>
+        <Field label="Financer Name" required={false} compact={compact} apiFill={apiFill}>
           <input
             value={value.financerName}
-            onChange={(e) => onChange('financerName', e.target.value)}
-            className={inputClass}
+            maxLength={80}
+            onChange={(e) => onChange('financerName', e.target.value.replace(/[^A-Za-z0-9\s.&/-]/g, ''))}
+            className={currentInputClass}
+            placeholder="Financer / Bank name"
           />
         </Field>
 
         {/* Tax Validity — has LLT option; date hidden when LIFETIME selected */}
-        <Field label="Tax Validity" required={required}>
-          <div className="space-y-2">
+        <Field label="Tax Validity" required={required} compact={compact} apiFill={apiFill}>
+          <div className={compact ? "space-y-1.5" : "space-y-2"}>
             <select
               value={value.taxStatus}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) => {
@@ -125,7 +155,7 @@ export default function ListingRtoFields({
                   onChange('taxValidUntil', '');
                 }
               }}
-              className={inputClass}
+              className={currentInputClass}
             >
               {taxValidityOptions.map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
@@ -137,17 +167,17 @@ export default function ListingRtoFields({
                 required={required}
                 value={value.taxValidUntil}
                 onChange={(e) => onChange('taxValidUntil', e.target.value)}
-                className={inputClass}
+                className={currentInputClass}
               />
             )}
             {isLlt && (
-              <p className="text-xs font-medium text-amber-600">
+              <p className="text-[11px] font-medium text-amber-600">
                 LLT — Lifetime Tax. No expiry date required.
               </p>
             )}
             {value.taxStatus === 'NOT_AVAILABLE' && (
-              <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
-                No valid tax date was returned by the verification provider. You may enter it manually by selecting a status.
+              <p className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] text-gray-500">
+                No valid tax date returned. Select a status to edit.
               </p>
             )}
           </div>
@@ -155,8 +185,8 @@ export default function ListingRtoFields({
 
         {dateField('fitnessStatus', 'fitnessValidUntil', 'Fitness Validity')}
 
-        <Field label="Insurance Validity" required={required}>
-          <div className="space-y-2">
+        <Field label="Insurance Validity" required={required} compact={compact} apiFill={apiFill}>
+          <div className={compact ? "space-y-1.5" : "space-y-2"}>
             <select
               value={value.insuranceStatus}
               onChange={(e: ChangeEvent<HTMLSelectElement>) => {
@@ -164,7 +194,7 @@ export default function ListingRtoFields({
                 onChange('insuranceStatus', next);
                 if (next !== 'VALID') onInsuranceExpiryChange('');
               }}
-              className={inputClass}
+              className={currentInputClass}
             >
               {validityOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -174,11 +204,11 @@ export default function ListingRtoFields({
                 required={required}
                 value={insuranceExpiry}
                 onChange={(e) => onInsuranceExpiryChange(e.target.value)}
-                className={inputClass}
+                className={currentInputClass}
               />
             ) : value.insuranceStatus === 'NOT_AVAILABLE' ? (
-              <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500">
-                No valid insurance date was returned by the verification provider. You may enter it manually by selecting a status.
+              <p className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] text-gray-500">
+                No valid insurance date returned.
               </p>
             ) : null}
           </div>
@@ -186,56 +216,66 @@ export default function ListingRtoFields({
 
         {dateField('pucStatus', 'pucValidUntil', 'PUC Validity')}
 
-        <Field label="HSRP Valid" required={false}>
+        <Field label="HSRP Valid" required={false} compact={compact}>
           {makeSelect('hsrpStatus', hsrpOptions)}
         </Field>
-        <Field label="HSRP Number" required={false}>
+        <Field label="HSRP Number" required={false} compact={compact} apiFill={apiFill}>
           <input
             value={value.hsrpNumber}
-            onChange={(e) => onChange('hsrpNumber', e.target.value)}
-            className={inputClass}
+            maxLength={30}
+            onChange={(e) => onChange('hsrpNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 30))}
+            className={currentInputClass}
+            placeholder="HSRP plate number"
           />
         </Field>
 
-        <Field label="RTO Office" required={required}>
+        <Field label="RTO Office" required={required} compact={compact} apiFill={apiFill}>
           <input
             required={required}
             value={value.rtoOffice}
-            onChange={(e) => onChange('rtoOffice', e.target.value)}
-            className={inputClass}
+            maxLength={50}
+            onChange={(e) => onChange('rtoOffice', e.target.value.replace(/[^A-Za-z0-9\s-]/g, ''))}
+            className={currentInputClass}
+            placeholder="e.g. DL-01 or Delhi Central"
           />
         </Field>
-        <Field label="RTO Agent Name" required={false}>
+        <Field label="RTO Agent Name" required={false} compact={compact}>
           <input
             value={value.rtoAgentName}
-            onChange={(e) => onChange('rtoAgentName', e.target.value)}
-            className={inputClass}
+            maxLength={60}
+            onChange={(e) => onChange('rtoAgentName', e.target.value.replace(/[^A-Za-z\s.]/g, ''))}
+            className={currentInputClass}
+            placeholder="Agent name"
           />
         </Field>
-        <Field label="RTO Expenses" required={false}>
+        <Field label="RTO Expenses" required={false} compact={compact}>
           <input
-            type="number"
-            min={0}
-            step={1}
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={9}
             value={value.rtoExpenses}
-            onChange={(e) => onChange('rtoExpenses', e.target.value.replace(/\D/g, ''))}
-            className={inputClass}
+            onKeyDown={handleDigitOnlyKeyDown}
+            onChange={(e) => onChange('rtoExpenses', e.target.value.replace(/\D/g, '').slice(0, 9))}
+            className={currentInputClass}
+            placeholder="e.g. 15000"
           />
         </Field>
-        <Field label="Vehicle Maintenance Cost" required={false}>
+        <Field label="Vehicle Maintenance Cost" required={false} compact={compact}>
           <input
-            type="number"
-            min={1}
-            step={1}
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={9}
             value={value.vehicleMaintenanceCost}
-            onChange={(e) => onChange('vehicleMaintenanceCost', e.target.value.replace(/\D/g, ''))}
-            className={inputClass}
+            onKeyDown={handleDigitOnlyKeyDown}
+            onChange={(e) => onChange('vehicleMaintenanceCost', e.target.value.replace(/\D/g, '').slice(0, 9))}
+            className={currentInputClass}
+            placeholder="e.g. 25000"
           />
         </Field>
       </div>
-      <p className="mt-3 text-xs text-gray-500">
+      <p className="mt-2.5 text-[11px] text-gray-500">
         Vehicle Type uses the existing Category field and Hours Running uses the existing Operating Hours field.
       </p>
     </section>

@@ -53,7 +53,7 @@ type SiteLogoResponse = {
   manifestIconUrl?: string | null;
 };
 
-const ADMIN_LOGO_FALLBACK = '/adminlogo.png';
+const ADMIN_LOGO_FALLBACK = '/Logo-black.webp';
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;

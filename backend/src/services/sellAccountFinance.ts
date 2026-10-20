@@ -25,8 +25,16 @@ export interface SellAccountFinanceInput {
   taxMode?: SellAccountTaxMode | string;
   sellerState?: string;
   purchaserState?: string;
+  // Value of the vehicle JCB Exchange handed over (purchase) or took back (sale) in an exchange.
+  // It is part of the deal value, but it is not cash, so it reduces the cash payable/receivable.
+  purchaseExchangeValue?: number | string;
+  saleExchangeValue?: number | string;
   payments?: SellAccountPaymentInput[];
 }
+
+export const SELL_ACCOUNT_EXPENSE_KEYS = ['transport', 'paperwork', 'rtoWork', 'other'] as const;
+export type SellAccountExpenseKey = (typeof SELL_ACCOUNT_EXPENSE_KEYS)[number];
+export type SellAccountExpenseBreakdown = Record<SellAccountExpenseKey, number> & { otherLabel: string };
 
 const number = (value: unknown) => {
   const parsed = Number(value);
@@ -48,25 +56,50 @@ const sameState = (sellerState?: string, purchaserState?: string) => {
   return Boolean(seller && purchaser && seller === purchaser);
 };
 
+/** Returns null when no itemised breakdown was sent, so a plain expenses total keeps working. */
+export const normalizeSellAccountExpenseBreakdown = (value: unknown): SellAccountExpenseBreakdown | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const otherLabel = typeof source.otherLabel === 'string' ? source.otherLabel.trim().slice(0, 120) : '';
+  return {
+    transport: roundMoney(source.transport),
+    paperwork: roundMoney(source.paperwork),
+    rtoWork: roundMoney(source.rtoWork),
+    other: roundMoney(source.other),
+    otherLabel,
+  };
+};
+
+export const sumSellAccountExpenseBreakdown = (breakdown: SellAccountExpenseBreakdown) =>
+  roundMoney(SELL_ACCOUNT_EXPENSE_KEYS.reduce((total, key) => total + number(breakdown[key]), 0));
+
+/**
+ * GST follows the margin scheme for second-hand goods (Rule 32(5), CGST Rules 2017):
+ * tax is due on the margin (sale value - purchase value) and that margin is GST-inclusive,
+ * so the tax is extracted from it. Operating expenses are not deductible from the GST base;
+ * they only reduce the business profit after GST.
+ */
 export const calculateSellAccountGst = (input: SellAccountFinanceInput = {}) => {
   const enteredSaleAmount = roundMoney(input.sellAmount);
   const purchaseAmount = roundMoney(input.purchaseAmount);
   const expenses = roundMoney(input.expenses);
   const rate = SELL_ACCOUNT_GST_RATE_PERCENT / 100;
-  const netProfitBeforeGst = roundSignedMoney(enteredSaleAmount - purchaseAmount - expenses);
-  // The entered profit is GST-inclusive. Extract the GST from the profit base.
-  const taxableAmount = roundMoney(Math.max(netProfitBeforeGst, 0) / (1 + rate));
-  const gstAmount = roundMoney(Math.max(netProfitBeforeGst, 0) - taxableAmount);
+  const marginAmount = roundSignedMoney(enteredSaleAmount - purchaseAmount);
+  const taxableAmount = roundMoney(Math.max(marginAmount, 0) / (1 + rate));
+  const gstAmount = roundMoney(Math.max(marginAmount, 0) - taxableAmount);
   // GST is tracked separately; the purchaser still pays the entered sell amount.
   const grossSaleAmount = enteredSaleAmount;
   const intraState = sameState(input.sellerState, input.purchaserState);
   const cgst = intraState ? roundMoney(gstAmount / 2) : 0;
   const sgst = intraState ? roundMoney(gstAmount - cgst) : 0;
   const igst = intraState ? 0 : gstAmount;
+  const netProfitBeforeGst = roundSignedMoney(marginAmount - expenses);
 
   return {
     gstRatePercent: SELL_ACCOUNT_GST_RATE_PERCENT,
     taxMode: 'INCLUSIVE' as const,
+    marginAmount,
+    expenses,
     taxableAmount,
     gstAmount,
     grossSaleAmount,
@@ -76,13 +109,13 @@ export const calculateSellAccountGst = (input: SellAccountFinanceInput = {}) => 
     isIntraState: intraState,
     stateClassification: intraState ? 'CGST + SGST' : 'IGST',
     netProfitBeforeGst,
-    netProfitAfterGst: netProfitBeforeGst >= 0 ? taxableAmount : netProfitBeforeGst,
+    netProfitAfterGst: roundSignedMoney(netProfitBeforeGst - gstAmount),
   };
 };
 
 export const calculateSellAccountPaymentSummary = (input: SellAccountFinanceInput = {}) => {
-  const expectedSale = roundMoney(input.sellAmount);
-  const expectedPurchase = roundMoney(input.purchaseAmount);
+  const expectedSale = roundMoney(Math.max(number(input.sellAmount) - number(input.saleExchangeValue), 0));
+  const expectedPurchase = roundMoney(Math.max(number(input.purchaseAmount) - number(input.purchaseExchangeValue), 0));
   const payments = Array.isArray(input.payments) ? input.payments : [];
   const purchaserReceived = roundMoney(payments
     .filter((payment) => payment.side === 'PURCHASER_RECEIPT')
@@ -90,19 +123,23 @@ export const calculateSellAccountPaymentSummary = (input: SellAccountFinanceInpu
   const sellerPaid = roundMoney(payments
     .filter((payment) => payment.side === 'SELLER_PAYMENT')
     .reduce((total, payment) => total + number(payment.amount), 0));
-  const status = (received: number, expected: number): SellAccountPaymentStatus => {
+  // A deal settled entirely by exchange has nothing left to collect in cash.
+  const status = (received: number, expected: number, dealValue: unknown): SellAccountPaymentStatus => {
+    if (expected <= 0) return number(dealValue) > 0 ? 'FULL' : 'UNPAID';
     if (received <= 0) return 'UNPAID';
-    if (expected > 0 && received >= expected) return 'FULL';
+    if (received >= expected) return 'FULL';
     return 'PARTIAL';
   };
 
   return {
+    customerCashReceivable: expectedSale,
+    sellerCashPayable: expectedPurchase,
     purchaserReceived,
     purchaserBalance: roundMoney(Math.max(expectedSale - purchaserReceived, 0)),
-    purchaserPaymentStatus: status(purchaserReceived, expectedSale),
+    purchaserPaymentStatus: status(purchaserReceived, expectedSale, input.sellAmount),
     sellerPaid,
     sellerBalance: roundMoney(Math.max(expectedPurchase - sellerPaid, 0)),
-    sellerPaymentStatus: status(sellerPaid, expectedPurchase),
+    sellerPaymentStatus: status(sellerPaid, expectedPurchase, input.purchaseAmount),
   };
 };
 
