@@ -20,6 +20,7 @@ import { hasAnyPermission } from '@/lib/permissionUtils';
 import { getAccountCreatePermissions, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
 import { normalizeAmountInput, toEditableAmount } from '@/lib/sellAccountForm.mjs';
 import { getListingAccountPrefill } from '@/lib/listingAccountPrefill.mjs';
+import { buildListingListUrl } from '@/lib/listingListNavigation.mjs';
 import {
   getHsrpStatusOptions,
   getInitialTermsAccepted,
@@ -208,6 +209,7 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
   const portal = accountsPortalBase(pathname);
   const listPath = `${portal}/accounts/rto-work-status`;
   const sellPath = `${portal}/accounts/sell-accounts`;
+  const listingPath = `${portal}/listings`;
   const listingIdParam = searchParams.get('listingId')?.trim() || '';
 
   const currentUser = useAuthStore((state) => state.user);
@@ -323,6 +325,8 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
   const progress = useMemo(() => summarizeTransferTasks(workspace?.tasks || []), [workspace?.tasks]);
   const compliance = workspace?.compliance || null;
   const sell = workspace?.sellAccount || null;
+  const linkedListingId = workspace?.record.listingId || workspace?.listing?.id || '';
+  const listingListUrl = linkedListingId ? buildListingListUrl(listingPath, linkedListingId) : '';
   const savedStatus = workspace ? normalizeRtoStatus(workspace.record.rtoStatus) as Status : form.rtoStatus;
 
   // ---------- Record form ----------
@@ -535,21 +539,21 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
 
       <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-3">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-600">Document validity</p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 xl:grid-cols-6 items-start">
           <Field label="Hire purchase" required apiFill={rcApiFill('hirePurchaseStatus')}>
-            <SearchableSelect size="sm" disabled={readOnly} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ id: item, name: labelText(item) }))} value={form.hirePurchaseStatus} displayValue={labelText(form.hirePurchaseStatus)} searchable={false} onChange={(option) => update('hirePurchaseStatus', String(option.id) as HirePurchase)} className="w-full" />
+            <div className="space-y-1.5">
+              <SearchableSelect size="sm" disabled={readOnly} options={(['PENDING', 'ACTIVE', 'TERMINATED', 'NOT_APPLICABLE'] as HirePurchase[]).map((item) => ({ id: item, name: labelText(item) }))} value={form.hirePurchaseStatus} displayValue={labelText(form.hirePurchaseStatus)} searchable={false} onChange={(option) => update('hirePurchaseStatus', String(option.id) as HirePurchase)} className="w-full" />
+              {(['ACTIVE', 'TERMINATED'] as string[]).includes(form.hirePurchaseStatus) ? (
+                <input disabled={readOnly} className={`${inputClass} text-xs`} placeholder="Financer / Bank name" value={form.financerName || ''} onChange={(event) => update('financerName', event.target.value)} />
+              ) : null}
+            </div>
           </Field>
-          {(['ACTIVE', 'TERMINATED'] as string[]).includes(form.hirePurchaseStatus) ? (
-            <Field label="Financer" apiFill={rcApiFill('financerName')}><input disabled={readOnly} className={inputClass} value={form.financerName || ''} onChange={(event) => update('financerName', event.target.value)} /></Field>
-          ) : null}
           {([['Tax', 'taxStatus', 'taxValidUntil'], ['Insurance', 'insuranceStatus', 'insuranceValidUntil'], ['PUC', 'pucStatus', 'pucValidUntil'], ['Fitness', 'fitnessStatus', 'fitnessValidUntil']] as const).map(([title, statusKey, dateKey]) => (
             <Field key={statusKey} label={title} required apiFill={rcApiFill(statusKey)}>
-              <div className="flex gap-1.5">
-                <div className="min-w-0 flex-1">
-                  <SearchableSelect size="sm" disabled={readOnly} options={validityOptions(statusKey)} value={form[statusKey]} displayValue={validityOptions(statusKey).find((option) => option.id === form[statusKey])?.name || ''} searchable={false} onChange={(option) => { const next = String(option.id) as Validity; update(statusKey, next); if (!isValidityDateRequired(next)) update(dateKey, null); }} className="w-full" />
-                </div>
+              <div className="space-y-1.5">
+                <SearchableSelect size="sm" disabled={readOnly} options={validityOptions(statusKey)} value={form[statusKey]} displayValue={validityOptions(statusKey).find((option) => option.id === form[statusKey])?.name || ''} searchable={false} onChange={(option) => { const next = String(option.id) as Validity; update(statusKey, next); if (!isValidityDateRequired(next)) update(dateKey, null); }} className="w-full" />
                 {isValidityDateRequired(form[statusKey]) ? (
-                  <input type="date" disabled={readOnly} className={`${inputClass} w-[128px] shrink-0 px-1.5 text-xs`} value={dateInput(form[dateKey])} onChange={(event) => update(dateKey, event.target.value || null)} aria-label={`${title} valid until`} />
+                  <input type="date" disabled={readOnly} className={`${inputClass} text-xs`} value={dateInput(form[dateKey])} onChange={(event) => update(dateKey, event.target.value || null)} aria-label={`${title} valid until`} />
                 ) : null}
               </div>
             </Field>
@@ -626,15 +630,32 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => router.push(listPath)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50" aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-extrabold text-gray-950">
-                RTO Transfer · <span className="text-amber-700">{record.vehicleNumber}</span>
-              </h1>
-              <p className="truncate text-xs font-medium text-gray-500">
-                {[record.brandName, record.vehicleModel, record.vehicleType].filter(Boolean).join(' · ')}
-                {sell ? <> · Deal <button type="button" onClick={() => router.push(`${sellPath}/${encodeURIComponent(sell.id)}`)} className="font-semibold text-blue-600 hover:underline">{sell.recordNumber}</button></> : null}
-              </p>
-            </div>
+            {listingListUrl ? (
+              <button
+                type="button"
+                onClick={() => router.push(listingListUrl)}
+                className="group min-w-0 cursor-pointer text-left"
+                title="Open this vehicle in Platform Listings"
+                aria-label={`Open ${record.vehicleNumber || 'vehicle'} in Platform Listings`}
+              >
+                <h1 className="truncate text-lg font-extrabold text-gray-950 group-hover:text-amber-700">
+                  RTO Transfer · <span className="text-amber-700">{record.vehicleNumber}</span>
+                </h1>
+                <p className="truncate text-xs font-medium text-gray-500 group-hover:text-gray-700">
+                  {[record.brandName, record.vehicleModel, record.vehicleType].filter(Boolean).join(' · ')}
+                  {sell ? <> · Deal <span className="font-semibold text-blue-600 group-hover:underline">{sell.recordNumber}</span></> : null}
+                </p>
+              </button>
+            ) : (
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-extrabold text-gray-950">
+                  RTO Transfer · <span className="text-amber-700">{record.vehicleNumber}</span>
+                </h1>
+                <p className="truncate text-xs font-medium text-gray-500">
+                  {[record.brandName, record.vehicleModel, record.vehicleType].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusTone}`}>{getRtoStatusLabel(savedStatus)}</span>

@@ -11,6 +11,7 @@ test('allowedAdminPermissions includes accounts read, crud, and export permissio
     'accounts.rto.update',
     'accounts.rto.delete',
     'accounts.rto.export',
+    'tasks.read',
     'accounts.sell.read',
     'accounts.sell.crud',
     'accounts.sell.create',

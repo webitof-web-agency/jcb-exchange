@@ -51,6 +51,7 @@ import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import { getModerationStatus, getPendingModerationOptions } from '@/lib/listingModeration.mjs';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
+import { isHighlightedListing } from '@/lib/listingListNavigation.mjs';
 
 type ListingFormState = {
   category: string;
@@ -1019,6 +1020,7 @@ export default function PartnerListingsPage() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedHighlightId = searchParams.get('highlightId')?.trim() || '';
   const user = useAuthStore((state) => state.user);
 
   const canEdit =
@@ -1147,6 +1149,7 @@ export default function PartnerListingsPage() {
   const [updatingAvailabilityIds, setUpdatingAvailabilityIds] = useState<string[]>([]);
   const [moderatingListingIds, setModeratingListingIds] = useState<string[]>([]);
   const [openActionDropdownId, setOpenActionDropdownId] = useState<string | null>(null);
+  const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
   const { t } = useTranslation();
   const localizedAvailability = useCallback((value: string) => t(`sellModal.availability.${value}`, value), [t]);
   const localizedCondition = useCallback((value: string) => t(`machineDetails.conditionOptions.${value}`, value), [t]);
@@ -1680,6 +1683,49 @@ export default function PartnerListingsPage() {
   );
   const startItemIndex = totalListings === 0 ? 0 : (currentPageForView - 1) * pageSize + 1;
   const endItemIndex = Math.min(currentPageForView * pageSize, totalListings);
+
+  useEffect(() => {
+    if (!requestedHighlightId || loadingListings || listingView === 'payments' || listingView === 'bills') {
+      return;
+    }
+
+    const targetIndex = sortedFilteredListings.findIndex((listing) => isHighlightedListing(listing, requestedHighlightId));
+    if (targetIndex < 0) {
+      return;
+    }
+
+    const targetPage = Math.floor(targetIndex / pageSize) + 1;
+    if (currentPageForView === targetPage) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setCurrentPage(targetPage), 0);
+    return () => window.clearTimeout(timer);
+  }, [currentPageForView, listingView, loadingListings, pageSize, requestedHighlightId, sortedFilteredListings]);
+
+  useEffect(() => {
+    if (!requestedHighlightId || loadingListings || listingView === 'payments' || listingView === 'bills') {
+      return;
+    }
+
+    const targetListing = paginatedListings.find((listing) => isHighlightedListing(listing, requestedHighlightId));
+    if (!targetListing) {
+      return;
+    }
+
+    const highlightTimer = window.setTimeout(() => {
+      setHighlightedListingId(targetListing.id);
+      document
+        .getElementById(`listing-row-${encodeURIComponent(targetListing.id)}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    const clearTimer = window.setTimeout(() => setHighlightedListingId(null), 4_080);
+
+    return () => {
+      window.clearTimeout(highlightTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [listingView, loadingListings, paginatedListings, requestedHighlightId]);
 
 
 
@@ -3116,6 +3162,7 @@ export default function PartnerListingsPage() {
                 const cover = getCoverMedia(listing);
                 const parsedDetails = parseListingDescription(listing.description);
                 const availability = listingStatusToAvailability(listing.status);
+                const isHighlighted = isHighlightedListing(listing, highlightedListingId);
                 const isUpdatingAvailability = updatingAvailabilityIds.includes(listing.id);
                 const isModeratingListing = moderatingListingIds.includes(listing.id);
                 const isPendingListing = isPendingApprovalListing(listing.status);
@@ -3128,8 +3175,9 @@ export default function PartnerListingsPage() {
                 return (
                   <div
                     key={listing.id}
+                    id={`listing-row-${encodeURIComponent(listing.id)}`}
                     onClick={() => openListingDetails(listing)}
-                    className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400/80 hover:shadow-md cursor-pointer"
+                    className={`group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400/80 hover:shadow-md cursor-pointer ${isHighlighted ? 'animate-pulse border-amber-400 bg-amber-50/90 shadow-[inset_4px_0_0_#f59e0b]' : ''}`}
                   >
                     {/* Card Image */}
                     <div className="relative aspect-[16/10] w-full overflow-hidden bg-gray-100">
@@ -3457,10 +3505,12 @@ export default function PartnerListingsPage() {
                     const isModeratingListing = moderatingListingIds.includes(listing.id);
                     const isPendingListing = isPendingApprovalListing(listing.status);
                     const isNearBottom = index >= Math.max(paginatedListings.length - 3, 0);
+                    const isHighlighted = isHighlightedListing(listing, highlightedListingId);
 
                     return (
                       <tr
                         key={listing.id}
+                        id={`listing-row-${encodeURIComponent(listing.id)}`}
                         role="button"
                         tabIndex={0}
                         aria-label={`Open details for ${listing.title}`}
@@ -3471,7 +3521,7 @@ export default function PartnerListingsPage() {
                             openListingDetails(listing);
                           }
                         }}
-                        className="group cursor-pointer transition hover:bg-amber-50/20 focus-visible:bg-gray-50 focus-visible:outline-none"
+                        className={`group cursor-pointer transition hover:bg-amber-50/20 focus-visible:bg-gray-50 focus-visible:outline-none ${isHighlighted ? 'animate-pulse bg-amber-50/90 shadow-[inset_4px_0_0_#f59e0b]' : ''}`}
                       >
                         {/* Equipment & Specs Column */}
                         <td className="px-2.5 py-1.5">

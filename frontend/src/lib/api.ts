@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
-import { hasAuthorizationHeader, isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
+import { getStoredAuthToken, hasAuthorizationHeader, isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -77,16 +77,17 @@ api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore.getState();
     const token = authStore.token;
+    const storedAuthToken = getStoredAuthToken(config.headers, token);
     const locale = useLanguageStore.getState().locale;
     const isAuthEndpoint = /\/auth\/(?:login|register|google|.*otp)/i.test(String(config.url || ''));
 
-    if (token && !isUsableAuthToken(token)) {
+    if (storedAuthToken && !isUsableAuthToken(storedAuthToken)) {
       authStore.logout();
       if (!isAuthEndpoint) {
         authStore.setAuthModalOpen(true, 'login');
       }
-    } else if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    } else if (storedAuthToken) {
+      config.headers.Authorization = `Bearer ${storedAuthToken}`;
     }
     config.headers['Accept-Language'] = locale;
 

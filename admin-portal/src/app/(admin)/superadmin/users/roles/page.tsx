@@ -92,6 +92,12 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
         { id: 'accounts.sell.export', label: 'Export Sold Vehicles' },
       ],
     },
+    {
+      groupName: 'Tasks',
+      permissions: [
+        { id: 'tasks.read', label: 'View Tasks' },
+      ],
+    },
   ],
   'Finance': [
     {

@@ -98,6 +98,7 @@ const canDeleteJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.
 const canDuplicateJobs = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.duplicate']);
 const canChangeJobStatus = requireSuperAdminOrEmployeePermissions(['recruitment.jobs.change_status']);
 const canViewRto = requireAdminOrEmployeePermissions(['accounts.rto.read', 'accounts.rto.crud']);
+const canViewTasks = requireAdminOrEmployeePermissions(['tasks.read']);
 const canCreateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.create']);
 const canUpdateRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.update']);
 const canDeleteRto = requireAdminOrEmployeePermissions(['accounts.rto.crud', 'accounts.rto.delete']);
@@ -176,7 +177,7 @@ router.delete('/admin/jobs/:id', canDeleteJobs, deleteJob);
 
 // RTO work records
 router.get('/admin/rto-records', canViewRto, listRtoRecords);
-router.get('/admin/rto-transfer-tasks', canViewRto, listAllRtoTransferTasks);
+router.get('/admin/rto-transfer-tasks', canViewTasks, listAllRtoTransferTasks);
 router.post('/admin/rto-records', canCreateRto, createRtoRecord);
 router.put('/admin/rto-records/:id', canUpdateRto, updateRtoRecord);
 router.delete('/admin/rto-records/:id', canDeleteRto, deleteRtoRecord);

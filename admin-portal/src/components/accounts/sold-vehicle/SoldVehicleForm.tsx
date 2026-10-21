@@ -31,6 +31,7 @@ import {
   toEditableAmount,
 } from '@/lib/sellAccountForm.mjs';
 import { getListingAccountPrefill } from '@/lib/listingAccountPrefill.mjs';
+import { getSellAccountPaymentBalances } from '@/lib/sellAccountPaymentPresentation.mjs';
 import {
   applySourceTypeChange,
   getListingDealParties,
@@ -238,7 +239,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | null>(null);
+  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | 'payment' | null>(null);
   const [startRtoRequested, setStartRtoRequested] = useState(false);
   const [listedPrice, setListedPrice] = useState(0);
   const [categories, setCategories] = useState<NamedOption[]>([]);
@@ -292,6 +293,21 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
         .filter((url): url is string => Boolean(url)),
     );
   }, []);
+
+  const applyPaymentRecord = (record: SellAccountRecord) => {
+    setExistingRecord((current) => current ? {
+      ...current,
+      payments: record.payments || [],
+      balanceAmount: record.balanceAmount,
+      dealStatus: record.dealStatus,
+      rtoStatusSnapshot: record.rtoStatusSnapshot,
+    } : current);
+    setForm((current) => ({
+      ...current,
+      payments: record.payments || [],
+      rtoStatusSnapshot: record.rtoStatusSnapshot,
+    }));
+  };
 
   // Record / listing prefill
   useEffect(() => {
@@ -424,6 +440,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     purchaseExchangeValue,
     payments: form.payments,
   }), [expenseTotal, form.payments, form.purchaseAmount, form.purchaserState, form.sellAmount, form.sellerState, purchaseExchangeValue, saleExchangeValue]);
+  const paymentBalances = getSellAccountPaymentBalances(finance.payments);
 
   const dealStatus = deriveSellAccountDealStatus({
     purchaserPaymentStatus: finance.payments.purchaserPaymentStatus,
@@ -586,7 +603,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const handleUploadState = (uploading: boolean) => setActiveUploads((count) => Math.max(0, count + (uploading ? 1 : -1)));
 
   // ---- Payments ----
-  const addPayment = () => {
+  const addPayment = async () => {
+    if (busyAction) return;
     const amount = Number(paymentDraft.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error('Enter a valid payment amount.');
@@ -600,10 +618,56 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       reference: paymentDraft.reference.trim(),
       note: paymentDraft.note.trim(),
     };
-    setForm((current) => ({ ...current, payments: [...(current.payments || []), entry] }));
-    setPaymentDraft(initialPaymentDraft());
+    if (!isPersisted) {
+      setForm((current) => ({ ...current, payments: [...(current.payments || []), entry] }));
+      setPaymentDraft(initialPaymentDraft());
+      return;
+    }
+
+    setBusyAction('payment');
+    try {
+      const response = await api.post<{ record?: SellAccountApiRecord }>(
+        `/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord!.id)}/payments`,
+        entry,
+      );
+      if (!response.data?.record) throw new Error('Payment was not returned by the server.');
+      applyPaymentRecord(normalizeServerSellAccount(response.data.record));
+      setPaymentDraft(initialPaymentDraft());
+      toast.success('Payment added and balance updated.');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Unable to add this payment.'));
+    } finally {
+      setBusyAction(null);
+    }
   };
-  const removePayment = (index: number) => setForm((current) => ({ ...current, payments: (current.payments || []).filter((_, itemIndex) => itemIndex !== index) }));
+  const removePayment = async (index: number) => {
+    if (busyAction) return;
+    const payment = form.payments?.[index];
+    if (!payment) return;
+    if (!isPersisted || !payment.id) {
+      setForm((current) => ({ ...current, payments: (current.payments || []).filter((_, itemIndex) => itemIndex !== index) }));
+      return;
+    }
+
+    setBusyAction('payment');
+    try {
+      await api.delete(`/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord!.id)}/payments/${encodeURIComponent(payment.id)}`);
+      const remainingPayments = (form.payments || []).filter((_, itemIndex) => itemIndex !== index);
+      setForm((current) => ({ ...current, payments: remainingPayments }));
+      setExistingRecord((current) => current ? { ...current, payments: remainingPayments } : current);
+      try {
+        const response = await api.get<{ record?: SellAccountApiRecord }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord!.id)}`);
+        if (response.data?.record) applyPaymentRecord(normalizeServerSellAccount(response.data.record));
+      } catch {
+        // The payment delete succeeded; keep the local ledger updated if refresh is temporarily unavailable.
+      }
+      toast.success('Payment removed and balance reversed.');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Unable to remove this payment.'));
+    } finally {
+      setBusyAction(null);
+    }
+  };
   const sharePaymentOnWhatsApp = (payment: SellAccountPayment) => {
     const number = String(form.purchaserNumber || '').replace(/\D/g, '');
     if (!number) {
@@ -1056,7 +1120,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               </div>
               <div className="mt-1 flex justify-between gap-2 text-[10px] font-medium text-blue-800/75">
                 <span>Received {formatInr(finance.payments.purchaserReceived)}</span>
-                <span>Due {formatInr(finance.payments.customerCashReceivable)}</span>
+                <span>{paymentBalances.customer.label} {formatInr(paymentBalances.customer.amount)}</span>
               </div>
             </div>
             <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2">
@@ -1069,7 +1133,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               </div>
               <div className="mt-1 flex justify-between gap-2 text-[10px] font-medium text-amber-800/75">
                 <span>Paid {formatInr(finance.payments.sellerPaid)}</span>
-                <span>Payable {formatInr(finance.payments.sellerCashPayable)}</span>
+                <span>{paymentBalances.seller.label} {formatInr(paymentBalances.seller.amount)}</span>
               </div>
             </div>
           </div>
@@ -1078,23 +1142,25 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               <Segmented
                 value={paymentDraft.side}
                 options={[{ value: 'PURCHASER_RECEIPT', label: 'From customer' }, { value: 'SELLER_PAYMENT', label: 'To seller' }]}
+                disabled={busy}
                 onChange={(value) => setPaymentDraft((current) => ({ ...current, side: value }))}
               />
             </div>
-            <input type="number" min="0.01" step="0.01" value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount ₹" className={`${inputClass} ${inputBorder()}`} />
-            <input type="date" value={paymentDraft.paymentDate} onChange={(event) => setPaymentDraft((current) => ({ ...current, paymentDate: event.target.value }))} className={`${inputClass} ${inputBorder()}`} />
+            <input type="number" min="0.01" step="0.01" disabled={busy} value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount ₹" className={`${inputClass} ${inputBorder()}`} />
+            <input type="date" disabled={busy} value={paymentDraft.paymentDate} onChange={(event) => setPaymentDraft((current) => ({ ...current, paymentDate: event.target.value }))} className={`${inputClass} ${inputBorder()}`} />
             <SearchableSelect
               size="sm"
               options={['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'OTHER'].map((method) => ({ id: method, name: method.replace('_', ' ') }))}
               value={paymentDraft.method}
               displayValue={paymentDraft.method.replace('_', ' ')}
               searchable={false}
+              disabled={busy}
               onChange={(option) => setPaymentDraft((current) => ({ ...current, method: String(option.id) as SellAccountPayment['method'] }))}
               className="w-full"
             />
-            <button type="button" onClick={addPayment} className="inline-flex h-[34px] items-center justify-center gap-1 rounded-lg bg-gray-900 px-3 text-xs font-bold text-white hover:bg-gray-800"><Plus className="h-3.5 w-3.5" />Add</button>
-            <input type="text" value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="UTR / cheque / receipt no." className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
-            <input type="text" value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note (optional)" className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
+            <button type="button" disabled={busy} onClick={() => void addPayment()} className="inline-flex h-[34px] items-center justify-center gap-1 rounded-lg bg-gray-900 px-3 text-xs font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-3.5 w-3.5" />{busyAction === 'payment' ? 'Saving…' : 'Add'}</button>
+            <input type="text" disabled={busy} value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="UTR / cheque / receipt no." className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
+            <input type="text" disabled={busy} value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note (optional)" className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
           </div>
           {(form.payments || []).length ? (
             <div className="mt-2.5 overflow-x-auto rounded-lg border border-gray-200">
@@ -1113,7 +1179,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                       <td className="px-2.5 py-1.5 text-right">
                         <span className="inline-flex items-center gap-1">
                           {payment.side === 'PURCHASER_RECEIPT' ? <button type="button" onClick={() => sharePaymentOnWhatsApp(payment)} className="rounded-md p-1 text-[#25D366] hover:bg-green-50" title="Share receipt on WhatsApp" aria-label="Share receipt on WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></button> : null}
-                          <button type="button" onClick={() => removePayment(index)} className="rounded-md p-1 text-rose-500 hover:bg-rose-50" title="Remove payment" aria-label="Remove payment"><Trash2 className="h-3.5 w-3.5" /></button>
+                          <button type="button" disabled={busy} onClick={() => void removePayment(index)} className="rounded-md p-1 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" title="Remove payment" aria-label="Remove payment"><Trash2 className="h-3.5 w-3.5" /></button>
                         </span>
                       </td>
                     </tr>
@@ -1125,8 +1191,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             <p className="mt-2.5 rounded-lg border border-dashed border-gray-300 px-3 py-2.5 text-center text-xs text-gray-500">No payments yet. Deal status updates automatically as customer receipts are added.</p>
           )}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
-            <span>Customer balance: <b className="tabular-nums text-gray-900">{formatInr(finance.payments.purchaserBalance)}</b></span>
-            <span>Seller balance: <b className="tabular-nums text-gray-900">{formatInr(finance.payments.sellerBalance)}</b></span>
+            <span>Customer balance: <b className="tabular-nums text-gray-900">{formatInr(paymentBalances.customer.amount)}</b></span>
+            <span>Seller balance: <b className="tabular-nums text-gray-900">{formatInr(paymentBalances.seller.amount)}</b></span>
           </div>
         </Section>
 

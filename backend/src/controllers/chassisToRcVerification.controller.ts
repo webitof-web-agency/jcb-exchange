@@ -28,6 +28,7 @@ const sellerResultFields = new Set([
   'taxPaidUpto',
   'puccUpto',
   'ownerNumber',
+  'financer',
   'registeredAt',
   'financed',
 ]);

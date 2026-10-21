@@ -1,1 +1,7 @@
-export { default } from '@/app/(admin)/superadmin/accounts/sell-accounts/[id]/edit/page';
+'use client';
+
+import EditSoldVehiclePage from '@/app/(admin)/superadmin/accounts/sell-accounts/[id]/edit/page';
+
+export default function EmployeeEditSoldVehiclePage() {
+  return <EditSoldVehiclePage />;
+}

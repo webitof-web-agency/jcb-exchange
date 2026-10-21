@@ -82,3 +82,52 @@ test('processes a signed RC_FULL service price webhook', async () => {
   assert.equal(rcFull?.active, true);
   assert.equal(rcFull?.priceRupees, '5.00');
 });
+
+test('reverses a charged provider attempt exactly once', async () => {
+  const wallet = { id: 'platform', currency: 'INR', balancePaise: 9_500, mode: 'ACTIVE' };
+  const createdLedgers: Array<Record<string, unknown>> = [];
+  let reversalExists = false;
+  const usage = {
+    id: 'usage-1',
+    walletId: 'platform',
+    serviceKey: 'RC_FULL',
+    verificationRecordId: 'rc-record-1',
+    requestedById: 'user-1',
+    amountPaise: 500,
+    ledger: {
+      id: 'debit-ledger-1',
+      type: 'DEBIT',
+      amountPaise: 500,
+    },
+  };
+  const service = new ApiWalletBillingService({
+    apiWallet: { upsert: async () => wallet },
+    $transaction: async (callback: (tx: any) => Promise<unknown>) => callback({
+      apiUsageRecord: {
+        findUnique: async () => usage,
+      },
+      apiWalletLedger: {
+        findUnique: async () => (reversalExists ? { id: 'reversal-ledger-1', amountPaise: 500, balanceAfterPaise: 10_000 } : null),
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          reversalExists = true;
+          createdLedgers.push(data);
+          return { id: 'reversal-ledger-1', ...data };
+        },
+      },
+      $queryRaw: async () => [{ balancePaise: 10_000 }],
+    }),
+  });
+
+  const first = await (service as any).reverseProviderCharge({ usageId: 'usage-1', reason: 'verification_failed' });
+  const second = await (service as any).reverseProviderCharge({ usageId: 'usage-1', reason: 'verification_failed' });
+
+  assert.equal(first.reversed, true);
+  assert.equal(first.amountPaise, 500);
+  assert.equal(second.reversed, false);
+  assert.equal(createdLedgers.length, 1);
+  const createdLedger = createdLedgers[0];
+  assert.ok(createdLedger);
+  assert.equal(createdLedger.type, 'CREDIT');
+  assert.equal(createdLedger.usageId, undefined);
+  assert.equal(createdLedger.idempotencyKey, 'provider-reversal:usage-1');
+});

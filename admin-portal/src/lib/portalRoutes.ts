@@ -86,6 +86,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     permissions: accountAnyPermissions,
   },
   {
+    superadminPath: '/superadmin/tasks',
+    employeePath: '/employee/tasks',
+    permissions: ['tasks.read'],
+  },
+  {
     superadminPath: '/superadmin/analytics',
     employeePath: '/employee/analytics',
     permissions: ['analytics.read'],

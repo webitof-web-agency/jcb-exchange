@@ -150,6 +150,7 @@ const sellerListingResultFields = new Set([
   'taxPaidUpto',
   'puccUpto',
   'ownerNumber',
+  'financer',
   'registeredAt',
   'financed',
 ]);
@@ -422,8 +423,9 @@ export class RcOwnerHistoryService {
       : await this.record.create({ data: { status: RC_STATUS.PENDING, serviceKey: this.serviceKey, maskedRcNumber, requestFingerprint, requestedById } });
     await this.writeAudit(requestedById, `${this.auditActionPrefix}_REQUESTED`, pending.id, { maskedRcNumber, status: RC_STATUS.PENDING });
 
+    let billing: { charged: boolean; usageId?: string } | undefined;
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: this.serviceKey,
             verificationRecordId: pending.id,
@@ -472,15 +474,29 @@ export class RcOwnerHistoryService {
       const normalizedError = isApiWalletBillingError(error)
         ? new RcOwnerHistoryError(error.message, error.statusCode, error.code)
         : error instanceof SurepassProviderError
-        ? providerFailure(error)
-        : error instanceof RcOwnerHistoryError
-          ? error
-          : new RcOwnerHistoryError('Vehicle verification could not be completed.', 502, 'verification_failed');
+          ? providerFailure(error)
+          : error instanceof RcOwnerHistoryError
+            ? error
+            : new RcOwnerHistoryError('Vehicle verification could not be completed.', 502, 'verification_failed');
+      let billingReversal: { reversed: boolean } | undefined;
+      let billingReversalFailed = false;
+      if (billing?.charged && billing.usageId && this.billing?.reverseProviderCharge) {
+        try {
+          billingReversal = await this.billing.reverseProviderCharge({
+            usageId: billing.usageId,
+            reason: normalizedError.code,
+          });
+        } catch {
+          billingReversalFailed = true;
+        }
+      }
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, `${this.auditActionPrefix}_FAILED`, pending.id, {
         maskedRcNumber,
         status: RC_STATUS.FAILED,
         code: normalizedError.code,
+        ...(billingReversal ? { billingReversed: billingReversal.reversed } : {}),
+        ...(billingReversalFailed ? { billingReversalFailed: true } : {}),
       });
       throw normalizedError;
     }

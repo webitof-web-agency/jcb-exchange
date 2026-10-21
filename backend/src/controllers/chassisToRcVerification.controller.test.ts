@@ -13,6 +13,7 @@ test('returns only listing autofill fields to sellers', () => {
     makerModel: 'I20 SPORTZ CRDI',
     vehicleCategoryDescription: 'Motor Car(LMV)',
     insuranceUpto: '2025-01-20',
+    financer: 'INDUSIND BANK LTD.',
     registeredAt: 'FEROZPUR RTA, Punjab',
     financed: false,
   }), {
@@ -23,6 +24,7 @@ test('returns only listing autofill fields to sellers', () => {
     ownerName: 'TARSEM SINGH',
     vehicleCategoryDescription: 'Motor Car(LMV)',
     insuranceUpto: '2025-01-20',
+    financer: 'INDUSIND BANK LTD.',
     registeredAt: 'FEROZPUR RTA, Punjab',
     financed: false,
   });

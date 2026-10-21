@@ -42,6 +42,7 @@ import {
 } from '@/lib/featurePermissions';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
 import { UserAvatar } from '@/components/profile/AvatarUpload';
+import { getPublicSiteTarget } from '@/lib/publicSite.mjs';
 
 const navItems = [
   { href: '/superadmin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
@@ -94,7 +95,7 @@ const employeeModuleNavItems = [
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
   { href: '/employee/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards, permissions: ['finance.read', 'finance.manage'] },
   { href: '/employee/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText, permissions: ['accounts.sell.read', 'accounts.sell.crud'] },
-  { href: '/employee/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo, permissions: ['accounts.rto.read', 'accounts.rto.crud'] },
+  { href: '/employee/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo, permissions: ['tasks.read'] },
   { href: '/employee/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft, permissions: employeeFooterPermissions },
   { href: '/employee/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText, permissions: employeePartnerAgreementPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
@@ -175,7 +176,15 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { customHeader } = useHeaderStore();
-  const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
+  const { isAuthenticated, user, token, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
+  const publicSiteOrigin = process.env.NEXT_PUBLIC_PUBLIC_SITE_URL || (
+    process.env.NODE_ENV === 'production' ? 'https://jcbexchange.com' : 'http://localhost:3000'
+  );
+  const publicSiteTarget = getPublicSiteTarget({
+    origin: publicSiteOrigin,
+    token,
+    fallbackPath: '/',
+  });
   const billing = useApiBillingSummary();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -445,7 +454,7 @@ export default function AdminLayout({
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [hasHydrated, isAuthenticated, logout, router, updateUser, user?.role]);
+  }, [hasHydrated, isAuthenticated, logout, pathname, router, updateUser, user?.role]);
 
   // ─── Industry-standard "last seen at" timestamp badge fetching ──────────────
   // On each fetch, we send the stored seenAt timestamps to the backend.
@@ -760,7 +769,7 @@ export default function AdminLayout({
     return 0;
   };
 
-  const sectionLabelClassName = 'text-[11px] font-semibold uppercase tracking-[0.12em]';
+  const sectionLabelClassName = 'text-xs font-semibold leading-5 tracking-[0.08em]';
 
   const renderSectionLabel = (label: string) => (
     <p className={`px-4 pb-2 pt-4 text-gray-500 ${sectionLabelClassName}`}>
@@ -782,7 +791,7 @@ export default function AdminLayout({
           className="group flex w-full items-center gap-2 rounded-md px-4 py-2 text-left transition-colors duration-150 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FFC107]/60"
         >
           <span
-            className={`flex-1 transition-colors duration-150 ${sectionLabelClassName} ${isGroupActive ? 'text-gray-200' : 'text-gray-500 group-hover:text-gray-300'}`}
+            className={`flex-1 text-base transition-colors duration-150 ${isGroupActive ? 'font-semibold text-white' : 'text-gray-400 group-hover:text-white'}`}
           >
             {label}
           </span>
@@ -792,7 +801,7 @@ export default function AdminLayout({
             </span>
           ) : null}
           <ChevronRight
-            className={`h-3.5 w-3.5 shrink-0 text-gray-600 transition-all duration-200 group-hover:text-gray-400 ${isExpanded ? 'rotate-90' : ''}`}
+            className={`h-4 w-4 shrink-0 text-gray-400 transition-all duration-200 group-hover:text-white ${isExpanded ? 'rotate-90' : ''}`}
           />
         </button>
       </>
@@ -1185,7 +1194,7 @@ export default function AdminLayout({
           <div className="ml-2 flex items-center gap-2 sm:gap-2.5 shrink-0">
             {/* Quick Public Site Link */}
             <a
-              href="/"
+              href={publicSiteTarget}
               target="_blank"
               rel="noopener noreferrer"
               title="View Public Marketplace Frontend"

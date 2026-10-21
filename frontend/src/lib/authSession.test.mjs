@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getStoredAuthToken,
   hasAuthorizationHeader,
   isAuthenticationFailure,
   isUsableAuthToken,
@@ -30,4 +31,12 @@ test('recognizes session failures and AxiosHeaders authorization values', () => 
   assert.equal(hasAuthorizationHeader(headers), true);
   assert.equal(hasAuthorizationHeader({ Authorization: 'Bearer token' }), true);
   assert.equal(hasAuthorizationHeader({}), false);
+});
+
+test('does not replace an explicit handoff token with the stored session token', () => {
+  assert.equal(
+    getStoredAuthToken({ Authorization: 'Bearer admin-handoff-token' }, 'test5-token'),
+    null,
+  );
+  assert.equal(getStoredAuthToken({}, 'test5-token'), 'test5-token');
 });

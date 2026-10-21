@@ -23,6 +23,7 @@ import { toast } from 'react-toastify';
 import { mergeSellAccountRecords } from '@/lib/sellAccountDrafts.mjs';
 import { getSourceTypeLabel } from '@/lib/soldVehicleParties.mjs';
 import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
+import { isHighlightedSellAccount } from '@/lib/sellAccountListNavigation.mjs';
 import {
   DEAL_STATUS_CONFIG,
   formatDisplayDate as formatDate,
@@ -160,6 +161,7 @@ export default function SellAccountsPage() {
       : '/superadmin/accounts/sell-accounts';
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
 
   // Older deep links (?listingId= from Listings, ?editId= from the detail page) now open the form page.
   useEffect(() => {
@@ -363,6 +365,32 @@ export default function SellAccountsPage() {
     return filteredRecords.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
   }, [filteredRecords, currentPage, rowsPerPage]);
 
+  const highlightId = searchParams.get('highlightId')?.trim() || '';
+
+  useEffect(() => {
+    if (loading || !highlightId) return;
+    const targetIndex = filteredRecords.findIndex((record) => isHighlightedSellAccount(record, highlightId));
+    if (targetIndex < 0) return;
+
+    const targetPage = Math.floor(targetIndex / rowsPerPage) + 1;
+    if (targetPage !== currentPage) {
+      const pageTimer = window.setTimeout(() => setCurrentPage(targetPage), 0);
+      return () => window.clearTimeout(pageTimer);
+    }
+
+    const target = filteredRecords[targetIndex];
+    const scrollTimer = window.setTimeout(() => {
+      setHighlightedRecordId(target.id);
+      document.getElementById(`sell-account-row-${encodeURIComponent(target.id)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    const clearTimer = window.setTimeout(() => setHighlightedRecordId(null), 4050);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [currentPage, filteredRecords, highlightId, loading, rowsPerPage]);
+
   const paginationItems = useMemo(
     () => buildPaginationItems(currentPage, totalPages),
     [currentPage, totalPages]
@@ -472,7 +500,12 @@ export default function SellAccountsPage() {
                   const rtoProgress = summarizeTransferTasks((item.rtoRecord?.taskStatuses || []).map((status) => ({ status })));
                   const gst = recordGst(item);
                   return (
-                    <tr key={item.id} onClick={() => router.push(`${accountBasePath}/${item.id}`)} className="hover:bg-gray-50/80 transition-colors cursor-pointer">
+                    <tr
+                      id={`sell-account-row-${encodeURIComponent(item.id)}`}
+                      key={item.id}
+                      onClick={() => router.push(`${accountBasePath}/${item.id}`)}
+                      className={`cursor-pointer transition-colors hover:bg-gray-50/80 ${highlightedRecordId === item.id ? 'bg-amber-50/90 shadow-[inset_4px_0_0_#f59e0b] animate-pulse' : ''}`}
+                    >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <Car className="w-4 h-4 text-amber-600 shrink-0" />
@@ -559,7 +592,7 @@ export default function SellAccountsPage() {
                                 }}
                                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
                               >
-                                <Eye className="w-3.5 h-3.5 text-gray-500" />
+                                {item.isLocked ? <LockKeyhole className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-gray-500" />}
                                 View
                               </button>
                               {canUpdateSellAccounts && !item.isLocked ? <button
@@ -588,7 +621,6 @@ export default function SellAccountsPage() {
                                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                                 Delete
                               </button> : null}
-                              {item.isLocked ? <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-600"><LockKeyhole className="h-3.5 w-3.5" />Locked · View only</div> : null}
                             </div>
                           )}
                         </div>

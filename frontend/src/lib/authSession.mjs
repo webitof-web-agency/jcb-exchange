@@ -42,3 +42,6 @@ export const hasAuthorizationHeader = (headers) => {
 
   return Boolean(headers.Authorization || headers.authorization);
 };
+
+export const getStoredAuthToken = (headers, storedToken) =>
+  hasAuthorizationHeader(headers) ? null : storedToken;

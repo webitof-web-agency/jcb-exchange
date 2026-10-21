@@ -84,6 +84,7 @@ export const allowedAdminPermissions = new Set([
   'accounts.rto.update',
   'accounts.rto.delete',
   'accounts.rto.export',
+  'tasks.read',
   'accounts.sell.read',
   'accounts.sell.crud',
   'accounts.sell.create',

@@ -257,16 +257,6 @@ export default function RTOWorkStatusPage() {
     setExportMenuOpen(false);
   };
 
-  const downloadRecord = (record: RtoRecord) => {
-    if (!canExportRto) return;
-    downloadTableFile({
-      columns: exportColumns,
-      rows: [record],
-      fileName: `rto-record-${record.vehicleNumber || record.id}`,
-      format: 'xls',
-    });
-  };
-
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter, records]);
@@ -535,11 +525,6 @@ export default function RTOWorkStatusPage() {
                               label: 'Transfer Workspace / Edit',
                               icon: <ClipboardCheck className="h-4 w-4 text-amber-600" />,
                               onClick: () => openWorkspace(record),
-                            }] : []),
-                            ...(canExportRto ? [{
-                              label: 'Download Record',
-                              icon: <Download className="h-4 w-4 text-gray-500" />,
-                              onClick: () => downloadRecord(record),
                             }] : []),
                             ...(canDeleteRto && !record.isLocked ? [{
                               label: 'Delete Record',

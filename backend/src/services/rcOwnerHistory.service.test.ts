@@ -157,9 +157,49 @@ test('keeps RC Full billing and audit records separate from RC Owner History', a
   assert.deepEqual(auditEvents.map((event) => event.action), ['RC_FULL_REQUESTED', 'RC_FULL_SUCCEEDED']);
 });
 
+test('reverses an RC Full wallet charge when the provider request fails', async () => {
+  const records: any[] = [];
+  const reversals: Array<Record<string, unknown>> = [];
+  const recordRepository = {
+    findFirst: async () => null,
+    findUnique: async () => null,
+    findMany: async () => records,
+    count: async () => records.length,
+    create: async ({ data }: { data: Record<string, unknown> }) => {
+      const record = { id: 'rc-full-failed-1', ...data, provider: 'SUREPASS', providerClientId: null, messageCode: null, safeMessage: null, encryptedResult: null, createdAt: new Date(), completedAt: null };
+      records.push(record);
+      return record;
+    },
+    update: async ({ data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      Object.assign(records[0], data);
+      return records[0];
+    },
+  };
+  const service = new RcFullService({
+    record: recordRepository,
+    billing: {
+      chargeForProviderCall: async () => ({ charged: true, billingMode: 'ACTIVE', amountPaise: 500, amountRupees: '5.00', balanceRupees: '95.00', serviceKey: 'RC_FULL', usageId: 'usage-failed-1' }),
+      reverseProviderCharge: async (input) => {
+        reversals.push(input);
+        return { reversed: true, amountPaise: 500, amountRupees: '5.00', balanceRupees: '100.00', serviceKey: 'RC_FULL', usageId: 'usage-failed-1' };
+      },
+    },
+    provider: { verifyRcFull: async () => { throw new Error('Surepass unavailable'); } } as any,
+    dataSecret,
+  });
+
+  await assert.rejects(
+    () => service.verifyRc({ id_number: 'RJ12XJ1234' }, 'user-1'),
+    { statusCode: 502, code: 'verification_failed' },
+  );
+  assert.deepEqual(reversals, [{ usageId: 'usage-failed-1', reason: 'verification_failed' }]);
+  assert.equal(records[0].status, 'FAILED');
+});
+
 test('sanitizes RC Full data before returning it to listing forms', () => {
   assert.deepEqual(sanitizeRcFullResultForListing({
     rcNumber: 'RJ12XJ1234',
+    financer: 'INDUSIND BANK LTD.',
     registrationUpto: '2040-09-05',
     vehicleChasiNumber: 'CHASSIS123',
     vehicleEngineNumber: 'ENGINE123',
@@ -170,6 +210,7 @@ test('sanitizes RC Full data before returning it to listing forms', () => {
     mobileNumber: '9999999999',
   }), {
     rcNumber: 'RJ12XJ1234',
+    financer: 'INDUSIND BANK LTD.',
     registrationUpto: '2040-09-05',
     vehicleChasiNumber: 'CHASSIS123',
     vehicleEngineNumber: 'ENGINE123',

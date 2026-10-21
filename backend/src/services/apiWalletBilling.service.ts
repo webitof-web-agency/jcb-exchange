@@ -66,6 +66,15 @@ export type ApiWalletChargeResult = {
   usageId?: string;
 };
 
+export type ApiWalletReversalResult = {
+  reversed: boolean;
+  amountPaise: number;
+  amountRupees: string;
+  balanceRupees: string;
+  serviceKey: ApiBillableServiceKey;
+  usageId: string;
+};
+
 export type ApiBillingGateway = {
   chargeForProviderCall: (input: {
     serviceKey: ApiBillableServiceKey;
@@ -73,6 +82,10 @@ export type ApiBillingGateway = {
     requestedById: string;
     providerAttemptId?: string;
   }) => Promise<ApiWalletChargeResult>;
+  reverseProviderCharge?: (input: {
+    usageId: string;
+    reason?: string;
+  }) => Promise<ApiWalletReversalResult>;
 };
 
 export class ApiWalletBillingError extends Error {
@@ -340,6 +353,94 @@ export class ApiWalletBillingService implements ApiBillingGateway {
         balanceRupees: formatRupeesFromPaise(existing.ledger.balanceAfterPaise),
         serviceKey: existing.serviceKey as ApiBillableServiceKey,
         usageId: existing.id,
+      };
+    }
+  }
+
+  async reverseProviderCharge(input: {
+    usageId: string;
+    reason?: string;
+  }): Promise<ApiWalletReversalResult> {
+    const usageId = requiredString(input.usageId, 'usageId', 100);
+    const reason = input.reason ? requiredString(input.reason, 'reason', 120) : 'provider_request_failed';
+    const idempotencyKey = `provider-reversal:${usageId}`;
+
+    await this.ensureWallet();
+
+    try {
+      return await this.db.$transaction(async (tx: any) => {
+        const existingReversal = await tx.apiWalletLedger.findUnique({ where: { idempotencyKey } });
+        if (existingReversal) {
+          return {
+            reversed: false,
+            amountPaise: existingReversal.amountPaise,
+            amountRupees: formatRupeesFromPaise(existingReversal.amountPaise),
+            balanceRupees: formatRupeesFromPaise(existingReversal.balanceAfterPaise),
+            serviceKey: existingReversal.serviceKey as ApiBillableServiceKey,
+            usageId,
+          };
+        }
+
+        const usage = await tx.apiUsageRecord.findUnique({
+          where: { id: usageId },
+          include: { ledger: true },
+        });
+        if (!usage?.ledger || usage.ledger.type !== 'DEBIT' || usage.amountPaise <= 0) {
+          throw new Error('The provider charge cannot be reversed because its debit ledger is unavailable.');
+        }
+
+        const rows = await tx.$queryRaw<WalletRow[]>`
+          UPDATE "ApiWallet"
+          SET "balancePaise" = "balancePaise" + ${usage.amountPaise},
+              "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "id" = ${usage.walletId}
+          RETURNING "balancePaise"
+        `;
+        const balanceAfterPaise = rows[0]?.balancePaise;
+        if (!Number.isSafeInteger(balanceAfterPaise)) {
+          throw new Error('The provider charge could not be reversed because the wallet is unavailable.');
+        }
+
+        await tx.apiWalletLedger.create({
+          data: {
+            walletId: usage.walletId,
+            type: 'CREDIT',
+            amountPaise: usage.amountPaise,
+            balanceBeforePaise: balanceAfterPaise - usage.amountPaise,
+            balanceAfterPaise,
+            serviceKey: usage.serviceKey,
+            idempotencyKey,
+            requestedById: usage.requestedById,
+            metadata: {
+              reason,
+              source: 'PROVIDER_FAILURE_REVERSAL',
+              verificationRecordId: usage.verificationRecordId,
+              reversalOfLedgerId: usage.ledger.id,
+              reversalOfUsageId: usage.id,
+            },
+          },
+        });
+
+        return {
+          reversed: true,
+          amountPaise: usage.amountPaise,
+          amountRupees: formatRupeesFromPaise(usage.amountPaise),
+          balanceRupees: formatRupeesFromPaise(balanceAfterPaise),
+          serviceKey: usage.serviceKey as ApiBillableServiceKey,
+          usageId,
+        };
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const existingReversal = await this.db.apiWalletLedger.findUnique({ where: { idempotencyKey } });
+      if (!existingReversal) throw error;
+      return {
+        reversed: false,
+        amountPaise: existingReversal.amountPaise,
+        amountRupees: formatRupeesFromPaise(existingReversal.amountPaise),
+        balanceRupees: formatRupeesFromPaise(existingReversal.balanceAfterPaise),
+        serviceKey: existingReversal.serviceKey as ApiBillableServiceKey,
+        usageId,
       };
     }
   }
