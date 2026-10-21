@@ -50,6 +50,8 @@ export const summarizeDeal = (deal: DealRecord, asOn: Date) => {
   const soldBy = saleDate && saleDate <= asOn ? saleDate : null;
   const inStock = Boolean(!deal.isDraft && purchaseDate && purchaseDate <= asOn && !soldBy);
   const stockEnd = soldBy ?? asOn;
+  // Margin, GST and profit only exist once the sale is booked; an unsold vehicle has none yet.
+  const booked = Boolean(saleDate);
   return {
     purchaseDate: purchaseDate?.toISOString().slice(0, 10) ?? null,
     saleDate: saleDate?.toISOString().slice(0, 10) ?? null,
@@ -60,15 +62,15 @@ export const summarizeDeal = (deal: DealRecord, asOn: Date) => {
     costTotal,
     landedCost: round(purchase + costTotal),
     sale,
-    gstAmount: gst.gstAmount,
-    cgst: gst.cgst,
-    sgst: gst.sgst,
-    igst: gst.igst,
+    gstAmount: booked ? gst.gstAmount : 0,
+    cgst: booked ? gst.cgst : 0,
+    sgst: booked ? gst.sgst : 0,
+    igst: booked ? gst.igst : 0,
     taxType: gst.stateClassification,
-    saleExGst: round(sale - gst.gstAmount),
-    margin: gst.marginAmount,
-    profit: gst.netProfitAfterGst,
-    profitPercent: sale > 0 ? round((gst.netProfitAfterGst / sale) * 100) : null,
+    saleExGst: booked ? round(sale - gst.gstAmount) : 0,
+    margin: booked ? gst.marginAmount : 0,
+    profit: booked ? gst.netProfitAfterGst : 0,
+    profitPercent: booked && sale > 0 ? round((gst.netProfitAfterGst / sale) * 100) : null,
     ...exchange,
     sellerPaid: paid.sellerPaid,
     sellerBalance: paid.sellerBalance,

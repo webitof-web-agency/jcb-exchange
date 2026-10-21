@@ -43,6 +43,10 @@ test('stock status follows the as-on date', () => {
   assert.equal(summarizeDeal(deal(), day('2026-08-15')).status, 'NOT_BOOKED', 'not bought yet');
   assert.equal(summarizeDeal(deal({ invoiceGeneratedAt: null, dealStatus: 'RTO_WORK_IN_PROGRESS' }), day('2026-12-01')).status, 'IN_STOCK');
   assert.equal(summarizeDeal(deal({ isDraft: true }), day('2026-12-01')).status, 'DRAFT');
+  const unsold = summarizeDeal(deal({ sellAmount: D(0), invoiceGeneratedAt: null, dealStatus: 'OPEN' }), day('2026-12-01'));
+  assert.equal(unsold.profit, 0, 'no profit before the sale is booked');
+  assert.equal(unsold.gstAmount, 0);
+  assert.equal(unsold.profitPercent, null);
 });
 
 test('exchange values reduce the cash balances like the Sold Vehicles screen', () => {
