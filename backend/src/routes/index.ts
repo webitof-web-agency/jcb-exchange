@@ -26,6 +26,7 @@ import rcMobileNumberCheckRoutes from './rcMobileNumberCheck.routes';
 import mobileToPanLookupRoutes from './mobileToPanLookup.routes';
 import apiWalletBillingRoutes from './apiWalletBilling.routes';
 import publicInvoiceRoutes from './publicInvoice.routes';
+import { financeHubRoutes } from '../modules/finance-hub';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -45,6 +46,7 @@ router.use('/whatsapp', whatsappRoutes);
 router.use('/sms', smsRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/finance', financeRoutes);
+router.use('/finance-hub', financeHubRoutes);
 router.use('/pan-verification', panVerificationRoutes);
 router.use('/gst-verification', gstVerificationRoutes);
 router.use('/driving-license-verification', drivingLicenseVerificationRoutes);

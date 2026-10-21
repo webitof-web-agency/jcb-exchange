@@ -16,6 +16,7 @@ import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
+import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
 import { Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -60,6 +61,7 @@ const navItems = [
   { href: '/superadmin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
   { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
   { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/superadmin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
   { href: '/superadmin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
   { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
   { href: '/superadmin/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText },
@@ -72,6 +74,7 @@ const adminNavItems = [
   { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
   { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/admin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
   { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
   { href: '/admin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
   { href: '/admin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
@@ -92,6 +95,7 @@ const employeeModuleNavItems = [
   { href: '/employee/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee, permissions: ['brands.read'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
   { href: '/employee/analytics', labelKey: 'admin.analytics', icon: BarChart3, permissions: ['analytics.read'] },
+  { href: '/employee/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen, permissions: FINANCE_WORKSPACE_VIEW_PERMISSIONS },
   { href: '/employee/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards, permissions: ['finance.read', 'finance.manage'] },
   { href: '/employee/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText, permissions: ['accounts.sell.read', 'accounts.sell.crud'] },
   { href: '/employee/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo, permissions: ['accounts.rto.read', 'accounts.rto.crud'] },
@@ -584,16 +588,19 @@ export default function AdminLayout({
     '/superadmin/invoices': t('admin.invoices', 'Invoices'),
     '/superadmin/tasks': t('admin.tasks', 'Tasks'),
     '/superadmin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
+    '/superadmin/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
     '/admin/invoices': t('admin.invoices', 'Invoices'),
     '/admin/tasks': t('admin.tasks', 'Tasks'),
     '/admin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
+    '/admin/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
     '/employee/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/employee/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
     '/employee/invoices': t('admin.invoices', 'Invoices'),
     '/employee/tasks': t('admin.tasks', 'Tasks'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
+    '/employee/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
     '/superadmin/verifications': t('admin.partnerVerifications'),
     '/superadmin/identity-hub': t('admin.identityHub', 'Identity Hub'),
     '/superadmin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
@@ -724,7 +731,7 @@ export default function AdminLayout({
     '/vehicle-transport',
     '/visitors',
   ].some((suffix) => Boolean(getVisibleNavItem(suffix))) || canShowPartnersMenu;
-  const hasFinanceNav = ['/finance/expenses', '/recurrence', '/invoices'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  const hasFinanceNav = ['/finance/workspace', '/finance/expenses', '/recurrence', '/invoices'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
   const hasReportsNav = Boolean(getVisibleNavItem('/analytics'));
   const hasCommunicationsNav = ['/whatsapp', '/sms'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
   const hasContentNav = ['/blogs', '/categories', '/brands', '/footer', '/translations'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
@@ -950,6 +957,7 @@ export default function AdminLayout({
               {renderCollapsibleSectionLabel('finance', 'Finance & Accounts', badges.recurrence || 0)}
               {renderCollapsibleSectionBody('finance', (
               <>
+              {renderStandardNavItem(getVisibleNavItem('/finance/workspace'))}
               {renderStandardNavItem(getVisibleNavItem('/invoices'))}
               {renderStandardNavItem(getVisibleNavItem('/finance/expenses'))}
               {renderStandardNavItem(getVisibleNavItem('/recurrence'))}

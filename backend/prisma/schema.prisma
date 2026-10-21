@@ -2653,3 +2653,533 @@ model BlogQuestion {
   @@index([blogPostId, status, createdAt])
   @@index([askedById, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub (Financial Reports & CA Workspace). New tables only; existing
+// finance tables above are read, never altered. See docs/finance-hub/.
+// ---------------------------------------------------------------------------
+
+enum FinPostingMode {
+  OFF
+  SHADOW
+  LIVE
+}
+
+enum FinQueueStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+// Singleton row (id = "default"). postingMode is the kill switch for ledger posting.
+model FinSettings {
+  id                   String         @id @default("default")
+  postingMode          FinPostingMode @default(OFF)
+  baseCurrency         String         @default("INR") @db.VarChar(3)
+  booksBeginDate       DateTime?      @db.Date
+  cashLimitPerVoucher  Decimal?       @db.Decimal(14, 2)
+  cashReceiptLimit     Decimal?       @db.Decimal(14, 2)
+  config               Json?
+  updatedById          String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+model FinAuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  entityType  String   @db.VarChar(60)
+  entityId    String   @db.VarChar(100)
+  action      String   @db.VarChar(40)
+  beforeJson  Json?
+  afterJson   Json?
+  reason      String?  @db.Text
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+}
+
+model FinPostingQueue {
+  id               String         @id @default(uuid())
+  sourceType       String         @db.VarChar(40)
+  sourceId         String         @db.VarChar(100)
+  event            String         @db.VarChar(60)
+  status           FinQueueStatus @default(PENDING)
+  attempts         Int            @default(0)
+  nextRunAt        DateTime       @default(now())
+  lastError        String?        @db.Text
+  resultVoucherIds String[]       @default([])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([sourceType, sourceId])
+}
+
+// --- Finance Hub P1: masters -------------------------------------------------
+
+enum FinGstRegistrationType {
+  REGULAR
+  COMPOSITION
+}
+
+enum FinPeriodStatus {
+  OPEN
+  SOFT_CLOSED
+  LOCKED
+}
+
+enum FinAccountNature {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum FinAccountKind {
+  GENERAL
+  BANK
+  CASH
+  PETTY_CASH
+  WALLET
+  GATEWAY_CLEARING
+  PARTY_CONTROL
+  STOCK
+  TAX
+  FIXED_ASSET
+  ACCUMULATED_DEPRECIATION
+  PREPAID
+  SUSPENSE
+  CLEARING
+  ROUND_OFF
+  EQUITY
+}
+
+enum FinBalanceSide {
+  DR
+  CR
+}
+
+enum FinPartyType {
+  CUSTOMER
+  SELLER
+  PARTNER
+  BROKER
+  AGENT
+  VENDOR
+  EMPLOYEE
+  OTHER
+}
+
+enum FinBankAccountType {
+  CURRENT
+  SAVINGS
+  OD
+  CC
+  VIRTUAL
+  CASH
+  PETTY_CASH
+  WALLET
+  GATEWAY
+}
+
+enum FinCostCentreCategory {
+  BRANCH
+  DEPARTMENT
+  YARD
+  PROJECT
+  OTHER
+}
+
+enum FinVoucherType {
+  JOURNAL
+  PAYMENT
+  RECEIPT
+  CONTRA
+  SALES
+  PURCHASE
+  CREDIT_NOTE
+  DEBIT_NOTE
+  EXPENSE
+  PAYROLL
+  DEPRECIATION
+  OPENING
+  CLOSING
+  WRITE_OFF
+  ADJUSTMENT
+}
+
+// Singleton (id = "default"). Starts as a copy of the company invoice settings.
+model FinCompanyProfile {
+  id                   String   @id @default("default")
+  legalName            String
+  tradeName            String?
+  pan                  String?  @db.VarChar(10)
+  tan                  String?  @db.VarChar(10)
+  cin                  String?  @db.VarChar(21)
+  msmeUdyam            String?  @db.VarChar(30)
+  constitution         String?  @db.VarChar(40)
+  address              String?  @db.Text
+  city                 String?
+  state                String?
+  stateCode            String?  @db.VarChar(2)
+  pinCode              String?  @db.VarChar(6)
+  email                String?
+  phone                String?  @db.VarChar(15)
+  signatoryName        String?
+  signatoryDesignation String?
+  updatedById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model FinGstRegistration {
+  id                  String                 @id @default(uuid())
+  gstin               String                 @unique @db.VarChar(15)
+  stateCode           String                 @db.VarChar(2)
+  stateName           String
+  registrationType    FinGstRegistrationType @default(REGULAR)
+  isDefault           Boolean                @default(false)
+  marginSchemeEnabled Boolean                @default(true)
+  einvoiceApplicable  Boolean                @default(false)
+  isActive            Boolean                @default(true)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+}
+
+model FinFinancialYear {
+  id                   String          @id @default(uuid())
+  label                String          @unique
+  startDate            DateTime        @unique @db.Date
+  endDate              DateTime        @db.Date
+  status               FinPeriodStatus @default(OPEN)
+  isCurrent            Boolean         @default(false)
+  openingFinalizedAt   DateTime?
+  openingFinalizedById String?
+  closedAt             DateTime?
+  closedById           String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  periods         FinPeriod[]
+  numberSeries    FinNumberSeries[]
+  openingBalances FinOpeningBalance[]
+  vouchers        FinVoucher[]
+}
+
+model FinPeriod {
+  id                String          @id @default(uuid())
+  yearId            String
+  label             String
+  startDate         DateTime        @db.Date
+  endDate           DateTime        @db.Date
+  status            FinPeriodStatus @default(OPEN)
+  statusChangedAt   DateTime?
+  statusChangedById String?
+  statusReason      String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  year     FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  vouchers FinVoucher[]
+
+  @@unique([yearId, startDate])
+  @@index([startDate, endDate])
+}
+
+model FinAccountGroup {
+  id         String           @id @default(uuid())
+  code       String           @unique @db.VarChar(12)
+  name       String
+  nature     FinAccountNature
+  parentId   String?
+  sortOrder  Int              @default(0)
+  isSystem   Boolean          @default(false)
+  reportLine String?          @db.VarChar(80)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  parent   FinAccountGroup?  @relation("FinAccountGroupTree", fields: [parentId], references: [id])
+  children FinAccountGroup[] @relation("FinAccountGroupTree")
+  accounts FinAccount[]
+
+  @@index([parentId])
+}
+
+model FinAccount {
+  id                 String         @id @default(uuid())
+  code               String         @unique @db.VarChar(12)
+  name               String
+  groupId            String
+  kind               FinAccountKind @default(GENERAL)
+  normalBalance      FinBalanceSide
+  // Stable handle used by automatic posting (e.g. DEBTORS_CONTROL); seeded accounts only.
+  systemKey          String?        @unique @db.VarChar(60)
+  isSystem           Boolean        @default(false)
+  isActive           Boolean        @default(true)
+  allowManualPosting Boolean        @default(true)
+  requiresParty      Boolean        @default(false)
+  requiresVehicle    Boolean        @default(false)
+  requiresCostCentre Boolean        @default(false)
+  gstApplicable      Boolean        @default(false)
+  defaultGstRate     Decimal?       @db.Decimal(5, 2)
+  hsnSac             String?        @db.VarChar(10)
+  tdsSection         String?        @db.VarChar(10)
+  tallyName          String?
+  description        String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  group           FinAccountGroup     @relation(fields: [groupId], references: [id])
+  categoryMaps    FinCategoryMap[]
+  bankAccount     FinBankAccount?
+  openingBalances FinOpeningBalance[]
+  voucherLines    FinVoucherLine[]
+
+  @@index([groupId])
+  @@index([kind])
+}
+
+// Maps an old FinanceTransaction.category to a ledger account for "Book to ledger".
+model FinCategoryMap {
+  id          String   @id @default(uuid())
+  category    String   @unique
+  accountId   String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account FinAccount @relation(fields: [accountId], references: [id])
+}
+
+model FinParty {
+  id                String         @id @default(uuid())
+  code              String         @unique @db.VarChar(20)
+  name              String
+  types             FinPartyType[]
+  mobile            String?        @db.VarChar(15)
+  altMobile         String?        @db.VarChar(15)
+  email             String?
+  gstin             String?        @db.VarChar(15)
+  pan               String?        @db.VarChar(10)
+  address           String?        @db.Text
+  city              String?
+  state             String?
+  stateCode         String?        @db.VarChar(2)
+  pinCode           String?        @db.VarChar(6)
+  bankName          String?
+  bankAccountNumber String?        @db.VarChar(34)
+  ifsc              String?        @db.VarChar(11)
+  upiId             String?
+  creditLimit       Decimal?       @db.Decimal(14, 2)
+  creditDays        Int?
+  tdsSection        String?        @db.VarChar(10)
+  isActive          Boolean        @default(true)
+  notes             String?        @db.Text
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  links           FinPartyLink[]
+  openingBalances FinOpeningBalance[]
+  vouchers        FinVoucher[]        @relation("FinVoucherParty")
+  voucherLines    FinVoucherLine[]
+
+  @@index([mobile])
+  @@index([gstin])
+  @@index([name])
+}
+
+// Read-only pointer to an existing record (partner profile, sold vehicle seller ...). Never written back.
+model FinPartyLink {
+  id        String   @id @default(uuid())
+  partyId   String
+  linkType  String   @db.VarChar(40)
+  linkId    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  party FinParty @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([linkType, linkId])
+  @@index([partyId])
+}
+
+model FinBankAccount {
+  id                  String             @id @default(uuid())
+  accountId           String             @unique
+  type                FinBankAccountType
+  displayName         String
+  bankName            String?
+  branch              String?
+  accountNumber       String?            @db.VarChar(34)
+  ifsc                String?            @db.VarChar(11)
+  holderName          String?
+  parentBankAccountId String?
+  vanPrefix           String?            @db.VarChar(20)
+  // Old FinanceTransaction.accountName values that belong to this account (e.g. "HDFC BANK").
+  statementAliases    String[]           @default([])
+  overdraftLimit      Decimal?           @db.Decimal(14, 2)
+  custodianUserId     String?
+  isActive            Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  account FinAccount @relation(fields: [accountId], references: [id])
+}
+
+model FinCostCentre {
+  id            String                @id @default(uuid())
+  code          String                @unique @db.VarChar(20)
+  name          String
+  category      FinCostCentreCategory @default(DEPARTMENT)
+  parentId      String?
+  managerUserId String?
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  parent       FinCostCentre?   @relation("FinCostCentreTree", fields: [parentId], references: [id])
+  children     FinCostCentre[]  @relation("FinCostCentreTree")
+  vouchers     FinVoucher[]     @relation("FinVoucherCostCentre")
+  voucherLines FinVoucherLine[]
+}
+
+model FinNumberSeries {
+  id          String         @id @default(uuid())
+  voucherType FinVoucherType
+  yearId      String
+  prefix      String         @db.VarChar(30)
+  nextNumber  Int            @default(1)
+  padLength   Int            @default(5)
+  updatedById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  year FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherType, yearId])
+}
+
+model FinOpeningBalance {
+  id          String    @id @default(uuid())
+  yearId      String
+  // accountId|partyId|billRef: nullable parts would not be unique in PostgreSQL otherwise.
+  lineKey     String    @db.VarChar(260)
+  accountId   String
+  partyId     String?
+  debit       Decimal   @default(0) @db.Decimal(14, 2)
+  credit      Decimal   @default(0) @db.Decimal(14, 2)
+  billRef     String?   @db.VarChar(60)
+  billDate    DateTime? @db.Date
+  dueDate     DateTime? @db.Date
+  note        String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  year    FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  account FinAccount       @relation(fields: [accountId], references: [id])
+  party   FinParty?        @relation(fields: [partyId], references: [id])
+
+  @@unique([yearId, lineKey])
+  @@index([accountId])
+  @@index([partyId])
+}
+
+// --- Finance Hub P2: ledger engine ---------------------------------------------
+
+enum FinVoucherStatus {
+  DRAFT
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
+model FinVoucher {
+  id             String           @id @default(uuid())
+  // Assigned when the voucher is posted; drafts have no number.
+  number         String?          @unique @db.VarChar(60)
+  type           FinVoucherType
+  date           DateTime         @db.Date
+  yearId         String
+  periodId       String
+  status         FinVoucherStatus @default(DRAFT)
+  narration      String           @db.Text
+  reference      String?          @db.VarChar(80)
+  paymentMethod  String?          @db.VarChar(20)
+  partyId        String?
+  // Sold Vehicle (SellAccount) id. Plain id, no foreign key: Sold Vehicles can be hard-deleted.
+  sellAccountId  String?          @db.VarChar(60)
+  costCentreId   String?
+  totalAmount    Decimal          @db.Decimal(14, 2)
+  sourceType     String?          @db.VarChar(40)
+  sourceId       String?          @db.VarChar(100)
+  sourceEvent    String?          @db.VarChar(60)
+  idempotencyKey String?          @unique @db.VarChar(200)
+  sourceHash     String?          @db.VarChar(64)
+  reversalOfId   String?          @unique
+  reversalReason String?          @db.Text
+  rejectReason   String?          @db.Text
+  attachments    Json?
+  createdById    String?
+  updatedById    String?
+  submittedById  String?
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedAt     DateTime?
+  postedById     String?
+  postedAt       DateTime?
+  reversedById   String?
+  reversedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  year       FinFinancialYear @relation(fields: [yearId], references: [id])
+  period     FinPeriod        @relation(fields: [periodId], references: [id])
+  party      FinParty?        @relation("FinVoucherParty", fields: [partyId], references: [id])
+  costCentre FinCostCentre?   @relation("FinVoucherCostCentre", fields: [costCentreId], references: [id])
+  reversalOf FinVoucher?      @relation("FinVoucherReversal", fields: [reversalOfId], references: [id])
+  reversal   FinVoucher?      @relation("FinVoucherReversal")
+  lines      FinVoucherLine[]
+
+  @@index([date, status])
+  @@index([type, date])
+  @@index([status, createdAt])
+  @@index([sourceType, sourceId])
+  @@index([partyId])
+  @@index([sellAccountId])
+}
+
+model FinVoucherLine {
+  id            String   @id @default(uuid())
+  voucherId     String
+  lineNo        Int
+  accountId     String
+  partyId       String?
+  sellAccountId String?  @db.VarChar(60)
+  costCentreId  String?
+  debit         Decimal  @default(0) @db.Decimal(14, 2)
+  credit        Decimal  @default(0) @db.Decimal(14, 2)
+  narration     String?  @db.VarChar(300)
+  billRef       String?  @db.VarChar(60)
+  createdAt     DateTime @default(now())
+
+  voucher    FinVoucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  account    FinAccount     @relation(fields: [accountId], references: [id])
+  party      FinParty?      @relation(fields: [partyId], references: [id])
+  costCentre FinCostCentre? @relation(fields: [costCentreId], references: [id])
+
+  @@index([accountId])
+  @@index([voucherId])
+  @@index([partyId])
+  @@index([sellAccountId])
+  @@index([costCentreId])
+}
