@@ -3,3 +3,4 @@
 export { default as financeHubRoutes } from './routes';
 export { financeHubEvents } from './posting/events';
 export { FH_ALL_PERMISSIONS, FH_ANY_PERMISSIONS, FH_PERMISSIONS } from './permissions';
+export { startFinanceHubWorker } from './posting/worker';

@@ -52,8 +52,8 @@ type VoucherWithLines = Prisma.FinVoucherGetPayload<{ include: typeof voucherInc
 
 // Inside transactions vouchers are loaded with their lines only: nested includes make Prisma
 // run several queries at once on the transaction's single connection.
-const lockedInclude = { lines: { orderBy: { lineNo: 'asc' } } } satisfies Prisma.FinVoucherInclude;
-type LockedVoucher = Prisma.FinVoucherGetPayload<{ include: typeof lockedInclude }>;
+export const lockedInclude = { lines: { orderBy: { lineNo: 'asc' } } } satisfies Prisma.FinVoucherInclude;
+export type LockedVoucher = Prisma.FinVoucherGetPayload<{ include: typeof lockedInclude }>;
 
 /** Sold Vehicle labels for vehicle ids on vouchers (read-only lookup). */
 export const vehicleLabels = async (ids: Array<string | null | undefined>) => {
@@ -93,7 +93,7 @@ export const resolvePeriod = async (tx: Tx, date: Date) => {
   return period;
 };
 
-const loadReferences = async (tx: Tx, input: Pick<VoucherInput, 'lines' | 'partyId' | 'costCentreId' | 'sellAccountId'>): Promise<LedgerReferences> => {
+export const loadReferences = async (tx: Tx, input: Pick<VoucherInput, 'lines' | 'partyId' | 'costCentreId' | 'sellAccountId'>): Promise<LedgerReferences> => {
   const accountIds = Array.from(new Set(input.lines.map((line) => line.accountId)));
   const partyIds = Array.from(new Set([input.partyId, ...input.lines.map((line) => line.partyId)].filter((id): id is string => Boolean(id))));
   const costCentreIds = Array.from(new Set([input.costCentreId, ...input.lines.map((line) => line.costCentreId)].filter((id): id is string => Boolean(id))));
@@ -115,11 +115,11 @@ const loadReferences = async (tx: Tx, input: Pick<VoucherInput, 'lines' | 'party
   };
 };
 
-const lineRows = (lines: VoucherLineInput[]) =>
+export const lineRows = (lines: VoucherLineInput[]) =>
   lines.map((line, index) => ({ ...line, lineNo: index + 1 }));
 
 /** Takes the next number of the series under the row lock that the UPDATE holds until commit. */
-const assignNumber = async (tx: Tx, type: FinVoucherType, year: { id: string; startDate: Date }) => {
+export const assignNumber = async (tx: Tx, type: FinVoucherType, year: { id: string; startDate: Date }) => {
   const series = await tx.finNumberSeries.upsert({
     where: { voucherType_yearId: { voucherType: type, yearId: year.id } },
     create: { voucherType: type, yearId: year.id, prefix: defaultSeriesPrefix(type, year.startDate.getUTCFullYear()), nextNumber: 2 },
@@ -135,7 +135,7 @@ const lockVoucher = async (tx: Tx, id: string) => {
   return voucher;
 };
 
-const auditVoucher = (tx: Tx, access: LedgerAccess, voucher: { id: string; number: string | null; status: FinVoucherStatus; totalAmount: Prisma.Decimal | number }, action: string, extra: Record<string, unknown> = {}) =>
+export const auditVoucher = (tx: Tx, access: LedgerAccess, voucher: { id: string; number: string | null; status: FinVoucherStatus; totalAmount: Prisma.Decimal | number }, action: string, extra: Record<string, unknown> = {}) =>
   writeFinAudit({
     ...access.actor,
     entityType: 'FinVoucher',
@@ -385,7 +385,7 @@ export const rejectVoucher = async (id: string, body: Record<string, unknown>, a
  * Posted vouchers are never edited. Reversal posts the mirror voucher (same type, swapped
  * sides) and marks the original REVERSED; both stay in the books and net to zero.
  */
-const reverseInTx = async (tx: Tx, voucher: LockedVoucher, access: LedgerAccess, reason: string, date: Date, options: { allowSystem: boolean }) => {
+export const reverseInTx = async (tx: Tx, voucher: LockedVoucher, access: LedgerAccess, reason: string, date: Date, options: { allowSystem: boolean }) => {
   if (voucher.status !== 'POSTED') throw badRequest('Only posted vouchers can be reversed.');
   if (voucher.reversalOfId) throw badRequest('This voucher is itself a reversal.');
   if (voucher.sourceType && !options.allowSystem) throw badRequest('This voucher was created automatically. Change its source record instead.');

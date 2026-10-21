@@ -325,6 +325,7 @@ export const PAYMENT_METHOD_SOURCES = [
   { source: 'LISTING_PAYMENT', label: 'Listing payments', methods: ['RTGS', 'RAZORPAY', 'PHONEPE'] },
   { source: 'CUSTOMER_PRIME', label: 'Customer Prime', methods: ['UPI'] },
   { source: 'PARTNER_DEPOSIT', label: 'Partner deposits', methods: ['ONLINE_PAYMENT', 'UPI_PAYMENT', 'NET_BANKING', 'BANK_TRANSFER', 'CASH', 'CHEQUE', 'DEMAND_DRAFT'] },
+  { source: 'API_WALLET', label: 'Verification API wallet recharges', methods: ['RECHARGE'] },
 ] as const;
 
 const SUGGESTED_SYSTEM_KEY: Record<string, string> = { CASH: 'CASH_IN_HAND', RAZORPAY: 'GATEWAY_RAZORPAY', PHONEPE: 'GATEWAY_PHONEPE' };

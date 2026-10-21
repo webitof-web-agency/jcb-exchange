@@ -168,3 +168,114 @@ export const updateFinSettings = async (
     throw error;
   }
 };
+
+// ---------------------------------------------------------------------------
+// Automatic posting (P3). User choices live in config.posting (read-modify-write by admins);
+// worker progress lives in config.postingState and is only written by the worker.
+// ---------------------------------------------------------------------------
+
+export const POSTING_SOURCES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET'] as const;
+export type PostingSource = (typeof POSTING_SOURCES)[number];
+
+export type PostingConfig = {
+  sources: Record<PostingSource, boolean>;
+  /** Sold Vehicle form costs (transport, paperwork, RTO, other) go into the vehicle's stock cost. */
+  capitaliseVehicleCosts: boolean;
+};
+
+export const readPostingConfig = (config: Prisma.JsonValue | null | undefined): PostingConfig => {
+  const posting = (configObject(config).posting ?? {}) as { sources?: Record<string, unknown>; capitaliseVehicleCosts?: unknown };
+  return {
+    sources: Object.fromEntries(POSTING_SOURCES.map((source) => [source, posting.sources?.[source] !== false])) as Record<PostingSource, boolean>,
+    capitaliseVehicleCosts: posting.capitaliseVehicleCosts !== false,
+  };
+};
+
+export type PostingState = {
+  lastSweepAt: string | null;
+  lastRunAt: string | null;
+  lastRunSummary: Record<string, unknown> | null;
+};
+
+export const readPostingState = (config: Prisma.JsonValue | null | undefined): PostingState => {
+  const state = (configObject(config).postingState ?? {}) as Partial<PostingState>;
+  return { lastSweepAt: state.lastSweepAt ?? null, lastRunAt: state.lastRunAt ?? null, lastRunSummary: state.lastRunSummary ?? null };
+};
+
+/** Atomic JSON update so the worker never overwrites an admin's concurrent settings change. */
+export const writePostingState = async (state: PostingState) => {
+  const value = JSON.stringify(state);
+  await prisma.$executeRaw`
+    INSERT INTO "FinSettings" ("id", "config", "updatedAt") VALUES (${FIN_SETTINGS_ID}, jsonb_build_object('postingState', ${value}::jsonb), NOW())
+    ON CONFLICT ("id") DO UPDATE SET "config" = jsonb_set(COALESCE("FinSettings"."config", '{}'::jsonb), '{postingState}', ${value}::jsonb, true)`;
+};
+
+export const buildPostingSettingsUpdate = (body: Record<string, unknown>) => {
+  const mode = body.postingMode === undefined ? undefined : String(body.postingMode);
+  if (mode !== undefined && !(Object.values(FinPostingMode) as string[]).includes(mode)) return { error: 'Posting mode is invalid.' } as const;
+  let sources: Partial<Record<PostingSource, boolean>> | undefined;
+  if (body.sources !== undefined) {
+    if (!body.sources || typeof body.sources !== 'object') return { error: 'Sources must be an object.' } as const;
+    sources = {};
+    for (const [key, value] of Object.entries(body.sources as Record<string, unknown>)) {
+      if (!(POSTING_SOURCES as readonly string[]).includes(key) || typeof value !== 'boolean') return { error: `Invalid source setting ${key}.` } as const;
+      sources[key as PostingSource] = value;
+    }
+  }
+  if (body.capitaliseVehicleCosts !== undefined && typeof body.capitaliseVehicleCosts !== 'boolean') {
+    return { error: 'capitaliseVehicleCosts must be true or false.' } as const;
+  }
+  const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
+  return {
+    data: {
+      postingMode: mode as FinPostingMode | undefined,
+      sources,
+      capitaliseVehicleCosts: body.capitaliseVehicleCosts as boolean | undefined,
+      reason: reason || null,
+    },
+  } as const;
+};
+
+export const updatePostingSettings = async (
+  input: { postingMode?: FinPostingMode | undefined; sources?: Partial<Record<PostingSource, boolean>> | undefined; capitaliseVehicleCosts?: boolean | undefined; reason: string | null },
+  context: { actorUserId: string | null; ipAddress: string | null; userAgent: string | null },
+) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "FinSettings" WHERE id = ${FIN_SETTINGS_ID} FOR UPDATE`;
+      const existing = await tx.finSettings.findUnique({ where: { id: FIN_SETTINGS_ID } });
+      const before = { mode: existing?.postingMode ?? 'OFF', ...readPostingConfig(existing?.config) };
+      const current = readPostingConfig(existing?.config);
+      const posting = {
+        sources: { ...current.sources, ...(input.sources ?? {}) },
+        capitaliseVehicleCosts: input.capitaliseVehicleCosts ?? current.capitaliseVehicleCosts,
+      };
+      const config = { ...configObject(existing?.config), posting } as Prisma.InputJsonValue;
+      const record = await tx.finSettings.upsert({
+        where: { id: FIN_SETTINGS_ID },
+        create: {
+          id: FIN_SETTINGS_ID,
+          cashLimitPerVoucher: DEFAULT_SETTINGS.cashLimitPerVoucher,
+          cashReceiptLimit: DEFAULT_SETTINGS.cashReceiptLimit,
+          config,
+          ...(input.postingMode ? { postingMode: input.postingMode } : {}),
+          updatedById: context.actorUserId,
+        },
+        update: { config, ...(input.postingMode ? { postingMode: input.postingMode } : {}), updatedById: context.actorUserId },
+      });
+      await writeFinAudit({
+        ...context,
+        entityType: 'FinSettings',
+        entityId: FIN_SETTINGS_ID,
+        action: input.postingMode && input.postingMode !== before.mode ? `POSTING_MODE_${input.postingMode}` : 'UPDATE_POSTING_SETTINGS',
+        before,
+        after: { mode: record.postingMode, ...posting },
+        reason: input.reason,
+      }, tx);
+      return { postingMode: record.postingMode, ...posting };
+    });
+  } catch (error) {
+    if (isFinanceHubSchemaMissing(error)) throw new FinanceHubSchemaMissingError();
+    throw error;
+  }
+};

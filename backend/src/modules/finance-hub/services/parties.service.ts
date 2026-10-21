@@ -446,3 +446,47 @@ export const syncPartiesFromRecords = async (body: Record<string, unknown>, cont
     return summary;
   }, { timeout: 60000 });
 };
+
+/**
+ * Finds (or creates) the party for one source record during automatic posting, using the same
+ * matching as the bulk sync: existing link, then GSTIN, then mobile, then exact name when the
+ * record has neither. Source records are only read.
+ */
+export const resolvePartyForCandidate = async (tx: Prisma.TransactionClient, candidate: PartyCandidate) => {
+  const link = await tx.finPartyLink.findUnique({ where: { linkType_linkId: { linkType: candidate.linkType, linkId: candidate.linkId } } });
+  if (link) return link.partyId;
+
+  const match = (candidate.gstin && await tx.finParty.findFirst({ where: { gstin: candidate.gstin }, orderBy: { createdAt: 'asc' } }))
+    || (candidate.mobile && await tx.finParty.findFirst({ where: { mobile: candidate.mobile }, orderBy: { createdAt: 'asc' } }))
+    || (!candidate.gstin && !candidate.mobile
+      ? await tx.finParty.findFirst({ where: { name: { equals: candidate.name, mode: 'insensitive' }, mobile: null, gstin: null }, orderBy: { createdAt: 'asc' } })
+      : null);
+
+  if (match) {
+    await tx.finParty.update({
+      where: { id: match.id },
+      data: {
+        ...(match.types.includes(candidate.type) ? {} : { types: [...match.types, candidate.type] }),
+        links: { create: { linkType: candidate.linkType, linkId: candidate.linkId } },
+      },
+    });
+    return match.id;
+  }
+
+  const code = (await nextPartyCode(tx))(0);
+  const party = await tx.finParty.create({
+    data: {
+      code,
+      name: candidate.name,
+      types: [candidate.type],
+      mobile: candidate.mobile,
+      gstin: candidate.gstin,
+      pan: candidate.gstin ? panFromGstin(candidate.gstin) : null,
+      city: candidate.city,
+      state: candidate.state,
+      stateCode: candidate.gstin ? candidate.gstin.slice(0, 2) : stateCodeForName(candidate.state),
+      links: { create: { linkType: candidate.linkType, linkId: candidate.linkId } },
+    },
+  });
+  return party.id;
+};

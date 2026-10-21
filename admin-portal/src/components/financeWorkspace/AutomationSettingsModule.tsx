@@ -4,8 +4,9 @@ import { FormEvent, useState } from 'react';
 import { Save } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
-import { apiErrorMessage, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
-import { Badge, Button, ErrorBanner, Field, inputClass, LoadingState, ModalFooter, Panel, ReadOnlyNotice, Toggle } from './ui';
+import { apiErrorMessage, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
+import { Button, ErrorBanner, Field, inputClass, LoadingState, ModalFooter, Panel, ReadOnlyNotice, Toggle } from './ui';
+import PostingPanel from './PostingPanel';
 import { useResource } from './useResource';
 
 type Settings = {
@@ -72,13 +73,7 @@ export default function AutomationSettingsModule() {
           {canManage ? <ModalFooter><Button type="submit" variant="primary" busy={busy} icon={<Save className="h-4 w-4" />} disabled={!draft}>Save</Button></ModalFooter> : null}
         </form>
       </Panel>
-      <Panel title="Automatic posting" description="Turns Sold Vehicles, payments, listing payments, Customer Prime, deposits and the API wallet into vouchers.">
-        <div className="flex flex-wrap items-center gap-3 p-5 text-sm text-slate-600">
-          <Badge tone={current.postingMode === 'LIVE' ? 'green' : current.postingMode === 'SHADOW' ? 'amber' : 'slate'}>{current.postingMode}</Badge>
-          <span>Arrives in the next phase. Until then nothing is posted automatically and existing screens are unaffected.</span>
-          {current.approval.threshold ? <span className="text-xs text-slate-400">Current approval limit {formatInr(current.approval.threshold)}</span> : null}
-        </div>
-      </Panel>
+      <PostingPanel />
     </div>
   );
 }

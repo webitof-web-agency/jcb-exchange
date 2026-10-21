@@ -1,6 +1,8 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
@@ -16,7 +18,7 @@ export const statusTone: Record<VoucherStatus, 'slate' | 'amber' | 'green' | 're
 
 type Detail = {
   id: string; number: string | null; type: string; date: string; status: VoucherStatus; narration: string; reference: string | null; paymentMethod: string | null;
-  totalAmount: number; sourceType: string | null; rejectReason: string | null; reversalReason: string | null; createdById: string | null;
+  totalAmount: number; sourceType: string | null; sourceId: string | null; rejectReason: string | null; reversalReason: string | null; createdById: string | null;
   period: { label: string; status: string }; reversalOf: { id: string; number: string | null } | null; reversal: { id: string; number: string | null } | null;
   lines: Array<{ id: string; accountId: string; partyId: string | null; sellAccountId: string | null; costCentreId: string | null; debit: number; credit: number; narration: string | null; account: { code: string; name: string }; party: { name: string } | null; costCentre: { name: string } | null; vehicleLabel: string | null }>;
   activity: Array<{ id: string; action: string; at: string; reason: string | null; actor: string | null }>;
@@ -32,6 +34,8 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
   onOpen: (id: string) => void;
 }) {
   const access = useFinanceWorkspaceAccess();
+  const pathname = usePathname();
+  const rolePrefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
   const detail = useResource(async () => (await api.get(`/finance-hub/vouchers/${voucherId}`)).data as Detail, `voucher-${voucherId}`);
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState<null | 'reject' | 'reverse' | 'delete'>(null);
@@ -75,6 +79,7 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone[voucher.status]}>{enumLabel(voucher.status)}</Badge>
             {voucher.sourceType ? <Badge tone="blue">Auto: {enumLabel(voucher.sourceType)}</Badge> : <Badge>Manual</Badge>}
+            {voucher.sourceType === 'SELL_ACCOUNT' && voucher.sourceId ? <Link href={`${rolePrefix}/accounts/sell-accounts/${voucher.sourceId}`} className="text-xs font-semibold text-blue-700 hover:underline">Open Sold Vehicle</Link> : null}
             {voucher.paymentMethod ? <Badge>{enumLabel(voucher.paymentMethod)}</Badge> : null}
             {voucher.reference ? <span className="text-xs text-slate-500">Ref: <span className="font-mono">{voucher.reference}</span></span> : null}
             {voucher.reversalOf ? <button type="button" onClick={() => onOpen(voucher.reversalOf!.id)} className="text-xs font-semibold text-blue-700 hover:underline">Reversal of {voucher.reversalOf.number}</button> : null}

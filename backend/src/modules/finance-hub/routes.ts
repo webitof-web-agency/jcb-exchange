@@ -3,6 +3,7 @@ import { requireAdminOrEmployeePermissions, requireAuth } from '../../middleware
 import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } from './controllers/foundation.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
+import * as posting from './controllers/posting.controller';
 import { FH_ANY_PERMISSIONS, FH_PERMISSIONS as P } from './permissions';
 
 const router = Router();
@@ -78,5 +79,14 @@ router.get('/reports/trial-balance', bookReaders, ledger.trialBalance);
 router.get('/reports/general-ledger', bookReaders, ledger.generalLedger);
 router.get('/audit-logs', allow([P.caRead, P.caManage, P.settingsManage]), ledger.auditTrail);
 router.get('/vehicles', anyWorkspaceUser, ledger.vehicles);
+
+// Automatic posting (P3)
+router.get('/posting/status', allow([P.settingsManage, P.booksRead, P.booksPost, P.caRead]), posting.getPostingStatus);
+router.put('/posting/settings', settingsManager, posting.putPostingSettings);
+router.post('/posting/run', settingsManager, posting.postRunNow);
+router.post('/posting/preview', settingsManager, posting.postPreview);
+router.post('/posting/queue/retry-failed', settingsManager, posting.postRetryAll);
+router.post('/posting/queue/:id/retry', settingsManager, posting.postRetry);
+router.post('/posting/resync', allow([P.settingsManage, P.booksPost]), posting.postResync);
 
 export default router;
