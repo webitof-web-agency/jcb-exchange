@@ -4,6 +4,7 @@ import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } 
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as posting from './controllers/posting.controller';
+import * as vehicleFinance from './controllers/vehicleFinance.controller';
 import { FH_ANY_PERMISSIONS, FH_PERMISSIONS as P } from './permissions';
 
 const router = Router();
@@ -88,5 +89,13 @@ router.post('/posting/preview', settingsManager, posting.postPreview);
 router.post('/posting/queue/retry-failed', settingsManager, posting.postRetryAll);
 router.post('/posting/queue/:id/retry', settingsManager, posting.postRetry);
 router.post('/posting/resync', allow([P.settingsManage, P.booksPost]), posting.postResync);
+
+
+// Purchases, Sales & Vehicle Finance registers (P4)
+const vehicleReaders = allow([P.vehicleRead, P.vehicleManage, P.purchasesRead, P.purchasesManage, P.salesRead, P.salesManage, P.reportsRead, P.caRead]);
+router.get('/vehicle-finance/register', vehicleReaders, vehicleFinance.vehicleRegister);
+router.get('/vehicle-finance/:id', vehicleReaders, vehicleFinance.vehicleDetail);
+router.get('/ledger-balances', allow([P.purchasesRead, P.purchasesManage, P.salesRead, P.salesManage, P.arapRead, P.arapManage, P.partiesRead, P.booksRead, P.caRead]), vehicleFinance.ledgerBalances);
+router.get('/receipts-register', allow([P.salesRead, P.salesManage, P.arapRead, P.arapManage, P.bankingRead, P.booksRead, P.caRead]), vehicleFinance.receiptsRegister);
 
 export default router;

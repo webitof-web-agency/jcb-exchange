@@ -24,6 +24,11 @@ const TrialBalanceModule = dynamic(() => import('./TrialBalanceModule'), { loadi
 const SuspenseModule = dynamic(() => import('./SuspenseModule'), { loading });
 const AuditTrailModule = dynamic(() => import('./AuditTrailModule'), { loading });
 const AutomationSettingsModule = dynamic(() => import('./AutomationSettingsModule'), { loading });
+const VehicleRegisterModule = dynamic(() => import('./VehicleRegisterModule'), { loading });
+const VehicleLedgerModule = dynamic(() => import('./VehicleLedgerModule'), { loading });
+const LedgerBalancesModule = dynamic(() => import('./LedgerBalancesModule'), { loading });
+const ReceiptsRegisterModule = dynamic(() => import('./ReceiptsRegisterModule'), { loading });
+const SalesInvoicesModule = dynamic(() => import('./SalesInvoicesModule'), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -35,6 +40,15 @@ const PaymentVouchers = () => <VouchersModule title="Payment vouchers" descripti
 const ReceiptVouchers = () => <VouchersModule title="Receipt vouchers" description="Money received into a bank or cash account." types={['RECEIPT']} createTypes={['RECEIPT']} />;
 const ContraVouchers = () => <VouchersModule title="Contra & adjustment vouchers" description="Contra: cash deposits, withdrawals and transfers between own accounts. Adjustment: period-end reclassifications and accruals." types={['CONTRA', 'ADJUSTMENT']} createTypes={['CONTRA', 'ADJUSTMENT']} />;
 const DayBook = () => <VouchersModule title="Day book" description="Every voucher in date order — manual and automatic, drafts to reversals." createTypes={['JOURNAL', 'PAYMENT', 'RECEIPT', 'CONTRA', 'ADJUSTMENT']} />;
+const AllPurchases = () => <VehicleRegisterModule view="purchases" title="All purchases" />;
+const VehiclePurchases = () => <VehicleRegisterModule view="purchases" />;
+const AdditionalCosts = () => <VehicleRegisterModule view="costs" />;
+const SellerAdvances = () => <LedgerBalancesModule systemKey="SELLER_ADVANCES" title="Seller advances" description="Money paid to sellers before the purchase was booked, still waiting to be adjusted. Adjustment happens automatically when the purchase is booked." />;
+const AllSales = () => <VehicleRegisterModule view="sales" />;
+const CostSheet = () => <VehicleRegisterModule view="costsheet" />;
+const ProfitMargin = () => <VehicleRegisterModule view="profit" />;
+const StockValuation = () => <VehicleRegisterModule view="stock" />;
+const ExchangeTransactions = () => <VehicleRegisterModule view="exchange" />;
 const PendingApprovals = () => <VouchersModule title="Pending approvals" description="Vouchers waiting for a checker. Open one to approve and post it, or reject it back to the maker with a reason." createTypes={[]} fixedStatuses={['PENDING_APPROVAL']} />;
 
 export const financeWorkspaceScreens: Record<string, ComponentType> = {
@@ -61,4 +75,16 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'suspense-account': SuspenseModule,
   'audit-trail': AuditTrailModule,
   'automation-approval-rules': AutomationSettingsModule,
+  'all-purchases': AllPurchases,
+  'vehicle-purchase-list': VehiclePurchases,
+  'additional-purchase-costs': AdditionalCosts,
+  'seller-advances': SellerAdvances,
+  'all-sales': AllSales,
+  'sales-invoices': SalesInvoicesModule,
+  'customer-receipts': ReceiptsRegisterModule,
+  'vehicle-wise-ledger': VehicleLedgerModule,
+  'vehicle-cost-sheet': CostSheet,
+  'vehicle-profit-margin': ProfitMargin,
+  'stock-valuation': StockValuation,
+  'exchange-transactions': ExchangeTransactions,
 };
