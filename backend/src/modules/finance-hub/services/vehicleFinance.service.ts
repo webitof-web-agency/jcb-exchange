@@ -94,22 +94,26 @@ const bookFigures = async (vehicleIds: string[], includeDrafts: boolean) => {
       where: { sellAccountId: { in: vehicleIds }, voucher: { status: { in: ledgerStatuses(includeDrafts) } } },
       _sum: { debit: true, credit: true },
     }),
-    prisma.finAccount.findMany({ where: { systemKey: { not: null } }, select: { id: true, systemKey: true } }),
+    prisma.finAccount.findMany({ select: { id: true, systemKey: true, group: { select: { nature: true } } } }),
   ]);
-  const keyOf = new Map(accounts.map((account) => [account.id, account.systemKey!]));
+  const accountOf = new Map(accounts.map((account) => [account.id, account]));
   const result = new Map<string, Record<string, number>>();
   for (const row of rows) {
     if (!row.sellAccountId) continue;
-    const key = keyOf.get(row.accountId) ?? 'OTHER';
+    const account = accountOf.get(row.accountId);
+    const net = num(row._sum.debit) - num(row._sum.credit);
     const entry = result.get(row.sellAccountId) ?? {};
-    entry[key] = round((entry[key] ?? 0) + num(row._sum.debit) - num(row._sum.credit));
+    const key = account?.systemKey ?? 'OTHER';
+    entry[key] = round((entry[key] ?? 0) + net);
+    // Every income/expense line tagged to the vehicle: the vehicle's full deal result.
+    if (account && (account.group.nature === 'INCOME' || account.group.nature === 'EXPENSE')) entry.__PNL = round((entry.__PNL ?? 0) - net);
     result.set(row.sellAccountId, entry);
   }
   return result;
 };
 
 const booksFor = (figures: Record<string, number> | undefined, sourceProfit: number) => {
-  if (!figures) return { hasEntries: false, stock: 0, exchangeClearing: 0, exchangeStock: 0, costClearing: 0, salesIncome: 0, cogs: 0, profit: 0, difference: null as number | null };
+  if (!figures) return { hasEntries: false, stock: 0, exchangeClearing: 0, exchangeStock: 0, costClearing: 0, salesIncome: 0, cogs: 0, profit: 0, dealProfit: 0, difference: null as number | null };
   const salesIncome = -(figures.VEHICLE_SALES_MARGIN ?? 0) - (figures.VEHICLE_SALES_REGULAR ?? 0);
   const cogs = figures.COGS_VEHICLES ?? 0;
   const profit = round(salesIncome - cogs);
@@ -122,6 +126,8 @@ const booksFor = (figures: Record<string, number> | undefined, sourceProfit: num
     salesIncome: round(salesIncome),
     cogs: round(cogs),
     profit,
+    // Includes brokerage, partner share, consignment commission and costs booked on the vehicle.
+    dealProfit: figures.__PNL ?? 0,
     difference: salesIncome || cogs ? round(profit - sourceProfit) : null,
   };
 };

@@ -76,6 +76,16 @@ export const buildAccountLookup = (
   };
 };
 
+// Deal terms arrive with a later migration; until it is applied, vehicles post without them.
+// Checked before querying because a failed query would abort the whole sync transaction.
+let dealTermsTable = false;
+const dealTermsInstalled = async (tx: Tx) => {
+  if (dealTermsTable) return true;
+  const [row] = await tx.$queryRaw<Array<{ ok: boolean }>>`SELECT to_regclass('"FinVehicleDealExt"') IS NOT NULL AS ok`;
+  dealTermsTable = Boolean(row?.ok);
+  return dealTermsTable;
+};
+
 type SyncContext = { accounts: AccountLookup; booksBegin: Date; capitaliseCosts: boolean };
 
 const loadContext = async (tx: Tx): Promise<SyncContext> => {
@@ -132,7 +142,22 @@ const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId:
       };
       const sellerPartyId = needsSeller ? await resolvePartyForCandidate(tx, seller) : null;
       const purchaserPartyId = needsPurchaser ? await resolvePartyForCandidate(tx, purchaser) : null;
-      return buildSellAccountVouchers(deal, { accounts: context.accounts, sellerPartyId, purchaserPartyId, booksBegin: context.booksBegin, capitaliseCosts: context.capitaliseCosts });
+      const ext = (await dealTermsInstalled(tx)) ? await tx.finVehicleDealExt.findUnique({ where: { sellAccountId: deal.id } }) : null;
+      const terms = ext
+        ? {
+            dealMode: ext.dealMode,
+            consignorPartyId: ext.consignorPartyId,
+            consignmentCommission: ext.consignmentCommission,
+            brokerPartyId: ext.brokerPartyId,
+            brokeragePayable: ext.brokeragePayable,
+            brokerageReceivable: ext.brokerageReceivable,
+            brokerageReceivablePartyId: ext.brokerageReceivablePartyId,
+            partnerPartyId: ext.partnerPartyId,
+            partnerShareAmount: ext.partnerShareAmount,
+          }
+        : null;
+      const companyState = ext ? (await getAppSettings()).companyInvoice.state : null;
+      return buildSellAccountVouchers(deal, { accounts: context.accounts, sellerPartyId, purchaserPartyId, booksBegin: context.booksBegin, capitaliseCosts: context.capitaliseCosts, terms, companyState });
     }
     case 'LISTING_PAYMENT': {
       const payment = await tx.listingPaymentSubmission.findUnique({

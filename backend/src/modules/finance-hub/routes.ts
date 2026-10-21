@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAdminOrEmployeePermissions, requireAuth } from '../../middlewares/auth.middleware';
 import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } from './controllers/foundation.controller';
+import * as documents from './controllers/documents.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as posting from './controllers/posting.controller';
@@ -97,5 +98,27 @@ router.get('/vehicle-finance/register', vehicleReaders, vehicleFinance.vehicleRe
 router.get('/vehicle-finance/:id', vehicleReaders, vehicleFinance.vehicleDetail);
 router.get('/ledger-balances', allow([P.purchasesRead, P.purchasesManage, P.salesRead, P.salesManage, P.arapRead, P.arapManage, P.partiesRead, P.booksRead, P.caRead]), vehicleFinance.ledgerBalances);
 router.get('/receipts-register', allow([P.salesRead, P.salesManage, P.arapRead, P.arapManage, P.bankingRead, P.booksRead, P.caRead]), vehicleFinance.receiptsRegister);
+
+// Bills, invoices, notes, deal terms and settlements (P4b)
+const documentReaders = allow([P.purchasesRead, P.purchasesManage, P.salesRead, P.salesManage, P.booksRead, P.booksPost, P.arapRead, P.reportsRead, P.caRead]);
+const documentMakers = allow([P.purchasesManage, P.salesManage]);
+router.get('/documents', documentReaders, documents.documents);
+router.get('/documents/:id', documentReaders, documents.documentById);
+router.post('/documents', documentMakers, documents.newDocument);
+router.put('/documents/:id', documentMakers, documents.editDocument);
+router.delete('/documents/:id', documentMakers, documents.removeDocument);
+router.post('/documents/:id/post', allow([P.booksPost]), documents.postDocumentToBooks);
+router.post('/documents/:id/cancel', allow([P.booksPost]), documents.cancelPostedDocument);
+
+router.get('/deal-terms', vehicleReaders, documents.dealTermsList);
+router.get('/deal-terms/:id', vehicleReaders, documents.dealTerms);
+router.put('/deal-terms/:id', allow([P.vehicleManage]), documents.putDealTerms);
+
+const settlementReaders = allow([P.vehicleRead, P.vehicleManage, P.arapRead, P.arapManage, P.booksRead, P.booksPost, P.caRead]);
+router.get('/settlements/payables', settlementReaders, documents.payables);
+router.get('/settlements', settlementReaders, documents.settlements);
+router.post('/settlements', allow([P.vehicleManage, P.arapManage]), documents.newSettlement);
+router.post('/settlements/:id/pay', allow([P.booksPost]), documents.paySettlementNow);
+router.post('/settlements/:id/cancel', allow([P.booksPost]), documents.cancelSettlementNow);
 
 export default router;

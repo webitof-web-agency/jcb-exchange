@@ -14,6 +14,7 @@ import {
   splitInclusiveGst,
   voucherHash,
   type AccountLookup,
+  type DealTerms,
   type DesiredVoucher,
   type SellAccountSource,
 } from './builders';
@@ -165,4 +166,54 @@ test('cash/bank lookup uses the mapping, then sensible defaults, then asks for a
   const twoBanks = buildAccountLookup([...ledgers, { id: 'sbi', code: '1303', systemKey: null, kind: 'BANK' as const, isActive: true }], {});
   assert.throws(() => twoBanks.cashBank('LISTING_PAYMENT', 'RTGS'), /Choose the bank\/cash account/);
   assert.throws(() => lookup.system('MISSING_KEY'), /Install the default chart/);
+});
+
+const terms = (overrides: Partial<DealTerms> = {}): DealTerms => ({
+  dealMode: 'OUTRIGHT', consignorPartyId: null, consignmentCommission: null, brokerPartyId: null, brokeragePayable: D(0),
+  brokerageReceivable: D(0), brokerageReceivablePartyId: null, partnerPartyId: null, partnerShareAmount: D(0), ...overrides,
+});
+
+test('consignment: no stock, the owner is owed the sale price less our commission', () => {
+  const vouchers = buildSellAccountVouchers(deal(), ctx({ terms: terms({ dealMode: 'CONSIGNMENT', consignorPartyId: 'owner', consignmentCommission: D(118000) }), companyState: 'Maharashtra' }));
+  assertBalanced(vouchers);
+  assert.ok(!vouchers.some((voucher) => voucher.key === 'PURCHASE' || voucher.key === 'COGS'));
+  assert.equal(net(vouchers, 'S:VEHICLE_STOCK').toNumber(), 0);
+  assert.equal(net(vouchers, 'S:CONSIGNMENT_COMMISSION_INCOME').toNumber(), -100000);
+  assert.equal(net(vouchers, 'S:GST_OUTPUT_CGST').toNumber(), -9000);
+  assert.equal(net(vouchers, 'C:5201').toNumber(), 20000, 'costs are expensed, not capitalised');
+  // 12,00,000 sale − 1,18,000 commission = 10,82,000 owed; 10,00,000 already paid to the owner.
+  const owed = vouchers.flatMap((voucher) => voucher.lines).filter((line) => line.accountId === 'S:CONSIGNMENT_PAYABLE');
+  assert.ok(owed.every((line) => line.partyId === 'owner'));
+  assert.equal(net(vouchers, 'S:CONSIGNMENT_PAYABLE').toNumber(), -82000);
+  assert.equal(net(vouchers, 'S:CREDITORS_CONTROL').toNumber(), 0);
+});
+
+test('consignment commission defaults to sale minus purchase and is IGST across states', () => {
+  const vouchers = buildSellAccountVouchers(deal({ sellerState: 'Gujarat' }), ctx({ terms: terms({ dealMode: 'CONSIGNMENT' }), companyState: 'Maharashtra' }));
+  assertBalanced(vouchers);
+  const sale = byKey(vouchers, 'SALE');
+  assert.equal(net([sale], 'S:CONSIGNMENT_PAYABLE').toNumber(), -1000000);
+  assert.equal(net([sale], 'S:GST_OUTPUT_IGST').plus(net([sale], 'S:CONSIGNMENT_COMMISSION_INCOME')).toNumber(), -200000);
+  assert.ok(net([sale], 'S:GST_OUTPUT_IGST').lessThan(0));
+  assert.equal(sale.lines.find((line) => line.accountId === 'S:CONSIGNMENT_PAYABLE')?.partyId, 'seller', 'seller is the consignor by default');
+});
+
+test('brokerage payable, brokerage income and partner share are separate balanced vouchers', () => {
+  const vouchers = buildSellAccountVouchers(deal(), ctx({
+    terms: terms({ brokerPartyId: 'broker', brokeragePayable: D(15000), brokerageReceivable: D(11800), partnerPartyId: 'partner', partnerShareAmount: D(50000) }),
+    companyState: 'Maharashtra',
+  }));
+  assertBalanced(vouchers);
+  const payable = byKey(vouchers, 'BROKERAGE_PAYABLE');
+  assert.equal(net([payable], 'S:BROKER_PAYABLES').toNumber(), -15000);
+  assert.equal(payable.lines.find((line) => line.accountId === 'S:BROKER_PAYABLES')?.partyId, 'broker');
+  const income = byKey(vouchers, 'BROKERAGE_INCOME');
+  assert.equal(net([income], 'S:BROKERAGE_INCOME').toNumber(), -10000);
+  assert.equal(income.lines[0]?.partyId, 'buyer', 'purchaser pays the brokerage by default');
+  const share = byKey(vouchers, 'PARTNER_SHARE');
+  assert.equal(share.date.toISOString().slice(0, 10), '2026-10-10');
+  assert.equal(net([share], 'S:PARTNER_PAYABLES').toNumber(), -50000);
+
+  const unsold = buildSellAccountVouchers(deal({ invoiceGeneratedAt: null, dealStatus: 'RTO_WORK_IN_PROGRESS', payments: [] }), ctx({ terms: terms({ partnerPartyId: 'partner', partnerShareAmount: D(50000) }) }));
+  assert.ok(!unsold.some((voucher) => voucher.key === 'PARTNER_SHARE'), 'partner share waits for the sale');
 });

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import api from '@/lib/api';
 import { enumLabel, formatDate, formatInr } from '@/lib/financeWorkspaceClient';
 import { Badge, EmptyState, ErrorBanner, LoadingState, Tabs, tableHeadClass } from './ui';
+import DealTermsPanel from './DealTermsPanel';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -21,7 +22,7 @@ export type VehicleDetailData = {
     costTotal: number; landedCost: number; sale: number; gstAmount: number; cgst: number; sgst: number; igst: number; taxType: string; saleExGst: number; margin: number; profit: number;
     profitPercent: number | null; purchaseExchangeValue: number; saleExchangeValue: number; sellerPaid: number; sellerBalance: number; purchaserReceived: number; purchaserBalance: number;
   };
-  books: { hasEntries: boolean; stock: number; exchangeClearing: number; exchangeStock: number; costClearing: number; salesIncome: number; cogs: number; profit: number; difference: number | null };
+  books: { hasEntries: boolean; stock: number; exchangeClearing: number; exchangeStock: number; costClearing: number; salesIncome: number; cogs: number; profit: number; dealProfit: number; difference: number | null };
   postings: { purchase: PostingRef; costs: PostingRef; sale: PostingRef; cogs: PostingRef };
   payments: Array<{ id: string; side: string; amount: number; paymentDate: string; method: string; reference: string | null; voucher: PostingRef }>;
   ledger: Array<{ id: string; date: string; voucherId: string; voucherNumber: string | null; voucherType: string; status: string; narration: string; account: string; party: string | null; debit: number; credit: number }>;
@@ -33,7 +34,7 @@ export const vehicleStatusTone = { SOLD: 'green', IN_STOCK: 'blue', DRAFT: 'slat
 const PostingBadge = ({ posting }: { posting: PostingRef }) =>
   !posting ? <Badge tone="amber">Not in books</Badge> : posting.status === 'POSTED' ? <Badge tone="green">{posting.number}</Badge> : <Badge>Draft</Badge>;
 
-type Tab = 'cost' | 'ledger' | 'payments';
+type Tab = 'cost' | 'ledger' | 'payments' | 'terms';
 
 /** Everything about one vehicle: cost sheet, books vs Sold Vehicles, payments and its ledger. */
 export default function VehicleDetail({ vehicleId, includeDrafts, initialTab = 'cost' }: { vehicleId: string; includeDrafts: boolean; initialTab?: Tab }) {
@@ -83,14 +84,15 @@ export default function VehicleDetail({ vehicleId, includeDrafts, initialTab = '
             {books.stock ? <span className="text-xs text-slate-500">Stock {formatInr(books.stock)}</span> : null}
             {books.costClearing ? <span className="text-xs text-slate-500">Cost clearing {formatInr(Math.abs(books.costClearing))} unpaid</span> : null}
             {books.exchangeClearing ? <span className="text-xs text-slate-500">Exchange clearing {formatInr(books.exchangeClearing)}</span> : null}
+            {books.dealProfit !== books.profit ? <span className="text-xs font-semibold text-slate-700" title="All income and expense booked on this vehicle: brokerage, partner share, consignment commission and costs">Deal result {formatInr(books.dealProfit)}</span> : null}
           </>
         ) : <span className="text-slate-500">No entries yet (automatic posting off, waiting, or before books begin).</span>}
         <span className="ml-auto flex flex-wrap gap-1 text-xs">Purchase <PostingBadge posting={postings.purchase} /> Sale <PostingBadge posting={postings.sale} /></span>
       </div>
 
-      <Tabs<Tab> tabs={[{ key: 'cost', label: 'Cost sheet' }, { key: 'ledger', label: `Ledger (${ledger.length})` }, { key: 'payments', label: `Payments (${payments.length})` }]} active={tab} onChange={setTab} />
+      <Tabs<Tab> tabs={[{ key: 'cost', label: 'Cost sheet' }, { key: 'ledger', label: `Ledger (${ledger.length})` }, { key: 'payments', label: `Payments (${payments.length})` }, { key: 'terms', label: 'Deal terms' }]} active={tab} onChange={setTab} />
 
-      {tab === 'cost' ? (
+      {tab === 'terms' ? <DealTermsPanel vehicleId={vehicle.id} sale={summary.sale} purchase={summary.purchase} onSaved={detail.reload} /> : tab === 'cost' ? (
         <div className="overflow-x-auto p-5">
           <table className="w-full min-w-[520px] text-left text-sm">
             <tbody className="divide-y divide-slate-100">

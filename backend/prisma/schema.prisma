@@ -2942,6 +2942,7 @@ model FinAccount {
   bankAccount     FinBankAccount?
   openingBalances FinOpeningBalance[]
   voucherLines    FinVoucherLine[]
+  documentLines   FinDocumentLine[]   @relation("FinDocumentLineAccount")
 
   @@index([groupId])
   @@index([kind])
@@ -2991,6 +2992,8 @@ model FinParty {
   openingBalances FinOpeningBalance[]
   vouchers        FinVoucher[]        @relation("FinVoucherParty")
   voucherLines    FinVoucherLine[]
+  documents       FinDocument[]          @relation("FinDocumentParty")
+  settlements     FinPartnerSettlement[] @relation("FinSettlementParty")
 
   @@index([mobile])
   @@index([gstin])
@@ -3182,4 +3185,163 @@ model FinVoucherLine {
   @@index([partyId])
   @@index([sellAccountId])
   @@index([costCentreId])
+}
+
+// --- Finance Hub P4b: documents, deal terms, settlements --------------------
+
+enum FinDocumentType {
+  PURCHASE_BILL
+  SALES_INVOICE
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum FinDocumentStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum FinNoteReason {
+  RETURN
+  PRICE_CHANGE
+  DISCOUNT
+  DEFICIENCY
+  OTHER
+}
+
+enum FinDealMode {
+  OUTRIGHT
+  CONSIGNMENT
+}
+
+// Purchase bills, other sales invoices and credit/debit notes. Posting creates one voucher
+// (sourceType DOCUMENT); cancelling reverses it.
+model FinDocument {
+  id                String            @id @default(uuid())
+  docType           FinDocumentType
+  status            FinDocumentStatus @default(DRAFT)
+  // Our number: the posted voucher's number. Drafts have none.
+  number            String?           @unique @db.VarChar(60)
+  partyDocNumber    String?           @db.VarChar(60)
+  date              DateTime          @db.Date
+  dueDate           DateTime?         @db.Date
+  partyId           String
+  placeOfSupply     String?           @db.VarChar(2)
+  isIntraState      Boolean           @default(true)
+  isReverseCharge   Boolean           @default(false)
+  reason            FinNoteReason?
+  againstDocumentId String?
+  againstReference  String?           @db.VarChar(80)
+  sellAccountId     String?           @db.VarChar(60)
+  notes             String?           @db.Text
+  subTotal          Decimal           @default(0) @db.Decimal(14, 2)
+  cgst              Decimal           @default(0) @db.Decimal(14, 2)
+  sgst              Decimal           @default(0) @db.Decimal(14, 2)
+  igst              Decimal           @default(0) @db.Decimal(14, 2)
+  tdsSection        String?           @db.VarChar(10)
+  tdsAmount         Decimal           @default(0) @db.Decimal(14, 2)
+  roundOff          Decimal           @default(0) @db.Decimal(14, 2)
+  total             Decimal           @default(0) @db.Decimal(14, 2)
+  voucherId         String?           @unique
+  cancelReason      String?           @db.Text
+  createdById       String?
+  updatedById       String?
+  postedById        String?
+  postedAt          DateTime?
+  cancelledById     String?
+  cancelledAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  party           FinParty            @relation("FinDocumentParty", fields: [partyId], references: [id])
+  againstDocument FinDocument?        @relation("FinDocumentAgainst", fields: [againstDocumentId], references: [id])
+  notesAgainst    FinDocument[]       @relation("FinDocumentAgainst")
+  lines           FinDocumentLine[]
+
+  @@index([docType, date])
+  @@index([partyId, docType])
+  @@index([status, docType])
+  @@index([sellAccountId])
+}
+
+model FinDocumentLine {
+  id            String   @id @default(uuid())
+  documentId    String
+  lineNo        Int
+  description   String   @db.VarChar(300)
+  accountId     String
+  hsnSac        String?  @db.VarChar(10)
+  quantity      Decimal  @default(1) @db.Decimal(12, 3)
+  rate          Decimal  @db.Decimal(14, 2)
+  discount      Decimal  @default(0) @db.Decimal(14, 2)
+  taxableValue  Decimal  @db.Decimal(14, 2)
+  gstRate       Decimal  @default(0) @db.Decimal(5, 2)
+  cgst          Decimal  @default(0) @db.Decimal(14, 2)
+  sgst          Decimal  @default(0) @db.Decimal(14, 2)
+  igst          Decimal  @default(0) @db.Decimal(14, 2)
+  itcEligible   Boolean  @default(true)
+  sellAccountId String?  @db.VarChar(60)
+  costCentreId  String?
+
+  document FinDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  account  FinAccount  @relation("FinDocumentLineAccount", fields: [accountId], references: [id])
+
+  @@index([documentId])
+  @@index([accountId])
+  @@index([sellAccountId])
+}
+
+// Finance terms of one Sold Vehicle that the Sold Vehicle form does not hold. Keyed by the
+// SellAccount id without a foreign key, so Sold Vehicle deletes keep working.
+model FinVehicleDealExt {
+  id                       String      @id @default(uuid())
+  sellAccountId            String      @unique @db.VarChar(60)
+  dealMode                 FinDealMode @default(OUTRIGHT)
+  consignorPartyId         String?
+  consignmentCommission    Decimal?    @db.Decimal(14, 2)
+  brokerPartyId            String?
+  brokeragePayable         Decimal     @default(0) @db.Decimal(14, 2)
+  brokerageReceivable      Decimal     @default(0) @db.Decimal(14, 2)
+  brokerageReceivablePartyId String?
+  partnerPartyId           String?
+  partnerShareAmount       Decimal     @default(0) @db.Decimal(14, 2)
+  notes                    String?     @db.Text
+  updatedById              String?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+}
+
+enum FinSettlementStatus {
+  DRAFT
+  PAID
+  CANCELLED
+}
+
+// Payout to a partner, broker or consignor against their open payables.
+model FinPartnerSettlement {
+  id               String              @id @default(uuid())
+  partyId          String
+  status           FinSettlementStatus @default(DRAFT)
+  date             DateTime            @db.Date
+  bankAccountId    String?
+  paymentMethod    String?             @db.VarChar(20)
+  reference        String?             @db.VarChar(80)
+  grossAmount      Decimal             @db.Decimal(14, 2)
+  tdsSection       String?             @db.VarChar(10)
+  tdsAmount        Decimal             @default(0) @db.Decimal(14, 2)
+  netAmount        Decimal             @db.Decimal(14, 2)
+  lines            Json
+  notes            String?             @db.Text
+  voucherId        String?             @unique
+  createdById      String?
+  paidById         String?
+  paidAt           DateTime?
+  cancelReason     String?             @db.Text
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  party FinParty @relation("FinSettlementParty", fields: [partyId], references: [id])
+
+  @@index([partyId, status])
 }

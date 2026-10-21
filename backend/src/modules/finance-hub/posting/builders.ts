@@ -126,9 +126,35 @@ export const vehicleCosts = (deal: Pick<SellAccountSource, 'expenseBreakdown' | 
     .filter((head) => head.amount.greaterThan(0));
 };
 
+/** Finance terms held outside the Sold Vehicle form (FinVehicleDealExt). */
+export type DealTerms = {
+  dealMode: 'OUTRIGHT' | 'CONSIGNMENT';
+  consignorPartyId: string | null;
+  consignmentCommission: Prisma.Decimal | null;
+  brokerPartyId: string | null;
+  brokeragePayable: Prisma.Decimal;
+  brokerageReceivable: Prisma.Decimal;
+  brokerageReceivablePartyId: string | null;
+  partnerPartyId: string | null;
+  partnerShareAmount: Prisma.Decimal;
+};
+
+const SERVICE_GST_RATE = 18;
+/** Missing state on either side is treated as a local (intra-state) supply. */
+const isIntraState = (companyState: string | null | undefined, otherState: string | null | undefined) => {
+  const company = (companyState || '').trim().toLowerCase();
+  const other = (otherState || '').trim().toLowerCase();
+  return !company || !other || company === other;
+};
+
+const gstCredits = (accounts: AccountLookup, split: { cgst: Prisma.Decimal; sgst: Prisma.Decimal; igst: Prisma.Decimal }, sellAccountId: string) =>
+  ([['GST_OUTPUT_CGST', split.cgst], ['GST_OUTPUT_SGST', split.sgst], ['GST_OUTPUT_IGST', split.igst]] as Array<[string, Prisma.Decimal]>)
+    .filter(([, amount]) => amount.greaterThan(0))
+    .map(([key, amount]) => credit(accounts.system(key), amount, { sellAccountId, narration: 'GST on service' }));
+
 export const buildSellAccountVouchers = (
   deal: SellAccountSource,
-  context: { accounts: AccountLookup; sellerPartyId: string | null; purchaserPartyId: string | null; booksBegin: Date; capitaliseCosts: boolean },
+  context: { accounts: AccountLookup; sellerPartyId: string | null; purchaserPartyId: string | null; booksBegin: Date; capitaliseCosts: boolean; terms?: DealTerms | null; companyState?: string | null },
 ): DesiredVoucher[] => {
   if (deal.isDraft || deal.deletedAt) return [];
   const { accounts, booksBegin } = context;
@@ -142,11 +168,34 @@ export const buildSellAccountVouchers = (
   const ownStock = deal.sourceType === 'JCB_EXCHANGE';
   const Ps = context.sellerPartyId;
   const Pc = context.purchaserPartyId;
+  const terms = context.terms ?? null;
+  // Consignment: the vehicle never becomes our stock; we owe the sale price less our commission.
+  const consignment = terms?.dealMode === 'CONSIGNMENT';
+  const consignor = terms?.consignorPartyId ?? Ps;
+  const capitaliseCosts = context.capitaliseCosts && !consignment;
   const costs = vehicleCosts(deal);
   const costTotal = sumMoney(costs.map((cost) => cost.amount));
 
+  if (consignment) {
+    const costDate = purchaseDateOf(deal);
+    if (costTotal.greaterThan(0) && withinBooks(costDate, booksBegin)) {
+      vouchers.push({
+        key: 'COSTS',
+        type: 'JOURNAL',
+        date: costDate,
+        narration: `Vehicle costs (consignment) ${label}`,
+        reference: deal.recordNumber,
+        sellAccountId: V,
+        lines: [
+          ...costs.map((cost) => debit(accounts.code(cost.code), cost.amount, { sellAccountId: V, narration: cost.label })),
+          credit(accounts.system('VEHICLE_EXPENSE_CLEARING'), costTotal, { sellAccountId: V }),
+        ],
+      });
+    }
+  }
+
   // R1 purchase
-  if (purchaseDate && withinBooks(purchaseDate, booksBegin)) {
+  if (purchaseDate && withinBooks(purchaseDate, booksBegin) && !consignment) {
     if (!ownStock && !Ps) throw new PostingError(`${deal.recordNumber}: seller party could not be resolved.`);
     vouchers.push({
       key: 'PURCHASE',
@@ -192,7 +241,7 @@ export const buildSellAccountVouchers = (
         reference: deal.recordNumber,
         sellAccountId: V,
         lines: [
-          ...costs.map((cost) => debit(context.capitaliseCosts ? accounts.system('VEHICLE_STOCK') : accounts.code(cost.code), cost.amount, { sellAccountId: V, narration: cost.label })),
+          ...costs.map((cost) => debit(capitaliseCosts ? accounts.system('VEHICLE_STOCK') : accounts.code(cost.code), cost.amount, { sellAccountId: V, narration: cost.label })),
           credit(accounts.system('VEHICLE_EXPENSE_CLEARING'), costTotal, { sellAccountId: V }),
         ],
       });
@@ -200,7 +249,32 @@ export const buildSellAccountVouchers = (
   }
 
   // R3 sale (margin scheme, GST from the existing Sold Vehicles calculation) + R3c COGS + R3x
-  if (saleDate && withinBooks(saleDate, booksBegin)) {
+  if (saleDate && withinBooks(saleDate, booksBegin) && consignment) {
+    if (!Pc) throw new PostingError(`${deal.recordNumber}: purchaser party could not be resolved.`);
+    if (!consignor) throw new PostingError(`${deal.recordNumber}: choose the consignor (owner) in the deal terms.`);
+    const fallback = sellAmount.minus(purchaseAmount);
+    const commission = D(terms?.consignmentCommission ?? (fallback.greaterThan(0) ? fallback : ZERO));
+    if (commission.greaterThan(sellAmount)) throw new PostingError(`${deal.recordNumber}: consignment commission is more than the sale price.`);
+    const split = splitInclusiveGst(commission, SERVICE_GST_RATE, isIntraState(context.companyState, deal.sellerState));
+    const owed = roundMoney(sellAmount.minus(commission));
+    vouchers.push({
+      key: 'SALE',
+      type: 'SALES',
+      date: saleDate,
+      narration: `Consignment sale ${label}${deal.invoiceNumber ? ` (invoice ${deal.invoiceNumber})` : ''}`,
+      reference: deal.invoiceNumber ?? deal.recordNumber,
+      partyId: Pc,
+      sellAccountId: V,
+      lines: [
+        debit(accounts.system('DEBTORS_CONTROL'), sellAmount, { partyId: Pc, sellAccountId: V }),
+        ...(owed.greaterThan(0) ? [credit(accounts.system('CONSIGNMENT_PAYABLE'), owed, { partyId: consignor, sellAccountId: V, narration: 'Payable to the owner' })] : []),
+        ...(split.taxable.greaterThan(0) ? [credit(accounts.system('CONSIGNMENT_COMMISSION_INCOME'), split.taxable, { sellAccountId: V })] : []),
+        ...gstCredits(accounts, split, V),
+      ],
+    });
+  }
+
+  if (saleDate && withinBooks(saleDate, booksBegin) && !consignment) {
     if (!Pc) throw new PostingError(`${deal.recordNumber}: purchaser party could not be resolved.`);
     const gst = calculateSellAccountGst({
       sellAmount: sellAmount.toNumber(),
@@ -233,7 +307,7 @@ export const buildSellAccountVouchers = (
       ],
     });
 
-    const cost = purchaseAmount.plus(context.capitaliseCosts ? costTotal : ZERO);
+    const cost = purchaseAmount.plus(capitaliseCosts ? costTotal : ZERO);
     if (cost.greaterThan(0)) {
       vouchers.push({
         key: 'COGS',
@@ -293,6 +367,22 @@ export const buildSellAccountVouchers = (
           credit(accounts.system(isAdvance ? 'CUSTOMER_ADVANCES' : 'DEBTORS_CONTROL'), amount, { partyId: Pc, sellAccountId: V }),
         ],
       });
+    } else if (payment.side === 'SELLER_PAYMENT' && consignment) {
+      if (!consignor) throw new PostingError(`${deal.recordNumber}: choose the consignor (owner) in the deal terms.`);
+      vouchers.push({
+        key: `SELLER_PAYMENT:${payment.id}`,
+        type: 'PAYMENT',
+        date,
+        narration: `Paid to owner (consignment) for ${label}`,
+        reference: payment.reference,
+        paymentMethod: payment.method,
+        partyId: consignor,
+        sellAccountId: V,
+        lines: [
+          debit(accounts.system('CONSIGNMENT_PAYABLE'), amount, { partyId: consignor, sellAccountId: V }),
+          credit(accounts.cashBank('SELL_ACCOUNT_PAYMENT', payment.method), amount),
+        ],
+      });
     } else if (payment.side === 'SELLER_PAYMENT') {
       if (!Ps) throw new PostingError(`${deal.recordNumber}: seller party could not be resolved.`);
       const isAdvance = ownStock || !purchaseDate || date < purchaseDate;
@@ -329,6 +419,65 @@ export const buildSellAccountVouchers = (
       ],
     });
   }
+  // R7 brokerage and R9 partner share from the deal terms.
+  const termsDate = saleDate ?? purchaseDate ?? purchaseDateOf(deal);
+  if (terms && withinBooks(termsDate, booksBegin)) {
+    const payable = D(terms.brokeragePayable);
+    if (payable.greaterThan(0)) {
+      if (!terms.brokerPartyId) throw new PostingError(`${deal.recordNumber}: choose the broker for the brokerage payable.`);
+      vouchers.push({
+        key: 'BROKERAGE_PAYABLE',
+        type: 'JOURNAL',
+        date: termsDate,
+        narration: `Brokerage payable on ${label}`,
+        reference: deal.recordNumber,
+        partyId: terms.brokerPartyId,
+        sellAccountId: V,
+        lines: [
+          debit(accounts.system('BROKERAGE_EXPENSE'), payable, { sellAccountId: V }),
+          credit(accounts.system('BROKER_PAYABLES'), payable, { partyId: terms.brokerPartyId, sellAccountId: V }),
+        ],
+      });
+    }
+    const receivable = D(terms.brokerageReceivable);
+    if (receivable.greaterThan(0)) {
+      const party = terms.brokerageReceivablePartyId ?? Pc;
+      if (!party) throw new PostingError(`${deal.recordNumber}: choose who pays the brokerage.`);
+      const split = splitInclusiveGst(receivable, SERVICE_GST_RATE, isIntraState(context.companyState, deal.purchaserState));
+      vouchers.push({
+        key: 'BROKERAGE_INCOME',
+        type: 'SALES',
+        date: termsDate,
+        narration: `Brokerage earned on ${label}`,
+        reference: deal.recordNumber,
+        partyId: party,
+        sellAccountId: V,
+        lines: [
+          debit(accounts.system('DEBTORS_CONTROL'), receivable, { partyId: party, sellAccountId: V }),
+          credit(accounts.system('BROKERAGE_INCOME'), split.taxable, { sellAccountId: V }),
+          ...gstCredits(accounts, split, V),
+        ],
+      });
+    }
+    const share = D(terms.partnerShareAmount);
+    if (share.greaterThan(0) && saleDate) {
+      if (!terms.partnerPartyId) throw new PostingError(`${deal.recordNumber}: choose the partner for the profit share.`);
+      vouchers.push({
+        key: 'PARTNER_SHARE',
+        type: 'JOURNAL',
+        date: saleDate,
+        narration: `Partner share of profit on ${label}`,
+        reference: deal.recordNumber,
+        partyId: terms.partnerPartyId,
+        sellAccountId: V,
+        lines: [
+          debit(accounts.system('PARTNER_SHARE_EXPENSE'), share, { sellAccountId: V }),
+          credit(accounts.system('PARTNER_PAYABLES'), share, { partyId: terms.partnerPartyId, sellAccountId: V }),
+        ],
+      });
+    }
+  }
+
   if (advancePaid.greaterThan(0) && purchaseDate) {
     vouchers.push({
       key: 'SELLER_ADVANCE_ADJUST',

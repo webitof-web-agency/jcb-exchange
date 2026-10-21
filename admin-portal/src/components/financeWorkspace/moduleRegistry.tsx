@@ -29,6 +29,11 @@ const VehicleLedgerModule = dynamic(() => import('./VehicleLedgerModule'), { loa
 const LedgerBalancesModule = dynamic(() => import('./LedgerBalancesModule'), { loading });
 const ReceiptsRegisterModule = dynamic(() => import('./ReceiptsRegisterModule'), { loading });
 const SalesInvoicesModule = dynamic(() => import('./SalesInvoicesModule'), { loading });
+const DocumentsModule = dynamic(() => import('./DocumentsModule'), { loading });
+const DealTermsListModule = dynamic(() => import('./DealTermsListModule'), { loading });
+const SettlementsModule = dynamic(() => import('./SettlementsModule'), { loading });
+const BrokerageIncomeModule = dynamic(() => import('./BrokerageIncomeModule'), { loading });
+const NotesModule = dynamic(() => import('./NotesModule'), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -49,6 +54,10 @@ const CostSheet = () => <VehicleRegisterModule view="costsheet" />;
 const ProfitMargin = () => <VehicleRegisterModule view="profit" />;
 const StockValuation = () => <VehicleRegisterModule view="stock" />;
 const ExchangeTransactions = () => <VehicleRegisterModule view="exchange" />;
+const PurchaseBills = () => <DocumentsModule title="Purchase bills & invoices" description="Supplier bills for expenses, services and assets (vehicle purchases come from Sold Vehicles). GST input credit, reverse charge and TDS are booked on posting." types={['PURCHASE_BILL']} createTypes={['PURCHASE_BILL']} />;
+const PurchaseReturns = () => <DocumentsModule title="Purchase returns" description="Debit notes for goods returned to a supplier; they reduce what we owe and reverse the input GST." types={['DEBIT_NOTE']} createTypes={['DEBIT_NOTE']} reason="RETURN" />;
+const SalesReturns = () => <DocumentsModule title="Sales returns & refunds" description="Credit notes for returns; they reduce what the customer owes and the output GST. Pay any refund with a payment voucher." types={['CREDIT_NOTE']} createTypes={['CREDIT_NOTE']} reason="RETURN" />;
+const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
 const PendingApprovals = () => <VouchersModule title="Pending approvals" description="Vouchers waiting for a checker. Open one to approve and post it, or reject it back to the maker with a reason." createTypes={[]} fixedStatuses={['PENDING_APPROVAL']} />;
 
 export const financeWorkspaceScreens: Record<string, ComponentType> = {
@@ -87,4 +96,11 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'vehicle-profit-margin': ProfitMargin,
   'stock-valuation': StockValuation,
   'exchange-transactions': ExchangeTransactions,
+  'purchase-bills-invoices': PurchaseBills,
+  'purchase-returns': PurchaseReturns,
+  'credit-debit-notes': NotesModule,
+  'sales-returns-refunds': SalesReturns,
+  'brokerage-other-income': BrokerageIncomeModule,
+  'consignment-deals': ConsignmentDeals,
+  'partner-commission-settlement': SettlementsModule,
 };
