@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { badRequest, getRequestPermissions, handle, hasAnyOf } from '../http';
+import { requeueBlockedBySetup } from '../posting/worker';
 import { FH_PERMISSIONS } from '../permissions';
 import {
   createAccount,
@@ -54,7 +55,7 @@ export const putGstRegistration = handle((req) => updateGstRegistration(idParam(
 
 // Financial years, periods, numbering
 export const getFinancialYears = handle(async () => ({ years: await listFinancialYears() }));
-export const postFinancialYear = handle((req) => createFinancialYear(requestBody(req), actorFromRequest(req)), 201);
+export const postFinancialYear = handle((req) => thenRequeue(createFinancialYear(requestBody(req), actorFromRequest(req))), 201);
 export const postCurrentFinancialYear = handle((req) => setCurrentFinancialYear(idParam(req), actorFromRequest(req)));
 export const patchPeriodStatus = handle((req) => updatePeriodStatus(idParam(req), requestBody(req), actorFromRequest(req)));
 export const getNumberSeries = handle((req) => {
@@ -66,7 +67,14 @@ export const putNumberSeries = handle((req) => updateNumberSeries(idParam(req), 
 
 // Chart of accounts & mappings
 export const getChart = handle(() => getChartOfAccounts());
-export const postInstallDefaultChart = handle((req) => installDefaultChart(requestBody(req), actorFromRequest(req)));
+/** Runs a setup change, then retries posting items that were waiting for it. */
+const thenRequeue = async <T>(work: Promise<T>) => {
+  const result = await work;
+  await requeueBlockedBySetup();
+  return result;
+};
+
+export const postInstallDefaultChart = handle((req) => thenRequeue(installDefaultChart(requestBody(req), actorFromRequest(req))));
 export const postAccountGroup = handle((req) => createAccountGroup(requestBody(req), actorFromRequest(req)), 201);
 export const putAccountGroup = handle((req) => updateAccountGroup(idParam(req), requestBody(req), actorFromRequest(req)));
 export const postAccount = handle((req) => createAccount(requestBody(req), actorFromRequest(req)), 201);
@@ -74,7 +82,7 @@ export const putAccount = handle((req) => updateAccount(idParam(req), requestBod
 export const getCategoryMap = handle(async () => ({ items: await listCategoryMap() }));
 export const putCategoryMap = handle((req) => updateCategoryMap(requestBody(req), actorFromRequest(req)));
 export const getPaymentMethods = handle(() => getPaymentMethodMap());
-export const putPaymentMethods = handle((req) => updatePaymentMethodMap(requestBody(req), actorFromRequest(req)));
+export const putPaymentMethods = handle((req) => thenRequeue(updatePaymentMethodMap(requestBody(req), actorFromRequest(req))));
 
 // Parties
 export const getParties = handle(async (req) => listParties(req.query as Record<string, unknown>, await canSeePartyBankDetails(req)));
@@ -86,8 +94,8 @@ export const postPartySync = handle((req) => syncPartiesFromRecords(requestBody(
 // Bank accounts
 export const getBankAccounts = handle(async (req) => ({ accounts: await listBankAccounts(await canSeeBankNumbers(req)) }));
 export const getBankAliasSuggestions = handle(async () => ({ suggestions: await listAliasSuggestions() }));
-export const postBankAccount = handle(async (req) => createBankAccount(requestBody(req), actorFromRequest(req), await canSeeBankNumbers(req)), 201);
-export const putBankAccount = handle(async (req) => updateBankAccount(idParam(req), requestBody(req), actorFromRequest(req), await canSeeBankNumbers(req)));
+export const postBankAccount = handle(async (req) => thenRequeue(createBankAccount(requestBody(req), actorFromRequest(req), await canSeeBankNumbers(req))), 201);
+export const putBankAccount = handle(async (req) => thenRequeue(updateBankAccount(idParam(req), requestBody(req), actorFromRequest(req), await canSeeBankNumbers(req))));
 
 // Cost centres
 export const getCostCentres = handle(async () => ({ costCentres: await listCostCentres() }));

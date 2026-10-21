@@ -226,3 +226,27 @@ export const queueSourcesWithAutoDrafts = async () => {
   }
   return queued;
 };
+
+/**
+ * Setup changes (new bank account, payment-method mapping, chart install) can unblock items that
+ * were waiting on them; retry those now instead of after their back-off. Never throws.
+ */
+export const requeueBlockedBySetup = async () => {
+  try {
+    const result = await prisma.finPostingQueue.updateMany({
+      where: {
+        status: { in: ['PENDING', 'FAILED'] },
+        OR: [
+          { lastError: { contains: 'Choose the bank/cash account' } },
+          { lastError: { contains: 'Install the default chart' } },
+          { lastError: { contains: 'missing from the chart of accounts' } },
+          { lastError: { contains: 'Create a financial year first' } },
+        ],
+      },
+      data: { status: 'PENDING', attempts: 0, nextRunAt: new Date() },
+    });
+    return result.count;
+  } catch {
+    return 0;
+  }
+};

@@ -101,12 +101,12 @@ export const installDefaultChart = async (body: Record<string, unknown>, context
       groupIds.set(group.code, created.id);
     }
 
-    const accountIds = new Map(accounts.map((account) => [account.code, account.id]));
-    for (const account of plan.accounts) {
-      const groupId = groupIds.get(account.groupCode);
-      if (!groupId) continue;
-      const created = await tx.finAccount.create({
-        data: {
+    // One bulk insert for ledgers and category maps keeps the transaction short over a slow link.
+    await tx.finAccount.createMany({
+      data: plan.accounts.flatMap((account) => {
+        const groupId = groupIds.get(account.groupCode);
+        if (!groupId) return [];
+        return [{
           code: account.code,
           name: account.name,
           groupId,
@@ -120,19 +120,20 @@ export const installDefaultChart = async (body: Record<string, unknown>, context
           gstApplicable: account.gstRate !== undefined,
           defaultGstRate: account.gstRate === undefined ? null : new Prisma.Decimal(account.gstRate),
           tallyName: account.name,
-        },
-      });
-      accountIds.set(account.code, created.id);
-    }
-
-    for (const map of plan.categoryMaps) {
-      const accountId = accountIds.get(map.code);
-      if (accountId) await tx.finCategoryMap.create({ data: { category: map.category, accountId, updatedById: context.actorUserId } });
-    }
+        }];
+      }),
+    });
+    const accountIds = new Map((await tx.finAccount.findMany({ select: { id: true, code: true } })).map((account) => [account.code, account.id]));
+    await tx.finCategoryMap.createMany({
+      data: plan.categoryMaps.flatMap((map) => {
+        const accountId = accountIds.get(map.code);
+        return accountId ? [{ category: map.category, accountId, updatedById: context.actorUserId }] : [];
+      }),
+    });
 
     await writeFinAudit({ ...context, entityType: 'FinChartOfAccounts', entityId: 'default', action: 'INSTALL_DEFAULTS', after: summary }, tx);
     return summary;
-  });
+  }, { timeout: 60000, maxWait: 15000 });
 };
 
 const assertGroupParent = async (tx: Prisma.TransactionClient, parentId: string | null, nature: FinAccountNature, selfId?: string) => {
