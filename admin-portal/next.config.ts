@@ -35,6 +35,7 @@ const isLocalHostname = (hostname: string) =>
 const apiOrigin = configuredApiUrl.replace(/\/api\/?$/, '');
 const uploadsPattern = getRemotePattern(apiOrigin, '/uploads/public/**');
 const legacyApiUploadsPattern = getRemotePattern(apiOrigin, '/api/uploads/public/**');
+const driveMediaProxyPattern = getRemotePattern(apiOrigin, '/api/documents/upload/public/**');
 const shouldAllowLocalIpImages =
   process.env.NODE_ENV !== 'production' &&
   (!!uploadsPattern?.hostname && isLocalHostname(uploadsPattern.hostname));
@@ -130,6 +131,7 @@ const nextConfig: NextConfig = {
       },
       ...(uploadsPattern ? [uploadsPattern] : []),
       ...(legacyApiUploadsPattern ? [legacyApiUploadsPattern] : []),
+      ...(driveMediaProxyPattern ? [driveMediaProxyPattern] : []),
     ],
   },
 };
