@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, Search, UserPlus } from 'lucide-r
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { apiErrorDetails, apiErrorMessage, enumLabel, formatInr, isConflictError, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
+import { drCrAmount, PartyStatementModal, type PartyRef } from './receivablesShared';
 import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, tableHeadClass, Toggle } from './ui';
 import { useResource } from './useResource';
 
@@ -31,7 +32,7 @@ const typeTone: Record<PartyType, 'blue' | 'green' | 'violet' | 'amber' | 'slate
   CUSTOMER: 'green', SELLER: 'amber', PARTNER: 'violet', BROKER: 'blue', AGENT: 'blue', VENDOR: 'amber', EMPLOYEE: 'slate', OTHER: 'slate',
 };
 
-/** Party master filtered to the ledger's party types. Balances arrive with the ledger engine. */
+/** Party master filtered to the ledger's party types, with each party's ledger balance and statement. */
 export default function PartyMasterModule({ types, title }: { types: PartyType[]; title: string }) {
   const access = useFinanceWorkspaceAccess();
   const canManage = access.can(['fh.parties.manage']);
@@ -43,6 +44,8 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
     async () => (await api.get('/finance-hub/parties', { params: { types: types.join(','), q: submittedQuery, status, page, pageSize: 25 } })).data as PartyList,
     `parties-${types.join(',')}-${submittedQuery}-${status}-${page}`,
   );
+  const balances = useResource(async () => (await api.get('/finance-hub/parties/balances', { params: { types: types.join(',') } })).data.balances as Record<string, { receivable: number; payable: number; advances: number; net: number }>, `party-balances-${types.join(',')}`);
+  const [statementFor, setStatementFor] = useState<PartyRef | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [duplicates, setDuplicates] = useState<Duplicate[]>([]);
   const [sync, setSync] = useState<SyncSummary | null>(null);
@@ -111,7 +114,7 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
   return (
     <Panel
       title={title}
-      description="Party master. Ledger balances, open bills and statements appear here once the ledger engine is live (next phase)."
+      description="Party master with ledger balances (posted entries). Dr = the party owes us, Cr = we owe the party. Open a statement for every entry."
       actions={canManage ? (
         <>
           <Button icon={<RefreshCw className="h-4 w-4" />} busy={busy && !form} onClick={() => runSync(false)}>Sync from existing records</Button>
@@ -137,7 +140,7 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
         <>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Types</th><th className="px-4 py-2.5">Mobile</th><th className="px-4 py-2.5">GSTIN</th><th className="px-4 py-2.5">City / State</th><th className="px-4 py-2.5">Credit</th><th className="px-4 py-2.5">Linked records</th><th className="px-4 py-2.5" /></tr></thead>
+              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Types</th><th className="px-4 py-2.5">Mobile</th><th className="px-4 py-2.5">GSTIN</th><th className="px-4 py-2.5">City / State</th><th className="px-4 py-2.5">Credit</th><th className="px-4 py-2.5">Linked records</th><th className="px-4 py-2.5 text-right">Balance</th><th className="px-4 py-2.5" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {parties.data.parties.map((party) => (
                   <tr key={party.id} className={party.isActive ? '' : 'opacity-60'}>
@@ -149,7 +152,8 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
                     <td className={`${cellClass} text-xs`}>{[party.city, party.state].filter(Boolean).join(', ') || '—'}</td>
                     <td className={`${cellClass} text-xs`}>{party.creditDays !== null ? `${party.creditDays} days` : '—'}{party.creditLimit !== null ? <span className="block text-slate-400">{formatInr(party.creditLimit)}</span> : null}</td>
                     <td className={cellClass}>{party._count?.links ?? 0}</td>
-                    <td className={`${cellClass} text-right`}><Button variant="ghost" onClick={() => openEdit(party.id)}>{canManage ? 'Edit' : 'View'}</Button></td>
+                    <td className={`${cellClass} whitespace-nowrap text-right font-semibold`}>{balances.data?.[party.id] ? drCrAmount(balances.data[party.id]!.net) : '—'}</td>
+                    <td className={`${cellClass} whitespace-nowrap text-right`}><Button variant="ghost" onClick={() => setStatementFor(party)}>Statement</Button><Button variant="ghost" onClick={() => openEdit(party.id)}>{canManage ? 'Edit' : 'View'}</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -166,6 +170,7 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
         </>
       )}
 
+      {statementFor ? <PartyStatementModal party={statementFor} onClose={() => setStatementFor(null)} /> : null}
       {form ? (
         <Modal title={form.id ? `Party: ${form.name}` : 'Add party'} subtitle="GSTIN fills PAN and state automatically." onClose={() => { if (!busy) setForm(null); }} wide>
           <form onSubmit={(event) => save(event)} className="p-5 sm:p-7">

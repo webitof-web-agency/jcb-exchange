@@ -34,6 +34,13 @@ const DealTermsListModule = dynamic(() => import('./DealTermsListModule'), { loa
 const SettlementsModule = dynamic(() => import('./SettlementsModule'), { loading });
 const BrokerageIncomeModule = dynamic(() => import('./BrokerageIncomeModule'), { loading });
 const NotesModule = dynamic(() => import('./NotesModule'), { loading });
+const DuesModule = dynamic(() => import('./DuesModule'), { loading });
+const AgingModule = dynamic(() => import('./DuesModule').then((module) => module.AgingModule), { loading });
+const PartyStatementsModule = dynamic(() => import('./ReceivablesModules').then((module) => module.PartyStatementsModule), { loading });
+const AdvancesModule = dynamic(() => import('./ReceivablesModules').then((module) => module.AdvancesModule), { loading });
+const SchedulesModule = dynamic(() => import('./ReceivablesModules').then((module) => module.SchedulesModule), { loading });
+const FollowUpsModule = dynamic(() => import('./ReceivablesModules').then((module) => module.FollowUpsModule), { loading });
+const WriteOffsModule = dynamic(() => import('./ReceivablesModules').then((module) => module.WriteOffsModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -57,6 +64,8 @@ const ExchangeTransactions = () => <VehicleRegisterModule view="exchange" />;
 const PurchaseBills = () => <DocumentsModule title="Purchase bills & invoices" description="Supplier bills for expenses, services and assets (vehicle purchases come from Sold Vehicles). GST input credit, reverse charge and TDS are booked on posting." types={['PURCHASE_BILL']} createTypes={['PURCHASE_BILL']} />;
 const PurchaseReturns = () => <DocumentsModule title="Purchase returns" description="Debit notes for goods returned to a supplier; they reduce what we owe and reverse the input GST." types={['DEBIT_NOTE']} createTypes={['DEBIT_NOTE']} reason="RETURN" />;
 const SalesReturns = () => <DocumentsModule title="Sales returns & refunds" description="Credit notes for returns; they reduce what the customer owes and the output GST. Pay any refund with a payment voucher." types={['CREDIT_NOTE']} createTypes={['CREDIT_NOTE']} reason="RETURN" />;
+const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
+const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
 const PendingApprovals = () => <VouchersModule title="Pending approvals" description="Vouchers waiting for a checker. Open one to approve and post it, or reject it back to the maker with a reason." createTypes={[]} fixedStatuses={['PENDING_APPROVAL']} />;
 
@@ -103,4 +112,12 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'brokerage-other-income': BrokerageIncomeModule,
   'consignment-deals': ConsignmentDeals,
   'partner-commission-settlement': SettlementsModule,
+  'party-statements': PartyStatementsModule,
+  'party-advances-deposits': AdvancesModule,
+  'customer-dues': CustomerDues,
+  'supplier-partner-payables': SupplierPayables,
+  'due-aging-reports': AgingModule,
+  'payment-schedules': SchedulesModule,
+  'follow-up-reminders': FollowUpsModule,
+  'settlements-write-offs': WriteOffsModule,
 };

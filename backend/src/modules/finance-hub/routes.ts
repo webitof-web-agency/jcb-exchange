@@ -5,6 +5,7 @@ import * as documents from './controllers/documents.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as posting from './controllers/posting.controller';
+import * as receivables from './controllers/receivables.controller';
 import * as vehicleFinance from './controllers/vehicleFinance.controller';
 import { FH_ANY_PERMISSIONS, FH_PERMISSIONS as P } from './permissions';
 
@@ -46,6 +47,10 @@ router.put('/payment-method-map', settingsManager, masters.putPaymentMethods);
 
 router.get('/parties', anyWorkspaceUser, masters.getParties);
 router.post('/parties/sync', allow([P.partiesManage]), masters.postPartySync);
+// Registered before /parties/:id so "balances" is not read as an id.
+const dueReaders = allow([P.arapRead, P.arapManage, P.partiesRead, P.partiesManage, P.salesRead, P.purchasesRead, P.booksRead, P.reportsRead, P.caRead]);
+router.get('/parties/balances', dueReaders, receivables.partyBalances);
+router.get('/parties/:id/statement', dueReaders, receivables.partyStatement);
 router.get('/parties/:id', anyWorkspaceUser, masters.getPartyById);
 router.post('/parties', allow([P.partiesManage]), masters.postParty);
 router.put('/parties/:id', allow([P.partiesManage]), masters.putParty);
@@ -120,5 +125,18 @@ router.get('/settlements', settlementReaders, documents.settlements);
 router.post('/settlements', allow([P.vehicleManage, P.arapManage]), documents.newSettlement);
 router.post('/settlements/:id/pay', allow([P.booksPost]), documents.paySettlementNow);
 router.post('/settlements/:id/cancel', allow([P.booksPost]), documents.cancelSettlementNow);
+
+// Receivables & payables (P5)
+const dueManagers = allow([P.arapManage]);
+router.get('/receivables/dues', dueReaders, receivables.dues);
+router.get('/receivables/advances', dueReaders, receivables.advances);
+router.get('/receivables/schedules', dueReaders, receivables.schedules);
+router.post('/receivables/schedules', dueManagers, receivables.newSchedule);
+router.put('/receivables/schedules/:id', dueManagers, receivables.changeSchedule);
+router.get('/receivables/follow-ups', dueReaders, receivables.followUps);
+router.post('/receivables/follow-ups', allow([P.arapManage, P.partiesManage]), receivables.newFollowUp);
+router.post('/receivables/follow-ups/:id/done', allow([P.arapManage, P.partiesManage]), receivables.finishFollowUp);
+router.get('/receivables/write-offs', dueReaders, receivables.writeOffs);
+router.post('/receivables/write-offs', dueManagers, receivables.newWriteOff);
 
 export default router;

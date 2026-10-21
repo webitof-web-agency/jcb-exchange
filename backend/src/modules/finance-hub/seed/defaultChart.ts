@@ -171,6 +171,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   asset('6800', 'Professional Fees', '6000', { gstRate: 18 }),
   asset('6901', 'Depreciation', '6900', { systemKey: 'DEPRECIATION', manual: false }),
   asset('6910', 'Bad Debts Written Off', '6000', { systemKey: 'BAD_DEBTS' }),
+  asset('6930', 'Discount Allowed', '6000', { systemKey: 'DISCOUNT_ALLOWED' }),
   asset('6920', 'Interest & Penalty', '6000'),
   asset('6990', 'Miscellaneous Expenses', '6000', { systemKey: 'MISC_EXPENSE' }),
 ];

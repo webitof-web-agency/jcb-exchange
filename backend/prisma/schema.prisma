@@ -2994,6 +2994,9 @@ model FinParty {
   voucherLines    FinVoucherLine[]
   documents       FinDocument[]          @relation("FinDocumentParty")
   settlements     FinPartnerSettlement[] @relation("FinSettlementParty")
+  schedules       FinPaymentSchedule[]   @relation("FinScheduleParty")
+  followUps       FinFollowUp[]          @relation("FinFollowUpParty")
+  writeOffs       FinWriteOff[]          @relation("FinWriteOffParty")
 
   @@index([mobile])
   @@index([gstin])
@@ -3344,4 +3347,109 @@ model FinPartnerSettlement {
   party FinParty @relation("FinSettlementParty", fields: [partyId], references: [id])
 
   @@index([partyId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P5: receivables & payables (schedules, follow-ups, write-offs)
+// ---------------------------------------------------------------------------
+
+enum FinDueSide {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum FinScheduleStatus {
+  PLANNED
+  DONE
+  CANCELLED
+}
+
+enum FinFollowUpKind {
+  CALL
+  WHATSAPP
+  SMS
+  EMAIL
+  VISIT
+  NOTE
+}
+
+enum FinFollowUpStatus {
+  OPEN
+  DONE
+}
+
+enum FinWriteOffKind {
+  WRITE_OFF
+  DISCOUNT
+  WAIVER
+  WRITE_BACK
+}
+
+/// Expected collection or payment on a date (planning only; money moves through vouchers).
+model FinPaymentSchedule {
+  id            String            @id @default(uuid())
+  side          FinDueSide
+  partyId       String
+  dueDate       DateTime          @db.Date
+  amount        Decimal           @db.Decimal(14, 2)
+  reference     String?           @db.VarChar(80)
+  sellAccountId String?           @db.VarChar(60)
+  notes         String?           @db.Text
+  status        FinScheduleStatus @default(PLANNED)
+  voucherNumber String?           @db.VarChar(60)
+  createdById   String?
+  completedById String?
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  party FinParty @relation("FinScheduleParty", fields: [partyId], references: [id])
+
+  @@index([status, dueDate])
+  @@index([partyId])
+}
+
+/// Collection / payment follow-up log with the next action and any promise to pay.
+model FinFollowUp {
+  id             String            @id @default(uuid())
+  partyId        String
+  side           FinDueSide        @default(RECEIVABLE)
+  kind           FinFollowUpKind   @default(CALL)
+  notes          String            @db.Text
+  promisedDate   DateTime?         @db.Date
+  promisedAmount Decimal?          @db.Decimal(14, 2)
+  nextActionDate DateTime?         @db.Date
+  status         FinFollowUpStatus @default(OPEN)
+  assignedToId   String?
+  createdById    String?
+  doneById       String?
+  doneAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  party FinParty @relation("FinFollowUpParty", fields: [partyId], references: [id])
+
+  @@index([status, nextActionDate])
+  @@index([partyId])
+}
+
+/// Write-off, discount, waiver or write-back of a party balance; the money effect is its journal voucher.
+model FinWriteOff {
+  id               String          @id @default(uuid())
+  side             FinDueSide
+  kind             FinWriteOffKind
+  partyId          String
+  controlAccountId String
+  counterAccountId String
+  sellAccountId    String?         @db.VarChar(60)
+  date             DateTime        @db.Date
+  amount           Decimal         @db.Decimal(14, 2)
+  reason           String          @db.Text
+  voucherId        String          @unique
+  createdById      String?
+  createdAt        DateTime        @default(now())
+
+  party FinParty @relation("FinWriteOffParty", fields: [partyId], references: [id])
+
+  @@index([partyId])
 }
