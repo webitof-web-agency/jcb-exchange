@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { allowedAdminPermissions } from './adminPermissions';
+import { FH_ALL_PERMISSIONS } from '../modules/finance-hub/permissions';
+
+test('allowedAdminPermissions includes every finance workspace permission', () => {
+  assert.equal(FH_ALL_PERMISSIONS.length, 33);
+  FH_ALL_PERMISSIONS.forEach((permission) => {
+    assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
+  });
+});
 
 test('allowedAdminPermissions includes accounts read, crud, and export permissions', () => {
   [

@@ -2653,3 +2653,1363 @@ model BlogQuestion {
   @@index([blogPostId, status, createdAt])
   @@index([askedById, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub (Financial Reports & CA Workspace). New tables only; existing
+// finance tables above are read, never altered. See docs/finance-hub/.
+// ---------------------------------------------------------------------------
+
+enum FinPostingMode {
+  OFF
+  SHADOW
+  LIVE
+}
+
+enum FinQueueStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+// Singleton row (id = "default"). postingMode is the kill switch for ledger posting.
+model FinSettings {
+  id                   String         @id @default("default")
+  postingMode          FinPostingMode @default(OFF)
+  baseCurrency         String         @default("INR") @db.VarChar(3)
+  booksBeginDate       DateTime?      @db.Date
+  cashLimitPerVoucher  Decimal?       @db.Decimal(14, 2)
+  cashReceiptLimit     Decimal?       @db.Decimal(14, 2)
+  config               Json?
+  updatedById          String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+model FinAuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  entityType  String   @db.VarChar(60)
+  entityId    String   @db.VarChar(100)
+  action      String   @db.VarChar(40)
+  beforeJson  Json?
+  afterJson   Json?
+  reason      String?  @db.Text
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+}
+
+model FinPostingQueue {
+  id               String         @id @default(uuid())
+  sourceType       String         @db.VarChar(40)
+  sourceId         String         @db.VarChar(100)
+  event            String         @db.VarChar(60)
+  status           FinQueueStatus @default(PENDING)
+  attempts         Int            @default(0)
+  nextRunAt        DateTime       @default(now())
+  lastError        String?        @db.Text
+  resultVoucherIds String[]       @default([])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([sourceType, sourceId])
+}
+
+// --- Finance Hub P1: masters -------------------------------------------------
+
+enum FinGstRegistrationType {
+  REGULAR
+  COMPOSITION
+}
+
+enum FinPeriodStatus {
+  OPEN
+  SOFT_CLOSED
+  LOCKED
+}
+
+enum FinAccountNature {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum FinAccountKind {
+  GENERAL
+  BANK
+  CASH
+  PETTY_CASH
+  WALLET
+  GATEWAY_CLEARING
+  PARTY_CONTROL
+  STOCK
+  TAX
+  FIXED_ASSET
+  ACCUMULATED_DEPRECIATION
+  PREPAID
+  SUSPENSE
+  CLEARING
+  ROUND_OFF
+  EQUITY
+}
+
+enum FinBalanceSide {
+  DR
+  CR
+}
+
+enum FinPartyType {
+  CUSTOMER
+  SELLER
+  PARTNER
+  BROKER
+  AGENT
+  VENDOR
+  EMPLOYEE
+  OTHER
+}
+
+enum FinBankAccountType {
+  CURRENT
+  SAVINGS
+  OD
+  CC
+  VIRTUAL
+  CASH
+  PETTY_CASH
+  WALLET
+  GATEWAY
+}
+
+enum FinCostCentreCategory {
+  BRANCH
+  DEPARTMENT
+  YARD
+  PROJECT
+  OTHER
+}
+
+enum FinVoucherType {
+  JOURNAL
+  PAYMENT
+  RECEIPT
+  CONTRA
+  SALES
+  PURCHASE
+  CREDIT_NOTE
+  DEBIT_NOTE
+  EXPENSE
+  PAYROLL
+  DEPRECIATION
+  OPENING
+  CLOSING
+  WRITE_OFF
+  ADJUSTMENT
+}
+
+// Singleton (id = "default"). Starts as a copy of the company invoice settings.
+model FinCompanyProfile {
+  id                   String   @id @default("default")
+  legalName            String
+  tradeName            String?
+  pan                  String?  @db.VarChar(10)
+  tan                  String?  @db.VarChar(10)
+  cin                  String?  @db.VarChar(21)
+  msmeUdyam            String?  @db.VarChar(30)
+  constitution         String?  @db.VarChar(40)
+  address              String?  @db.Text
+  city                 String?
+  state                String?
+  stateCode            String?  @db.VarChar(2)
+  pinCode              String?  @db.VarChar(6)
+  email                String?
+  phone                String?  @db.VarChar(15)
+  signatoryName        String?
+  signatoryDesignation String?
+  updatedById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model FinGstRegistration {
+  id                  String                 @id @default(uuid())
+  gstin               String                 @unique @db.VarChar(15)
+  stateCode           String                 @db.VarChar(2)
+  stateName           String
+  registrationType    FinGstRegistrationType @default(REGULAR)
+  isDefault           Boolean                @default(false)
+  marginSchemeEnabled Boolean                @default(true)
+  einvoiceApplicable  Boolean                @default(false)
+  isActive            Boolean                @default(true)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+}
+
+model FinFinancialYear {
+  id                   String          @id @default(uuid())
+  label                String          @unique
+  startDate            DateTime        @unique @db.Date
+  endDate              DateTime        @db.Date
+  status               FinPeriodStatus @default(OPEN)
+  isCurrent            Boolean         @default(false)
+  openingFinalizedAt   DateTime?
+  openingFinalizedById String?
+  closedAt             DateTime?
+  closedById           String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  periods         FinPeriod[]
+  numberSeries    FinNumberSeries[]
+  openingBalances FinOpeningBalance[]
+  vouchers        FinVoucher[]
+}
+
+model FinPeriod {
+  id                String          @id @default(uuid())
+  yearId            String
+  label             String
+  startDate         DateTime        @db.Date
+  endDate           DateTime        @db.Date
+  status            FinPeriodStatus @default(OPEN)
+  statusChangedAt   DateTime?
+  statusChangedById String?
+  statusReason      String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  year     FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  vouchers FinVoucher[]
+
+  @@unique([yearId, startDate])
+  @@index([startDate, endDate])
+}
+
+model FinAccountGroup {
+  id         String           @id @default(uuid())
+  code       String           @unique @db.VarChar(12)
+  name       String
+  nature     FinAccountNature
+  parentId   String?
+  sortOrder  Int              @default(0)
+  isSystem   Boolean          @default(false)
+  reportLine String?          @db.VarChar(80)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  parent   FinAccountGroup?  @relation("FinAccountGroupTree", fields: [parentId], references: [id])
+  children FinAccountGroup[] @relation("FinAccountGroupTree")
+  accounts FinAccount[]
+
+  @@index([parentId])
+}
+
+model FinAccount {
+  id                 String         @id @default(uuid())
+  code               String         @unique @db.VarChar(12)
+  name               String
+  groupId            String
+  kind               FinAccountKind @default(GENERAL)
+  normalBalance      FinBalanceSide
+  // Stable handle used by automatic posting (e.g. DEBTORS_CONTROL); seeded accounts only.
+  systemKey          String?        @unique @db.VarChar(60)
+  isSystem           Boolean        @default(false)
+  isActive           Boolean        @default(true)
+  allowManualPosting Boolean        @default(true)
+  requiresParty      Boolean        @default(false)
+  requiresVehicle    Boolean        @default(false)
+  requiresCostCentre Boolean        @default(false)
+  gstApplicable      Boolean        @default(false)
+  defaultGstRate     Decimal?       @db.Decimal(5, 2)
+  hsnSac             String?        @db.VarChar(10)
+  tdsSection         String?        @db.VarChar(10)
+  tallyName          String?
+  description        String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  group           FinAccountGroup     @relation(fields: [groupId], references: [id])
+  categoryMaps    FinCategoryMap[]
+  bankAccount     FinBankAccount?
+  openingBalances FinOpeningBalance[]
+  voucherLines    FinVoucherLine[]
+  documentLines   FinDocumentLine[]   @relation("FinDocumentLineAccount")
+
+  @@index([groupId])
+  @@index([kind])
+}
+
+// Maps an old FinanceTransaction.category to a ledger account for "Book to ledger".
+model FinCategoryMap {
+  id          String   @id @default(uuid())
+  category    String   @unique
+  accountId   String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account FinAccount @relation(fields: [accountId], references: [id])
+}
+
+model FinParty {
+  id                String         @id @default(uuid())
+  code              String         @unique @db.VarChar(20)
+  name              String
+  types             FinPartyType[]
+  mobile            String?        @db.VarChar(15)
+  altMobile         String?        @db.VarChar(15)
+  email             String?
+  gstin             String?        @db.VarChar(15)
+  pan               String?        @db.VarChar(10)
+  address           String?        @db.Text
+  city              String?
+  state             String?
+  stateCode         String?        @db.VarChar(2)
+  pinCode           String?        @db.VarChar(6)
+  bankName          String?
+  bankAccountNumber String?        @db.VarChar(34)
+  ifsc              String?        @db.VarChar(11)
+  upiId             String?
+  creditLimit       Decimal?       @db.Decimal(14, 2)
+  creditDays        Int?
+  tdsSection        String?        @db.VarChar(10)
+  isActive          Boolean        @default(true)
+  notes             String?        @db.Text
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  links           FinPartyLink[]
+  openingBalances FinOpeningBalance[]
+  vouchers        FinVoucher[]        @relation("FinVoucherParty")
+  voucherLines    FinVoucherLine[]
+  documents       FinDocument[]          @relation("FinDocumentParty")
+  settlements     FinPartnerSettlement[] @relation("FinSettlementParty")
+  schedules       FinPaymentSchedule[]   @relation("FinScheduleParty")
+  followUps       FinFollowUp[]          @relation("FinFollowUpParty")
+  writeOffs       FinWriteOff[]          @relation("FinWriteOffParty")
+
+  @@index([mobile])
+  @@index([gstin])
+  @@index([name])
+}
+
+// Read-only pointer to an existing record (partner profile, sold vehicle seller ...). Never written back.
+model FinPartyLink {
+  id        String   @id @default(uuid())
+  partyId   String
+  linkType  String   @db.VarChar(40)
+  linkId    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  party FinParty @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([linkType, linkId])
+  @@index([partyId])
+}
+
+model FinBankAccount {
+  id                  String             @id @default(uuid())
+  accountId           String             @unique
+  type                FinBankAccountType
+  displayName         String
+  bankName            String?
+  branch              String?
+  accountNumber       String?            @db.VarChar(34)
+  ifsc                String?            @db.VarChar(11)
+  holderName          String?
+  parentBankAccountId String?
+  vanPrefix           String?            @db.VarChar(20)
+  // Old FinanceTransaction.accountName values that belong to this account (e.g. "HDFC BANK").
+  statementAliases    String[]           @default([])
+  overdraftLimit      Decimal?           @db.Decimal(14, 2)
+  custodianUserId     String?
+  isActive            Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  account FinAccount @relation(fields: [accountId], references: [id])
+}
+
+model FinCostCentre {
+  id            String                @id @default(uuid())
+  code          String                @unique @db.VarChar(20)
+  name          String
+  category      FinCostCentreCategory @default(DEPARTMENT)
+  parentId      String?
+  managerUserId String?
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  parent       FinCostCentre?   @relation("FinCostCentreTree", fields: [parentId], references: [id])
+  children     FinCostCentre[]  @relation("FinCostCentreTree")
+  vouchers     FinVoucher[]     @relation("FinVoucherCostCentre")
+  voucherLines FinVoucherLine[]
+}
+
+model FinNumberSeries {
+  id          String         @id @default(uuid())
+  voucherType FinVoucherType
+  yearId      String
+  prefix      String         @db.VarChar(30)
+  nextNumber  Int            @default(1)
+  padLength   Int            @default(5)
+  updatedById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  year FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherType, yearId])
+}
+
+model FinOpeningBalance {
+  id          String    @id @default(uuid())
+  yearId      String
+  // accountId|partyId|billRef: nullable parts would not be unique in PostgreSQL otherwise.
+  lineKey     String    @db.VarChar(260)
+  accountId   String
+  partyId     String?
+  debit       Decimal   @default(0) @db.Decimal(14, 2)
+  credit      Decimal   @default(0) @db.Decimal(14, 2)
+  billRef     String?   @db.VarChar(60)
+  billDate    DateTime? @db.Date
+  dueDate     DateTime? @db.Date
+  note        String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  year    FinFinancialYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  account FinAccount       @relation(fields: [accountId], references: [id])
+  party   FinParty?        @relation(fields: [partyId], references: [id])
+
+  @@unique([yearId, lineKey])
+  @@index([accountId])
+  @@index([partyId])
+}
+
+// --- Finance Hub P2: ledger engine ---------------------------------------------
+
+enum FinVoucherStatus {
+  DRAFT
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
+model FinVoucher {
+  id             String           @id @default(uuid())
+  // Assigned when the voucher is posted; drafts have no number.
+  number         String?          @unique @db.VarChar(60)
+  type           FinVoucherType
+  date           DateTime         @db.Date
+  yearId         String
+  periodId       String
+  status         FinVoucherStatus @default(DRAFT)
+  narration      String           @db.Text
+  reference      String?          @db.VarChar(80)
+  paymentMethod  String?          @db.VarChar(20)
+  partyId        String?
+  // Sold Vehicle (SellAccount) id. Plain id, no foreign key: Sold Vehicles can be hard-deleted.
+  sellAccountId  String?          @db.VarChar(60)
+  costCentreId   String?
+  totalAmount    Decimal          @db.Decimal(14, 2)
+  sourceType     String?          @db.VarChar(40)
+  sourceId       String?          @db.VarChar(100)
+  sourceEvent    String?          @db.VarChar(60)
+  idempotencyKey String?          @unique @db.VarChar(200)
+  sourceHash     String?          @db.VarChar(64)
+  reversalOfId   String?          @unique
+  reversalReason String?          @db.Text
+  rejectReason   String?          @db.Text
+  attachments    Json?
+  createdById    String?
+  updatedById    String?
+  submittedById  String?
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedAt     DateTime?
+  postedById     String?
+  postedAt       DateTime?
+  reversedById   String?
+  reversedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  year       FinFinancialYear @relation(fields: [yearId], references: [id])
+  period     FinPeriod        @relation(fields: [periodId], references: [id])
+  party      FinParty?        @relation("FinVoucherParty", fields: [partyId], references: [id])
+  costCentre FinCostCentre?   @relation("FinVoucherCostCentre", fields: [costCentreId], references: [id])
+  reversalOf FinVoucher?      @relation("FinVoucherReversal", fields: [reversalOfId], references: [id])
+  reversal   FinVoucher?      @relation("FinVoucherReversal")
+  lines      FinVoucherLine[]
+
+  @@index([date, status])
+  @@index([type, date])
+  @@index([status, createdAt])
+  @@index([sourceType, sourceId])
+  @@index([partyId])
+  @@index([sellAccountId])
+}
+
+model FinVoucherLine {
+  id            String   @id @default(uuid())
+  voucherId     String
+  lineNo        Int
+  accountId     String
+  partyId       String?
+  sellAccountId String?  @db.VarChar(60)
+  costCentreId  String?
+  debit         Decimal  @default(0) @db.Decimal(14, 2)
+  credit        Decimal  @default(0) @db.Decimal(14, 2)
+  narration     String?  @db.VarChar(300)
+  billRef       String?  @db.VarChar(60)
+  createdAt     DateTime @default(now())
+
+  voucher    FinVoucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  account    FinAccount     @relation(fields: [accountId], references: [id])
+  party      FinParty?      @relation(fields: [partyId], references: [id])
+  costCentre FinCostCentre? @relation(fields: [costCentreId], references: [id])
+
+  @@index([accountId])
+  @@index([voucherId])
+  @@index([partyId])
+  @@index([sellAccountId])
+  @@index([costCentreId])
+}
+
+// --- Finance Hub P4b: documents, deal terms, settlements --------------------
+
+enum FinDocumentType {
+  PURCHASE_BILL
+  SALES_INVOICE
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum FinDocumentStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum FinNoteReason {
+  RETURN
+  PRICE_CHANGE
+  DISCOUNT
+  DEFICIENCY
+  OTHER
+}
+
+enum FinDealMode {
+  OUTRIGHT
+  CONSIGNMENT
+}
+
+// Purchase bills, other sales invoices and credit/debit notes. Posting creates one voucher
+// (sourceType DOCUMENT); cancelling reverses it.
+model FinDocument {
+  id                String            @id @default(uuid())
+  docType           FinDocumentType
+  status            FinDocumentStatus @default(DRAFT)
+  // Our number: the posted voucher's number. Drafts have none.
+  number            String?           @unique @db.VarChar(60)
+  partyDocNumber    String?           @db.VarChar(60)
+  date              DateTime          @db.Date
+  dueDate           DateTime?         @db.Date
+  partyId           String
+  placeOfSupply     String?           @db.VarChar(2)
+  isIntraState      Boolean           @default(true)
+  isReverseCharge   Boolean           @default(false)
+  reason            FinNoteReason?
+  againstDocumentId String?
+  againstReference  String?           @db.VarChar(80)
+  sellAccountId     String?           @db.VarChar(60)
+  notes             String?           @db.Text
+  subTotal          Decimal           @default(0) @db.Decimal(14, 2)
+  cgst              Decimal           @default(0) @db.Decimal(14, 2)
+  sgst              Decimal           @default(0) @db.Decimal(14, 2)
+  igst              Decimal           @default(0) @db.Decimal(14, 2)
+  tdsSection        String?           @db.VarChar(10)
+  tdsAmount         Decimal           @default(0) @db.Decimal(14, 2)
+  roundOff          Decimal           @default(0) @db.Decimal(14, 2)
+  total             Decimal           @default(0) @db.Decimal(14, 2)
+  voucherId         String?           @unique
+  cancelReason      String?           @db.Text
+  createdById       String?
+  updatedById       String?
+  postedById        String?
+  postedAt          DateTime?
+  cancelledById     String?
+  cancelledAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  party           FinParty            @relation("FinDocumentParty", fields: [partyId], references: [id])
+  againstDocument FinDocument?        @relation("FinDocumentAgainst", fields: [againstDocumentId], references: [id])
+  notesAgainst    FinDocument[]       @relation("FinDocumentAgainst")
+  lines           FinDocumentLine[]
+
+  @@index([docType, date])
+  @@index([partyId, docType])
+  @@index([status, docType])
+  @@index([sellAccountId])
+}
+
+model FinDocumentLine {
+  id            String   @id @default(uuid())
+  documentId    String
+  lineNo        Int
+  description   String   @db.VarChar(300)
+  accountId     String
+  hsnSac        String?  @db.VarChar(10)
+  quantity      Decimal  @default(1) @db.Decimal(12, 3)
+  rate          Decimal  @db.Decimal(14, 2)
+  discount      Decimal  @default(0) @db.Decimal(14, 2)
+  taxableValue  Decimal  @db.Decimal(14, 2)
+  gstRate       Decimal  @default(0) @db.Decimal(5, 2)
+  cgst          Decimal  @default(0) @db.Decimal(14, 2)
+  sgst          Decimal  @default(0) @db.Decimal(14, 2)
+  igst          Decimal  @default(0) @db.Decimal(14, 2)
+  itcEligible   Boolean  @default(true)
+  sellAccountId String?  @db.VarChar(60)
+  costCentreId  String?
+
+  document FinDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  account  FinAccount  @relation("FinDocumentLineAccount", fields: [accountId], references: [id])
+
+  @@index([documentId])
+  @@index([accountId])
+  @@index([sellAccountId])
+}
+
+// Finance terms of one Sold Vehicle that the Sold Vehicle form does not hold. Keyed by the
+// SellAccount id without a foreign key, so Sold Vehicle deletes keep working.
+model FinVehicleDealExt {
+  id                       String      @id @default(uuid())
+  sellAccountId            String      @unique @db.VarChar(60)
+  dealMode                 FinDealMode @default(OUTRIGHT)
+  consignorPartyId         String?
+  consignmentCommission    Decimal?    @db.Decimal(14, 2)
+  brokerPartyId            String?
+  brokeragePayable         Decimal     @default(0) @db.Decimal(14, 2)
+  brokerageReceivable      Decimal     @default(0) @db.Decimal(14, 2)
+  brokerageReceivablePartyId String?
+  partnerPartyId           String?
+  partnerShareAmount       Decimal     @default(0) @db.Decimal(14, 2)
+  notes                    String?     @db.Text
+  updatedById              String?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+}
+
+enum FinSettlementStatus {
+  DRAFT
+  PAID
+  CANCELLED
+}
+
+// Payout to a partner, broker or consignor against their open payables.
+model FinPartnerSettlement {
+  id               String              @id @default(uuid())
+  partyId          String
+  status           FinSettlementStatus @default(DRAFT)
+  date             DateTime            @db.Date
+  bankAccountId    String?
+  paymentMethod    String?             @db.VarChar(20)
+  reference        String?             @db.VarChar(80)
+  grossAmount      Decimal             @db.Decimal(14, 2)
+  tdsSection       String?             @db.VarChar(10)
+  tdsAmount        Decimal             @default(0) @db.Decimal(14, 2)
+  netAmount        Decimal             @db.Decimal(14, 2)
+  lines            Json
+  notes            String?             @db.Text
+  voucherId        String?             @unique
+  createdById      String?
+  paidById         String?
+  paidAt           DateTime?
+  cancelReason     String?             @db.Text
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  party FinParty @relation("FinSettlementParty", fields: [partyId], references: [id])
+
+  @@index([partyId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P5: receivables & payables (schedules, follow-ups, write-offs)
+// ---------------------------------------------------------------------------
+
+enum FinDueSide {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum FinScheduleStatus {
+  PLANNED
+  DONE
+  CANCELLED
+}
+
+enum FinFollowUpKind {
+  CALL
+  WHATSAPP
+  SMS
+  EMAIL
+  VISIT
+  NOTE
+}
+
+enum FinFollowUpStatus {
+  OPEN
+  DONE
+}
+
+enum FinWriteOffKind {
+  WRITE_OFF
+  DISCOUNT
+  WAIVER
+  WRITE_BACK
+}
+
+/// Expected collection or payment on a date (planning only; money moves through vouchers).
+model FinPaymentSchedule {
+  id            String            @id @default(uuid())
+  side          FinDueSide
+  partyId       String
+  dueDate       DateTime          @db.Date
+  amount        Decimal           @db.Decimal(14, 2)
+  reference     String?           @db.VarChar(80)
+  sellAccountId String?           @db.VarChar(60)
+  notes         String?           @db.Text
+  status        FinScheduleStatus @default(PLANNED)
+  voucherNumber String?           @db.VarChar(60)
+  createdById   String?
+  completedById String?
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  party FinParty @relation("FinScheduleParty", fields: [partyId], references: [id])
+
+  @@index([status, dueDate])
+  @@index([partyId])
+}
+
+/// Collection / payment follow-up log with the next action and any promise to pay.
+model FinFollowUp {
+  id             String            @id @default(uuid())
+  partyId        String
+  side           FinDueSide        @default(RECEIVABLE)
+  kind           FinFollowUpKind   @default(CALL)
+  notes          String            @db.Text
+  promisedDate   DateTime?         @db.Date
+  promisedAmount Decimal?          @db.Decimal(14, 2)
+  nextActionDate DateTime?         @db.Date
+  status         FinFollowUpStatus @default(OPEN)
+  assignedToId   String?
+  createdById    String?
+  doneById       String?
+  doneAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  party FinParty @relation("FinFollowUpParty", fields: [partyId], references: [id])
+
+  @@index([status, nextActionDate])
+  @@index([partyId])
+}
+
+/// Write-off, discount, waiver or write-back of a party balance; the money effect is its journal voucher.
+model FinWriteOff {
+  id               String          @id @default(uuid())
+  side             FinDueSide
+  kind             FinWriteOffKind
+  partyId          String
+  controlAccountId String
+  counterAccountId String
+  sellAccountId    String?         @db.VarChar(60)
+  date             DateTime        @db.Date
+  amount           Decimal         @db.Decimal(14, 2)
+  reason           String          @db.Text
+  voucherId        String          @unique
+  createdById      String?
+  createdAt        DateTime        @default(now())
+
+  party FinParty @relation("FinWriteOffParty", fields: [partyId], references: [id])
+
+  @@index([partyId])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P6: banking (reconciliation, cash counts)
+// ---------------------------------------------------------------------------
+
+enum FinReconStatus {
+  MATCHED
+  IGNORED
+}
+
+/// Links an imported bank statement row (FinanceTransaction) to the book entry it represents.
+/// Plain ids: statement rows can be deleted on the old Expenses page.
+model FinBankRecon {
+  id                   String         @id @default(uuid())
+  bankAccountId        String
+  financeTransactionId String         @unique
+  voucherLineId        String?        @unique
+  status               FinReconStatus
+  method               String         @db.VarChar(20)
+  note                 String?        @db.Text
+  matchedById          String?
+  createdAt            DateTime       @default(now())
+
+  @@index([bankAccountId])
+}
+
+/// Physical cash verification against the book balance of a cash / petty cash ledger.
+model FinCashCount {
+  id            String   @id @default(uuid())
+  accountId     String
+  date          DateTime @db.Date
+  denominations Json
+  countedAmount Decimal  @db.Decimal(14, 2)
+  bookBalance   Decimal  @db.Decimal(14, 2)
+  difference    Decimal  @db.Decimal(14, 2)
+  note          String?  @db.Text
+  countedById   String?
+  createdAt     DateTime @default(now())
+
+  @@index([accountId, date])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P7: expenses & assets
+// ---------------------------------------------------------------------------
+
+enum FinRecurringFrequency {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+}
+
+enum FinRecurringMode {
+  BILL
+  ACCRUAL
+}
+
+/// Repeating expense (rent, AMC, subscriptions). Each due period creates a draft for review.
+model FinRecurringExpense {
+  id          String                @id @default(uuid())
+  name        String
+  mode        FinRecurringMode      @default(ACCRUAL)
+  partyId     String?
+  accountId   String
+  amount      Decimal               @db.Decimal(14, 2)
+  gstRate     Decimal               @default(0) @db.Decimal(5, 2)
+  frequency   FinRecurringFrequency @default(MONTHLY)
+  dayOfMonth  Int                   @default(1)
+  startDate   DateTime              @db.Date
+  endDate     DateTime?             @db.Date
+  nextRunDate DateTime              @db.Date
+  isActive    Boolean               @default(true)
+  notes       String?               @db.Text
+  createdById String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  runs FinRecurringRun[]
+
+  @@index([isActive, nextRunDate])
+}
+
+model FinRecurringRun {
+  id          String   @id @default(uuid())
+  recurringId String
+  periodKey   String   @db.VarChar(10)
+  runDate     DateTime @db.Date
+  documentId  String?
+  voucherId   String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  recurring FinRecurringExpense @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringId, periodKey])
+}
+
+enum FinReimbursementStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+/// Employee expense claim: approval books the expense, payment clears the payable.
+model FinReimbursement {
+  id                String                 @id @default(uuid())
+  partyId           String
+  date              DateTime               @db.Date
+  accountId         String
+  amount            Decimal                @db.Decimal(14, 2)
+  description       String                 @db.Text
+  receiptUrl        String?
+  status            FinReimbursementStatus @default(SUBMITTED)
+  approvalVoucherId String?
+  paymentVoucherId  String?
+  approvedById      String?
+  approvedAt        DateTime?
+  paidById          String?
+  paidAt            DateTime?
+  rejectReason      String?                @db.Text
+  createdById       String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, date])
+  @@index([partyId])
+}
+
+enum FinAssetMethod {
+  SLM
+  WDV
+}
+
+enum FinAssetStatus {
+  ACTIVE
+  DISPOSED
+}
+
+/// Fixed asset register. The purchase itself is booked by its bill / voucher; this holds the
+/// depreciation basis. Accumulated depreciation = opening + posted depreciation runs.
+model FinFixedAsset {
+  id                 String         @id @default(uuid())
+  code               String         @unique @db.VarChar(30)
+  name               String
+  category           String?
+  assetAccountId     String
+  purchaseDate       DateTime       @db.Date
+  putToUseDate       DateTime       @db.Date
+  cost               Decimal        @db.Decimal(14, 2)
+  salvageValue       Decimal        @default(0) @db.Decimal(14, 2)
+  method             FinAssetMethod @default(WDV)
+  usefulLifeMonths   Int?
+  wdvRatePercent     Decimal?       @db.Decimal(6, 2)
+  openingAccumulated Decimal        @default(0) @db.Decimal(14, 2)
+  location           String?
+  custodian          String?
+  serialNumber       String?
+  vendorPartyId      String?
+  documentId         String?
+  status             FinAssetStatus @default(ACTIVE)
+  disposedAt         DateTime?      @db.Date
+  disposalAmount     Decimal?       @db.Decimal(14, 2)
+  disposalVoucherId  String?
+  notes              String?        @db.Text
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([status])
+}
+
+/// Amount paid in advance and expensed month by month.
+model FinPrepaidExpense {
+  id               String   @id @default(uuid())
+  name             String
+  expenseAccountId String
+  prepaidAccountId String
+  partyId          String?
+  totalAmount      Decimal  @db.Decimal(14, 2)
+  startDate        DateTime @db.Date
+  months           Int
+  reference        String?  @db.VarChar(80)
+  notes            String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum FinRunKind {
+  DEPRECIATION
+  PREPAID
+}
+
+enum FinRunStatus {
+  POSTED
+  REVERSED
+}
+
+/// One month's depreciation or prepaid amortisation; `lines` holds [{ refId, amount }].
+model FinPeriodicRun {
+  id          String       @id @default(uuid())
+  kind        FinRunKind
+  periodKey   String       @db.VarChar(7)
+  runDate     DateTime     @db.Date
+  total       Decimal      @db.Decimal(14, 2)
+  lines       Json
+  voucherId   String       @unique
+  status      FinRunStatus @default(POSTED)
+  createdById String?
+  reversedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([kind, periodKey])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P8: taxation (challans, GSTR-2B uploads, e-invoice / e-way bill refs)
+// ---------------------------------------------------------------------------
+
+enum FinTaxType {
+  GST
+  TDS
+  TCS
+  ADVANCE_TAX
+  SELF_ASSESSMENT
+  PROFESSIONAL_TAX
+  PF
+  ESI
+  OTHER
+}
+
+/// A tax payment (GST PMT-06, TDS ITNS 281, advance tax 280…). The payment voucher clears the liability ledgers.
+model FinTaxChallan {
+  id            String     @id @default(uuid())
+  taxType       FinTaxType
+  period        String     @db.VarChar(20)
+  challanNo     String     @db.VarChar(40)
+  bsrCode       String?    @db.VarChar(10)
+  date          DateTime   @db.Date
+  total         Decimal    @db.Decimal(14, 2)
+  breakdown     Json
+  bankAccountId String
+  voucherId     String     @unique
+  proofUrl      String?
+  notes         String?    @db.Text
+  createdById   String?
+  createdAt     DateTime   @default(now())
+
+  @@index([taxType, period])
+}
+
+/// GSTR-2B rows downloaded from the GST portal for a return period (latest upload wins).
+model FinGstr2bUpload {
+  id           String   @id @default(uuid())
+  period       String   @unique @db.VarChar(7)
+  fileName     String?
+  rows         Json
+  rowCount     Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// IRN / e-way bill details entered against an invoice (document or Sold Vehicle sale voucher).
+model FinTaxDocRef {
+  id           String    @id @default(uuid())
+  sourceKind   String    @db.VarChar(20)
+  sourceId     String    @db.VarChar(60)
+  irn          String?   @db.VarChar(64)
+  ackNo        String?   @db.VarChar(30)
+  ackDate      DateTime? @db.Date
+  ewbNo        String?   @db.VarChar(20)
+  ewbDate      DateTime? @db.Date
+  ewbValidUpto DateTime? @db.Date
+  status       String    @default("PENDING") @db.VarChar(20)
+  notes        String?   @db.Text
+  updatedById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([sourceKind, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P9: payroll
+// ---------------------------------------------------------------------------
+
+/// Template of earnings / deductions used to fill a salary profile.
+model FinSalaryStructure {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  components Json
+  isActive   Boolean  @default(true)
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// Monthly salary of an employee party. `earnings` = [{ code, name, amount, pfWage }].
+model FinEmployeeSalary {
+  id              String    @id @default(uuid())
+  partyId         String    @unique
+  employeeCode    String?   @db.VarChar(30)
+  designation     String?
+  department      String?
+  dateOfJoining   DateTime? @db.Date
+  dateOfLeaving   DateTime? @db.Date
+  structureId     String?
+  earnings        Json
+  pfApplicable    Boolean   @default(true)
+  pfWageCap       Boolean   @default(true)
+  esiApplicable   Boolean   @default(true)
+  ptState         String?   @db.VarChar(2)
+  monthlyTds      Decimal   @default(0) @db.Decimal(14, 2)
+  uan             String?   @db.VarChar(12)
+  esiNumber       String?   @db.VarChar(17)
+  costCentreId    String?
+  isActive        Boolean   @default(true)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum FinPayrollStatus {
+  DRAFT
+  POSTED
+  PAID
+  CANCELLED
+}
+
+model FinPayrollRun {
+  id               String           @id @default(uuid())
+  month            String           @db.VarChar(7)
+  status           FinPayrollStatus @default(DRAFT)
+  payDate          DateTime?        @db.Date
+  totals           Json
+  voucherId        String?          @unique
+  paymentVoucherId String?          @unique
+  notes            String?          @db.Text
+  createdById      String?
+  approvedById     String?
+  postedAt         DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  payslips FinPayslip[]
+
+  @@index([month, status])
+}
+
+/// One employee's pay for a run. Amount fields are monthly figures after loss-of-pay.
+model FinPayslip {
+  id               String   @id @default(uuid())
+  runId            String
+  partyId          String
+  daysInMonth      Int
+  paidDays         Decimal  @db.Decimal(5, 1)
+  earnings         Json
+  additions        Decimal  @default(0) @db.Decimal(14, 2)
+  gross            Decimal  @db.Decimal(14, 2)
+  pfWage           Decimal  @default(0) @db.Decimal(14, 2)
+  employeePf       Decimal  @default(0) @db.Decimal(14, 2)
+  employeeEsi      Decimal  @default(0) @db.Decimal(14, 2)
+  professionalTax  Decimal  @default(0) @db.Decimal(14, 2)
+  tds              Decimal  @default(0) @db.Decimal(14, 2)
+  advanceRecovery  Decimal  @default(0) @db.Decimal(14, 2)
+  net              Decimal  @db.Decimal(14, 2)
+  employerPf       Decimal  @default(0) @db.Decimal(14, 2)
+  employerEsi      Decimal  @default(0) @db.Decimal(14, 2)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  run FinPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, partyId])
+}
+
+/// Salary advance / loan to an employee, recovered through payroll.
+model FinEmployeeAdvance {
+  id              String   @id @default(uuid())
+  partyId         String
+  date            DateTime @db.Date
+  amount          Decimal  @db.Decimal(14, 2)
+  monthlyRecovery Decimal  @db.Decimal(14, 2)
+  voucherId       String   @unique
+  isActive        Boolean  @default(true)
+  notes           String?  @db.Text
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  @@index([partyId, isActive])
+}
+
+enum FinSettlementDocStatus {
+  DRAFT
+  POSTED
+  PAID
+}
+
+/// Full & final settlement when an employee leaves. `items` = [{ code, label, amount }] (negative = recovery).
+model FinFullFinal {
+  id               String                 @id @default(uuid())
+  partyId          String
+  lastWorkingDay   DateTime               @db.Date
+  items            Json
+  tds              Decimal                @default(0) @db.Decimal(14, 2)
+  advanceRecovery  Decimal                @default(0) @db.Decimal(14, 2)
+  net              Decimal                @db.Decimal(14, 2)
+  status           FinSettlementDocStatus @default(DRAFT)
+  voucherId        String?                @unique
+  paymentVoucherId String?                @unique
+  notes            String?                @db.Text
+  createdById      String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([partyId])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P11: CA & audit workspace, imports / exports
+// ---------------------------------------------------------------------------
+
+/// A document kept for the books / audit (stored through the secure upload or as a link).
+model FinVaultDocument {
+  id           String    @id @default(uuid())
+  title        String
+  category     String    @db.VarChar(60)
+  financialYear String?  @db.VarChar(20)
+  period       String?   @db.VarChar(7)
+  fileUrl      String
+  fileName     String?
+  mimeType     String?   @db.VarChar(120)
+  size         Int?
+  version      Int       @default(1)
+  previousId   String?
+  entityType   String?   @db.VarChar(40)
+  entityId     String?   @db.VarChar(60)
+  expiresAt    DateTime? @db.Date
+  tags         String[]  @default([])
+  notes        String?   @db.Text
+  isArchived   Boolean   @default(false)
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+
+  @@index([category, financialYear])
+  @@index([entityType, entityId])
+}
+
+/// Month-end close checklist and sign-off for a period. `items` = [{ key, label, done, doneById, doneAt, note }].
+model FinCloseChecklist {
+  id            String    @id @default(uuid())
+  periodId      String    @unique
+  items         Json
+  signedOffById String?
+  signedOffAt   DateTime?
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+/// Year-end close: profit transferred to retained earnings by `voucherId`.
+model FinYearClose {
+  id          String    @id @default(uuid())
+  yearId      String    @unique
+  voucherId   String    @unique
+  profit      Decimal   @db.Decimal(14, 2)
+  closedById  String?
+  closedAt    DateTime  @default(now())
+  reopenedAt  DateTime?
+  reopenedById String?
+}
+
+enum FinQueryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+/// Question from the CA / auditor with replies and evidence. `responses` = [{ byId, byName, at, text, fileUrl }].
+model FinCaQuery {
+  id            String         @id @default(uuid())
+  title         String
+  description   String         @db.Text
+  category      String?        @db.VarChar(60)
+  priority      String         @default("NORMAL") @db.VarChar(10)
+  status        FinQueryStatus @default(OPEN)
+  financialYear String?        @db.VarChar(20)
+  entityType    String?        @db.VarChar(40)
+  entityId      String?        @db.VarChar(60)
+  dueDate       DateTime?      @db.Date
+  raisedById    String?
+  assignedToId  String?
+  responses     Json           @default("[]")
+  closedById    String?
+  closedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status, dueDate])
+}
+
+/// CA / reviewer sign-off (or flag) on a posted voucher.
+model FinVoucherReview {
+  id           String   @id @default(uuid())
+  voucherId    String   @unique
+  status       String   @db.VarChar(12)
+  note         String?  @db.Text
+  queryId      String?
+  reviewedById String?
+  reviewedAt   DateTime @default(now())
+}
+
+/// A bulk import (vouchers, opening balances…) with its outcome.
+model FinImportBatch {
+  id          String   @id @default(uuid())
+  kind        String   @db.VarChar(30)
+  fileName    String?
+  dryRun      Boolean  @default(false)
+  totalRows   Int
+  created     Int      @default(0)
+  failed      Int      @default(0)
+  errors      Json     @default("[]")
+  results     Json     @default("[]")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Finance Hub P12: integrations (inbound bank / gateway events)
+// ---------------------------------------------------------------------------
+
+/// A credit or settlement received from a connected bank or gateway, waiting to be booked.
+model FinIntegrationEvent {
+  id          String   @id @default(uuid())
+  provider    String   @db.VarChar(30)
+  eventType   String   @db.VarChar(40)
+  externalId  String   @db.VarChar(100)
+  amount      Decimal? @db.Decimal(14, 2)
+  eventDate   DateTime? @db.Date
+  reference   String?  @db.VarChar(100)
+  payerName   String?
+  payload     Json
+  status      String   @default("RECEIVED") @db.VarChar(12)
+  voucherId   String?
+  note        String?  @db.Text
+  handledById String?
+  receivedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([status, receivedAt])
+}

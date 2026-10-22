@@ -3,11 +3,14 @@ import { startSoldListingRetentionJob } from './utils/soldListingRetention';
 import { startKeepAlive } from './utils/keepAlive';
 import { startDatabaseBackupJob } from './jobs/dbBackup.job';
 import { storagePersistenceConfigured } from './utils/documentUpload';
+import { startFinanceHubWorker } from './modules/finance-hub';
 
 const PORT = process.env.PORT || 5000;
 
 startSoldListingRetentionJob();
 startDatabaseBackupJob();
+// Finance Hub automatic posting; idle while posting mode is OFF.
+startFinanceHubWorker();
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
