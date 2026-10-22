@@ -1,13 +1,62 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import axios from 'axios';
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Award,
+  Building2,
+  Calendar,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Compass,
+  Copy,
+  CreditCard,
+  Download,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  FileCheck2,
+  FileSpreadsheet,
+  FileText,
+  Globe,
+  Hash,
+  HelpCircle,
+  History,
+  Info,
+  Layers,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Phone,
+  PhoneCall,
+  Plus,
+  RefreshCw,
+  Search,
+  Share2,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+  User,
+  Users,
+  X,
+} from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { resolvePartnerId } from '@/lib/routeResolvers';
 import { generateAdminPartnerEditPath } from '@/lib/routePaths';
-import { FileUploadField } from '@/components/upload/FileUploadField';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import {
   getOnboardingProgressStep,
@@ -25,6 +74,14 @@ import {
   validateKycDocumentNumber,
   type KycVerificationDocumentType,
 } from '@/lib/kycVerification';
+import {
+  uploadFileToServer,
+  type UploadPurpose,
+  getPassportPhotoUploadValidationError,
+  getUploadValidationError,
+} from '@/lib/fileUpload';
+import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
+import { ApiSparkleIcon } from '@/components/ui/ApiFillBadge';
 
 const toTitleCase = (str: string) => {
   if (!str) return str;
@@ -43,7 +100,7 @@ const businessPartnerTypes = new Set(['SHOWROOM']);
 const contactPreferenceOptions = ['PHONE_CALL', 'WHATSAPP', 'EMAIL'];
 
 const documentLabels: Record<string, string> = {
-  PAN_CARD: 'PAN Card / Company PAN',
+  PAN_CARD: 'Company PAN / PAN Card',
   AADHAAR_CARD: 'Aadhaar / Accepted ID',
   PASSPORT_PHOTO: 'Passport-size Photo',
   CANCELLED_CHEQUE: 'Cancelled Cheque',
@@ -248,31 +305,31 @@ const getDocumentLabel = (documentType: string, partnerType?: string | null) => 
 const getPartnerTypeMeta = (partnerType?: string | null) => {
   if (partnerType === 'SHOWROOM') {
     return {
-      ownerLabel: 'Owner / authorized place manager name',
-      ownerPlaceholder: 'Authorized place owner or manager',
+      ownerLabel: 'Authorized place owner / signatory name',
+      ownerPlaceholder: 'Authorized place owner or director name',
       businessNameLabel: 'Authorized place name',
-      businessNamePlaceholder: 'Amar Equipment Authorized Place',
-      addressLabel: 'Address',
-      addressPlaceholder: 'Complete address',
-      experienceLabel: 'Authorized place experience',
-      experiencePlaceholder: '6 years in used equipment retail',
-      descriptionPlaceholder: 'Describe your authorized place, inventory mix, and customer reach',
-      serviceAreasPlaceholder: 'Lucknow, Kanpur, Delhi NCR',
-      alternateMobilePlaceholder: 'Authorized place alternate contact',
+      businessNamePlaceholder: 'e.g. Amar Equipment Authorized Showroom',
+      addressLabel: 'Full physical address',
+      addressPlaceholder: 'Unit / Floor, Building Name, Street / Landmark, Industrial Area',
+      experienceLabel: 'Industry experience',
+      experiencePlaceholder: 'e.g. 6 years in earthmoving machinery retail & service',
+      descriptionPlaceholder: 'Describe your machinery dealership, inventory mix, and service capabilities',
+      serviceAreasPlaceholder: 'e.g. Raipur, Durg, Bilaspur, Central Chhattisgarh',
+      alternateMobilePlaceholder: 'Authorized place alternate mobile',
     };
   }
 
   return {
-    ownerLabel: 'Broker / authorized place name',
-    ownerPlaceholder: 'Broker name or authorized contact',
-    businessNameLabel: 'Broker / firm name',
-    businessNamePlaceholder: 'Amar Equipment Brokerage',
-    addressLabel: 'Address',
-    addressPlaceholder: 'Office address or main working location',
+    ownerLabel: 'Broker / authorized representative name',
+    ownerPlaceholder: 'Broker name or primary representative',
+    businessNameLabel: 'Broker / firm trade name',
+    businessNamePlaceholder: 'e.g. Amar Equipment Brokerage & Sourcing',
+    addressLabel: 'Operating / registered address',
+    addressPlaceholder: 'Office address or main working depot location',
     experienceLabel: 'Brokering experience',
-    experiencePlaceholder: '4 years in sourcing and resale support',
-    descriptionPlaceholder: 'Describe your broker network, sourcing process, and support coverage',
-    serviceAreasPlaceholder: 'Lucknow, Kanpur, remote sourcing regions',
+    experiencePlaceholder: 'e.g. 4 years in equipment sourcing & valuation',
+    descriptionPlaceholder: 'Describe your broker network, machinery sourcing, and client coverage',
+    serviceAreasPlaceholder: 'e.g. Raipur, Kanpur, regional sourcing corridors',
     alternateMobilePlaceholder: 'Backup broker contact',
   };
 };
@@ -291,7 +348,13 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const [resolvedPartnerId, setResolvedPartnerId] = useState<string | null>(requestedPartnerId || null);
 
   const [profile, setProfile] = useState<OnboardingProfile>(
-    emptyProfile('', '', '', '', '')
+    emptyProfile(
+      currentUser?.email || '',
+      currentUser?.name || '',
+      currentUser?.mobile || '',
+      currentUser?.city || '',
+      currentUser?.state || ''
+    )
   );
   const [requiredDocuments, setRequiredDocuments] = useState<string[]>([]);
   const [kycDocuments, setKycDocuments] = useState<KycDocumentForm[]>([]);
@@ -316,6 +379,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [locationsError, setLocationsError] = useState('');
   const sensitiveInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Preview & Modal states
+  const [previewingDoc, setPreviewingDoc] = useState<{ url: string; title: string; isPdf?: boolean } | null>(null);
+  const [readingAgreement, setReadingAgreement] = useState<AgreementForm | null>(null);
+  const [showAadhaarNumber, setShowAadhaarNumber] = useState(false);
 
   const currentStatus = currentUser?.kycStatus || 'NOT_STARTED';
   const isApproved = currentUser?.accountStatus === 'ACTIVE' && currentUser?.onboardingStatus === 'APPROVED' && currentUser?.kycStatus === 'APPROVED';
@@ -344,11 +412,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
   const steps = useMemo(
     () => [
-      { id: 'profile', title: 'Account', description: 'Primary contact and registration basics' },
-      { id: 'business', title: 'Business', description: 'Business profile and operating details' },
-      { id: 'kyc', title: 'KYC Docs', description: 'Identity, business, and bank document metadata' },
-      { id: 'agreements', title: 'Agreements', description: 'Mandatory platform and compliance declarations' },
-      { id: 'review', title: 'Review', description: 'Check completeness and submit for approval' },
+      { id: 'profile', number: '01', title: 'Account', description: 'Primary contact & signatory identity', icon: User },
+      { id: 'business', number: '02', title: 'Business', description: 'Business profile & operating details', icon: Building2 },
+      { id: 'kyc', number: '03', title: 'KYC Docs', description: 'Identity, business & bank document vault', icon: CreditCard },
+      { id: 'agreements', number: '04', title: 'Agreements', description: 'Mandatory platform & compliance declarations', icon: ShieldCheck },
+      { id: 'review', number: '05', title: 'Review', description: 'Check completeness & submit for approval', icon: FileCheck2 },
     ],
     []
   );
@@ -496,9 +564,6 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     });
   }, [kycDocuments, optionalDocuments]);
 
-  // Password managers sometimes inject old GST/PAN/Aadhaar values after React
-  // renders, even when the API returned an empty value. Clear only those DOM
-  // injections; values returned by the API remain untouched.
   useEffect(() => {
     if (loading) return;
 
@@ -537,51 +602,50 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     (profile.partnerType === 'SHOWROOM' || String(profile.expectedMonthlyListings || '').trim()) &&
     (profile.partnerType === 'SHOWROOM' || profile.contactPreference?.trim())
   );
-  // Keep the review gate aligned with the backend: optional agreements must not
-  // block onboarding submission when every required agreement is accepted.
   const areAgreementsComplete = agreements
     .filter((agreement) => agreement.isRequired)
     .every((agreement) => agreement.checked);
 
   const reviewChecklist = useMemo(
     () => [
-      { label: 'Account details complete', done: isAccountComplete },
-      { label: 'Business information complete', done: isBusinessComplete },
-      { label: 'Required KYC documents complete', done: progress.documentsComplete },
-      { label: 'All required agreements accepted', done: progress.agreementsComplete && areAgreementsComplete },
+      { label: 'Account & Signatory Identity', stepIndex: 0, done: isAccountComplete, subtitle: profile.ownerName || 'Not configured' },
+      { label: 'Business & Operating Profile', stepIndex: 1, done: isBusinessComplete, subtitle: profile.businessName ? `${profile.businessName} · ${profile.city || ''}` : 'Location pending' },
+      { label: 'Mandatory KYC Documents', stepIndex: 2, done: progress.documentsComplete, subtitle: `${documentsByType.filter(d => d.fileUrl).length} of ${documentsByType.length} uploaded` },
+      { label: 'Compliance & Declarations', stepIndex: 3, done: progress.agreementsComplete && areAgreementsComplete, subtitle: `${agreements.filter(a => a.checked).length} of ${agreements.length} accepted` },
     ],
-    [progress, isAccountComplete, isBusinessComplete, areAgreementsComplete]
+    [progress, isAccountComplete, isBusinessComplete, areAgreementsComplete, profile, documentsByType, agreements]
   );
+
   const submitBlockers = useMemo(
     () =>
       [
-        !isAccountComplete ? 'Account details are incomplete' : '',
-        !isBusinessComplete ? 'Business information is incomplete' : '',
-        !progress.documentsComplete ? 'Required KYC documents are pending' : '',
-        !(progress.agreementsComplete && areAgreementsComplete) ? 'All mandatory agreements must be accepted' : '',
+        !isAccountComplete ? 'Account & Signatory details are incomplete (Step 1)' : '',
+        !isBusinessComplete ? 'Business information & location are incomplete (Step 2)' : '',
+        !progress.documentsComplete ? 'Required KYC documents are pending (Step 3)' : '',
+        !(progress.agreementsComplete && areAgreementsComplete) ? 'Mandatory platform agreements must be accepted (Step 4)' : '',
       ].filter(Boolean),
     [isAccountComplete, isBusinessComplete, progress.documentsComplete, progress.agreementsComplete, areAgreementsComplete]
   );
+
   const submitStatus = useMemo(() => {
     if (!canEdit) {
       if (currentStatus === 'UNDER_REVIEW') {
         return 'Submission is locked while your application is under review.';
       }
-
       if (currentStatus === 'SUBMITTED') {
-        return 'Submitted';
+        return 'Application submitted. Our verification team is actively reviewing your dossier.';
       }
-
       return 'Submission is locked for the current onboarding status.';
     }
 
     if (submitBlockers.length > 0) {
-      return `Partial submission is allowed. Pending items right now: ${submitBlockers.join(', ')}.`;
+      return `Pending items: ${submitBlockers.join(', ')}.`;
     }
 
-    return 'All requirements are complete. You can submit the full onboarding package.';
+    return 'All requirements are fulfilled. Your application is ready for final review.';
   }, [canEdit, currentStatus, submitBlockers]);
-  const canSubmitOnboarding = canEdit && !submitting;
+
+  const canSubmitOnboarding = canEdit && !submitting && submitBlockers.length === 0;
 
   const isBusinessPartner = businessPartnerTypes.has(profile.partnerType);
   const partnerTypeMeta = useMemo(() => getPartnerTypeMeta(profile.partnerType), [profile.partnerType]);
@@ -610,7 +674,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       } catch {
         if (!cancelled) {
           setLocationStates([]);
-          setLocationsError('Unable to load states from the database.');
+          setLocationsError('Unable to load states from database.');
         }
       } finally {
         if (!cancelled) {
@@ -652,7 +716,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       } catch {
         if (!cancelled) {
           setLocationCities([]);
-          setLocationsError('Unable to load cities for the selected state.');
+          setLocationsError('Unable to load cities for selected state.');
         }
       } finally {
         if (!cancelled) {
@@ -933,14 +997,14 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         verificationResult,
         verificationMessage: verified
           ? ''
-          : 'Provider returned the record, but its status needs manual review before approval.',
+          : 'Official record retrieved, but requires manual team sign-off before approval.',
       });
       setSuccess(
         verified
           ? cacheHit
-            ? `${documentType === 'PAN_CARD' ? 'PAN' : 'GSTIN'} verified from the saved database result. No new API charge was made.`
-            : `${documentType === 'PAN_CARD' ? 'PAN' : 'GSTIN'} verified successfully. API usage was charged and saved securely.`
-          : 'Verification result saved for manual review.',
+            ? `${documentType === 'PAN_CARD' ? 'Company PAN' : 'GSTIN'} verified from saved database registry.`
+            : `${documentType === 'PAN_CARD' ? 'Company PAN' : 'GSTIN'} verified successfully via Government portal.`
+          : 'Verification result stored for review.',
       );
     } catch (err) {
       const message = axios.isAxiosError(err)
@@ -953,1067 +1017,1798 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     }
   };
 
-  const stepContent = () => {
-    const stepId = steps[currentStep]?.id;
-    if (stepId === 'profile') {
+  // Stepper completion calculation
+  const totalSteps = steps.length;
+  const completedStepsCount = [
+    isAccountComplete,
+    isBusinessComplete,
+    progress.documentsComplete,
+    progress.agreementsComplete && areAgreementsComplete,
+    currentUser?.onboardingStatus === 'SUBMITTED' || isApproved,
+  ].filter(Boolean).length;
+  const progressPercent = Math.round((completedStepsCount / totalSteps) * 100);
+
+  // Status badge styling
+  const renderPartnerStatusBadge = () => {
+    if (isApproved) {
       return (
-        <div className="space-y-5">
-          <div className="grid gap-5 md:grid-cols-2">
-            <Field label={partnerTypeMeta.ownerLabel}>
-              <input
-                value={profile.ownerName}
-                onChange={(event) => setProfile((current) => ({ ...current, ownerName: toTitleCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder={partnerTypeMeta.ownerPlaceholder}
-              />
-            </Field>
-            <Field label="Primary mobile number">
-              <input
-                value={profile.primaryContact}
-                onChange={(event) => setProfile((current) => ({ ...current, primaryContact: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="9876543210"
-              />
-            </Field>
-            <Field label="WhatsApp number">
-              <input
-                value={profile.whatsappNumber}
-                onChange={(event) => setProfile((current) => ({ ...current, whatsappNumber: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="9876543210"
-              />
-            </Field>
-            <Field label="Email address">
-              <input
-                value={profile.email}
-                onChange={(event) => setProfile((current) => ({ ...current, email: toLowerCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="name@business.com"
-              />
-            </Field>
-            <Field label="Partner type">
-              <select
-                value={profile.partnerType}
-                onChange={(event) => {
-                  const newPartnerType = event.target.value;
-                  setProfile((current) => ({ ...current, partnerType: newPartnerType }));
-                  if (!isAdminMode && user) {
-                    updateUser({ ...user, partnerType: newPartnerType });
-                  }
-                }}
-                disabled={!canEdit}
-                className={inputClassName}
-              >
-                <option value="">Select partner type</option>
-                {visiblePartnerTypeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {formatPartnerTypeLabel(option)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+          <CheckCircle2 className="h-3 w-3" /> Approved & Active
+        </span>
       );
     }
-
-    if (stepId === 'business') {
+    if (currentStatus === 'SUBMITTED' || currentStatus === 'UNDER_REVIEW') {
       return (
-        <div className="space-y-5">
-          <div className="grid gap-5 md:grid-cols-2">
-            <Field label={partnerTypeMeta.businessNameLabel}>
-              <input
-                value={profile.businessName}
-                onChange={(event) => setProfile((current) => ({ ...current, businessName: toTitleCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder={partnerTypeMeta.businessNamePlaceholder}
-              />
-            </Field>
-            <Field label="Alternate mobile">
-              <input
-                value={profile.alternateMobile}
-                onChange={(event) => setProfile((current) => ({ ...current, alternateMobile: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder={partnerTypeMeta.alternateMobilePlaceholder}
-              />
-            </Field>
-            <Field label="State">
-              <SearchableSelect
-                options={locationStates}
-                value={selectedStateId || profile.state}
-                displayValue={profile.state}
-                onChange={handleStateChange}
-                placeholder={locationsLoading ? 'Loading states...' : 'Select state'}
-                disabled={!canEdit}
-              />
-              {locationsError ? <p className="mt-1 text-xs text-red-600">{locationsError}</p> : null}
-            </Field>
-            <Field label="City">
-              <SearchableSelect
-                options={selectedStateId ? locationCities : []}
-                value={selectedCityId || profile.city}
-                displayValue={profile.city}
-                onChange={handleCityChange}
-                placeholder={citiesLoading ? 'Loading cities...' : selectedStateId ? 'Select city' : 'Select state first'}
-                disabled={!canEdit || !selectedStateId || citiesLoading}
-              />
-            </Field>
-            <Field label="PIN code">
-              <input
-                value={profile.pinCode}
-                onChange={(event) => setProfile((current) => ({ ...current, pinCode: event.target.value.replace(/[^0-9]/g, '').slice(0, 6) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-              />
-            </Field>
-            <Field label={partnerTypeMeta.experienceLabel}>
-              <input
-                value={profile.businessExperience}
-                onChange={(event) => setProfile((current) => ({ ...current, businessExperience: toSentenceCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder={partnerTypeMeta.experiencePlaceholder}
-              />
-            </Field>
-            {profile.partnerType !== 'BROKER' && profile.partnerType !== 'SHOWROOM' && (
-              <Field label="Expected monthly listings">
-                <input
-                  value={profile.expectedMonthlyListings}
-                  onChange={(event) => setProfile((current) => ({ ...current, expectedMonthlyListings: event.target.value.replace(/[^0-9]/g, '').slice(0, 4) }))}
-                  disabled={!canEdit}
-                  className={inputClassName}
-                  placeholder="12"
-                />
-              </Field>
-            )}
-            {profile.partnerType !== 'BROKER' && (
-              <Field label="Years in business">
-                <input
-                  value={profile.yearsInBusiness}
-                  onChange={(event) => setProfile((current) => ({ ...current, yearsInBusiness: event.target.value.replace(/[^0-9]/g, '').slice(0, 3) }))}
-                  disabled={!canEdit}
-                  className={inputClassName}
-                  placeholder="8"
-                />
-              </Field>
-            )}
-            {isBusinessPartner ? (
-              <>
-                <Field label="Team size">
-                  <input
-                    value={profile.teamSize}
-                    onChange={(event) => setProfile((current) => ({ ...current, teamSize: event.target.value.replace(/[^0-9]/g, '').slice(0, 4) }))}
-                    disabled={!canEdit}
-                    className={inputClassName}
-                    placeholder="15"
-                  />
-                </Field>
-                {profile.partnerType !== 'SHOWROOM' && (
-                  <Field label="Business registration number">
-                    <input
-                      value={profile.businessRegistrationNumber}
-                      onChange={(event) => setProfile((current) => ({ ...current, businessRegistrationNumber: toUpperCase(event.target.value) }))}
-                      disabled={!canEdit}
-                      className={inputClassName}
-                      placeholder="Registration / incorporation number"
-                    />
-                  </Field>
-                )}
-              </>
-            ) : (
-              <>
-                <Field label="Service specialization">
-                  <input
-                    value={profile.businessRegistrationNumber}
-                    onChange={(event) => setProfile((current) => ({ ...current, businessRegistrationNumber: toSentenceCase(event.target.value) }))}
-                    disabled={!canEdit}
-                    className={inputClassName}
-                    placeholder="Broker network, sourcing, recovery support, inspections"
-                  />
-                </Field>
-              </>
-            )}
-            {profile.partnerType !== 'BROKER' && profile.partnerType !== 'SHOWROOM' && (
-              <>
-                <Field label="Working hours">
-                  <input
-                    value={profile.workingHours}
-                    onChange={(event) => setProfile((current) => ({ ...current, workingHours: event.target.value }))}
-                    disabled={!canEdit}
-                    className={inputClassName}
-                    placeholder="Mon-Sat, 10am-7pm"
-                  />
-                </Field>
-                <Field label="Preferred contact method">
-                  <select
-                    value={profile.contactPreference}
-                    onChange={(event) => setProfile((current) => ({ ...current, contactPreference: event.target.value }))}
-                    disabled={!canEdit}
-                    className={inputClassName}
-                  >
-                    {contactPreferenceOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option.replaceAll('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </>
-            )}
-            <Field label="Website URL">
-              <input
-                value={profile.websiteUrl}
-                onChange={(event) => setProfile((current) => ({ ...current, websiteUrl: toLowerCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="https://example.com"
-              />
-            </Field>
-            <Field label="Google Maps location / link">
-              <input
-                value={profile.googleMapsLocation}
-                onChange={(event) => setProfile((current) => ({ ...current, googleMapsLocation: event.target.value }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="Shareable map URL or coordinates"
-              />
-            </Field>
-            <Field label="Service areas">
-              <input
-                value={profile.serviceAreas}
-                onChange={(event) => setProfile((current) => ({ ...current, serviceAreas: toTitleCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder={partnerTypeMeta.serviceAreasPlaceholder}
-              />
-            </Field>
-            <Field label="Social links">
-              <input
-                value={profile.socialLinks}
-                onChange={(event) => setProfile((current) => ({ ...current, socialLinks: toLowerCase(event.target.value) }))}
-                disabled={!canEdit}
-                className={inputClassName}
-                placeholder="LinkedIn / Facebook / Instagram URLs"
-              />
-            </Field>
-            <Field label={partnerTypeMeta.addressLabel} fullWidth>
-              <textarea
-                value={profile.businessAddress}
-                onChange={(event) => setProfile((current) => ({ ...current, businessAddress: toSentenceCase(event.target.value) }))}
-                disabled={!canEdit}
-                rows={4}
-                className={textareaClassName}
-                placeholder={partnerTypeMeta.addressPlaceholder}
-              />
-            </Field>
-            {profile.partnerType !== 'SHOWROOM' && (
-              <Field label="Business description" fullWidth>
-                <textarea
-                  value={profile.businessDescription}
-                  onChange={(event) => setProfile((current) => ({ ...current, businessDescription: toSentenceCase(event.target.value) }))}
-                  disabled={!canEdit}
-                  rows={4}
-                  className={textareaClassName}
-                  placeholder={partnerTypeMeta.descriptionPlaceholder}
-                />
-              </Field>
-            )}
-          </div>
-        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
+          <Clock className="h-3 w-3" /> Under Verification
+        </span>
       );
     }
-
-    if (stepId === 'kyc') {
-      const getStatusBadge = (status?: string) => {
-        switch (status) {
-          case 'APPROVED':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">✓ Approved</span>;
-          case 'REJECTED':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700 ring-1 ring-red-200">✕ Rejected</span>;
-          case 'UPLOADED':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-blue-200">↑ Uploaded</span>;
-          case 'PENDING_REVIEW':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">⏳ Pending</span>;
-          default:
-            return <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-bold text-gray-500 ring-1 ring-gray-200">— Not uploaded</span>;
-        }
-      };
-
-      const getVerifyBadge = (verificationStatus?: string) => {
-        switch (verificationStatus) {
-          case 'VERIFIED':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">✓ Verified</span>;
-          case 'MANUAL_REVIEW':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">⚑ Review</span>;
-          case 'FAILED':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">✕ Failed</span>;
-          case 'VERIFYING':
-            return <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">◌ Checking…</span>;
-          default:
-            return null;
-        }
-      };
-
+    if (currentUser?.onboardingStatus === 'CHANGES_REQUESTED') {
       return (
-        <div className="space-y-4">
-          {!profile.partnerType ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5">
-              <h3 className="text-base font-bold text-amber-900">Select partner type to unlock KYC fields</h3>
-              <div className="mt-4 max-w-xs">
-                <label className="mb-1.5 block text-sm font-medium text-amber-800">Partner type</label>
-                <select
-                  value={profile.partnerType}
-                  onChange={(event) => setProfile((current) => ({ ...current, partnerType: event.target.value }))}
-                  disabled={!canEdit}
-                  className={inputClassName}
-                >
-                  <option value="">Select type</option>
-                  {visiblePartnerTypeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {formatPartnerTypeLabel(option)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          ) : (
-            <>
-              {documentsByType.map((document) => {
-                const canVerify = document.documentType === 'PAN_CARD' || document.documentType === 'GST_CERTIFICATE';
-                const isVerifying = verifyingDocumentType === document.documentType;
-                const verDisplay = document.verificationResult
-                  ? getKycVerificationDisplay(document.documentType as KycVerificationDocumentType, document.verificationResult)
-                  : null;
-                const docLabel = document.documentType === 'PAN_CARD'
-                  ? 'PAN number'
-                  : document.documentType === 'GST_CERTIFICATE'
-                    ? 'GSTIN'
-                    : document.documentType === 'AADHAAR_CARD'
-                      ? 'Aadhaar / VID'
-                      : 'Document number';
-                const fileLabel = document.documentType === 'PASSPORT_PHOTO'
-                  ? 'Passport-size photo'
-                  : 'Upload document file';
-
-                return (
-                  <div key={document.documentType} className="rounded-2xl border border-gray-100 bg-white shadow-[0_2px_12px_-4px_rgba(0,0,0,0.07)] overflow-hidden">
-                    {/* Card header */}
-                    <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/60 px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFC107]/10 text-sm font-bold text-[#9A7600]">
-                          {getDocumentLabel(document.documentType, profile.partnerType).charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900 leading-tight">
-                            {getDocumentLabel(document.documentType, profile.partnerType)}
-                          </p>
-                          {document.reviewComment && (
-                            <p className="text-xs text-orange-600 font-medium mt-0.5">{document.reviewComment}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {canVerify && getVerifyBadge(document.verificationStatus)}
-                        {getStatusBadge(document.status)}
-                      </div>
-                    </div>
-
-                    {/* Card body */}
-                    <div className="p-5 space-y-4">
-                      {/* File upload and document input grid */}
-                      <div className={document.documentType === 'PASSPORT_PHOTO' ? 'space-y-2' : 'grid gap-5 lg:grid-cols-2 lg:items-start'}>
-                        {/* File upload column with aligned label */}
-                        <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">{fileLabel}</label>
-                          <FileUploadField
-                            accept={document.documentType === 'PASSPORT_PHOTO' ? '.png,.jpg,.jpeg,.webp' : '.pdf,.png,.jpg,.jpeg,.webp'}
-                            disabled={!canEdit}
-                            helperText={document.documentType === 'PASSPORT_PHOTO'
-                              ? 'Clear passport-size photo · JPG / PNG / WEBP · max 3 MB'
-                              : 'PDF / JPG / PNG · PDFs max 3 MB · images compressed to WEBP'}
-                            onUploaded={(uploadedFile) =>
-                          updateDocument(document.documentType, {
-                            fileName: uploadedFile.originalName,
-                            fileUrl: uploadedFile.fileUrl,
-                            status: 'UPLOADED',
-                            verificationStatus: 'NOT_STARTED',
-                            verificationRecordId: '',
-                            verificationCacheHit: false,
-                            verificationResult: null,
-                            verificationMessage: '',
-                          })
-                            }
-                            uploadedFileName={document.fileName}
-                            uploadedFileUrl={document.fileUrl}
-                            uploadPurpose={document.documentType === 'PASSPORT_PHOTO' ? 'passport-photo' : 'document'}
-                            visibility="secure"
-                          />
-                        </div>
-
-                        {/* Document number column with aligned label */}
-                        {document.documentType !== 'PASSPORT_PHOTO' && (
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">{docLabel}</label>
-
-                            {canVerify ? (
-                              /* PAN / GSTIN — number + verify inline */
-                              <div className="flex items-stretch gap-2">
-                                <input
-                                  type="text"
-                                  name={`kyc_${document.documentType.toLowerCase()}_document_number`}
-                                  autoComplete="off"
-                                  autoCorrect="off"
-                                  autoCapitalize="characters"
-                                  spellCheck={false}
-                                  data-lpignore="true"
-                                  data-1p-ignore="true"
-                                  data-bwignore="true"
-                                  data-form-type="other"
-                                  ref={(input) => {
-                                    sensitiveInputRefs.current[document.documentType] = input;
-                                  }}
-                                  value={document.documentNumber}
-                                  onChange={(event) => {
-                                    const nextValue = normalizeKycDocumentNumber(document.documentType as KycVerificationDocumentType, event.target.value);
-                                    updateDocument(document.documentType, {
-                                      documentNumber: nextValue,
-                                      verificationStatus: 'NOT_STARTED',
-                                      verificationRecordId: '',
-                                      verificationCacheHit: false,
-                                      verificationResult: null,
-                                      verificationMessage: '',
-                                    });
-                                  }}
-                                  disabled={!canEdit}
-                                  className={`${inputClassName} h-[46px] flex-1 font-mono tracking-wider`}
-                                  placeholder={document.documentType === 'PAN_CARD' ? 'ABCDE1234F' : 'e.g. 27ABCDE1234F1Z5'}
-                                  maxLength={document.documentType === 'PAN_CARD' ? 10 : 15}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => void verifyKycDocument(document.documentType as KycVerificationDocumentType)}
-                                  disabled={!canEdit || verifyingDocumentType !== null || document.verificationStatus === 'VERIFYING' || !document.documentNumber}
-                                  className={`h-[46px] flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${document.verificationStatus === 'VERIFIED'
-                                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                      : 'bg-[#FFC107] text-black hover:bg-[#E5AD06]'
-                                    }`}
-                                >
-                                  {isVerifying ? (
-                                    <>
-                                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                      </svg>
-                                      Checking
-                                    </>
-                                  ) : document.verificationStatus === 'VERIFIED' ? (
-                                    '✓ Verified'
-                                  ) : (
-                                    'Verify'
-                                  )}
-                                </button>
-                              </div>
-                            ) : (
-                              /* Aadhaar — just the input */
-                              <input
-                                type="password"
-                                name="kyc_aadhaar_vid_document_number"
-                                autoComplete="new-password"
-                                autoCorrect="off"
-                                spellCheck={false}
-                                data-lpignore="true"
-                                data-1p-ignore="true"
-                                data-bwignore="true"
-                                data-form-type="other"
-                                ref={(input) => {
-                                  sensitiveInputRefs.current[document.documentType] = input;
-                                }}
-                                value={document.documentNumber}
-                                onChange={(event) =>
-                                  updateDocument(document.documentType, {
-                                    documentNumber: event.target.value.replace(/\D/g, '').slice(0, 16),
-                                  })
-                                }
-                                disabled={!canEdit}
-                                className={`${inputClassName} h-[46px] font-mono tracking-wider`}
-                                inputMode="numeric"
-                                maxLength={16}
-                                placeholder="••••  ••••  ••••  ••••"
-                              />
-                            )}
-
-                            {/* Verification failed message */}
-                            {document.verificationStatus === 'FAILED' && document.verificationMessage && (
-                              <p className="flex items-center gap-1.5 text-xs font-medium text-red-600">
-                                <span>✕</span> {document.verificationMessage}
-                              </p>
-                            )}
-                            {document.verificationStatus === 'MANUAL_REVIEW' && document.verificationMessage && (
-                              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
-                                <span>⚑</span> {document.verificationMessage}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Verification result card */}
-                      {verDisplay && (verDisplay.displayName || verDisplay.status || verDisplay.maskedNumber) && (
-                        <div className={`rounded-xl border px-4 py-3.5 ${document.verificationStatus === 'VERIFIED'
-                            ? 'border-emerald-200 bg-emerald-50'
-                            : 'border-amber-200 bg-amber-50'
-                          }`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm ${document.verificationStatus === 'VERIFIED'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700'
-                              }`}>
-                              {document.verificationStatus === 'VERIFIED' ? '✓' : '⚑'}
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-1">
-                              {verDisplay.displayName && (
-                                <p className={`text-sm font-bold leading-tight ${document.verificationStatus === 'VERIFIED' ? 'text-emerald-900' : 'text-amber-900'}`}>
-                                  {verDisplay.displayName}
-                                </p>
-                              )}
-                              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                {verDisplay.maskedNumber && (
-                                  <span className="text-xs font-mono text-gray-600">{verDisplay.maskedNumber}</span>
-                                )}
-                                {verDisplay.status && (
-                                  <span className={`text-xs font-semibold ${document.verificationStatus === 'VERIFIED' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                    {verDisplay.status}
-                                  </span>
-                                )}
-                                {verDisplay.category && (
-                                  <span className="text-xs text-gray-500">{verDisplay.category}</span>
-                                )}
-                                {verDisplay.extra && (
-                                  <span className="text-xs text-gray-500">{verDisplay.extra}</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Optional documents section */}
-              {optionalDocumentsByType.length > 0 && (
-                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-4 space-y-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional Documents</p>
-                  {optionalDocumentsByType.map((document) => (
-                    <div key={document.documentType} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-bold text-gray-900">{getDocumentLabel(document.documentType, profile.partnerType)}</p>
-                        {getStatusBadge(document.status)}
-                      </div>
-                      <div className={!['CANCELLED_CHEQUE', 'PASSPORT_PHOTO'].includes(document.documentType) ? 'grid gap-4 lg:grid-cols-2 lg:items-start' : 'space-y-1'}>
-                        <div className="space-y-1">
-                          <label className="mb-1 block text-xs font-medium text-gray-600">Upload document copy</label>
-                          <FileUploadField
-                            accept=".pdf,.png,.jpg,.jpeg,.webp"
-                            disabled={!canEdit}
-                            helperText="Stored in secure private document storage."
-                            onUploaded={(uploadedFile) =>
-                            updateDocument(document.documentType, {
-                              fileName: uploadedFile.originalName,
-                              fileUrl: uploadedFile.fileUrl,
-                              status: 'UPLOADED',
-                            })
-                            }
-                            uploadedFileName={document.fileName}
-                            uploadedFileUrl={document.fileUrl}
-                            visibility="secure"
-                          />
-                        </div>
-                        {!['CANCELLED_CHEQUE', 'PASSPORT_PHOTO'].includes(document.documentType) && (
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-1">
-                              <label className="mb-1 block text-xs font-medium text-gray-600">Document number</label>
-                              <input
-                                value={document.documentNumber}
-                                onChange={(event) => updateDocument(document.documentType, { documentNumber: toUpperCase(event.target.value) })}
-                                disabled={!canEdit}
-                                className={`${inputClassName} h-[46px]`}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="mb-1 block text-xs font-medium text-gray-600">Name on document</label>
-                              <input
-                                value={document.nameOnDocument}
-                                onChange={(event) => updateDocument(document.documentType, { nameOnDocument: toTitleCase(event.target.value) })}
-                                disabled={!canEdit}
-                                className={`${inputClassName} h-[46px]`}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">
+          <AlertCircle className="h-3 w-3" /> Changes Requested
+        </span>
       );
     }
-
-    if (stepId === 'agreements') {
-      const allChecked = agreements.length > 0 && agreements.every((a) => a.checked);
-
-      return (
-        <div className="space-y-4">
-          <label className={`inline-flex w-fit items-start gap-3 rounded-xl border px-4 py-4 mb-2 ${allChecked ? 'border-[#FFC107] bg-[#FFF8DC]' : 'border-gray-300 bg-gray-50'}`}>
-            <input
-              type="checkbox"
-              checked={allChecked}
-              disabled={!canEdit || agreements.length === 0}
-              onChange={(event) => {
-                const checked = event.target.checked;
-                setAgreements((current) => current.map((item) => ({ ...item, checked })));
-              }}
-              className="mt-1 h-4 w-4"
-            />
-            <div>
-              <p className="text-sm font-bold text-gray-900">Select All Agreements</p>
-              <p className="mt-1 text-xs text-gray-500">Accept all mandatory declarations at once.</p>
-            </div>
-          </label>
-          <hr className="border-gray-200" />
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {agreements.map((agreement) => (
-              <div
-                key={agreement.agreementType}
-                className={`flex h-full items-start gap-3 rounded-xl border px-4 py-4 ${agreement.checked ? 'border-[#FFC107] bg-[#FFF8DC]' : 'border-gray-200 bg-white'}`}
-              >
-                <input
-                  id={`agreement-${agreement.agreementType}`}
-                  type="checkbox"
-                  checked={agreement.checked}
-                  disabled={!canEdit}
-                  onChange={(event) =>
-                    setAgreements((current) =>
-                      current.map((item) =>
-                        item.agreementType === agreement.agreementType ? { ...item, checked: event.target.checked } : item
-                      )
-                    )
-                  }
-                  className="mt-1 h-4 w-4"
-                />
-                <div className="min-w-0 flex-1">
-                  <label htmlFor={`agreement-${agreement.agreementType}`} className="cursor-pointer text-sm font-semibold text-gray-900">
-                    {agreement.title || agreementLabels[agreement.agreementType] || agreement.agreementType.replaceAll('_', ' ')}
-                  </label>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    {agreement.version && <span>Version {agreement.version}</span>}
-                    {agreement.isRequired && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">Required</span>}
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-gray-500">
-                    {agreement.summary || agreementDescriptions[agreement.agreementType] || 'Please read and accept this agreement before submission.'}
-                  </p>
-                  {agreement.content && (
-                    <details className="mt-3 text-xs text-gray-600">
-                      <summary className="cursor-pointer font-semibold text-gray-700">Read full agreement</summary>
-                      <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white/80 p-3 leading-5 ring-1 ring-gray-200">
-                        {agreement.content}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2">
-          {reviewChecklist.map((item) => (
-            <div key={item.label} className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-gray-900">{item.label}</p>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${item.done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {item.done ? 'Ready' : 'Pending'}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
-          <h3 className="text-lg font-bold text-gray-900">Current review trail</h3>
-          {reviewHistory.length === 0 ? (
-            <p className="mt-3 text-sm text-gray-500">No review history yet. Save your onboarding draft or submit the package to start the trail.</p>
-          ) : (
-            <>
-              <div className="mt-4 space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                {reviewHistory.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition hover:shadow-md">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {getReviewActionLabel(item.action, profile.partnerType, profile.businessName || profile.ownerName)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">{new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</p>
-                    {getReviewComment(item.action, item.comment) ? (
-                      <p className="mt-2 text-sm text-gray-600 leading-relaxed">{getReviewComment(item.action, item.comment)}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <style>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                  width: 4px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                  background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                  background-color: #cbd5e1;
-                  border-radius: 10px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                  background-color: #94a3b8;
-                }
-                .custom-scrollbar {
-                  scrollbar-width: thin;
-                  scrollbar-color: #cbd5e1 transparent;
-                }
-              `}</style>
-            </>
-          )}
-        </div>
-
-      </div>
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">
+        <Sparkles className="h-3 w-3 text-[#FFC107]" /> Draft In Progress
+      </span>
     );
   };
 
   if (loading) {
     return (
-      <BrandLoader variant="section" size="md" bg="light" text="Loading onboarding workspace..." />
+      <BrandLoader variant="section" size="md" bg="light" text="Loading KYC onboarding workspace..." />
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      {/* ── Premium Progress Stepper Card ── */}
-      <div className="rounded-2xl overflow-hidden border border-gray-100 bg-white shadow-[0_4px_24px_-6px_rgba(0,0,0,0.1)]">
-        {/* Dark header strip */}
-        <div className="bg-gradient-to-r from-[#1A1A1A] via-[#222222] to-[#2a2a2a] px-6 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FFC107]/70 mb-0.5">
-              {isAdminMode ? 'KYC Editor' : 'Onboarding'}
-            </p>
-            <h2 className="text-[15px] font-bold text-white leading-tight">
-              {isAdminMode ? 'Edit Partner KYC and Profile' : 'Partner Onboarding Progress'}
-            </h2>
-          </div>
-          {!isAdminMode && (
-            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
-              <span className="text-[11px] text-gray-400 font-medium">Step</span>
-              <span className="text-xl font-extrabold text-white leading-none">{progressStep + 1}</span>
-              <span className="text-sm font-normal text-gray-500">/ {steps.length}</span>
-            </div>
-          )}
-        </div>
-
-        {isAdminMode && !canEdit ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            This partner record is view-only. KYC Edit Override permission is required to make changes.
-          </div>
-        ) : null}
-
-        {/* Stepper body */}
-        <div className="px-6 pt-6 pb-8">
-          {isAdminMode ? (
-            /* ── Admin Tab Bar ── */
-            <div className="flex w-full items-center gap-1.5 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden">
-              {steps.map((step, index) => {
-                const isActive = currentStep === index;
-                return (
-                  <button
-                    key={step.id}
-                    type="button"
-                    onClick={() => handleStepNavigation(index)}
-                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${isActive
-                        ? 'bg-[#FFC107] text-black shadow-sm ring-2 ring-[#FFC107]/30'
-                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-                      }`}
-                  >
-                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${isActive ? 'bg-black/15 text-black' : 'bg-gray-200 text-gray-500'
-                      }`}>{index + 1}</span>
-                    {step.title}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            /* ── Partner Stepper ── */
-            <div className="relative flex items-start">
-              {/* Background track */}
-              <div className="absolute top-5 left-0 right-0 h-[2px] bg-gray-100 rounded-full" />
-
-              {steps.map((step, index) => {
-                const isActive = !isApproved && currentStep === index;
-                const isPast = isApproved ? index < steps.length : index < currentStep;
-
-                let isCompleted = isApproved;
-                switch (step.id) {
-                  case 'profile':
-                  case 'business':
-                    isCompleted = isPast && progress.profileComplete;
-                    break;
-                  case 'kyc':
-                    isCompleted = isPast && progress.documentsComplete;
-                    break;
-                  case 'agreements':
-                    isCompleted = isPast && progress.agreementsComplete;
-                    break;
-                  case 'review':
-                    isCompleted = isPast && progress.readyForSubmission && currentUser?.onboardingStatus === 'SUBMITTED';
-                    break;
-                }
-
-                return (
-                  <div key={step.id} className="relative flex flex-1 flex-col items-center">
-                    {/* Left half connecting line (from prev step center to this node) */}
-                    {index !== 0 && (
-                      <div
-                        className={`absolute top-5 right-1/2 h-[2px] w-1/2 rounded-full transition-colors duration-500 ${isPast || isActive ? 'bg-[#FFC107]' : 'bg-gray-100'
-                          }`}
-                      />
-                    )}
-                    {/* Right half connecting line (from this node to next step center) */}
-                    {index !== steps.length - 1 && (
-                      <div
-                        className={`absolute top-5 left-1/2 h-[2px] w-1/2 rounded-full transition-colors duration-500 ${isPast ? 'bg-[#FFC107]' : 'bg-gray-100'
-                          }`}
-                      />
-                    )}
-
-                    {/* Step node button */}
-                    <button
-                      type="button"
-                      onClick={() => handleStepNavigation(index)}
-                      title={step.title}
-                      className={`relative z-10 flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFC107] ${isActive
-                          ? 'h-10 w-10 bg-[#FFC107] shadow-[0_0_0_4px_rgba(255,193,7,0.2)] ring-2 ring-[#FFC107]'
-                          : isCompleted
-                            ? 'h-10 w-10 bg-[#FFC107] shadow-sm'
-                            : isPast
-                              ? 'h-10 w-10 bg-amber-50 border-2 border-[#FFC107]/50'
-                              : 'h-10 w-10 border-2 border-gray-200 bg-white hover:border-gray-400 hover:bg-gray-50'
-                        }`}
-                    >
-                      {isCompleted ? (
-                        <svg className="h-4 w-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : isActive ? (
-                        <span className="text-sm font-extrabold text-black">{index + 1}</span>
-                      ) : isPast ? (
-                        <span className="text-sm font-bold text-amber-500">{index + 1}</span>
-                      ) : (
-                        <span className="text-sm font-semibold text-gray-400">{index + 1}</span>
-                      )}
-                    </button>
-
-                    {/* Step label */}
-                    <div className="mt-3 flex flex-col items-center gap-1 px-1">
-                      <span
-                        className={`text-[11px] font-semibold leading-tight text-center whitespace-nowrap transition-colors ${isActive ? 'text-gray-900' : isCompleted || isPast ? 'text-gray-700' : 'text-gray-400'
-                          }`}
-                      >
-                        {step.title}
-                      </span>
-                      {isActive && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#FFC107]/15 px-2 py-0.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[#FFC107] animate-pulse" />
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-amber-700">Active</span>
-                        </span>
-                      )}
-                      {isCompleted && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-600">Done</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        {currentUser?.onboardingStatus === 'CHANGES_REQUESTED' && currentStatus !== 'SUBMITTED' ? (
-          <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4 flex items-start gap-4 shadow-sm">
-            <div className="flex-shrink-0 mt-1">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
-              </span>
+    <div className="space-y-4 pb-16">
+      {/* ── 1. EXECUTIVE STEPPER & WORKSPACE HEADER ── */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs">
+        {/* Header Ribbon */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-600 border border-amber-200/60 shadow-2xs">
+              <ShieldCheck className="h-5 w-5 text-amber-600" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-red-900">Action Required: Admin Requested Changes</h3>
-              <p className="mt-1 text-sm text-red-800">
-                An admin has reviewed your application and requested some updates. Please check the <b>Current review trail</b> in the Review section for specific notes, make the necessary changes, and submit again.
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                  {isAdminMode ? 'SuperAdmin KYC Dossier Editor' : 'Partner Onboarding & KYC Hub'}
+                </span>
+                {renderPartnerStatusBadge()}
+              </div>
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 leading-tight mt-0.5">
+                {isAdminMode
+                  ? `Editing KYC: ${profile.businessName || profile.ownerName || 'Partner'}`
+                  : 'Official Commercial Onboarding & Verification'}
+              </h1>
             </div>
           </div>
-        ) : null}
 
-        {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
+          {/* Right Action / Progress Ribbon */}
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Progress</span>
+              <span className="text-xs font-semibold text-slate-800">{completedStepsCount} of {totalSteps} Complete ({progressPercent}%)</span>
+            </div>
 
-        {success ? (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {success}
-          </div>
-        ) : null}
-
-        {isApproved && !isAdminMode && (
-          <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-6">
-            <h3 className="text-lg font-bold text-green-900">Account approved and activated</h3>
-            {!requestedPartnerId && (
+            {canEdit && (
               <button
                 type="button"
-                onClick={() => router.push('/partner/dashboard')}
-                className="mt-5 rounded-lg bg-[#FFC107] px-5 py-3 font-semibold text-black transition hover:bg-[#E5AD06]"
+                onClick={() => void handleSaveDraft()}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-2xs disabled:opacity-50"
               >
-                Open Partner Dashboard
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                    <span>Save Draft</span>
+                  </>
+                )}
               </button>
             )}
           </div>
-        )}
+        </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{steps[currentStep].title}</p>
-            <h2 className="mt-2 text-2xl font-bold text-gray-900">{steps[currentStep].description}</h2>
+        {/* 5-Step Progress Stepper Navigation */}
+        <div className="mt-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-2">
+            {steps.map((step, index) => {
+              const isActive = currentStep === index;
+              const isPast = isApproved ? index < steps.length : index < currentStep;
+
+              let isCompleted = isApproved;
+              switch (step.id) {
+                case 'profile':
+                  isCompleted = isAccountComplete;
+                  break;
+                case 'business':
+                  isCompleted = isBusinessComplete;
+                  break;
+                case 'kyc':
+                  isCompleted = progress.documentsComplete;
+                  break;
+                case 'agreements':
+                  isCompleted = progress.agreementsComplete && areAgreementsComplete;
+                  break;
+                case 'review':
+                  isCompleted = isApproved || currentUser?.onboardingStatus === 'SUBMITTED';
+                  break;
+              }
+
+              const StepIcon = step.icon;
+
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => handleStepNavigation(index)}
+                  className={`group relative flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all ${
+                    isActive
+                      ? 'border-[#FFC107] bg-amber-50/50 shadow-2xs ring-1 ring-[#FFC107]/40'
+                      : isCompleted
+                      ? 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50/70'
+                      : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-[#FFC107] text-slate-950 shadow-2xs font-bold'
+                        : isCompleted
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : isPast
+                        ? 'bg-slate-100 text-slate-600'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    {isCompleted ? <Check className="h-3.5 w-3.5 stroke-[2.5]" /> : step.number}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`text-xs font-semibold truncate ${
+                        isActive ? 'text-amber-950 font-bold' : isCompleted ? 'text-emerald-950' : 'text-slate-700'
+                      }`}
+                    >
+                      {step.title}
+                    </p>
+                    <p className="text-[11px] font-normal text-slate-400 truncate hidden lg:block">
+                      {isCompleted ? 'Completed' : isActive ? 'Active Now' : 'Pending'}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. SYSTEM ALERTS (Errors / Success / Changes Requested) ── */}
+      {currentUser?.onboardingStatus === 'CHANGES_REQUESTED' && currentStatus !== 'SUBMITTED' && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50/90 p-3.5 shadow-2xs flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+            <AlertCircle className="h-4.5 w-4.5" />
+          </div>
+          <div className="text-xs">
+            <h4 className="font-bold text-rose-950">Action Required: Compliance Review Requested Updates</h4>
+            <p className="mt-0.5 text-rose-800 leading-relaxed">
+              SuperAdmin has reviewed your dossier and requested corrections. Please review notes in the <b>Current Review Trail</b> (Step 05), update the flagged documents or details, and re-submit for approval.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 shadow-2xs flex items-center justify-between gap-2 text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+            <span className="font-semibold">{error}</span>
+          </div>
+          <button type="button" onClick={() => setError('')} className="text-rose-500 hover:text-rose-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 p-3 shadow-2xs flex items-center justify-between gap-2 text-xs text-emerald-800">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="font-semibold">{success}</span>
+          </div>
+          <button type="button" onClick={() => setSuccess('')} className="text-emerald-500 hover:text-emerald-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* ── 3. MAIN WORKSPACE CONTAINER ── */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+        {/* Step Banner */}
+        <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFC107] text-xs font-bold text-slate-950">
+              {steps[currentStep].number}
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 leading-tight">
+                {steps[currentStep].description}
+              </h2>
+              <p className="text-xs font-normal text-slate-500 mt-0.5">
+                {steps[currentStep].id === 'profile' && 'Authorized signatory details and commercial identity classification'}
+                {steps[currentStep].id === 'business' && 'Authorized place location, experience, operating scale and address details'}
+                {steps[currentStep].id === 'kyc' && 'Government PAN, GSTIN verification, ID proofs and official photos'}
+                {steps[currentStep].id === 'agreements' && 'Mandatory regulatory declarations, authenticities and broker covenants'}
+                {steps[currentStep].id === 'review' && 'Final readiness validation, audit history and submission confirmation'}
+              </p>
+            </div>
           </div>
 
-          {stepContent()}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500">Step {currentStep + 1} of {steps.length}</span>
+          </div>
+        </div>
 
-          <div className="mt-8 flex flex-col-reverse gap-4 border-t border-gray-100 pt-6 md:flex-row md:items-center md:justify-between">
-            <div className="grid grid-cols-2 gap-3 md:flex md:w-auto">
-              <button
-                type="button"
-                onClick={() => setCurrentStep((c) => Math.max(0, c - 1))}
-                disabled={currentStep === 0}
-                className="w-full rounded-lg border border-gray-200 px-5 py-3 text-center font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 md:w-auto"
+        {/* Step Body */}
+        <div className="p-4 sm:p-6">
+          {/* ══════════════════════════════════════════════════════════════
+              STEP 0: ACCOUNT & SIGNATORY BASICS
+             ══════════════════════════════════════════════════════════════ */}
+          {steps[currentStep].id === 'profile' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3.5">
+                  <User className="h-4 w-4 text-amber-500" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                    Primary Signatory & Account Credentials
+                  </h3>
+                </div>
+
+                <div className="grid gap-3.5 sm:grid-cols-2">
+                  <FormField label={partnerTypeMeta.ownerLabel} required>
+                    <div className="relative">
+                      <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.ownerName}
+                        onChange={(event) => setProfile((current) => ({ ...current, ownerName: toTitleCase(event.target.value) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder={partnerTypeMeta.ownerPlaceholder}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Official partner category / type" required>
+                    <div className="relative">
+                      <select
+                        value={profile.partnerType}
+                        onChange={(event) => {
+                          const newPartnerType = event.target.value;
+                          setProfile((current) => ({ ...current, partnerType: newPartnerType }));
+                          if (!isAdminMode && user) {
+                            updateUser({ ...user, partnerType: newPartnerType });
+                          }
+                        }}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName}`}
+                      >
+                        <option value="">Select partner type</option>
+                        {visiblePartnerTypeOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {formatPartnerTypeLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </FormField>
+
+                  <FormField label="Primary mobile number (OTP enabled)" required>
+                    <div className="relative">
+                      <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.primaryContact}
+                        onChange={(event) => setProfile((current) => ({ ...current, primaryContact: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5 font-mono`}
+                        placeholder="9876543210"
+                        maxLength={10}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="WhatsApp business number" required>
+                    <div className="relative">
+                      <MessageCircle className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-emerald-500" />
+                      <input
+                        value={profile.whatsappNumber}
+                        onChange={(event) => setProfile((current) => ({ ...current, whatsappNumber: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5 font-mono`}
+                        placeholder="9876543210"
+                        maxLength={10}
+                      />
+                      {canEdit && profile.primaryContact && profile.whatsappNumber !== profile.primaryContact && (
+                        <button
+                          type="button"
+                          onClick={() => setProfile(c => ({ ...c, whatsappNumber: c.primaryContact }))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-200"
+                        >
+                          Same as primary
+                        </button>
+                      )}
+                    </div>
+                  </FormField>
+
+                  <FormField label="Official email address" required fullWidth>
+                    <div className="relative">
+                      <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.email}
+                        onChange={(event) => setProfile((current) => ({ ...current, email: toLowerCase(event.target.value) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder="authorized@dealership.com"
+                      />
+                    </div>
+                  </FormField>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              STEP 1: BUSINESS PROFILE & OPERATING DETAILS (SCREENSHOT 1)
+             ══════════════════════════════════════════════════════════════ */}
+          {steps[currentStep].id === 'business' && (
+            <div className="space-y-4">
+              {/* Block A: Operating Entity Profile */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3.5">
+                  <Building2 className="h-4 w-4 text-amber-500" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                    Entity Profile & Commercial Experience
+                  </h3>
+                </div>
+
+                <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <FormField label={partnerTypeMeta.businessNameLabel} required>
+                    <div className="relative">
+                      <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.businessName}
+                        onChange={(event) => setProfile((current) => ({ ...current, businessName: toTitleCase(event.target.value) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder={partnerTypeMeta.businessNamePlaceholder}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label={partnerTypeMeta.experienceLabel} required>
+                    <div className="relative">
+                      <Award className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.businessExperience}
+                        onChange={(event) => setProfile((current) => ({ ...current, businessExperience: toSentenceCase(event.target.value) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder={partnerTypeMeta.experiencePlaceholder}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Years in business" required>
+                    <div className="relative">
+                      <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.yearsInBusiness}
+                        onChange={(event) => setProfile((current) => ({ ...current, yearsInBusiness: event.target.value.replace(/[^0-9]/g, '').slice(0, 3) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder="e.g. 8"
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Team / Staff size">
+                    <div className="relative">
+                      <Users className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.teamSize}
+                        onChange={(event) => setProfile((current) => ({ ...current, teamSize: event.target.value.replace(/[^0-9]/g, '').slice(0, 4) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder="e.g. 15"
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Alternate mobile contact">
+                    <div className="relative">
+                      <PhoneCall className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.alternateMobile}
+                        onChange={(event) => setProfile((current) => ({ ...current, alternateMobile: event.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5 font-mono`}
+                        placeholder={partnerTypeMeta.alternateMobilePlaceholder}
+                        maxLength={10}
+                      />
+                    </div>
+                  </FormField>
+
+                  {profile.partnerType !== 'BROKER' && profile.partnerType !== 'SHOWROOM' && (
+                    <FormField label="Expected monthly listings">
+                      <input
+                        value={profile.expectedMonthlyListings}
+                        onChange={(event) => setProfile((current) => ({ ...current, expectedMonthlyListings: event.target.value.replace(/[^0-9]/g, '').slice(0, 4) }))}
+                        disabled={!canEdit}
+                        className={inputCompactClassName}
+                        placeholder="12"
+                      />
+                    </FormField>
+                  )}
+                </div>
+              </div>
+
+              {/* Block B: Physical Location & Address */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3.5">
+                  <MapPin className="h-4 w-4 text-amber-500" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                    Physical Yard / Showroom Location
+                  </h3>
+                </div>
+
+                <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <FormField label="State" required>
+                    <SearchableSelect
+                      options={locationStates}
+                      value={selectedStateId || profile.state}
+                      displayValue={profile.state}
+                      onChange={handleStateChange}
+                      placeholder={locationsLoading ? 'Loading states...' : 'Select state'}
+                      disabled={!canEdit}
+                      size="sm"
+                    />
+                    {locationsError ? <p className="mt-1 text-[11px] text-red-600">{locationsError}</p> : null}
+                  </FormField>
+
+                  <FormField label="City / District" required>
+                    <SearchableSelect
+                      options={selectedStateId ? locationCities : []}
+                      value={selectedCityId || profile.city}
+                      displayValue={profile.city}
+                      onChange={handleCityChange}
+                      placeholder={citiesLoading ? 'Loading cities...' : selectedStateId ? 'Select city' : 'Select state first'}
+                      disabled={!canEdit || !selectedStateId || citiesLoading}
+                      size="sm"
+                    />
+                  </FormField>
+
+                  <FormField label="PIN Code" required>
+                    <div className="relative">
+                      <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.pinCode}
+                        onChange={(event) => setProfile((current) => ({ ...current, pinCode: event.target.value.replace(/[^0-9]/g, '').slice(0, 6) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5 font-mono`}
+                        placeholder="492001"
+                        maxLength={6}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Google Maps link / Coordinates" fullWidth>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Compass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          value={profile.googleMapsLocation}
+                          onChange={(event) => setProfile((current) => ({ ...current, googleMapsLocation: event.target.value }))}
+                          disabled={!canEdit}
+                          className={`${inputCompactClassName} pl-8.5`}
+                          placeholder="https://maps.app.goo.gl/... or share link"
+                        />
+                      </div>
+                      {profile.googleMapsLocation && (
+                        <a
+                          href={profile.googleMapsLocation}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>View Map</span>
+                        </a>
+                      )}
+                    </div>
+                  </FormField>
+
+                  <FormField label={partnerTypeMeta.addressLabel} required fullWidth>
+                    <textarea
+                      value={profile.businessAddress}
+                      onChange={(event) => setProfile((current) => ({ ...current, businessAddress: toSentenceCase(event.target.value) }))}
+                      disabled={!canEdit}
+                      rows={2}
+                      className={textareaCompactClassName}
+                      placeholder={partnerTypeMeta.addressPlaceholder}
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Block C: Market Reach & Web Presence */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3.5">
+                  <Globe className="h-4 w-4 text-amber-500" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                    Service Reach & Digital Channels
+                  </h3>
+                </div>
+
+                <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <FormField label="Service areas / Districts covered">
+                    <input
+                      value={profile.serviceAreas}
+                      onChange={(event) => setProfile((current) => ({ ...current, serviceAreas: toTitleCase(event.target.value) }))}
+                      disabled={!canEdit}
+                      className={inputCompactClassName}
+                      placeholder={partnerTypeMeta.serviceAreasPlaceholder}
+                    />
+                  </FormField>
+
+                  <FormField label="Official website">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Globe className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          value={profile.websiteUrl}
+                          onChange={(event) => setProfile((current) => ({ ...current, websiteUrl: toLowerCase(event.target.value) }))}
+                          disabled={!canEdit}
+                          className={`${inputCompactClassName} pl-8.5`}
+                          placeholder="https://dealership.com"
+                        />
+                      </div>
+                      {profile.websiteUrl && (
+                        <a
+                          href={profile.websiteUrl.startsWith('http') ? profile.websiteUrl : `https://${profile.websiteUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </FormField>
+
+                  <FormField label="Social media profile URLs">
+                    <div className="relative">
+                      <Share2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        value={profile.socialLinks}
+                        onChange={(event) => setProfile((current) => ({ ...current, socialLinks: toLowerCase(event.target.value) }))}
+                        disabled={!canEdit}
+                        className={`${inputCompactClassName} pl-8.5`}
+                        placeholder="Instagram, LinkedIn, Facebook profiles"
+                      />
+                    </div>
+                  </FormField>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              STEP 2: KYC DOCS VAULT (SCREENSHOTS 2, 3, 4)
+             ══════════════════════════════════════════════════════════════ */}
+          {steps[currentStep].id === 'kyc' && (
+            <div className="space-y-4">
+              {/* Document Overview Strip */}
+              <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-amber-500" />
+                  <span className="text-xs font-semibold text-slate-800">KYC Verification Vault:</span>
+                  <span className="text-xs font-normal text-slate-600">
+                    {documentsByType.filter(d => d.fileUrl).length} of {documentsByType.length} Required Documents Ready
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {documentsByType.map(doc => {
+                    const isUploaded = Boolean(doc.fileUrl);
+                    const isVerified = doc.verificationStatus === 'VERIFIED';
+                    return (
+                      <span
+                        key={doc.documentType}
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium leading-none ${
+                          isVerified
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : isUploaded
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : 'bg-slate-200 text-slate-600 border border-slate-300'
+                        }`}
+                      >
+                        {isVerified ? '✓ ' : isUploaded ? '↑ ' : '— '}
+                        {doc.documentType === 'PAN_CARD' ? 'PAN' : doc.documentType === 'GST_CERTIFICATE' ? 'GST' : doc.documentType === 'AADHAAR_CARD' ? 'Aadhaar' : 'Photo'}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Document Cards Grid */}
+              <div className="grid gap-3.5 lg:grid-cols-2">
+                {documentsByType.map((document) => {
+                  const canVerify = document.documentType === 'PAN_CARD' || document.documentType === 'GST_CERTIFICATE';
+                  const isVerifying = verifyingDocumentType === document.documentType;
+                  const verDisplay = document.verificationResult
+                    ? getKycVerificationDisplay(document.documentType as KycVerificationDocumentType, document.verificationResult)
+                    : null;
+                  const docLabel = document.documentType === 'PAN_CARD'
+                    ? 'Company PAN number'
+                    : document.documentType === 'GST_CERTIFICATE'
+                      ? 'GSTIN'
+                      : document.documentType === 'AADHAAR_CARD'
+                        ? 'Aadhaar / Accepted ID number'
+                        : 'Document reference number';
+
+                  return (
+                    <CompactKycDocumentCard
+                      key={document.documentType}
+                      document={document}
+                      docLabel={docLabel}
+                      partnerType={profile.partnerType}
+                      canEdit={canEdit}
+                      canVerify={canVerify}
+                      isVerifying={isVerifying}
+                      verDisplay={verDisplay}
+                      sensitiveInputRef={(el) => {
+                        sensitiveInputRefs.current[document.documentType] = el;
+                      }}
+                      onUpdate={(patch) => updateDocument(document.documentType, patch)}
+                      onVerify={() => void verifyKycDocument(document.documentType as KycVerificationDocumentType)}
+                      onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
+                      showAadhaarNumber={showAadhaarNumber}
+                      onToggleAadhaarVisibility={() => setShowAadhaarNumber(!showAadhaarNumber)}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Optional Documents if any */}
+              {optionalDocumentsByType.length > 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-3.5 space-y-3">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                    Additional Secondary Documents (Optional)
+                  </span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {optionalDocumentsByType.map((document) => (
+                      <CompactKycDocumentCard
+                        key={document.documentType}
+                        document={document}
+                        docLabel="Document number"
+                        partnerType={profile.partnerType}
+                        canEdit={canEdit}
+                        canVerify={false}
+                        isVerifying={false}
+                        verDisplay={null}
+                        sensitiveInputRef={() => {}}
+                        onUpdate={(patch) => updateDocument(document.documentType, patch)}
+                        onVerify={() => {}}
+                        onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
+                        showAadhaarNumber={false}
+                        onToggleAadhaarVisibility={() => {}}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              STEP 3: COMPLIANCE DECLARATIONS & AGREEMENTS (SCREENSHOT 5)
+             ══════════════════════════════════════════════════════════════ */}
+          {steps[currentStep].id === 'agreements' && (
+            <div className="space-y-4">
+              {/* Select All Ribbon */}
+              {(() => {
+                const allChecked = agreements.length > 0 && agreements.every((a) => a.checked);
+                const acceptedCount = agreements.filter(a => a.checked).length;
+                return (
+                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3.5 transition-all shadow-2xs ${
+                    allChecked ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50/60'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                        allChecked ? 'bg-[#FFC107] text-slate-950 font-bold' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-bold text-slate-900">
+                            Mandatory Regulatory Declarations & Covenants
+                          </h3>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            allChecked ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
+                          }`}>
+                            {acceptedCount} of {agreements.length} Accepted
+                          </span>
+                        </div>
+                        <p className="text-xs font-normal text-slate-500 mt-0.5">
+                          Review and accept all statutory declarations before final KYC dossier submission.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 self-start sm:self-center cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        disabled={!canEdit || agreements.length === 0}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setAgreements((current) => current.map((item) => ({ ...item, checked })));
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
+                      />
+                      <span>Select All Declarations</span>
+                    </label>
+                  </div>
+                );
+              })()}
+
+              {/* Bento Agreement Cards Grid */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {agreements.map((agreement) => {
+                  const title = agreement.title || agreementLabels[agreement.agreementType] || agreement.agreementType.replaceAll('_', ' ');
+                  const summary = agreement.summary || agreementDescriptions[agreement.agreementType] || 'Confirms platform operating policies and regulatory covenants.';
+
+                  return (
+                    <div
+                      key={agreement.agreementType}
+                      className={`flex flex-col justify-between rounded-xl border p-3.5 transition-all shadow-2xs ${
+                        agreement.checked
+                          ? 'border-[#FFC107] bg-amber-50/20 ring-1 ring-[#FFC107]/40'
+                          : 'border-slate-200/90 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div>
+                        {/* Top Metadata */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                              §
+                            </span>
+                            <span className="text-[11px] font-mono font-medium text-slate-500">
+                              {agreement.version || 'v1.0'}
+                            </span>
+                          </div>
+                          {agreement.isRequired && (
+                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
+                              Mandatory
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Title & Summary */}
+                        <h4 className="text-xs font-bold text-slate-900 leading-snug">{title}</h4>
+                        <p className="mt-1 text-xs font-normal text-slate-600 line-clamp-3 leading-relaxed">
+                          {summary}
+                        </p>
+                      </div>
+
+                      {/* Footer Actions: Read Clauses & Checkbox */}
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                        {agreement.content ? (
+                          <button
+                            type="button"
+                            onClick={() => setReadingAgreement(agreement)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800 transition-colors"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            <span>Read Clauses</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs font-normal text-slate-400">Standard Covenant</span>
+                        )}
+
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={agreement.checked}
+                            disabled={!canEdit}
+                            onChange={(event) =>
+                              setAgreements((current) =>
+                                current.map((item) =>
+                                  item.agreementType === agreement.agreementType ? { ...item, checked: event.target.checked } : item
+                                )
+                              )
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
+                          />
+                          <span className={`text-xs font-medium ${agreement.checked ? 'text-amber-950 font-semibold' : 'text-slate-600'}`}>
+                            {agreement.checked ? 'Accepted' : 'Accept'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              STEP 4: REVIEW & SUBMIT DOSSIER
+             ══════════════════════════════════════════════════════════════ */}
+          {steps[currentStep].id === 'review' && (
+            <div className="space-y-4">
+              {/* Readiness Dossier Grid */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {reviewChecklist.map((item) => (
+                  <div
+                    key={item.label}
+                    className={`rounded-xl border p-3.5 transition-all shadow-2xs flex flex-col justify-between ${
+                      item.done ? 'border-emerald-200 bg-emerald-50/30' : 'border-amber-200 bg-amber-50/30'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                          Step 0{item.stepIndex + 1}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            item.done
+                              ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200'
+                              : 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
+                          }`}
+                        >
+                          {item.done ? <Check className="h-3 w-3 stroke-[3]" /> : <Clock className="h-3 w-3" />}
+                          {item.done ? 'Verified' : 'Pending'}
+                        </span>
+                      </div>
+                      <h4 className="mt-1.5 text-xs font-bold text-slate-900 leading-snug">{item.label}</h4>
+                      <p className="mt-0.5 text-xs font-normal text-slate-500 truncate">{item.subtitle}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleStepNavigation(item.stepIndex)}
+                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800"
+                    >
+                      <span>Review Details</span>
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Submission Readiness Alert Banner */}
+              <div
+                className={`rounded-xl border p-4 shadow-2xs ${
+                  submitBlockers.length === 0
+                    ? 'border-emerald-200 bg-emerald-50/70'
+                    : 'border-amber-200 bg-amber-50/70'
+                }`}
               >
-                Previous
-              </button>
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      submitBlockers.length === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {submitBlockers.length === 0 ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <h3
+                      className={`font-bold ${
+                        submitBlockers.length === 0 ? 'text-emerald-950' : 'text-amber-950'
+                      }`}
+                    >
+                      {submitBlockers.length === 0
+                        ? 'All Verification & Compliance Gates Cleared'
+                        : 'Action Required Before Final Approval'}
+                    </h3>
+                    <p
+                      className={`mt-0.5 leading-relaxed ${
+                        submitBlockers.length === 0 ? 'text-emerald-800' : 'text-amber-800'
+                      }`}
+                    >
+                      {submitStatus}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
+              {/* Review History Trail */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-amber-500" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                      Audit Trail & Verification History
+                    </h3>
+                  </div>
+                  <span className="text-xs font-normal text-slate-500">{reviewHistory.length} Recorded Events</span>
+                </div>
+
+                {reviewHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-4 text-center">
+                    No review history recorded yet. Saving drafts or submitting updates initiates the audit trail.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {reviewHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-slate-100 bg-slate-50/50 p-2.5 text-xs text-slate-800 transition hover:bg-slate-50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-900 leading-tight">
+                            {getReviewActionLabel(item.action, profile.partnerType, profile.businessName || profile.ownerName)}
+                          </p>
+                          <span className="text-[11px] text-slate-500 font-mono">
+                            {new Intl.DateTimeFormat('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }).format(new Date(item.createdAt))}
+                          </span>
+                        </div>
+                        {getReviewComment(item.action, item.comment) && (
+                          <p className="mt-1 text-xs text-slate-600 leading-relaxed bg-white p-2 rounded border border-slate-200/60 font-mono">
+                            {getReviewComment(item.action, item.comment)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── 4. STEPPER CONTROLS & BOTTOM ACTION BAR ── */}
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentStep((c) => Math.max(0, c - 1))}
+              disabled={currentStep === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-all shadow-2xs"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Previous</span>
+            </button>
+
+            {currentStep < steps.length - 1 && (
               <button
                 type="button"
                 onClick={() => handleStepNavigation(Math.min(steps.length - 1, currentStep + 1))}
-                disabled={currentStep === steps.length - 1}
-                className="w-full rounded-lg bg-gray-900 px-5 py-3 text-center font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50 md:w-auto"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-all shadow-2xs"
               >
-                Next
+                <span>Next Step</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
-            </div>
+            )}
+          </div>
 
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              {isAdminMode && canEdit ? (
-                <div className="grid grid-cols-2 gap-3 md:flex md:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => router.push(editorReturnPath)}
-                    disabled={saving}
-                    className="w-full rounded-lg border border-gray-300 px-5 py-3 text-center font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 md:w-auto"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void handleSaveDraft()}
-                    className="w-full rounded-lg border border-[#FFC107] bg-[#FFC107] px-5 py-3 text-center font-semibold text-black transition hover:bg-[#E5AD06] disabled:opacity-50 md:w-auto"
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              ) : null}
-
-              {!isAdminMode && currentStep < steps.length - 1 && canEdit && (
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
+            {isAdminMode && canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => router.push(editorReturnPath)}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => void handleSaveDraft()}
-                  className="rounded-lg border border-[#FFC107] px-5 py-3 font-semibold text-[#FFC107] transition hover:bg-[#FFC107] hover:text-black disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-4 py-2 text-xs font-bold text-slate-950 hover:bg-[#E5AD06] shadow-2xs disabled:opacity-50"
                 >
-                  {saving ? 'Saving...' : 'Save progress'}
+                  {saving ? 'Saving...' : 'Save KYC Updates'}
                 </button>
-              )}
+              </>
+            ) : null}
 
-              {!isAdminMode && currentStep === steps.length - 1 && (
-                <div className="flex flex-col items-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleFinalSubmit()}
-                    disabled={!canSubmitOnboarding}
-                    className="w-full rounded-lg bg-[#FFC107] px-5 py-3 font-semibold text-black transition hover:bg-[#E5AD06] disabled:opacity-50 sm:w-auto"
+            {!isAdminMode && currentStep < steps.length - 1 && canEdit && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleSaveDraft()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-all shadow-2xs disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                    <span>Save Progress</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {!isAdminMode && currentStep === steps.length - 1 && (
+              <button
+                type="button"
+                onClick={() => void handleFinalSubmit()}
+                disabled={!canSubmitOnboarding}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-5 py-2 text-xs font-bold text-slate-950 hover:bg-[#E5AD06] shadow-2xs transition-all disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-950" />
+                    <span>Submitting Dossier...</span>
+                  </>
+                ) : currentStatus === 'SUBMITTED' ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Dossier Submitted</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Submit Full Onboarding Package</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 5. LIGHTBOX DOCUMENT PREVIEW MODAL ── */}
+      {previewingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900">{previewingDoc.title}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewingDoc.url && (
+                  <a
+                    href={previewingDoc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
                   >
-                    {submitting ? 'Submitting...' : currentStatus === 'SUBMITTED' ? 'Submitted' : 'Submit full onboarding'}
-                  </button>
-                  {!canSubmitOnboarding && submitBlockers.length > 0 && currentStatus !== 'UNDER_REVIEW' && currentStatus !== 'SUBMITTED' ? (
-                    <p className="max-w-md text-xs font-medium text-amber-700 text-right">
-                      {submitBlockers.map((blocker, i) => (
-                        <span key={i} className="block">
-                          {blocker}
-                        </span>
-                      ))}
-                    </p>
-                  ) : (
-                    <p className={`max-w-md text-xs font-medium ${canSubmitOnboarding ? 'text-green-700' : 'text-amber-700'}`}>
-                      {submitStatus}
-                    </p>
-                  )}
+                    <Download className="h-3 w-3" />
+                    <span>Download</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewingDoc(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-900/5 p-4 min-h-[300px] max-h-[500px] overflow-auto">
+              {previewingDoc.isPdf ? (
+                <div className="text-center p-6 space-y-3">
+                  <FileText className="mx-auto h-16 w-16 text-slate-400" />
+                  <p className="text-xs font-bold text-slate-700">PDF Document Stored Securely</p>
+                  <a
+                    href={previewingDoc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-4 py-2 text-xs font-bold text-slate-950 hover:bg-[#E5AD06]"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Open / Download PDF</span>
+                  </a>
                 </div>
+              ) : (
+                <Image
+                  src={previewingDoc.url}
+                  alt={previewingDoc.title}
+                  width={800}
+                  height={600}
+                  unoptimized
+                  className="max-h-[460px] w-auto rounded-lg object-contain"
+                />
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── 6. AGREEMENT CLAUSES FULL READING MODAL ── */}
+      {readingAgreement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-mono font-medium text-amber-800">
+                  {readingAgreement.version || 'v1.0'}
+                </span>
+                <h3 className="mt-1 text-sm font-bold text-slate-900 leading-snug">
+                  {readingAgreement.title || agreementLabels[readingAgreement.agreementType] || readingAgreement.agreementType}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReadingAgreement(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="my-4 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-xs font-sans text-slate-800 leading-relaxed whitespace-pre-wrap">
+              {readingAgreement.content || 'Official clause text will be generated during contract execution.'}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+              <span className="text-[11px] text-slate-500">
+                {readingAgreement.checked ? '✓ Currently Accepted' : 'Pending Acceptance'}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReadingAgreement(null)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+                {!readingAgreement.checked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAgreements((current) =>
+                        current.map((item) =>
+                          item.agreementType === readingAgreement.agreementType ? { ...item, checked: true } : item
+                        )
+                      );
+                      setReadingAgreement(null);
+                    }}
+                    className="rounded-lg bg-[#FFC107] px-4 py-1.5 text-xs font-bold text-slate-950 hover:bg-[#E5AD06]"
+                  >
+                    Accept & Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPACT KYC DOCUMENT CARD SUBCOMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+type CompactKycDocumentCardProps = {
+  document: KycDocumentForm;
+  docLabel: string;
+  partnerType?: string | null;
+  canEdit: boolean;
+  canVerify: boolean;
+  isVerifying: boolean;
+  verDisplay: ReturnType<typeof getKycVerificationDisplay> | null;
+  sensitiveInputRef: (el: HTMLInputElement | null) => void;
+  onUpdate: (patch: Partial<KycDocumentForm>) => void;
+  onVerify: () => void;
+  onPreview: (url: string, title: string, isPdf?: boolean) => void;
+  showAadhaarNumber: boolean;
+  onToggleAadhaarVisibility: () => void;
+};
+
+function CompactKycDocumentCard({
+  document,
+  docLabel,
+  partnerType,
+  canEdit,
+  canVerify,
+  isVerifying,
+  verDisplay,
+  sensitiveInputRef,
+  onUpdate,
+  onVerify,
+  onPreview,
+  showAadhaarNumber,
+  onToggleAadhaarVisibility,
+}: CompactKycDocumentCardProps) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadSuccessJustCompleted, setUploadSuccessJustCompleted] = useState(false);
+  const [localInstantPreviewUrl, setLocalInstantPreviewUrl] = useState('');
+  const [uploadingFileMeta, setUploadingFileMeta] = useState<{ name: string; size: string; isPdf?: boolean } | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [previewObjectUrl, setPreviewObjectUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const title = getDocumentLabel(document.documentType, partnerType);
+  const isPassportPhoto = document.documentType === 'PASSPORT_PHOTO';
+  const isAadhaar = document.documentType === 'AADHAAR_CARD';
+  const isPdf = document.fileName?.toLowerCase().endsWith('.pdf') || uploadingFileMeta?.isPdf;
+
+  // Load preview blob securely
+  useEffect(() => {
+    if (!document.fileUrl || isPdf) {
+      setPreviewObjectUrl('');
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl = '';
+
+    const loadPreview = async () => {
+      setPreviewLoading(true);
+      try {
+        const response = await api.get(normalizeSecureDocumentPath(document.fileUrl), { responseType: 'blob' });
+        const mimeType = response.data.type || 'image/jpeg';
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: mimeType }));
+        if (!cancelled) {
+          setPreviewObjectUrl(objectUrl);
+        } else {
+          URL.revokeObjectURL(objectUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviewObjectUrl('');
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    void loadPreview();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [document.fileUrl, isPdf]);
+
+  const handleFileChange = async (file?: File) => {
+    if (!file) return;
+    setUploadError('');
+
+    const validationError = isPassportPhoto
+      ? getPassportPhotoUploadValidationError(file)
+      : getUploadValidationError(file);
+
+    if (validationError) {
+      setUploadError(validationError);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Instant local preview for images
+    const isImageFile = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+    let localUrl = '';
+    if (isImageFile) {
+      localUrl = URL.createObjectURL(file);
+      setLocalInstantPreviewUrl(localUrl);
+    }
+
+    const formattedSize = file.size > 1024 * 1024
+      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      : `${Math.round(file.size / 1024)} KB`;
+
+    const isFilePdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    setUploadingFileMeta({ name: file.name, size: formattedSize, isPdf: isFilePdf });
+    setUploading(true);
+    setUploadProgress(15);
+
+    // Smooth visual progress ticker
+    const progressTimer = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 88) return prev;
+        return prev + Math.floor(Math.random() * 14 + 8);
+      });
+    }, 140);
+
+    try {
+      const uploadedFile = await uploadFileToServer({
+        file,
+        visibility: 'secure',
+        purpose: isPassportPhoto ? 'passport-photo' : 'document',
+      });
+
+      clearInterval(progressTimer);
+      setUploadProgress(100);
+      setUploadSuccessJustCompleted(true);
+
+      onUpdate({
+        fileName: uploadedFile.originalName,
+        fileUrl: uploadedFile.fileUrl,
+        status: 'UPLOADED',
+        verificationStatus: 'NOT_STARTED',
+        verificationRecordId: '',
+        verificationCacheHit: false,
+        verificationResult: null,
+        verificationMessage: '',
+      });
+
+      setTimeout(() => {
+        setUploadSuccessJustCompleted(false);
+        setUploading(false);
+      }, 1000);
+    } catch (err) {
+      clearInterval(progressTimer);
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+      setUploading(false);
+      setUploadingFileMeta(null);
+      if (localUrl) {
+        URL.revokeObjectURL(localUrl);
+        setLocalInstantPreviewUrl('');
+      }
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const effectivePreviewUrl = localInstantPreviewUrl || previewObjectUrl || document.fileUrl;
+
+  const getDocIcon = () => {
+    switch (document.documentType) {
+      case 'PAN_CARD':
+        return CreditCard;
+      case 'GST_CERTIFICATE':
+        return Building2;
+      case 'AADHAAR_CARD':
+        return Shield;
+      case 'PASSPORT_PHOTO':
+        return User;
+      default:
+        return FileText;
+    }
+  };
+
+  const DocIcon = getDocIcon();
+
+  return (
+    <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden flex flex-col justify-between">
+      {/* Card Header */}
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-400/10 text-amber-700 border border-amber-200/60 shadow-2xs">
+            <DocIcon className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 leading-tight">{title}</h4>
+            <span className="text-[11px] text-slate-500 font-normal">
+              {document.documentType === 'PASSPORT_PHOTO' ? 'Identity Photo' : 'Verified Document'}
+            </span>
+          </div>
+        </div>
+
+        {/* Status badges */}
+        <div className="flex items-center gap-1.5">
+          {document.verificationStatus === 'VERIFIED' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+              <Check className="h-3 w-3 stroke-[2.5]" /> Verified
+            </span>
+          )}
+          {document.verificationStatus === 'MANUAL_REVIEW' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">
+              ⚑ Manual Review
+            </span>
+          )}
+          {document.verificationStatus === 'FAILED' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">
+              ✕ Failed
+            </span>
+          )}
+          {document.status === 'UPLOADED' && document.verificationStatus !== 'VERIFIED' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
+              ↑ Uploaded
+            </span>
+          )}
+          {(!document.status || document.status === 'NOT_UPLOADED') && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
+              Pending
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Card Body */}
+      <div className="p-3.5 space-y-3 flex-1">
+        {/* Document Number Input (Except for Passport Photo) */}
+        {!isPassportPhoto && (
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">{docLabel}</label>
+            {canVerify ? (
+              <div className="flex items-stretch gap-1.5">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    name={`kyc_${document.documentType.toLowerCase()}_num`}
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    ref={sensitiveInputRef}
+                    value={document.documentNumber}
+                    onChange={(event) => {
+                      const nextValue = normalizeKycDocumentNumber(document.documentType as KycVerificationDocumentType, event.target.value);
+                      onUpdate({
+                        documentNumber: nextValue,
+                        verificationStatus: 'NOT_STARTED',
+                        verificationRecordId: '',
+                        verificationCacheHit: false,
+                        verificationResult: null,
+                        verificationMessage: '',
+                      });
+                    }}
+                    disabled={!canEdit}
+                    className={`${inputCompactClassName} pl-8.5 font-mono uppercase tracking-wider text-xs font-medium`}
+                    placeholder={document.documentType === 'PAN_CARD' ? 'ABCDE1234F' : '22AADCW3373Q1ZW'}
+                    maxLength={document.documentType === 'PAN_CARD' ? 10 : 15}
+                  />
+                  <ApiSparkleIcon
+                    label={document.documentType === 'PAN_CARD' ? 'PAN API Verification' : 'GSTIN API Verification'}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 drop-shadow-[0_1px_1px_rgba(59,97,217,0.22)]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={onVerify}
+                  disabled={!canEdit || isVerifying || document.verificationStatus === 'VERIFIED' || !document.documentNumber}
+                  className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shadow-2xs disabled:opacity-40 ${
+                    document.verificationStatus === 'VERIFIED'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-[#FFC107] text-slate-950 hover:bg-[#E5AD06]'
+                  }`}
+                >
+                  {isVerifying ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Checking</span>
+                    </>
+                  ) : document.verificationStatus === 'VERIFIED' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                      <span>Verified</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 text-slate-950" />
+                      <span>Verify</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : isAadhaar ? (
+              <div className="relative">
+                <input
+                  type={showAadhaarNumber ? 'text' : 'password'}
+                  name="kyc_aadhaar_number"
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  ref={sensitiveInputRef}
+                  value={document.documentNumber}
+                  onChange={(event) =>
+                    onUpdate({
+                      documentNumber: event.target.value.replace(/\D/g, '').slice(0, 16),
+                    })
+                  }
+                  disabled={!canEdit}
+                  className={`${inputCompactClassName} pl-8.5 font-mono tracking-widest text-xs font-medium pr-8.5`}
+                  placeholder="•••• •••• •••• ••••"
+                  maxLength={16}
+                />
+                <ApiSparkleIcon
+                  label="Aadhaar / VID Government ID"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 drop-shadow-[0_1px_1px_rgba(59,97,217,0.22)]"
+                />
+                <button
+                  type="button"
+                  onClick={onToggleAadhaarVisibility}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  title={showAadhaarNumber ? 'Hide number' : 'Show number'}
+                >
+                  {showAadhaarNumber ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={document.documentNumber}
+                onChange={(event) => onUpdate({ documentNumber: toUpperCase(event.target.value) })}
+                disabled={!canEdit}
+                className={inputCompactClassName}
+                placeholder="Document reference number"
+              />
+            )}
+
+            {/* Error or Review message */}
+            {document.verificationStatus === 'FAILED' && document.verificationMessage && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-rose-600">
+                <AlertCircle className="h-3 w-3 shrink-0" /> {document.verificationMessage}
+              </p>
+            )}
+            {document.verificationStatus === 'MANUAL_REVIEW' && document.verificationMessage && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                <AlertTriangle className="h-3 w-3 shrink-0" /> {document.verificationMessage}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Verification Success Pill */}
+        {verDisplay && (verDisplay.displayName || verDisplay.status || verDisplay.maskedNumber) && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs text-emerald-950">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                {verDisplay.displayName && (
+                  <p className="font-semibold text-emerald-950 leading-tight truncate">{verDisplay.displayName}</p>
+                )}
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-normal text-emerald-800">
+                  {verDisplay.maskedNumber && <span className="font-mono font-medium">{verDisplay.maskedNumber}</span>}
+                  {verDisplay.status && <span>· {verDisplay.status}</span>}
+                  {verDisplay.category && <span>· {verDisplay.category}</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* File Upload Section */}
+        <div>
+          <label className="block text-xs font-medium text-slate-700 mb-1">
+            {isPassportPhoto ? 'Passport-size photo' : 'Official document copy (PDF / Image)'}
+          </label>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={isPassportPhoto ? '.png,.jpg,.jpeg,.webp' : '.pdf,.png,.jpg,.jpeg,.webp'}
+            disabled={!canEdit || uploading}
+            onChange={(e) => void handleFileChange(e.target.files?.[0])}
+            className="hidden"
+          />
+
+          {uploading ? (
+            /* Uploading Progress Animation Container */
+            <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3 shadow-2xs space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {localInstantPreviewUrl ? (
+                    <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-amber-300 bg-white shadow-2xs">
+                      <Image
+                        src={localInstantPreviewUrl}
+                        alt="Instant preview"
+                        width={44}
+                        height={44}
+                        unoptimized
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-amber-500/10 backdrop-blur-[0.5px]" />
+                    </div>
+                  ) : (
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-2xs">
+                      {uploadingFileMeta?.isPdf ? (
+                        <FileText className="h-6 w-6 text-rose-500 animate-pulse" />
+                      ) : (
+                        <UploadCloud className="h-6 w-6 text-amber-600 animate-bounce" />
+                      )}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {uploadSuccessJustCompleted ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 animate-in zoom-in-75 duration-200" />
+                      ) : (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                      )}
+                      <p className="text-xs font-semibold text-slate-900 truncate">
+                        {uploadSuccessJustCompleted ? 'Upload Complete!' : 'Uploading Document Securely...'}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5 font-mono">
+                      {uploadingFileMeta?.name} {uploadingFileMeta?.size ? `(${uploadingFileMeta.size})` : ''}
+                    </p>
+                  </div>
+                </div>
+
+                <span
+                  className={`rounded-md px-2 py-0.5 text-[11px] font-semibold font-mono transition-colors ${
+                    uploadSuccessJustCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-200/70 text-amber-900'
+                  }`}
+                >
+                  {uploadProgress}%
+                </span>
+              </div>
+
+              {/* Dynamic Glowing Progress Bar */}
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-200/80">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ease-out ${
+                    uploadSuccessJustCompleted
+                      ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]'
+                      : 'bg-gradient-to-r from-amber-400 via-[#FFC107] to-amber-500 shadow-[0_0_8px_rgba(255,193,7,0.7)]'
+                  }`}
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[11px]">
+                <span className={uploadSuccessJustCompleted ? 'text-emerald-700 font-medium' : 'text-amber-800 font-normal'}>
+                  {uploadSuccessJustCompleted ? '✓ Verified & stored in encrypted vault' : 'Encrypting & syncing to cloud vault...'}
+                </span>
+                {localInstantPreviewUrl && (
+                  <span className="font-medium text-emerald-700 flex items-center gap-1">
+                    <Eye className="h-3 w-3" /> Instant preview active
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : document.fileUrl ? (
+            /* Uploaded State Tile with Instant Preview */
+            <div className="flex items-center justify-between gap-2.5 rounded-lg border border-slate-200/90 bg-slate-50/60 p-2 transition-all hover:border-slate-300">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {/* Thumbnail */}
+                <div
+                  onClick={() => onPreview(effectivePreviewUrl, title, isPdf)}
+                  className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white overflow-hidden group shadow-2xs"
+                  title="Click to view full preview"
+                >
+                  {isPdf ? (
+                    <FileText className="h-5 w-5 text-rose-500" />
+                  ) : previewLoading && !localInstantPreviewUrl ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                  ) : effectivePreviewUrl ? (
+                    <Image
+                      src={effectivePreviewUrl}
+                      alt={title}
+                      width={44}
+                      height={44}
+                      unoptimized
+                      className="h-full w-full object-cover transition group-hover:scale-105"
+                    />
+                  ) : (
+                    <FileText className="h-4 w-4 text-slate-400" />
+                  )}
+                  <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Eye className="h-3.5 w-3.5 text-white" />
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 truncate leading-snug">
+                    {document.fileName || 'Uploaded Document'}
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-normal flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Secure Cloud Encrypted
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onPreview(effectivePreviewUrl, title, isPdf)}
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-colors"
+                  title="View Full Preview"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+                {canEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (localInstantPreviewUrl) {
+                          URL.revokeObjectURL(localInstantPreviewUrl);
+                          setLocalInstantPreviewUrl('');
+                        }
+                        onUpdate({
+                          fileName: '',
+                          fileUrl: '',
+                          status: 'NOT_UPLOADED',
+                        });
+                      }}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                      title="Remove"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Upload Dropzone */
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!canEdit || uploading}
+              className="group flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/50 py-3 px-3 text-center transition hover:border-amber-400 hover:bg-amber-50/30 disabled:opacity-50"
+            >
+              <UploadCloud className="h-4 w-4 text-amber-500 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-medium text-slate-700">Choose file or drag & drop</span>
+              <span className="text-[11px] font-normal text-slate-400">· Max 3MB</span>
+            </button>
+          )}
+
+          {uploadError && (
+            <p className="mt-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3 shrink-0" /> {uploadError}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function Field({
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPACT FORM FIELD WRAPPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FormField({
   label,
-  children,
+  required = false,
   fullWidth = false,
+  children,
 }: {
   label: string;
-  children: React.ReactNode;
+  required?: boolean;
   fullWidth?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className={fullWidth ? 'md:col-span-2' : ''}>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
+    <div className={fullWidth ? 'sm:col-span-2 lg:col-span-3' : ''}>
+      <label className="mb-1 block text-xs font-medium text-slate-700">
+        {label}
+        {required && <span className="ml-1 text-rose-500 font-bold">*</span>}
+      </label>
       {children}
     </div>
   );
 }
 
-const inputClassName =
-  'w-full rounded-lg border border-gray-200 bg-[#F5F8FA] px-3 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] disabled:cursor-not-allowed disabled:bg-gray-100';
+const inputCompactClassName =
+  'w-full h-9 rounded-lg border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-normal text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:bg-slate-100 shadow-2xs';
 
-const textareaClassName =
-  'w-full rounded-lg border border-gray-200 bg-[#F5F8FA] px-3 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] disabled:cursor-not-allowed disabled:bg-gray-100';
+const textareaCompactClassName =
+  'w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-normal text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:bg-slate-100 shadow-2xs';
