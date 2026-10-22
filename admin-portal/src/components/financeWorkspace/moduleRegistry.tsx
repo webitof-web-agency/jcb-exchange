@@ -52,6 +52,14 @@ const ReimbursementsModule = dynamic(() => import('./ExpensesModules').then((mod
 const FixedAssetsModule = dynamic(() => import('./ExpensesModules').then((module) => module.FixedAssetsModule), { loading });
 const PeriodicRunPanel = dynamic(() => import('./ExpensesModules').then((module) => module.PeriodicRunPanel), { loading });
 const PrepaidExpensesModule = dynamic(() => import('./ExpensesModules').then((module) => module.PrepaidExpensesModule), { loading });
+const GstDashboardModule = dynamic(() => import('./TaxModules').then((module) => module.GstDashboardModule), { loading });
+const GstRegisterModule = dynamic(() => import('./TaxModules').then((module) => module.GstRegisterModule), { loading });
+const GstReturnsModule = dynamic(() => import('./TaxModules').then((module) => module.GstReturnsModule), { loading });
+const InputTaxCreditModule = dynamic(() => import('./TaxModules').then((module) => module.InputTaxCreditModule), { loading });
+const EInvoiceModule = dynamic(() => import('./TaxModules').then((module) => module.EInvoiceModule), { loading });
+const WithholdingModule = dynamic(() => import('./TaxModules').then((module) => module.WithholdingModule), { loading });
+const ChallansModule = dynamic(() => import('./TaxModules').then((module) => module.ChallansModule), { loading });
+const IncomeTaxModule = dynamic(() => import('./TaxModules').then((module) => module.IncomeTaxModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -79,6 +87,8 @@ const VirtualBankLedger = () => <BankReconModule types={['VIRTUAL']} title="HDFC
 const BankTransfers = () => <VouchersModule title="Bank transfers" description="Transfers between own bank, cash, wallet and gateway accounts (contra vouchers), including petty cash top-ups and cash deposits." types={['CONTRA']} createTypes={['CONTRA']} />;
 const VendorBills = () => <DocumentsModule title="Vendor bills" description="Bills from vendors for services, supplies and assets with GST input credit, reverse charge and TDS. Pay them with a payment voucher or from Supplier Payables." types={['PURCHASE_BILL', 'DEBIT_NOTE']} createTypes={['PURCHASE_BILL']} />;
 const DepreciationRuns = () => <PeriodicRunPanel kind="depreciation" />;
+const TdsModule = () => <WithholdingModule kind="TDS" />;
+const TcsModule = () => <WithholdingModule kind="TCS" />;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
@@ -149,4 +159,13 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'fixed-assets': FixedAssetsModule,
   depreciation: DepreciationRuns,
   'prepaid-expenses': PrepaidExpensesModule,
+  'gst-dashboard': GstDashboardModule,
+  'sales-purchase-gst-register': GstRegisterModule,
+  'gst-returns-reconciliation': GstReturnsModule,
+  'input-tax-credit': InputTaxCreditModule,
+  'e-invoice-eway-bill': EInvoiceModule,
+  'tds-management': TdsModule,
+  'tcs-management': TcsModule,
+  'tax-payments-challans': ChallansModule,
+  'income-tax-provisions': IncomeTaxModule,
 };
