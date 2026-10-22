@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAppSettings } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { onLeadCaptured } from '../modules/crm';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
 
 const prismaAny = prisma as any;
@@ -14,6 +15,10 @@ const LEAD_STATUSES = [
   'INSPECTION_SCHEDULED',
   'WON',
   'LOST',
+  // CRM stages (modules/crm/rules.ts).
+  'QUALIFIED',
+  'NEGOTIATION',
+  'ON_HOLD',
 ] as const;
 
 const leadRelatedUserSelect = {
@@ -672,6 +677,9 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
       }).catch((err) => console.error('Lead FCM push error:', err));
     }
 
+    // CRM: source, SLA, first follow-up / auto-assign when enabled. Never blocks the response.
+    void onLeadCaptured(lead.id, { source: 'DEALER_CALLBACK', repeat: Boolean(existingLead) });
+
     return res.status(201).json({
       message: 'Callback request submitted successfully.',
       lead: formatLead(lead),
@@ -976,6 +984,8 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
     } catch (err) {
       console.error('Lead routing audit error:', err);
     }
+
+    void onLeadCaptured(lead.id, { source: 'PRIME_CONTACT', repeat: Boolean(existingLead) });
 
     return res.status(201).json({
       message: 'Enquiry created successfully.',

@@ -34,6 +34,12 @@ export const marketplaceSmsEvents = [
   'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
   'VEHICLE_SALE_INVOICE',
+  'CRM_LEAD_ACKNOWLEDGEMENT',
+  'CRM_LEAD_ASSIGNED',
+  'CRM_FOLLOW_UP_REMINDER',
+  'CRM_APPOINTMENT_REMINDER',
+  'CRM_MATCHING_LISTING',
+  'CRM_REENGAGEMENT',
 ] as const;
 
 export type MarketplaceSmsEvent = (typeof marketplaceSmsEvents)[number];

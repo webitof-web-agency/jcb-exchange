@@ -92,6 +92,40 @@ export const createWhatsAppCampaign = async ({ name, category, templateId, actor
   });
 };
 
+/** Draft marketing campaign for a hand-picked customer list (CRM segments). Opted-in phones only. */
+export const createWhatsAppCampaignForUsers = async ({ name, templateId, actorUserId, userIds, audienceFilters }: {
+  name: string;
+  templateId: string;
+  actorUserId: string;
+  userIds: string[];
+  audienceFilters: Record<string, unknown>;
+}) => {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName.length > 120) throw new Error('Campaign name must be between 1 and 120 characters.');
+  const template = await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, status: true, metaTemplateId: true, category: true } });
+  if (!template || template.status !== 'APPROVED' || !template.metaTemplateId) throw new Error('Select an approved Meta template.');
+  if (!isWhatsAppTemplatePurposeAllowed(template.category, ['MARKETING'])) throw new Error('Selected template is not a marketing template.');
+  const consents = await prisma.whatsAppConsent.findMany({ where: { category: 'MARKETING', optedIn: true }, select: { phone: true } });
+  const optedIn = new Set(consents.map((consent) => consent.phone));
+  const users = await prisma.user.findMany({ where: { id: { in: userIds }, status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true } });
+  const seen = new Set<string>();
+  const recipients = users.flatMap((user) => {
+    const phone = normalizePhone(user.whatsappNumber || user.mobile);
+    if (!phone || !optedIn.has(phone) || seen.has(phone)) return [];
+    seen.add(phone);
+    return [{ recipientType: 'CUSTOMER' as const, recipientPhone: phone, sourceEntityType: 'USER' as const, sourceEntityId: user.id }];
+  });
+  const campaign = await createCampaignFromRecipients({
+    name: trimmedName,
+    category: 'MARKETING',
+    templateId,
+    actorUserId,
+    recipients,
+    audienceFilters: { ...audienceFilters, optedInOnly: true, cappedAt: CAMPAIGN_LIMIT },
+  });
+  return { campaign, selected: users.length, optedIn: recipients.length };
+};
+
 export const createWhatsAppReminderCampaign = async ({ kind, templateId, actorUserId, windowValue }: { kind: WhatsAppReminderKind; templateId: string; actorUserId: string; windowValue?: number }) => {
   const reminderWindow = getWhatsAppReminderWindow(kind, windowValue);
   const definition = getWhatsAppReminderDefinition(kind, reminderWindow);

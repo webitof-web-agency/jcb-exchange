@@ -67,6 +67,16 @@ export const allowedAdminPermissions = new Set([
   'analytics.read',
   'finance.read',
   'finance.manage',
+  // CRM & follow-ups (modules/crm/permissions.ts).
+  'crm.read',
+  'crm.manage',
+  'crm.manage_all',
+  'crm.assign',
+  'crm.reports',
+  'crm.export',
+  'crm.import',
+  'crm.campaigns',
+  'crm.settings',
   // Financial Reports & CA Workspace (modules/finance-hub/permissions.ts).
   'fh.dashboard.read',
   'fh.purchases.read',
