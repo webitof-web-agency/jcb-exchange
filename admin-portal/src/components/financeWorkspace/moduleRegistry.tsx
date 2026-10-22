@@ -77,6 +77,17 @@ const TaxReportsModule = dynamic(() => import('./ReportModules').then((module) =
 const FinancialOverviewModule = dynamic(() => import('./ReportModules').then((module) => module.FinancialOverviewModule), { loading });
 const CashFlowOverviewModule = dynamic(() => import('./ReportModules').then((module) => module.CashFlowOverviewModule), { loading });
 const AlertsPanel = dynamic(() => import('./ReportModules').then((module) => module.AlertsPanel), { loading });
+const CaDashboardModule = dynamic(() => import('./CaModules').then((module) => module.CaDashboardModule), { loading });
+const DocumentVaultModule = dynamic(() => import('./CaModules').then((module) => module.DocumentVaultModule), { loading });
+const MonthlyClosingModule = dynamic(() => import('./CaModules').then((module) => module.MonthlyClosingModule), { loading });
+const YearClosingModule = dynamic(() => import('./CaModules').then((module) => module.YearClosingModule), { loading });
+const CaQueriesModule = dynamic(() => import('./CaModules').then((module) => module.CaQueriesModule), { loading });
+const AccountingReviewModule = dynamic(() => import('./CaModules').then((module) => module.AccountingReviewModule), { loading });
+const ImportTransactionsModule = dynamic(() => import('./CaModules').then((module) => module.ImportTransactionsModule), { loading });
+const ImportOpeningBalancesModule = dynamic(() => import('./CaModules').then((module) => module.ImportOpeningBalancesModule), { loading });
+const DownloadReportsModule = dynamic(() => import('./CaModules').then((module) => module.DownloadReportsModule), { loading });
+const ImportExportHubModule = dynamic(() => import('./CaModules').then((module) => module.ImportExportHubModule), { loading });
+const UploadHistoryModule = dynamic(() => import('./CaModules').then((module) => module.UploadHistoryModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -106,6 +117,7 @@ const VendorBills = () => <DocumentsModule title="Vendor bills" description="Bil
 const DepreciationRuns = () => <PeriodicRunPanel kind="depreciation" />;
 const TdsModule = () => <WithholdingModule kind="TDS" />;
 const TcsModule = () => <WithholdingModule kind="TCS" />;
+const TallyExport = () => <DownloadReportsModule tallyOnly />;
 const AlertsAndApprovals = () => <div className="space-y-4"><AlertsPanel /><PendingApprovals /></div>;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
@@ -204,4 +216,17 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'tax-reports': TaxReportsModule,
   'financial-overview': FinancialOverviewModule,
   'cash-flow-overview': CashFlowOverviewModule,
+  'ca-dashboard': CaDashboardModule,
+  'document-vault': DocumentVaultModule,
+  'monthly-closing': MonthlyClosingModule,
+  'financial-year-closing': YearClosingModule,
+  'ca-queries-checklist': CaQueriesModule,
+  'accounting-review': AccountingReviewModule,
+  'import-export': ImportExportHubModule,
+  'import-bank-statements': StatementImportsModule,
+  'import-opening-balances': ImportOpeningBalancesModule,
+  'import-transactions': ImportTransactionsModule,
+  'tally-accounting-export': TallyExport,
+  'download-reports': DownloadReportsModule,
+  'bulk-upload-history': UploadHistoryModule,
 };
