@@ -67,6 +67,16 @@ const AdvancesDeductionsModule = dynamic(() => import('./PayrollModules').then((
 const PayslipsModule = dynamic(() => import('./PayrollModules').then((module) => module.PayslipsModule), { loading });
 const StatutoryContributionsModule = dynamic(() => import('./PayrollModules').then((module) => module.StatutoryContributionsModule), { loading });
 const FullFinalModule = dynamic(() => import('./PayrollModules').then((module) => module.FullFinalModule), { loading });
+const ProfitLossModule = dynamic(() => import('./ReportModules').then((module) => module.ProfitLossModule), { loading });
+const BalanceSheetModule = dynamic(() => import('./ReportModules').then((module) => module.BalanceSheetModule), { loading });
+const CashFlowStatementModule = dynamic(() => import('./ReportModules').then((module) => module.CashFlowStatementModule), { loading });
+const RevenuePurchaseModule = dynamic(() => import('./ReportModules').then((module) => module.RevenuePurchaseModule), { loading });
+const ExpenseMarginModule = dynamic(() => import('./ReportModules').then((module) => module.ExpenseMarginModule), { loading });
+const BankCashReportModule = dynamic(() => import('./ReportModules').then((module) => module.BankCashReportModule), { loading });
+const TaxReportsModule = dynamic(() => import('./ReportModules').then((module) => module.TaxReportsModule), { loading });
+const FinancialOverviewModule = dynamic(() => import('./ReportModules').then((module) => module.FinancialOverviewModule), { loading });
+const CashFlowOverviewModule = dynamic(() => import('./ReportModules').then((module) => module.CashFlowOverviewModule), { loading });
+const AlertsPanel = dynamic(() => import('./ReportModules').then((module) => module.AlertsPanel), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -96,6 +106,7 @@ const VendorBills = () => <DocumentsModule title="Vendor bills" description="Bil
 const DepreciationRuns = () => <PeriodicRunPanel kind="depreciation" />;
 const TdsModule = () => <WithholdingModule kind="TDS" />;
 const TcsModule = () => <WithholdingModule kind="TCS" />;
+const AlertsAndApprovals = () => <div className="space-y-4"><AlertsPanel /><PendingApprovals /></div>;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
@@ -114,7 +125,7 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'partner-ledger': PartnerParties,
   'seller-vendor-ledger': SellerVendorParties,
   'broker-agent-ledger': BrokerAgentParties,
-  'alerts-pending-approvals': PendingApprovals,
+  'alerts-pending-approvals': AlertsAndApprovals,
   'journal-entries': JournalVouchers,
   'payment-vouchers': PaymentVouchers,
   'receipt-vouchers': ReceiptVouchers,
@@ -182,4 +193,15 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   payslips: PayslipsModule,
   'statutory-contributions': StatutoryContributionsModule,
   'full-final-settlement': FullFinalModule,
+  'profit-loss': ProfitLossModule,
+  'balance-sheet': BalanceSheetModule,
+  'cash-flow-statement': CashFlowStatementModule,
+  'revenue-purchase-reports': RevenuePurchaseModule,
+  'vehicle-profitability': ProfitMargin,
+  'expense-margin-analysis': ExpenseMarginModule,
+  'receivables-payables-report': AgingModule,
+  'bank-cash-reports': BankCashReportModule,
+  'tax-reports': TaxReportsModule,
+  'financial-overview': FinancialOverviewModule,
+  'cash-flow-overview': CashFlowOverviewModule,
 };
