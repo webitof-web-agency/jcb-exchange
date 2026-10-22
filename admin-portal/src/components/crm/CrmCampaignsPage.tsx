@@ -6,8 +6,7 @@ import { toast } from 'react-toastify';
 import { Megaphone, Plus, Trash2, Users } from 'lucide-react';
 import api from '@/lib/api';
 import { Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { CONTACT_TYPES } from './ContactsTab';
-import { CrmErrorBanner, crmError, getJson, label, LEAD_TYPE_LABELS, useCrmBase, useCrmMeta, useCrmResource, type ContactLite } from './crmShared';
+import { CONTACT_TYPES, CrmErrorBanner, crmError, CrmPageFrame, getJson, label, LEAD_TYPE_LABELS, PageHeader, useCrmBase, useCrmMeta, useCrmResource, type ContactLite } from './crmShared';
 
 type Filters = {
   lifecycles: string[]; contactTypes: string[]; tags: string[]; states: string[]; cities: string[]; leadStatuses: string[];
@@ -43,7 +42,7 @@ const describe = (f: Filters) => [
   f.inactiveDays ? `quiet ${f.inactiveDays}+ days` : null,
 ].filter(Boolean).join(' · ') || 'All customers';
 
-export default function CampaignsTab() {
+function Campaigns() {
   const segments = useCrmResource(() => getJson<Segment[]>('/crm/segments'), 'crm-segments');
   const [editing, setEditing] = useState<Segment | 'new' | null>(null);
   const [sending, setSending] = useState<Segment | null>(null);
@@ -52,33 +51,36 @@ export default function CampaignsTab() {
     try { await api.delete(`/crm/segments/${segment.id}`); segments.reload(); } catch (error) { toast.error(crmError(error, 'Could not delete.')); }
   };
   return (
-    <Panel
-      title="Segments & campaigns"
-      description="Save a customer group, then create a WhatsApp campaign draft for it. Only marketing opt-ins receive messages; do-not-contact customers are always excluded."
-      actions={<Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>New segment</Button>}
-    >
-      {segments.loading && !segments.data ? <LoadingState /> : segments.error ? <CrmErrorBanner message={segments.error} schemaMissing={segments.schemaMissing} /> : !segments.data?.length ? (
-        <EmptyState title="No segments yet" description="Example: Hot buyers in Chhattisgarh with no activity for 14 days." />
-      ) : (
-        <ul className="divide-y divide-slate-100">
-          {segments.data.map((s) => (
-            <li key={s.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-slate-900">{s.name} <span className="ml-1 inline-flex items-center gap-1 text-xs font-semibold text-slate-500"><Users className="h-3.5 w-3.5" />{s.count}</span></p>
-                <p className="truncate text-xs text-slate-500">{s.description ? `${s.description} · ` : ''}{describe(s.filters)}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => setEditing(s)}>Edit</Button>
-                <Button variant="primary" icon={<Megaphone className="h-4 w-4" />} onClick={() => setSending(s)}>Campaign</Button>
-                <button type="button" onClick={() => remove(s)} className="rounded-xl p-2.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Delete segment"><Trash2 className="h-4 w-4" /></button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {editing ? <SegmentEditor segment={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); segments.reload(); }} /> : null}
-      {sending ? <CampaignModal segment={sending} onClose={() => setSending(null)} /> : null}
-    </Panel>
+    <>
+      <PageHeader
+        title="Campaigns"
+        description="Save a customer group, then create a WhatsApp campaign draft for it. Only marketing opt-ins receive messages; do-not-contact customers are always excluded."
+        actions={<Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>New segment</Button>}
+      />
+      <Panel title="Saved segments" description="Customer counts update live from the filters.">
+        {segments.loading && !segments.data ? <LoadingState /> : segments.error ? <CrmErrorBanner message={segments.error} schemaMissing={segments.schemaMissing} /> : !segments.data?.length ? (
+          <EmptyState title="No segments yet" description="Example: Hot buyers in Chhattisgarh with no activity for 14 days." />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {segments.data.map((s) => (
+              <li key={s.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-900">{s.name} <span className="ml-1 inline-flex items-center gap-1 text-xs font-semibold text-slate-500"><Users className="h-3.5 w-3.5" />{s.count}</span></p>
+                  <p className="truncate text-xs text-slate-500">{s.description ? `${s.description} · ` : ''}{describe(s.filters)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => setEditing(s)}>Edit</Button>
+                  <Button variant="primary" icon={<Megaphone className="h-4 w-4" />} onClick={() => setSending(s)}>Campaign</Button>
+                  <button type="button" onClick={() => remove(s)} className="rounded-xl p-2.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Delete segment"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {editing ? <SegmentEditor segment={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); segments.reload(); }} /> : null}
+        {sending ? <CampaignModal segment={sending} onClose={() => setSending(null)} /> : null}
+      </Panel>
+    </>
   );
 }
 
@@ -196,4 +198,8 @@ function CampaignModal({ segment, onClose }: { segment: Segment; onClose: () => 
       </div>
     </Modal>
   );
+}
+
+export default function CrmCampaignsPage() {
+  return <CrmPageFrame><Campaigns /></CrmPageFrame>;
 }

@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { cellClass, EmptyState, Field, inputClass, LoadingState, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
-import { CrmErrorBanner, fmtInr, getJson, label, LEAD_TYPE_LABELS, useCrmResource } from './crmShared';
+import { cellClass, EmptyState, inputClass, LoadingState, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { CrmErrorBanner, CrmPageFrame, fmtInr, getJson, label, LEAD_TYPE_LABELS, PageHeader, StatTile, useCrmResource } from './crmShared';
 
 type RateRow = { key: string; created: number; won: number; lost: number; open: number; conversion: number };
 type Reports = {
@@ -47,33 +47,33 @@ function RateTable({ rows, keyLabel, nameOf }: { rows: RateRow[]; keyLabel: stri
   );
 }
 
-export default function ReportsTab() {
+function Reports() {
   const [range, setRange] = useState(() => { const to = new Date(); const from = new Date(to.getTime() - 29 * 86400000); return { from: iso(from), to: iso(to) }; });
   const params = { from: new Date(`${range.from}T00:00:00`).toISOString(), to: new Date(`${range.to}T23:59:59`).toISOString() };
   const data = useCrmResource(() => getJson<Reports>('/crm/reports', params), JSON.stringify(params));
   const r = data.data;
 
   return (
-    <div className="space-y-4">
-      <Panel title="CRM reports" description="Leads created in the period; won/lost by the date they closed.">
-        <div className="grid gap-3 p-4 sm:grid-cols-[180px_180px_1fr]">
-          <Field label="From"><input type="date" value={range.from} max={range.to} onChange={(e) => setRange((x) => ({ ...x, from: e.target.value }))} className={inputClass} /></Field>
-          <Field label="To"><input type="date" value={range.to} min={range.from} onChange={(e) => setRange((x) => ({ ...x, to: e.target.value }))} className={inputClass} /></Field>
-        </div>
-        {data.loading && !r ? <LoadingState /> : data.error || !r ? <CrmErrorBanner message={data.error} schemaMissing={data.schemaMissing} /> : (
-          <div className="grid gap-3 border-t border-slate-100 p-4 sm:grid-cols-5">
-            {[
-              ['Leads created', r.totals.created],
-              ['Won', r.totals.won],
-              ['Lost', r.totals.lost],
-              ['Conversion', `${r.totals.conversion}%`],
-              ['Won value', fmtInr(r.totals.wonValue)],
-            ].map(([k, v]) => (
-              <div key={k} className="rounded-xl bg-slate-50 p-3"><p className="text-xl font-bold text-slate-900">{v}</p><p className="text-xs font-semibold text-slate-500">{k}</p></div>
-            ))}
+    <>
+      <PageHeader
+        title="CRM Reports"
+        description="Leads created in the period; won and lost counted by the date they closed."
+        actions={(
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-600">
+            <label className="flex items-center gap-2">From<input type="date" value={range.from} max={range.to} onChange={(e) => setRange((x) => ({ ...x, from: e.target.value }))} className={`${inputClass} w-40 py-2`} /></label>
+            <label className="flex items-center gap-2">To<input type="date" value={range.to} min={range.from} onChange={(e) => setRange((x) => ({ ...x, to: e.target.value }))} className={`${inputClass} w-40 py-2`} /></label>
           </div>
         )}
-      </Panel>
+      />
+      {data.loading && !r ? <LoadingState /> : data.error || !r ? <CrmErrorBanner message={data.error} schemaMissing={data.schemaMissing} /> : (
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <StatTile label="Leads created" value={r.totals.created} />
+          <StatTile label="Won" value={r.totals.won} tone="text-emerald-700" />
+          <StatTile label="Lost" value={r.totals.lost} tone={r.totals.lost ? 'text-red-600' : 'text-slate-900'} />
+          <StatTile label="Conversion" value={`${r.totals.conversion}%`} />
+          <StatTile label="Won value" value={fmtInr(r.totals.wonValue)} tone="text-emerald-700" />
+        </section>
+      )}
 
       {r ? (
         <>
@@ -93,7 +93,7 @@ export default function ReportsTab() {
             </div>
           </Panel>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-5 xl:grid-cols-2">
             <Panel title="By source"><RateTable rows={r.bySource} keyLabel="Source" nameOf={label} /></Panel>
             <Panel title="By lead type"><RateTable rows={r.byType} keyLabel="Type" nameOf={(k) => LEAD_TYPE_LABELS[k] || label(k)} /></Panel>
           </div>
@@ -124,7 +124,7 @@ export default function ReportsTab() {
             )}
           </Panel>
 
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="grid gap-5 xl:grid-cols-3">
             <Panel title="Why leads were lost">
               {r.lostReasons.length ? (
                 <div className="h-60 p-3">
@@ -159,6 +159,10 @@ export default function ReportsTab() {
           </div>
         </>
       ) : null}
-    </div>
+    </>
   );
+}
+
+export default function CrmReportsPage() {
+  return <CrmPageFrame><Reports /></CrmPageFrame>;
 }

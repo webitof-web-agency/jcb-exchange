@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AlarmClock, CalendarPlus } from 'lucide-react';
 import { Button, EmptyState, LoadingState, Panel } from '@/components/financeWorkspace/ui';
 import { CompleteFollowUpModal, RescheduleModal, ScheduleFollowUpModal } from './CrmModals';
-import { FollowUpRow } from './FollowUpsTab';
+import { FollowUpRow } from './FollowUpRow';
 import { CrmMetaProvider, fmtDateTime, getJson, label, leadHref, relative, useCrmResource, type FollowUp } from './crmShared';
 
 type LeadFollowUps = { lead: { id: string; status: string; leadType: string; priority: string; temperature: string; listingTitleSnapshot: string | null; customer: FollowUp['contact']; followUps: FollowUp[] } };

@@ -12,12 +12,12 @@ export default function LegacyEnquiryRedirect({ param }: { param?: string }) {
   useEffect(() => {
     const prefix = pathname.startsWith('/employee') ? '/employee' : pathname.startsWith('/admin') ? '/admin' : '/superadmin';
     if (!param) {
-      router.replace(`${prefix}/crm?tab=leads`);
+      router.replace(`${prefix}/crm/leads`);
       return;
     }
     let cancelled = false;
     void resolveLeadId(param).then((id) => {
-      if (!cancelled) router.replace(id ? `${prefix}/crm/leads/${id}` : `${prefix}/crm?tab=leads`);
+      if (!cancelled) router.replace(id ? `${prefix}/crm/leads/${id}` : `${prefix}/crm/leads`);
     });
     return () => { cancelled = true; };
   }, [param, pathname, router]);

@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { Copy, KeyRound, Play, Plus, Save, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { crmError, fmtDateTime, getJson, label, LEAD_TYPE_LABELS, selectClass, useCrmMeta, useCrmResource, type CrmMeta } from './crmShared';
+import { crmError, CrmMetaProvider, fmtDateTime, getJson, label, LEAD_TYPE_LABELS, selectClass, useCrmMeta, useCrmResource, type CrmMeta } from './crmShared';
 
 type Config = NonNullable<CrmMeta['config']>;
 type Rule = { id: string; name: string; enabled: boolean; sortOrder: number; strategy: string; assigneeIds: string[]; conditions: { leadTypes?: string[]; sources?: string[]; states?: string[]; cities?: string[]; priorities?: string[] } | null };
@@ -25,10 +25,16 @@ const AUTOMATION_ITEMS: Array<{ key: string; label: string; hint: string }> = [
   { key: 'reengagement', label: 'Re-engage lost / on-hold leads', hint: 'One message after the quiet period; event CRM_REENGAGEMENT.' },
 ];
 
-export default function SettingsTab() {
+function SettingsLoader() {
   const { meta, reloadMeta } = useCrmMeta();
   if (!meta) return <Panel><LoadingState /></Panel>;
+  if (!meta.access.canSettings) return <Panel><EmptyState title="No access to CRM settings" description="Ask a super admin for the crm.settings permission." /></Panel>;
   return <SettingsForm key={JSON.stringify(meta.config)} meta={meta} onSaved={reloadMeta} />;
+}
+
+/** CRM settings, shown under Administration → Settings → CRM Settings. */
+export default function CrmSettingsPanel() {
+  return <CrmMetaProvider><SettingsLoader /></CrmMetaProvider>;
 }
 
 function SettingsForm({ meta, onSaved }: { meta: CrmMeta; onSaved: () => void }) {

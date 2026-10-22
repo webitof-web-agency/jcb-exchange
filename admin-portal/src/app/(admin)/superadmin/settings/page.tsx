@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, Phone, Save, ScanLine, ShieldCheck } from 'lucide-react';
+import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, MessagesSquare, Phone, Save, ScanLine, ShieldCheck } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import HomepageContentSettings from '@/components/admin/HomepageContentSettings';
+import CrmSettingsPanel from '@/components/crm/CrmSettingsPanel';
+import { hasAnyPermission } from '@/lib/permissionUtils';
+import { useAuthStore } from '@/store/authStore';
 
 const INDIAN_STATES = [
   'Andhra Pradesh',
@@ -330,7 +334,15 @@ const detectRazorpayModeFromKeyId = (keyId?: string | null): 'TEST' | 'LIVE' | n
 };
 
 export default function SuperAdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<'security' | 'panVerification' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive'>('security');
+  const searchParams = useSearchParams();
+  const authUser = useAuthStore((state) => state.user);
+  const isEmployeeUser = authUser?.role === 'EMPLOYEE';
+  const canCrmSettings = !isEmployeeUser || hasAnyPermission(authUser?.permissions, ['crm.settings']);
+  // Employees with crm.settings but not settings.manage only see CRM Settings.
+  const crmSettingsOnly = isEmployeeUser && !hasAnyPermission(authUser?.permissions, ['settings.manage']);
+  const [activeTab, setActiveTab] = useState<'security' | 'panVerification' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive' | 'crm'>(
+    () => (crmSettingsOnly || (searchParams.get('tab') === 'crm' && canCrmSettings) ? 'crm' : 'security'),
+  );
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false);
   const [leadRoutingForm, setLeadRoutingForm] = useState<LeadRoutingFormState>({
@@ -664,6 +676,7 @@ export default function SuperAdminSettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (crmSettingsOnly) return undefined;
     const timer = window.setTimeout(() => {
       void loadSettings();
     }, 0);
@@ -671,7 +684,7 @@ export default function SuperAdminSettingsPage() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [loadSettings]);
+  }, [crmSettingsOnly, loadSettings]);
 
   const handleGoogleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1225,94 +1238,111 @@ export default function SuperAdminSettingsPage() {
       <div className="flex flex-col items-start gap-6 lg:gap-8 md:flex-row min-w-0 w-full">
         <aside className="w-full flex-shrink-0 md:w-52 lg:w-60">
           <nav className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab('security')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'security'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Security
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('leadRouting')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'leadRouting'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <Phone className="h-4 w-4" />
-              Lead Routing
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('panVerification')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'panVerification'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <ScanLine className="h-4 w-4" />
-              Surepass Credentials
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('homepage')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'homepage'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <ImagePlus className="h-4 w-4" />
-              Homepage Content
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('payments')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'payments'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <CreditCard className="h-4 w-4" />
-              Payments
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('invoice')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'invoice'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <FileText className="h-4 w-4" />
-              Invoice & GST
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('mobileApp')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'mobileApp'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <Phone className="h-4 w-4" />
-              Mobile App
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('googleDrive')}
-              className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'googleDrive'
-                  ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
-                  : 'border-transparent text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <HardDrive className="h-4 w-4" />
-              Google Drive
-            </button>
+            {!crmSettingsOnly ? (
+              <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('security')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'security'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Security
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('leadRouting')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'leadRouting'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <Phone className="h-4 w-4" />
+                Lead Routing
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('panVerification')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'panVerification'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <ScanLine className="h-4 w-4" />
+                Surepass Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('homepage')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'homepage'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <ImagePlus className="h-4 w-4" />
+                Homepage Content
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('payments')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'payments'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <CreditCard className="h-4 w-4" />
+                Payments
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('invoice')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'invoice'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <FileText className="h-4 w-4" />
+                Invoice & GST
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('mobileApp')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'mobileApp'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <Phone className="h-4 w-4" />
+                Mobile App
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('googleDrive')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'googleDrive'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <HardDrive className="h-4 w-4" />
+                Google Drive
+              </button>
+              </>
+            ) : null}
+            {canCrmSettings ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('crm')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'crm'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <MessagesSquare className="h-4 w-4" />
+                CRM Settings
+              </button>
+            ) : null}
           </nav>
         </aside>
 
@@ -2157,6 +2187,7 @@ export default function SuperAdminSettingsPage() {
           ) : null}
 
           {activeTab === 'homepage' ? <HomepageContentSettings /> : null}
+          {activeTab === 'crm' && canCrmSettings ? <CrmSettingsPanel /> : null}
           {false && activeTab === 'payments' ? (
             <>
               <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">

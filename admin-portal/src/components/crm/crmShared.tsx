@@ -1,10 +1,11 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AlertTriangle, Database, Flame, Snowflake, Sun } from 'lucide-react';
 import api from '@/lib/api';
-import { Badge } from '@/components/financeWorkspace/ui';
+import { Badge, LoadingState } from '@/components/financeWorkspace/ui';
 
 // Shared client code for the CRM workspace (backend: /crm/*, docs/crm/00_CRM_PLAN.md).
 
@@ -256,3 +257,69 @@ export const selectClass = 'w-full rounded-xl border border-slate-200 bg-slate-5
 export const compactSelectClass = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-400 focus:bg-white';
 export const chipClass = (active: boolean) =>
   `shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`;
+
+// ───────────── Page frame ─────────────
+
+function MetaGate({ children }: { children: ReactNode }) {
+  const { meta } = useCrmMeta();
+  if (!meta) return <LoadingState label="Loading CRM…" />;
+  return <>{children}</>;
+}
+
+/** Every CRM page: meta provider + full-width canvas (pages fill wide screens, stack on phones). */
+export function CrmPageFrame({ children }: { children: ReactNode }) {
+  return (
+    <CrmMetaProvider>
+      <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1800px] space-y-5">
+          <MetaGate>{children}</MetaGate>
+        </div>
+      </div>
+    </CrmMetaProvider>
+  );
+}
+
+/** Page title block: eyebrow, 24px title, one-line description, actions on the right. */
+export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+  return (
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-600">CRM</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
+        {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{description}</p> : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+    </header>
+  );
+}
+
+/** Compact KPI tile used on the dashboard and reports. */
+export function StatTile({ label: text, value, hint, tone = 'text-slate-900', href, icon }: { label: string; value: ReactNode; hint?: string; tone?: string; href?: string; icon?: ReactNode }) {
+  const body = (
+    <div className="flex h-full flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-amber-300">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{text}</p>
+        {icon ? <span className="text-slate-400">{icon}</span> : null}
+      </div>
+      <div>
+        <p className={`text-[28px] font-bold leading-none ${tone}`}>{value}</p>
+        {hint ? <p className="mt-1.5 text-xs text-slate-500">{hint}</p> : null}
+      </div>
+    </div>
+  );
+  return href ? <Link href={href} className="block h-full">{body}</Link> : body;
+}
+
+/** CRM page URLs under the role prefix (`base` = /superadmin/crm …). */
+export const crmPath = (base: string, page: '' | 'leads' | 'pipeline' | 'follow-ups' | 'contacts' | 'reports' | 'campaigns' | 'import', query?: string) =>
+  `${base}${page ? `/${page}` : ''}${query ? `?${query}` : ''}`;
+
+export const settingsPath = (base: string) => `${base.replace(/\/crm$/, '')}/settings?tab=crm`;
+
+export const CONTACT_TYPES = ['BUYER', 'SELLER', 'DEALER', 'BROKER', 'FINANCIER', 'TRANSPORTER', 'CONTRACTOR', 'OTHER'];
+
+export const requirementSummary = (lead: Pick<LeadRow, 'listingTitleSnapshot' | 'budgetMax' | 'budgetMin' | 'requirementCity' | 'message'>) =>
+  lead.listingTitleSnapshot
+  || [lead.budgetMax ? `Budget ${fmtInr(lead.budgetMax)}` : null, lead.requirementCity].filter(Boolean).join(' · ')
+  || lead.message?.slice(0, 70)
+  || '—';

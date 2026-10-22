@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function SuperAdminLeadsPage() {
-  redirect('/superadmin/crm?tab=leads');
+  redirect('/superadmin/crm/leads');
 }

@@ -29,7 +29,8 @@ export const crmLinkFor = (role: string, target: { leadId?: string | null; tab?:
   if (role === 'PARTNER') return target.leadId ? `/partner/leads/${target.leadId}` : '/partner/leads';
   const base = `${rolePrefix(role)}/crm`;
   if (target.leadId) return `${base}/leads/${target.leadId}`;
-  return target.tab ? `${base}?tab=${target.tab}` : base;
+  // One page per CRM menu item (tab keys kept for callers: followups → /follow-ups).
+  return target.tab ? `${base}/${target.tab === 'followups' ? 'follow-ups' : target.tab}` : base;
 };
 
 export const formatIst = (date: Date) =>

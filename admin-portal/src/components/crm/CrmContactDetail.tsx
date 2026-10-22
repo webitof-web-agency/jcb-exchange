@@ -7,11 +7,11 @@ import { toast } from 'react-toastify';
 import { ArrowLeft, CalendarPlus, Crown, Edit3, Eye, MessageCircle, MousePointerClick, Phone, Plus, Search, StickyNote } from 'lucide-react';
 import api from '@/lib/api';
 import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { CONTACT_TYPES } from './ContactsTab';
 import { LogActivityModal, ScheduleFollowUpModal } from './CrmModals';
-import { FollowUpRow } from './FollowUpsTab';
+import { FollowUpRow } from './FollowUpRow';
 import LeadForm from './LeadForm';
 import {
+  CONTACT_TYPES,
   CrmErrorBanner,
   crmError,
   CrmMetaProvider,
@@ -69,7 +69,7 @@ function View({ contactId }: { contactId: string }) {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
-      <Link href={`${base}?tab=contacts`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft className="h-4 w-4" />Back to contacts</Link>
+      <Link href={`${base}/contacts`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft className="h-4 w-4" />Back to contacts</Link>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

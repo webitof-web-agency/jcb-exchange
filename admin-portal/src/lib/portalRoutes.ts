@@ -140,7 +140,8 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
   {
     superadminPath: '/superadmin/settings',
     employeePath: '/employee/settings',
-    permissions: ['settings.manage'],
+    // crm.settings opens the page with only the CRM Settings section.
+    permissions: ['settings.manage', 'crm.settings'],
   },
   {
     superadminPath: '/superadmin/identity-hub',

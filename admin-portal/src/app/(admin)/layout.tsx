@@ -19,7 +19,7 @@ import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
 import { CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
-import { MessageCircle, Smartphone } from 'lucide-react';
+import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
@@ -106,7 +106,7 @@ const employeeModuleNavItems = [
   { href: '/employee/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText, permissions: employeePartnerAgreementPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
-  { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage'] },
+  { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage', 'crm.settings'] },
 ];
 
 const recruitmentNavItems = [
@@ -199,6 +199,11 @@ export default function AdminLayout({
     pathname: '',
     value: null,
   });
+  const [crmMenuExpansion, setCrmMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const [crmDueCount, setCrmDueCount] = useState(0);
   const [sidebarSectionExpansion, setSidebarSectionExpansion] = useState<{ pathname: string; values: Record<string, boolean> }>({
     pathname: '',
     values: {},
@@ -248,6 +253,17 @@ export default function AdminLayout({
     (badges.recruitmentInterviews || 0);
   const userPermissions = useMemo(() => user?.permissions || [], [user?.permissions]);
   const userPermissionKey = userPermissions.join('|');
+  const canUseCrm = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && hasAnyPermission(userPermissions, CRM_VIEW_PERMISSIONS));
+
+  // My overdue + due-today CRM follow-ups, shown on the CRM → Follow-ups menu item.
+  useEffect(() => {
+    if (!canUseCrm) return;
+    let cancelled = false;
+    api.get('/crm/followups/summary', { params: { ownerId: 'me' } })
+      .then((response) => { if (!cancelled) setCrmDueCount((response.data?.overdue || 0) + (response.data?.today || 0)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [canUseCrm, pathname]);
   const employeeHomeHref = useMemo(() => getEmployeeLandingPath(userPermissions), [userPermissions]);
   const employeeNavItems = useMemo(
     () =>
@@ -619,9 +635,9 @@ export default function AdminLayout({
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
     '/superadmin/enquiries': t('admin.enquiryManagement'),
-    '/superadmin/crm': t('admin.crm', 'CRM & Follow-ups'),
-    '/admin/crm': t('admin.crm', 'CRM & Follow-ups'),
-    '/employee/crm': t('admin.crm', 'CRM & Follow-ups'),
+    '/superadmin/crm': t('admin.crmDashboard', 'CRM Dashboard'),
+    '/admin/crm': t('admin.crmDashboard', 'CRM Dashboard'),
+    '/employee/crm': t('admin.crmDashboard', 'CRM Dashboard'),
     '/superadmin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/superadmin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/superadmin/visitors': t('admin.visitors'),
@@ -693,6 +709,11 @@ export default function AdminLayout({
       return t('admin.analyticsDetail', 'Listing Analytics');
     }
     if (pathname.startsWith('/superadmin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
+    const crmPage = /^\/(superadmin|admin|employee)\/crm\/(leads|pipeline|follow-ups|contacts|reports|campaigns|import)$/.exec(pathname)?.[2];
+    if (crmPage) {
+      const crmTitles: Record<string, string> = { leads: 'Leads', pipeline: 'Pipeline', 'follow-ups': 'Follow-ups', contacts: 'Contacts', reports: 'CRM Reports', campaigns: 'Campaigns', import: 'Import Leads' };
+      return t(`admin.crmPage.${crmPage}`, crmTitles[crmPage] ?? 'CRM');
+    }
     if (/^\/(superadmin|admin|employee)\/crm\/leads\//.test(pathname)) return t('admin.crmLead', 'Lead');
     if (/^\/(superadmin|admin|employee)\/crm\/contacts\//.test(pathname)) return t('admin.crmContact', 'Contact');
     if (pathname.startsWith('/superadmin/partners/') || pathname.startsWith('/employee/partners/')) {
@@ -873,6 +894,78 @@ export default function AdminLayout({
     );
   };
 
+  const renderCrmNavGroup = () => {
+    const crmItem = getVisibleNavItem('/crm');
+    if (!crmItem) return null;
+    const base = crmItem.href;
+    // Mirrors backend/src/modules/crm/access.ts (enquiries.manage = every lead).
+    const crmCan = (keys: string[]) => !isEmployee || hasAnyPermission(userPermissions, keys);
+    const children = [
+      { href: base, label: 'Dashboard', icon: LayoutDashboard, visible: true, exact: true, badge: 0 },
+      { href: `${base}/leads`, label: 'Leads', icon: ListChecks, visible: true, exact: false, badge: getNavBadgeCount(base) },
+      { href: `${base}/pipeline`, label: 'Pipeline', icon: Columns3, visible: true, exact: false, badge: 0 },
+      { href: `${base}/follow-ups`, label: 'Follow-ups', icon: CalendarClock, visible: true, exact: false, badge: crmDueCount },
+      { href: `${base}/contacts`, label: 'Contacts', icon: Contact, visible: true, exact: false, badge: 0 },
+      { href: `${base}/reports`, label: 'Reports', icon: BarChart3, visible: crmCan(['crm.reports', 'crm.manage_all', 'enquiries.manage']), exact: false, badge: 0 },
+      { href: `${base}/campaigns`, label: 'Campaigns', icon: Megaphone, visible: crmCan(['crm.campaigns']), exact: false, badge: 0 },
+      { href: `${base}/import`, label: 'Import', icon: FileUp, visible: crmCan(['crm.import']), exact: false, badge: 0 },
+    ].filter((child) => child.visible);
+    const isGroupActive = pathname === base || pathname.startsWith(`${base}/`);
+    const isExpanded = (crmMenuExpansion.pathname === pathname ? crmMenuExpansion.value : null) ?? isGroupActive;
+    const groupBadge = getNavBadgeCount(base) + crmDueCount;
+    return (
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={() => setCrmMenuExpansion({ pathname, value: !isExpanded })}
+          aria-expanded={isExpanded}
+          className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isGroupActive
+            ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
+            : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+            }`}
+        >
+          <span className="flex items-center gap-3">
+            <MessagesSquare className={`h-5 w-5 ${isGroupActive ? 'text-[#FFC107]' : ''}`} />
+            <span>{t('admin.crm', 'CRM')}</span>
+          </span>
+          <span className="flex items-center gap-2">
+            {!isExpanded && groupBadge > 0 ? (
+              <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{groupBadge > 99 ? '99+' : groupBadge}</span>
+            ) : null}
+            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${isGroupActive ? 'text-[#FFC107]' : 'text-gray-500'}`} />
+          </span>
+        </button>
+        {isExpanded ? (
+          <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+            {children.map((child) => {
+              const active = child.exact ? pathname === child.href : pathname === child.href || pathname.startsWith(`${child.href}/`);
+              const Icon = child.icon;
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${active
+                    ? 'bg-[#FFC107]/10 font-semibold text-white'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Icon className={`h-4 w-4 ${active ? 'text-[#FFC107]' : ''}`} />
+                    <span>{t(`admin.crmMenu.${child.label}`, child.label)}</span>
+                  </span>
+                  {child.badge > 0 ? (
+                    <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{child.badge > 99 ? '99+' : child.badge}</span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Mobile Sidebar Overlay */}
@@ -901,7 +994,7 @@ export default function AdminLayout({
           {hasDailyOperationsNav ? (
             <section className="space-y-1">
               {renderSectionLabel('Daily Operations')}
-              {renderStandardNavItem(getVisibleNavItem('/crm'))}
+              {renderCrmNavGroup()}
               {renderStandardNavItem(getVisibleNavItem('/listings'))}
               {accountsSidebarItems.map((item) => renderStandardNavItem(item))}
               {renderStandardNavItem(getVisibleNavItem('/tasks'))}
@@ -1282,7 +1375,7 @@ export default function AdminLayout({
                       )}
                       {badges.enquiries > 0 && (
                         <Link
-                          href="/superadmin/crm?tab=leads"
+                          href="/superadmin/crm/leads"
                           onClick={() => setIsNotificationOpen(false)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-purple-50 text-slate-700 hover:text-purple-950 transition-colors"
                         >

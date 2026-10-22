@@ -6,10 +6,30 @@ import { addDays, istDayStart, LEAD_STATUSES, toCsv } from '../rules';
 import { dateOrNull, toNumber } from './common';
 import { followUpSummary } from './followups.service';
 import { leadFilterWhere, serializeLead } from './leads.service';
+import { listCrmStaff } from './meta.service';
 import { getCrmConfig } from './settings.service';
 
 const DAY = 24 * 60 * 60 * 1000;
 const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0);
+
+/** Per-staff workload for managers: open leads, overdue, due today and done today. */
+const teamToday = async (todayStart: Date) => {
+  const now = new Date();
+  const tomorrow = addDays(todayStart, 1);
+  const count = (rows: Array<{ ownerId: string | null; _count: { _all: number } }>) => new Map(rows.map((row) => [row.ownerId, row._count._all]));
+  const [staff, open, overdue, dueToday, doneToday] = await Promise.all([
+    listCrmStaff(),
+    prisma.lead.groupBy({ by: ['ownerId'], where: { status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null }, _count: { _all: true } }),
+    prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'PENDING', dueAt: { lt: now } }, _count: { _all: true } }),
+    prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'PENDING', dueAt: { gte: now, lt: tomorrow } }, _count: { _all: true } }),
+    prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'DONE', completedAt: { gte: todayStart } }, _count: { _all: true } }),
+  ]);
+  const [o, od, dt, dn] = [count(open), count(overdue), count(dueToday), count(doneToday)];
+  return [
+    ...staff.map((s) => ({ userId: s.id as string | null, name: s.name, openLeads: o.get(s.id) ?? 0, overdue: od.get(s.id) ?? 0, dueToday: dt.get(s.id) ?? 0, doneToday: dn.get(s.id) ?? 0 })),
+    { userId: null, name: 'Unassigned', openLeads: o.get(null) ?? 0, overdue: od.get(null) ?? 0, dueToday: dt.get(null) ?? 0, doneToday: 0 },
+  ].filter((row) => row.openLeads || row.overdue || row.dueToday || row.doneToday);
+};
 
 export const getDashboard = async (access: CrmAccess) => {
   const now = new Date();
@@ -36,14 +56,16 @@ export const getDashboard = async (access: CrmAccess) => {
     }),
     followUpSummary(access, access.canSeeAll ? '' : 'me'),
     prisma.crmFollowUp.findMany({
-      where: { AND: [followUpScopeWhere(access), { ownerId: access.userId, status: 'PENDING', dueAt: { lt: addDays(todayStart, 1) } }] },
+      // My next steps: overdue first, then today and upcoming.
+      where: { AND: [followUpScopeWhere(access), { ownerId: access.userId, status: 'PENDING' }] },
       orderBy: { dueAt: 'asc' },
-      take: 8,
+      take: 10,
       include: { contact: { select: { id: true, name: true, mobile: true } }, lead: { select: { id: true, status: true, listingTitleSnapshot: true, leadType: true } } },
     }),
   ]);
   const closedMonth = wonMonth._count._all + lostMonth;
   return {
+    team: access.canSeeAll ? await teamToday(todayStart) : null,
     kpis: {
       openLeads: openCount,
       newToday,

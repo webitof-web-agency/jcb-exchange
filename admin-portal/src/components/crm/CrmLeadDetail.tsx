@@ -13,7 +13,7 @@ import { useAuthStore } from '@/store/authStore';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
 import { AssignModal, CompleteFollowUpModal, LogActivityModal, RescheduleModal, ScheduleFollowUpModal, StatusChangeModal } from './CrmModals';
-import { FollowUpRow } from './FollowUpsTab';
+import { FollowUpRow } from './FollowUpRow';
 import { emptyRequirement, RequirementFields, requirementPayload, type RequirementState } from './LeadForm';
 import {
   contactHref,
@@ -100,7 +100,7 @@ function Detail({ leadId }: { leadId: string }) {
   const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber);
   const pending = lead.followUps.filter((f) => f.status === 'PENDING' || f.status === 'MISSED').sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   const history = lead.followUps.filter((f) => f.status === 'DONE' || f.status === 'CANCELLED');
-  const backHref = isPartner ? '/partner/leads' : `${base}?tab=leads`;
+  const backHref = isPartner ? '/partner/leads' : `${base}/leads`;
   const canVerifyPayment = user?.role === 'SUPER_ADMIN' || hasAnyPermission(user?.permissions, ['listings.verify_payment']);
   const adminPrefix = base.replace(/\/crm$/, '');
   const logWith = (type: string) => { setLogType(type); setModal('log'); };
