@@ -4,8 +4,9 @@ import { badRequest, notFound } from '../http';
 import { readDate, readEnum, readMoney, readMultiline, readString } from '../utils/input';
 import { roundMoney, sumMoney } from '../utils/money';
 import { writeFinAudit } from './audit.service';
-import { CASH_BANK_KINDS, LEDGER_STATUSES, PAYMENT_METHODS, periodPostingError, validateVoucher, type VoucherLineInput } from './ledgerRules';
-import { assignNumber, lineRows, loadReferences, lockedInclude, resolvePeriod, reverseInTx, type LedgerAccess } from './ledger.service';
+import { CASH_BANK_KINDS, LEDGER_STATUSES, PAYMENT_METHODS, type VoucherLineInput } from './ledgerRules';
+import { lockedInclude, reverseInTx, type LedgerAccess } from './ledger.service';
+import { postSystemVoucher } from './systemVoucher';
 
 // Payouts to partners, brokers and consignors against what the books say we owe them.
 
@@ -138,23 +139,13 @@ export const paySettlement = async (id: string, access: LedgerAccess) =>
       ...(settlement.tdsAmount.greaterThan(0) ? [{ accountId: tdsAccount!.id, partyId: settlement.partyId, sellAccountId: null, costCentreId: null, debit: ZERO, credit: settlement.tdsAmount, narration: `TDS ${settlement.tdsSection ?? ''}`.trim(), billRef: null }] : []),
       { accountId: settlement.bankAccountId!, partyId: null, sellAccountId: null, costCentreId: null, debit: ZERO, credit: settlement.netAmount, narration: null, billRef: null },
     ];
-    const period = await resolvePeriod(tx, settlement.date);
-    const error = periodPostingError(period, access.canPostSoftClosed);
-    if (error) throw badRequest(error);
     const narration = `Settlement paid to ${settlement.party.name}${settlement.notes ? ` — ${settlement.notes.slice(0, 200)}` : ''}`;
-    const refs = await loadReferences(tx, { lines, partyId: settlement.partyId, costCentreId: null, sellAccountId: null });
-    const total = validateVoucher({ type: 'PAYMENT', lines, narration, partyId: settlement.partyId, costCentreId: null, sellAccountId: null }, refs, { manual: false });
-    const number = await assignNumber(tx, 'PAYMENT', period.year);
+    const voucher = await postSystemVoucher(tx, {
+      type: 'PAYMENT', date: settlement.date, narration, reference: settlement.reference, paymentMethod: settlement.paymentMethod, partyId: settlement.partyId,
+      lines, sourceType: 'SETTLEMENT', sourceId: settlement.id, sourceEvent: 'PAYMENT',
+    }, access);
+    const { number } = voucher;
     const now = new Date();
-    const voucher = await tx.finVoucher.create({
-      data: {
-        number, type: 'PAYMENT', date: settlement.date, yearId: period.yearId, periodId: period.id, status: 'POSTED', narration,
-        reference: settlement.reference, paymentMethod: settlement.paymentMethod, partyId: settlement.partyId, totalAmount: total,
-        sourceType: 'SETTLEMENT', sourceId: settlement.id, sourceEvent: 'PAYMENT',
-        createdById: access.actor.actorUserId, postedById: access.actor.actorUserId, postedAt: now,
-        lines: { create: lineRows(lines) },
-      },
-    });
     await tx.finPartnerSettlement.update({ where: { id }, data: { status: 'PAID', voucherId: voucher.id, paidById: access.actor.actorUserId, paidAt: now } });
     await writeFinAudit({ ...access.actor, entityType: 'FinPartnerSettlement', entityId: id, action: 'PAY', after: { number, net: settlement.netAmount.toNumber() } }, tx);
     return { id, number };

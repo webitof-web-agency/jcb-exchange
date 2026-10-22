@@ -3453,3 +3453,44 @@ model FinWriteOff {
 
   @@index([partyId])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P6: banking (reconciliation, cash counts)
+// ---------------------------------------------------------------------------
+
+enum FinReconStatus {
+  MATCHED
+  IGNORED
+}
+
+/// Links an imported bank statement row (FinanceTransaction) to the book entry it represents.
+/// Plain ids: statement rows can be deleted on the old Expenses page.
+model FinBankRecon {
+  id                   String         @id @default(uuid())
+  bankAccountId        String
+  financeTransactionId String         @unique
+  voucherLineId        String?        @unique
+  status               FinReconStatus
+  method               String         @db.VarChar(20)
+  note                 String?        @db.Text
+  matchedById          String?
+  createdAt            DateTime       @default(now())
+
+  @@index([bankAccountId])
+}
+
+/// Physical cash verification against the book balance of a cash / petty cash ledger.
+model FinCashCount {
+  id            String   @id @default(uuid())
+  accountId     String
+  date          DateTime @db.Date
+  denominations Json
+  countedAmount Decimal  @db.Decimal(14, 2)
+  bookBalance   Decimal  @db.Decimal(14, 2)
+  difference    Decimal  @db.Decimal(14, 2)
+  note          String?  @db.Text
+  countedById   String?
+  createdAt     DateTime @default(now())
+
+  @@index([accountId, date])
+}

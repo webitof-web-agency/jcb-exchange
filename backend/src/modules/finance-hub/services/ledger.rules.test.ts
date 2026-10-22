@@ -55,6 +55,9 @@ test('voucher types keep bank and cash movements in the right voucher', () => {
   assert.throws(() => validateVoucher(voucher('RECEIPT', [line('rent', 10, 0), line('bank', 0, 10)]), all, { manual: true }), /must debit a bank or cash/);
   assert.doesNotThrow(() => validateVoucher(voucher('CONTRA', [line('cash', 10, 0), line('bank', 0, 10)]), all, { manual: true }));
   assert.throws(() => validateVoucher(voucher('CONTRA', [line('rent', 10, 0), line('bank', 0, 10)]), all, { manual: true }), /only use bank, cash/);
+  // System contra (gateway settlement) may carry a charge line but must still move money between bank/cash.
+  assert.doesNotThrow(() => validateVoucher(voucher('CONTRA', [line('bank', 9, 0), line('rent', 1, 0), line('cash', 0, 10)]), all, { manual: false }));
+  assert.throws(() => validateVoucher(voucher('CONTRA', [line('rent', 10, 0), line('bank', 0, 10)]), all, { manual: false }), /moves money from one/);
   assert.throws(() => validateVoucher(voucher('JOURNAL', [line('rent', 10, 0), line('bank', 0, 10)]), all, { manual: true }), /Use a payment, receipt or contra/);
 });
 

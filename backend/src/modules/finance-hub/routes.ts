@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAdminOrEmployeePermissions, requireAuth } from '../../middlewares/auth.middleware';
 import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } from './controllers/foundation.controller';
+import * as banking from './controllers/banking.controller';
 import * as documents from './controllers/documents.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
@@ -138,5 +139,21 @@ router.post('/receivables/follow-ups', allow([P.arapManage, P.partiesManage]), r
 router.post('/receivables/follow-ups/:id/done', allow([P.arapManage, P.partiesManage]), receivables.finishFollowUp);
 router.get('/receivables/write-offs', dueReaders, receivables.writeOffs);
 router.post('/receivables/write-offs', dueManagers, receivables.newWriteOff);
+
+// Banking & cash (P6)
+router.get('/banking/overview', bankReaders, banking.overview);
+router.get('/banking/unmatched', bankReaders, banking.unmatched);
+router.get('/banking/imports', bankReaders, banking.imports);
+router.get('/banking/cash-counts', bankReaders, banking.cashCounts);
+router.post('/banking/cash-counts', allow([P.bankingManage, P.bankingReconcile]), banking.newCashCount);
+router.get('/banking/gateways', bankReaders, banking.gateways);
+router.post('/banking/gateway-settlements', allow([P.booksPost]), banking.gatewaySettlements);
+router.post('/banking/recon/match', allow([P.bankingReconcile]), banking.match);
+router.post('/banking/recon/ignore', allow([P.bankingReconcile]), banking.ignore);
+router.post('/banking/recon/create-voucher', allow([P.booksManage]), banking.voucherFromStatement);
+router.delete('/banking/recon/:id', allow([P.bankingReconcile]), banking.removeMatch);
+router.get('/banking/:id/reconciliation', bankReaders, banking.reconciliation);
+router.get('/banking/:id/brs', bankReaders, banking.brs);
+router.post('/banking/:id/auto-match', allow([P.bankingReconcile]), banking.runAutoMatch);
 
 export default router;

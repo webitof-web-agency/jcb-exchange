@@ -144,7 +144,9 @@ export const validateVoucher = (input: Pick<VoucherInput, 'type' | 'lines' | 'na
       if (cashBankCredits.length) throw badRequest('Money moving between bank/cash accounts is a contra voucher, not a receipt.');
       break;
     case 'CONTRA':
-      if (input.lines.some((line) => !isCashBank(line))) throw badRequest('A contra voucher can only use bank, cash, wallet or gateway accounts.');
+      // System postings (e.g. gateway settlements) may add charge lines to the transfer.
+      if (options.manual && input.lines.some((line) => !isCashBank(line))) throw badRequest('A contra voucher can only use bank, cash, wallet or gateway accounts.');
+      if (!cashBankDebits.length || !cashBankCredits.length) throw badRequest('A contra voucher moves money from one bank/cash account to another.');
       break;
     case 'JOURNAL':
     case 'ADJUSTMENT':
