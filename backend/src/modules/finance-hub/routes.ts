@@ -5,6 +5,7 @@ import * as banking from './controllers/banking.controller';
 import * as ca from './controllers/ca.controller';
 import * as documents from './controllers/documents.controller';
 import * as expenses from './controllers/expenses.controller';
+import * as integrations from './controllers/integrations.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as payroll from './controllers/payroll.controller';
@@ -21,6 +22,9 @@ const allow = (permissions: string[]) => requireAdminOrEmployeePermissions(permi
 // Lookups many pages need (pickers, FY selector) are open to any finance-workspace user.
 const anyWorkspaceUser = allow(FH_ANY_PERMISSIONS);
 const settingsManager = allow([P.settingsManage]);
+
+// Bank webhook: called by the bank, authenticated by its shared secret header (connector off by default).
+router.post('/integrations/hdfc/webhook', integrations.hdfcWebhook);
 
 router.use(requireAuth);
 router.get('/health', anyWorkspaceUser, getFinanceHubHealth);
@@ -261,5 +265,19 @@ router.post('/data/import/opening-balances', allow([P.importManage]), ca.importO
 router.get('/data/export/tally', allow([P.export, P.reportsExport, P.caManage]), ca.tallyExport);
 router.get('/data/export/:kind', allow([P.export, P.reportsExport, P.caManage]), ca.csvExport);
 router.get('/data/history', allow([P.importManage, P.export, P.caRead, P.caManage]), ca.history);
+
+// Integrations, automation and tax settings (P12)
+router.get('/integrations', settingsManager, integrations.integrations);
+router.put('/integrations/:provider', settingsManager, integrations.putIntegration);
+router.post('/integrations/razorpay/test', settingsManager, integrations.razorpayTest);
+router.post('/integrations/razorpay/pull', allow([P.booksPost]), integrations.razorpayPull);
+router.get('/integrations/events', allow([P.settingsManage, P.bankingRead, P.bankingReconcile, P.booksPost]), integrations.events);
+router.post('/integrations/events/:id/book', allow([P.booksManage]), integrations.book);
+router.post('/integrations/events/:id/ignore', allow([P.bankingReconcile, P.booksManage]), integrations.ignore);
+router.get('/automation', settingsManager, integrations.automation);
+router.put('/automation', settingsManager, integrations.putAutomation);
+router.post('/automation/run', settingsManager, integrations.runAutomation);
+router.get('/tax-config', anyWorkspaceUser, integrations.taxConfig);
+router.put('/tax-config', allow([P.settingsManage, P.taxManage]), integrations.putTaxConfig);
 
 export default router;

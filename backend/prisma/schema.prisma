@@ -3987,3 +3987,29 @@ model FinImportBatch {
 
   @@index([kind, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P12: integrations (inbound bank / gateway events)
+// ---------------------------------------------------------------------------
+
+/// A credit or settlement received from a connected bank or gateway, waiting to be booked.
+model FinIntegrationEvent {
+  id          String   @id @default(uuid())
+  provider    String   @db.VarChar(30)
+  eventType   String   @db.VarChar(40)
+  externalId  String   @db.VarChar(100)
+  amount      Decimal? @db.Decimal(14, 2)
+  eventDate   DateTime? @db.Date
+  reference   String?  @db.VarChar(100)
+  payerName   String?
+  payload     Json
+  status      String   @default("RECEIVED") @db.VarChar(12)
+  voucherId   String?
+  note        String?  @db.Text
+  handledById String?
+  receivedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([status, receivedAt])
+}

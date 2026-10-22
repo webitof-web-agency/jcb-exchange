@@ -1,5 +1,6 @@
 import prisma from '../../../lib/prisma';
 import { FIN_SETTINGS_ID, readPostingConfig, readPostingState, writePostingState } from '../services/settings.service';
+import { runDailyAutomation } from '../services/integrations.service';
 import { isFinanceHubSchemaMissing } from '../services/schemaState';
 import { configSourceOf, isPostingMode, syncSource, type PostingSourceType } from './sync';
 
@@ -186,6 +187,11 @@ export const startFinanceHubWorker = (intervalMs = 60 * 1000) => {
     runPostingTick().catch((error) => {
       if (isFinanceHubSchemaMissing(error)) return;
       console.error('[finance-hub] posting worker tick failed:', error instanceof Error ? error.message : error);
+    });
+    // Daily jobs (all off by default) run from the same timer, independent of the posting mode.
+    runDailyAutomation().catch((error) => {
+      if (isFinanceHubSchemaMissing(error)) return;
+      console.error('[finance-hub] daily automation failed:', error instanceof Error ? error.message : error);
     });
   };
   setTimeout(tick, 30 * 1000).unref();
