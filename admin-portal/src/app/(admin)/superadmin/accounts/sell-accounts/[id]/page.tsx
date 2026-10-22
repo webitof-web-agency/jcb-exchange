@@ -225,6 +225,7 @@ export default function SellAccountDetailView() {
     sellAmount: record.sellAmount,
     purchaseAmount: record.purchaseAmount,
     expenses: record.expenses,
+    marginBasis: record.marginBasis,
     sellerState: record.sellerState,
     purchaserState: record.purchaserState,
     saleExchangeValue,
@@ -366,18 +367,27 @@ export default function SellAccountDetailView() {
       <Card
         icon={<IndianRupee className="h-4 w-4" />}
         title="Financial Breakdown"
-        aside={<span className="text-[11px] font-semibold text-gray-500">{finance.gst.stateClassification} · margin scheme</span>}
+        aside={<span className="text-[11px] font-semibold text-gray-500">{finance.gst.stateClassification} · {finance.gst.marginBasis === 'AFTER_EXPENSES' ? 'margin after expenses' : 'margin scheme'}</span>}
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-          {([
-            ['Purchase', record.purchaseAmount, ''],
-            ['Sell', record.sellAmount, ''],
-            ['Margin (incl. GST)', finance.gst.marginAmount, ''],
-            ...getSellAccountTaxLines(finance.gst).map((line) => [line.label, line.amount, 'blue'] as [string, number, string]),
-            ['Margin after GST', finance.gst.taxableAmount, ''],
-            ['Expenses', record.expenses, ''],
-            ['Final profit', finance.gst.netProfitAfterGst, 'emerald'],
-          ] as Array<[string, number, string]>).map(([label, value, accent]) => (
+          {((finance.gst.marginBasis === 'AFTER_EXPENSES'
+            ? [
+              ['Purchase', record.purchaseAmount, ''],
+              ['Sell', record.sellAmount, ''],
+              ['Expenses', record.expenses, ''],
+              ['Margin (incl. GST)', finance.gst.marginAmount, ''],
+              ...getSellAccountTaxLines(finance.gst).map((line) => [line.label, line.amount, 'blue'] as [string, number, string]),
+              ['Final profit', finance.gst.netProfitAfterGst, 'emerald'],
+            ]
+            : [
+              ['Purchase', record.purchaseAmount, ''],
+              ['Sell', record.sellAmount, ''],
+              ['Margin (incl. GST)', finance.gst.marginAmount, ''],
+              ...getSellAccountTaxLines(finance.gst).map((line) => [line.label, line.amount, 'blue'] as [string, number, string]),
+              ['Margin after GST', finance.gst.taxableAmount, ''],
+              ['Expenses', record.expenses, ''],
+              ['Final profit', finance.gst.netProfitAfterGst, 'emerald'],
+            ]) as Array<[string, number, string]>).map(([label, value, accent]) => (
             <div key={label} className={`rounded-lg border px-3 py-2 ${accent === 'blue' ? 'border-blue-200 bg-blue-50/60' : accent === 'emerald' ? 'border-emerald-200 bg-emerald-50/70' : 'border-gray-200 bg-gray-50/60'}`}>
               <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
               <p className={`mt-0.5 text-base font-extrabold tabular-nums ${value < 0 ? 'text-rose-600' : accent === 'emerald' ? 'text-emerald-700' : 'text-gray-950'}`}>{formatInr(value)}</p>

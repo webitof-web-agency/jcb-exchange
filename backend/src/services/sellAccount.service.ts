@@ -11,6 +11,7 @@ import {
   SellAccountSaleType,
   SellAccountSourceType,
   SellAccountTaxMode,
+  SellAccountMarginBasis,
 } from '@prisma/client';
 import prisma from '../lib/prisma';
 import {
@@ -121,6 +122,7 @@ const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatus
     expenses: Number(record.expenses),
     // Sell Account policy: GST is inclusive in the margin and extracted from it.
     taxMode: SellAccountTaxMode.INCLUSIVE,
+    marginBasis: record.marginBasis,
     sellerState: record.sellerState || '',
     purchaserState: record.purchaserState || '',
     ...exchangeValues(record),
@@ -177,11 +179,14 @@ const buildPayload = (body: any, existing?: any) => {
   const purchaseExchangeValue = purchaseType === SellAccountPurchaseType.EXCHANGE ? money(value('purchaseExchangeValue')) : new Prisma.Decimal(0);
   const saleExchangeValue = saleType === SellAccountSaleType.EXCHANGE ? money(value('saleExchangeValue')) : new Prisma.Decimal(0);
   const taxMode = SellAccountTaxMode.INCLUSIVE;
+  // Saving a record (new or edited) moves it to the current margin basis.
+  const marginBasis = SellAccountMarginBasis.AFTER_EXPENSES;
   const gst = calculateSellAccountGst({
     sellAmount: Number(sellAmount),
     purchaseAmount: Number(purchaseAmount),
     expenses: Number(expenses),
     taxMode,
+    marginBasis,
     sellerState: text(value('sellerState')),
     purchaserState: text(value('purchaserState')),
   });
@@ -225,6 +230,7 @@ const buildPayload = (body: any, existing?: any) => {
     netProfitAfterGst: new Prisma.Decimal(gst.netProfitAfterGst),
     gstRatePercent: new Prisma.Decimal(18),
     taxMode,
+    marginBasis,
     transferDetails: text(value('transferDetails')) || null,
     remarks: body.remarks !== undefined ? text(body.remarks) || null : (existing?.remarks || null),
     documents: body.documents !== undefined ? jsonValue(body.documents) : (existing?.documents || undefined),

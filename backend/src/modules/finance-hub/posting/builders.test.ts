@@ -27,7 +27,7 @@ const at = (value: string) => new Date(`${value}T06:00:00.000Z`);
 const deal = (overrides: Partial<SellAccountSource> = {}): SellAccountSource => ({
   id: 'sa1', recordNumber: 'SA-2026-001', vehicleNumber: 'MH12AB1234', listingTitle: 'JCB 3DX', sourceType: 'DIRECT_CUSTOMER',
   purchaseType: 'PURCHASE', saleType: 'SELL', purchaseAmount: D(1000000), sellAmount: D(1200000), purchaseExchangeValue: D(0), saleExchangeValue: D(0),
-  expenses: D(35000), expenseBreakdown: { transport: 20000, paperwork: 5000, rtoWork: 10000, other: 0, otherLabel: '' },
+  expenses: D(35000), expenseBreakdown: { transport: 20000, paperwork: 5000, rtoWork: 10000, other: 0, otherLabel: '' }, marginBasis: 'AFTER_EXPENSES',
   sellerState: 'Maharashtra', purchaserState: 'Maharashtra', isDraft: false, deletedAt: null, dealStatus: 'DEAL_DONE', invoiceNumber: 'JCB/26-27/0001',
   invoiceGeneratedAt: at('2026-10-10'), completedAt: null, sellerDate: at('2026-09-01'), purchaserDate: null, sellDate: null,
   createdAt: at('2026-09-01'), updatedAt: at('2026-10-10'),

@@ -9,6 +9,8 @@ declare global {
         role: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | 'PARTNER' | 'CUSTOMER';
         status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'BLOCKED' | 'CLOSED';
       };
+      // Set by the CRM module's requireCrmUser middleware.
+      crmAccess?: import('../modules/crm/access').CrmAccess;
     }
   }
 }

@@ -157,6 +157,7 @@ const recordGst = (record: SellAccountRecord) =>
     sellAmount: record.sellAmount,
     purchaseAmount: record.purchaseAmount,
     expenses: record.expenses,
+    marginBasis: record.marginBasis,
     sellerState: record.sellerState,
     purchaserState: record.purchaserState,
   });

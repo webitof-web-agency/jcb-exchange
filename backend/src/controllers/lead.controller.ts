@@ -3,7 +3,9 @@ import prisma from '../lib/prisma';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAppSettings } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { onLeadCaptured } from '../modules/crm';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
+import { getListingFinalPrice, listingPricingSelect } from '../utils/listingPricing';
 
 const prismaAny = prisma as any;
 
@@ -14,6 +16,10 @@ const LEAD_STATUSES = [
   'INSPECTION_SCHEDULED',
   'WON',
   'LOST',
+  // CRM stages (modules/crm/rules.ts).
+  'QUALIFIED',
+  'NEGOTIATION',
+  'ON_HOLD',
 ] as const;
 
 const leadRelatedUserSelect = {
@@ -47,7 +53,7 @@ const leadRelatedListingSelect = {
   id: true,
   title: true,
   status: true,
-  price: true,
+  ...listingPricingSelect,
   locationCity: true,
   locationState: true,
   partner: {
@@ -69,7 +75,7 @@ const leadListingPaymentSelect = {
   submittedAt: true,
   reviewedAt: true,
   rejectionReason: true,
-  listing: { select: { id: true, title: true, price: true, status: true } },
+  listing: { select: { id: true, title: true, ...listingPricingSelect, status: true } },
 } as const;
 
 const mapLeadListingPayment = (payment: any) => ({
@@ -91,7 +97,7 @@ const mapLeadListingPayment = (payment: any) => ({
     ? {
         id: payment.listing.id,
         title: payment.listing.title,
-        price: Number(payment.listing.price || 0),
+        price: getListingFinalPrice(payment.listing),
         status: payment.listing.status || '',
       }
     : null,
@@ -170,7 +176,7 @@ const formatLead = (lead: any) => {
       id: lead.listing?.id || '',
       title: lead.listing?.title || lead.listingTitleSnapshot || 'Listing removed',
       status: lead.listing?.status || lead.listingStatusSnapshot || '',
-      price: Number(lead.listing?.price ?? lead.listingPriceSnapshot ?? 0),
+      price: lead.listing ? getListingFinalPrice(lead.listing) : Number(lead.listingPriceSnapshot ?? 0),
       locationCity: lead.listing?.locationCity || lead.listingLocationCitySnapshot || '',
       locationState: lead.listing?.locationState || lead.listingLocationStateSnapshot || '',
     },
@@ -550,7 +556,7 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
         id: true,
         title: true,
         status: true,
-        price: true,
+        ...listingPricingSelect,
         locationCity: true,
         locationState: true,
       },
@@ -643,7 +649,7 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
           enquiryType: calculatedEnquiryType,
           listingTitleSnapshot: listing.title,
           listingStatusSnapshot: listing.status,
-          listingPriceSnapshot: listing.price,
+          listingPriceSnapshot: getListingFinalPrice(listing),
           listingLocationCitySnapshot: listing.locationCity,
           listingLocationStateSnapshot: listing.locationState,
           message: leadMessage,
@@ -671,6 +677,9 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
         },
       }).catch((err) => console.error('Lead FCM push error:', err));
     }
+
+    // CRM: source, SLA, first follow-up / auto-assign when enabled. Never blocks the response.
+    void onLeadCaptured(lead.id, { source: 'DEALER_CALLBACK', repeat: Boolean(existingLead) });
 
     return res.status(201).json({
       message: 'Callback request submitted successfully.',
@@ -745,7 +754,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           id: true,
           title: true,
           status: true,
-          price: true,
+          ...listingPricingSelect,
           locationCity: true,
           locationState: true,
           partnerId: true,
@@ -806,7 +815,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           id: true,
           title: true,
           status: true,
-          price: true,
+          ...listingPricingSelect,
           locationCity: true,
           locationState: true,
           partnerId: true,
@@ -916,7 +925,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           enquiryType: calculatedPublicEnquiryType,
           listingTitleSnapshot: listing.title,
           listingStatusSnapshot: listing.status,
-          listingPriceSnapshot: listing.price,
+          listingPriceSnapshot: getListingFinalPrice(listing),
           listingLocationCitySnapshot: listing.locationCity,
           listingLocationStateSnapshot: listing.locationState,
           message: leadMessage,
@@ -976,6 +985,8 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
     } catch (err) {
       console.error('Lead routing audit error:', err);
     }
+
+    void onLeadCaptured(lead.id, { source: 'PRIME_CONTACT', repeat: Boolean(existingLead) });
 
     return res.status(201).json({
       message: 'Enquiry created successfully.',
@@ -1141,7 +1152,7 @@ export const updateLeadStatus = async (req: Request, res: Response, next: NextFu
             id: true,
             title: true,
             status: true,
-            price: true,
+            ...listingPricingSelect,
             locationCity: true,
             locationState: true,
           },

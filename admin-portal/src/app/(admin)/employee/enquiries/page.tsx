@@ -1,5 +1,6 @@
-import SuperAdminEnquiriesPage from '../../superadmin/enquiries/page';
+import LegacyEnquiryRedirect from '@/components/crm/LegacyEnquiryRedirect';
 
-export default function EmployeeEnquiriesPage() {
-  return <SuperAdminEnquiriesPage />;
+// Enquiries moved into the CRM (Leads tab).
+export default function EnquiriesPage() {
+  return <LegacyEnquiryRedirect />;
 }

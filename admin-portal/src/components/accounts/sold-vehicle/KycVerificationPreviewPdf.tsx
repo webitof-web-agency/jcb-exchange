@@ -1,4 +1,5 @@
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { getGstVerificationTemplateFields } from '@/lib/gstVerificationPreview';
 import type { KycVerificationPreview } from './SellAccountDocumentWidgets';
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -154,6 +155,38 @@ export function KycVerificationPreviewPdf({ preview, panCardImage, aadhaarCardIm
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image src={aadhaarCardImage} style={styles.aadhaarImage} />
           <Text style={styles.footer}>This digital copy contains the fetched Aadhaar front and back card previews for audit and record-keeping.</Text>
+        </Page>
+      </Document>
+    );
+  }
+
+  if (preview.kind === 'gst') {
+    const gstEntries = getGstVerificationTemplateFields(result);
+
+    return (
+      <Document title={`GST Verification - ${preview.number}`}>
+        <Page size="A4" style={styles.page} wrap>
+          <Text style={styles.eyebrow}>API verification report</Text>
+          <Text style={styles.title}>GST / {preview.number}</Text>
+          <Text style={styles.subtitle}>Generated from verified GST API data. Not an official government-issued GST certificate.</Text>
+
+          <View style={styles.summary}>
+            {[
+              ['Side', preview.side === 'purchase' ? 'Purchase / Seller' : 'Sale / Customer'],
+              ['Status', valueText(record.status)],
+              ['Provider', valueText(record.provider)],
+              ['Source', source],
+            ].map(([key, value]) => (
+              <View key={key} style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>{key}</Text>
+                <Text style={styles.summaryValue}>{value}</Text>
+              </View>
+            ))}
+          </View>
+
+          <TableSection title="Provider Data" entries={gstEntries} />
+          {!gstEntries.length ? <TableSection title="Fetched data" entries={[["Response", result]]} /> : null}
+          <Text style={styles.footer}>This report contains verified GST API data for internal audit and record-keeping. It is not an official government-issued GST certificate.</Text>
         </Page>
       </Document>
     );

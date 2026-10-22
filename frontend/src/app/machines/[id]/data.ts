@@ -36,7 +36,16 @@ export type ListingPartner = {
 export type MachineListingDetail = {
   id: string;
   title: string;
+  // Final price: seller price + JCB Exchange margin + expenses.
   price: number;
+  expenseAmount?: number;
+  expenseBreakdown?: {
+    transport: number;
+    paperwork: number;
+    rtoWork: number;
+    other: number;
+    otherLabel: string;
+  } | null;
   isNegotiable: boolean;
   manufacturingYear: number | null;
   operatingHours: number | null;

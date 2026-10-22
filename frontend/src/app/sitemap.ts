@@ -51,6 +51,18 @@ const staticRoutes = (): MetadataRoute.Sitemap => [
     lastModified: new Date(),
   },
   {
+    url: `${SITE_URL}/post-requirement`,
+    changeFrequency: "monthly",
+    priority: 0.6,
+    lastModified: new Date(),
+  },
+  {
+    url: `${SITE_URL}/sell-machine`,
+    changeFrequency: "monthly",
+    priority: 0.6,
+    lastModified: new Date(),
+  },
+  {
     url: `${SITE_URL}/sold-vehicles`,
     changeFrequency: "weekly",
     priority: 0.7,

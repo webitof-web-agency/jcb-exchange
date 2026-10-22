@@ -3,6 +3,7 @@ import path from 'node:path';
 import prisma from '../lib/prisma';
 import { publicListingMediaUploadDir } from './documentUpload';
 import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
+import { getListingFinalPrice } from './listingPricing';
 
 const prismaAny = prisma as any;
 
@@ -21,6 +22,9 @@ type ListingSnapshot = {
   title?: string | null;
   status?: string | null;
   price?: number | { toString(): string } | null;
+  adminMarginAmount?: unknown;
+  adminExpenseAmount?: unknown;
+  adminExpenseBreakdown?: unknown;
   locationCity?: string | null;
   locationState?: string | null;
 };
@@ -213,7 +217,7 @@ export const detachLeadsFromListing = async (
       "listingId" = NULL,
       "listingTitleSnapshot" = ${listing.title || 'Listing removed'},
       "listingStatusSnapshot" = ${String(listing.status || '').toUpperCase() || 'REMOVED'},
-      "listingPriceSnapshot" = ${listing.price === null || listing.price === undefined ? null : String(listing.price)},
+      "listingPriceSnapshot" = ${listing.price === null || listing.price === undefined ? null : String(getListingFinalPrice(listing))},
       "listingLocationCitySnapshot" = ${listing.locationCity || null},
       "listingLocationStateSnapshot" = ${listing.locationState || null}
     WHERE "listingId" = ${listing.id}

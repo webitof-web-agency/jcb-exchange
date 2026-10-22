@@ -15,13 +15,13 @@ type DealStage = 'OPEN' | 'ONGOING' | 'CLOSED';
 const getDealStage = (status: string): DealStage => {
   const normalized = String(status || '').toUpperCase();
   if (normalized === 'WON' || normalized === 'LOST') return 'CLOSED';
-  if (normalized === 'CONTACTED' || normalized === 'INTERESTED' || normalized === 'INSPECTION_SCHEDULED') return 'ONGOING';
+  if (['CONTACTED', 'QUALIFIED', 'INTERESTED', 'INSPECTION_SCHEDULED', 'NEGOTIATION', 'ON_HOLD'].includes(normalized)) return 'ONGOING';
   return 'OPEN';
 };
 
 const getStageStatusOptions = (stage: DealStage) => {
   if (stage === 'CLOSED') return ['WON', 'LOST'] as const;
-  if (stage === 'ONGOING') return ['CONTACTED', 'INTERESTED', 'INSPECTION_SCHEDULED'] as const;
+  if (stage === 'ONGOING') return ['CONTACTED', 'QUALIFIED', 'INTERESTED', 'INSPECTION_SCHEDULED', 'NEGOTIATION', 'ON_HOLD'] as const;
   return ['NEW'] as const;
 };
 

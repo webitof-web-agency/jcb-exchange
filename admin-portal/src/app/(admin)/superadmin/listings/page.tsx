@@ -43,6 +43,7 @@ import {
   SELL_VEHICLE_AVAILABILITY_OPTIONS,
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import ListingPricingModal, { type ListingPricing } from '@/components/listings/ListingPricingModal';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
@@ -160,6 +161,8 @@ type ListingRecord = {
   id: string;
   title: string;
   price: string;
+  // Seller price + admin margin + expenses; buyers see finalPrice.
+  pricing?: ListingPricing | null;
   manufacturingYear: number;
   locationState: string;
   locationCity: string;
@@ -668,6 +671,9 @@ const getCoverMedia = (listing: ListingRecord) =>
   listing.media?.find((item) => item.type === 'IMAGE') ||
   null;
 
+const hasAdminPricing = (listing: { pricing?: ListingPricing | null }) =>
+  Boolean(listing.pricing && (listing.pricing.marginAmount > 0 || listing.pricing.expenseAmount > 0));
+
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
     return error.response?.data?.error || error.response?.data?.message || fallback;
@@ -1146,6 +1152,7 @@ export default function PartnerListingsPage() {
 
   const [pendingPaymentVerificationsCount, setPendingPaymentVerificationsCount] = useState(0);
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
+  const [pricingTarget, setPricingTarget] = useState<{ listing: ListingRecord; mode: 'approve' | 'edit' } | null>(null);
   const [updatingAvailabilityIds, setUpdatingAvailabilityIds] = useState<string[]>([]);
   const [moderatingListingIds, setModeratingListingIds] = useState<string[]>([]);
   const [openActionDropdownId, setOpenActionDropdownId] = useState<string | null>(null);
@@ -2481,6 +2488,13 @@ export default function PartnerListingsPage() {
   const handleListingModeration = async (listingId: string, nextStatus: 'PUBLISHED' | 'CHANGES_REQUESTED') => {
     setError('');
     setMessage('');
+
+    // Approving goes through the pricing modal so the admin can add margin and expenses first.
+    const pendingListing = listings.find((item) => item.id === listingId);
+    if (nextStatus === 'PUBLISHED' && pendingListing) {
+      setPricingTarget({ listing: pendingListing, mode: 'approve' });
+      return;
+    }
     setModeratingListingIds((current) => [...current, listingId]);
 
     try {
@@ -2624,6 +2638,16 @@ export default function PartnerListingsPage() {
             variant: 'warning' as const,
             disabled: isModeratingListing,
             onClick: () => void handleListingModeration(listing.id, 'CHANGES_REQUESTED'),
+          },
+        ]
+      : []),
+    ...(canApprove && !isPendingListing && String(listing.status).toUpperCase() !== 'SOLD'
+      ? [
+          {
+            label: 'Edit Pricing',
+            icon: <TrendingUp className="h-3.5 w-3.5" />,
+            variant: 'default' as const,
+            onClick: () => setPricingTarget({ listing, mode: 'edit' }),
           },
         ]
       : []),
@@ -3256,8 +3280,11 @@ export default function PartnerListingsPage() {
                       <div className="mt-3 flex items-baseline justify-between border-t border-gray-100 pt-2.5">
                         <div>
                           <span className="text-base font-bold text-gray-900 tabular-nums tracking-tight">
-                            {formatCurrency(listing.price)}
+                            {formatCurrency(listing.pricing?.finalPrice ?? listing.price)}
                           </span>
+                          {hasAdminPricing(listing) ? (
+                            <span className="ml-1.5 text-[10px] font-medium text-gray-400 tabular-nums">Seller {formatCurrency(listing.price)}</span>
+                          ) : null}
                           {listing.isNegotiable ? (
                             <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9.5px] font-medium text-emerald-700">
                               <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" />
@@ -3593,8 +3620,11 @@ export default function PartnerListingsPage() {
                         <td className="w-[95px] px-2 py-1.5">
                           <div className="flex flex-col min-w-0">
                             <span className="whitespace-nowrap text-xs sm:text-[13px] font-semibold text-gray-800 tabular-nums tracking-tight">
-                              {formatCurrency(listing.price)}
+                              {formatCurrency(listing.pricing?.finalPrice ?? listing.price)}
                             </span>
+                            {hasAdminPricing(listing) ? (
+                              <span className="whitespace-nowrap text-[9.5px] font-medium text-gray-400 tabular-nums">Seller {formatCurrency(listing.price)}</span>
+                            ) : null}
                             {listing.isNegotiable ? (
                               <span className="mt-0.5 inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
                                 <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" />
@@ -5181,6 +5211,21 @@ export default function PartnerListingsPage() {
       })()}
 
 
+
+      {pricingTarget ? (
+        <ListingPricingModal
+          listing={pricingTarget.listing}
+          mode={pricingTarget.mode}
+          onClose={() => setPricingTarget(null)}
+          onSaved={({ message: savedMessage, listing: saved }) => {
+            setListings((current) =>
+              current.map((item) => (item.id === pricingTarget.listing.id ? ({ ...item, ...saved } as ListingRecord) : item))
+            );
+            setMessage(savedMessage);
+            setPricingTarget(null);
+          }}
+        />
+      ) : null}
 
       {deleteListingRecord && !isProtectedListing(deleteListingRecord, user?.role) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">

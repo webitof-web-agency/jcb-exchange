@@ -96,6 +96,10 @@ enum LeadStatus {
   INSPECTION_SCHEDULED
   WON
   LOST
+  // CRM stages (added at the end: Postgres appends new enum values).
+  QUALIFIED
+  NEGOTIATION
+  ON_HOLD
 }
 
 enum PartnerStaffRole {
@@ -257,6 +261,8 @@ enum WhatsAppRecipientType {
   RECRUITER
   CANDIDATE
   TEST
+  // CRM reminders to staff.
+  EMPLOYEE
 }
 
 enum WhatsAppOutboxStatus {
@@ -492,6 +498,12 @@ model User {
   gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
   blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
   answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
+  ownedLeads                         Lead[]                             @relation("LeadOwner")
+  crmProfile                         CrmContactProfile?                 @relation("CrmContactProfileUser")
+  crmOwnedContacts                   CrmContactProfile[]                @relation("CrmContactOwner")
+  crmFollowUpsAsContact              CrmFollowUp[]                      @relation("CrmFollowUpContact")
+  crmFollowUpsOwned                  CrmFollowUp[]                      @relation("CrmFollowUpOwner")
+  crmContactActivities               CrmContactActivity[]               @relation("CrmContactActivityContact")
 }
 
 model MobileOtpChallenge {
@@ -1064,6 +1076,13 @@ model Listing {
   additionalDescription String?       @db.Text
   grossPower            String?
   engineNumber          String?
+  // `price` stays the seller's own price. Admin adds margin and expenses at approval;
+  // buyers see price + adminMarginAmount + adminExpenseAmount (see utils/listingPricing.ts).
+  adminMarginAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  adminExpenseAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  adminExpenseBreakdown Json?
+  pricingUpdatedAt      DateTime?
+  pricingUpdatedById    String?
   status                ListingStatus @default(DRAFT)
   soldAt                DateTime?
   contactMode           String?
@@ -1188,6 +1207,14 @@ enum SellAccountTaxMode {
   EXCLUSIVE
 }
 
+// How the GST-inclusive margin is worked out. Records saved before 2026-10-22 keep
+// SALE_MINUS_PURCHASE; every new or edited record uses AFTER_EXPENSES
+// (sell - purchase - expenses).
+enum SellAccountMarginBasis {
+  SALE_MINUS_PURCHASE
+  AFTER_EXPENSES
+}
+
 // Who the vehicle was bought from before JCB Exchange (the broker) sold it on.
 enum SellAccountSourceType {
   PARTNER
@@ -1257,6 +1284,7 @@ model SellAccount {
   netProfitAfterGst     Decimal                @default(0) @db.Decimal(14, 2)
   gstRatePercent        Decimal                @default(18) @db.Decimal(5, 2)
   taxMode               SellAccountTaxMode     @default(INCLUSIVE)
+  marginBasis           SellAccountMarginBasis @default(AFTER_EXPENSES)
   transferDetails       String?                @db.Text
   remarks               String?                @db.Text
   documents             Json?
@@ -1550,15 +1578,59 @@ model Lead {
   createdAt                    DateTime   @default(now())
   updatedAt                    DateTime   @updatedAt
 
+  // CRM (docs/crm/00_CRM_PLAN.md). dealerId stays the recipient (partner or platform);
+  // ownerId is the staff member working the lead.
+  leadType               CrmLeadType    @default(BUY)
+  source                 String         @default("WEBSITE")
+  priority               CrmPriority    @default(MEDIUM)
+  temperature            CrmTemperature @default(WARM)
+  score                  Int            @default(0)
+  ownerId                String?
+  assignedAt             DateTime?
+  createdById            String?
+  categoryId             String?
+  brandId                String?
+  modelId                String?
+  yearFrom               Int?
+  yearTo                 Int?
+  budgetMin              Decimal?       @db.Decimal(14, 2)
+  budgetMax              Decimal?       @db.Decimal(14, 2)
+  requirementState       String?
+  requirementCity        String?
+  requirementNotes       String?        @db.Text
+  expectedValue          Decimal?       @db.Decimal(14, 2)
+  nextFollowUpAt         DateTime?
+  firstResponseAt        DateTime?
+  lastContactedAt        DateTime?
+  lastActivityAt         DateTime?
+  slaDueAt               DateTime?
+  slaBreachedAt          DateTime?
+  lostReason             String?
+  closedAt               DateTime?
+  wonAmount              Decimal?       @db.Decimal(14, 2)
+  wonSellAccountId       String?
+  linkedPartnerProfileId String?
+  tags                   String[]       @default([])
+  matchAlertsEnabled     Boolean        @default(false)
+  notifiedListingIds     String[]       @default([])
+  lastReengagedAt        DateTime?
+  mergedIntoId           String?
+
   listing    Listing?       @relation(fields: [listingId], references: [id])
   customer   User           @relation("CustomerLeads", fields: [customerId], references: [id])
   dealer     User           @relation("DealerLeads", fields: [dealerId], references: [id])
+  owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   activities LeadActivity[]
+  followUps  CrmFollowUp[]
 
   @@index([listingId])
   @@index([customerId])
   @@index([dealerId])
   @@index([status])
+  @@index([ownerId, status])
+  @@index([nextFollowUpAt])
+  @@index([leadType, status])
+  @@index([createdAt])
 }
 
 model LeadActivity {
@@ -4018,4 +4090,201 @@ model FinIntegrationEvent {
 
   @@unique([provider, externalId])
   @@index([status, receivedAt])
+}
+
+// ───────────────────────── CRM & follow-ups (docs/crm/00_CRM_PLAN.md) ─────────────────────────
+// Contacts are Users (role CUSTOMER); CrmContactProfile adds CRM-only fields. Leads extend `Lead`.
+
+enum CrmLeadType {
+  BUY
+  SELL
+  FINANCE
+  INSURANCE
+  RTO
+  TRANSPORT
+  DEALER_ONBOARDING
+  PRIME
+  VERIFICATION
+  OTHER
+}
+
+enum CrmPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CrmTemperature {
+  HOT
+  WARM
+  COLD
+}
+
+enum CrmLifecycle {
+  LEAD
+  PROSPECT
+  CUSTOMER
+  INACTIVE
+}
+
+enum CrmFollowUpType {
+  CALL
+  WHATSAPP
+  SMS
+  VISIT
+  INSPECTION
+  MEETING
+  EMAIL
+  PAYMENT
+  OTHER
+}
+
+enum CrmFollowUpStatus {
+  PENDING
+  DONE
+  MISSED
+  CANCELLED
+}
+
+enum CrmFollowUpOutcome {
+  CONNECTED
+  NOT_REACHABLE
+  BUSY
+  SWITCHED_OFF
+  CALL_BACK_LATER
+  INTERESTED
+  NOT_INTERESTED
+  WRONG_NUMBER
+  VISITED
+  NO_SHOW
+  MESSAGE_SENT
+  OTHER
+}
+
+model CrmContactProfile {
+  id                String       @id @default(uuid())
+  userId            String       @unique
+  contactTypes      String[]     @default([])
+  companyName       String?
+  alternatePhone    String?
+  address           String?      @db.Text
+  pinCode           String?
+  gstNumber         String?
+  ownerId           String?
+  source            String?
+  lifecycle         CrmLifecycle @default(LEAD)
+  tags              String[]     @default([])
+  notes             String?      @db.Text
+  doNotContact      Boolean      @default(false)
+  preferredLanguage String?
+  preferredChannel  String?
+  createdById       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  user  User  @relation("CrmContactProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+  owner User? @relation("CrmContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([lifecycle])
+}
+
+model CrmFollowUp {
+  id                   String              @id @default(uuid())
+  leadId               String?
+  contactUserId        String
+  ownerId              String?
+  type                 CrmFollowUpType     @default(CALL)
+  status               CrmFollowUpStatus   @default(PENDING)
+  dueAt                DateTime
+  title                String?
+  notes                String?             @db.Text
+  outcome              CrmFollowUpOutcome?
+  outcomeNotes         String?             @db.Text
+  completedAt          DateTime?
+  completedById        String?
+  rescheduleCount      Int                 @default(0)
+  lastRescheduleReason String?
+  previousDueAt        DateTime?
+  remindedAt           DateTime?
+  customerRemindedAt   DateTime?
+  missedAt             DateTime?
+  escalatedAt          DateTime?
+  autoCreated          Boolean             @default(false)
+  createdById          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  lead    Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact User  @relation("CrmFollowUpContact", fields: [contactUserId], references: [id], onDelete: Cascade)
+  owner   User? @relation("CrmFollowUpOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, status, dueAt])
+  @@index([status, dueAt])
+  @@index([leadId])
+  @@index([contactUserId])
+}
+
+model CrmContactActivity {
+  id            String   @id @default(uuid())
+  contactUserId String
+  actorId       String?
+  type          String // NOTE | CALL | WHATSAPP | SMS | PROFILE_UPDATE | MERGE | IMPORT
+  title         String
+  content       String?  @db.Text
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  contact User @relation("CrmContactActivityContact", fields: [contactUserId], references: [id], onDelete: Cascade)
+
+  @@index([contactUserId, createdAt])
+}
+
+model CrmAssignmentRule {
+  id          String   @id @default(uuid())
+  name        String
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  conditions  Json?
+  strategy    String   @default("ROUND_ROBIN") // ROUND_ROBIN | LEAST_LOAD | SPECIFIC_USER
+  assigneeIds String[] @default([])
+  cursor      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+model CrmSettings {
+  id              String   @id @default("default")
+  config          Json     @default("{}")
+  automationState Json?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CrmSegment {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  filters     Json
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CrmImportBatch {
+  id             String   @id @default(uuid())
+  fileName       String?
+  totalRows      Int      @default(0)
+  createdCount   Int      @default(0)
+  duplicateCount Int      @default(0)
+  failedCount    Int      @default(0)
+  errors         Json?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
 }

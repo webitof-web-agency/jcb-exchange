@@ -19,7 +19,7 @@ const dealSelect = {
   id: true, recordNumber: true, listingId: true, listingTitle: true, vehicleNumber: true, chassisNumber: true, vehicleType: true, brandName: true, vehicleModel: true,
   sellerName: true, sellerNumber: true, sellerState: true, purchaserName: true, purchaserNumber: true, purchaserState: true,
   sourceType: true, purchaseType: true, saleType: true, purchaseAmount: true, sellAmount: true, purchaseExchangeValue: true, purchaseExchangeVehicle: true,
-  saleExchangeValue: true, saleExchangeVehicle: true, brokerName: true, expenses: true, expenseBreakdown: true, netProfitAfterGst: true,
+  saleExchangeValue: true, saleExchangeVehicle: true, brokerName: true, expenses: true, expenseBreakdown: true, marginBasis: true, netProfitAfterGst: true,
   isDraft: true, deletedAt: true, isLocked: true, dealStatus: true, rtoStatusSnapshot: true, invoiceNumber: true, invoiceGeneratedAt: true,
   completedAt: true, sellerDate: true, purchaserDate: true, sellDate: true, createdAt: true, updatedAt: true,
   payments: { select: { id: true, side: true, amount: true, paymentDate: true, method: true, reference: true, note: true }, orderBy: [{ paymentDate: 'asc' as const }, { createdAt: 'asc' as const }] },
@@ -36,7 +36,7 @@ export const summarizeDeal = (deal: DealRecord, asOn: Date) => {
   const costTotal = round(costs.reduce((sum, cost) => sum + cost.amount, 0));
   const purchaseDate = purchase > 0 ? purchaseDateOf(source) : null;
   const saleDate = sale > 0 ? saleDateOf(source) : null;
-  const gst = calculateSellAccountGst({ sellAmount: sale, purchaseAmount: purchase, expenses: num(deal.expenses), sellerState: deal.sellerState ?? '', purchaserState: deal.purchaserState ?? '' });
+  const gst = calculateSellAccountGst({ sellAmount: sale, purchaseAmount: purchase, expenses: num(deal.expenses), marginBasis: deal.marginBasis, sellerState: deal.sellerState ?? '', purchaserState: deal.purchaserState ?? '' });
   const exchange = {
     purchaseExchangeValue: deal.purchaseType === 'EXCHANGE' ? num(deal.purchaseExchangeValue) : 0,
     saleExchangeValue: deal.saleType === 'EXCHANGE' ? num(deal.saleExchangeValue) : 0,

@@ -19,7 +19,7 @@ import type { SellAccountDocument, SellAccountDocumentKey, SellAccountKycKind, S
 import { buildPanCardData as buildVerifiedPanCardData } from './panCardVerification.mjs';
 import { buildPanCardExportSvg } from './panCardExport.mjs';
 import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
-import { getGstPreviewFields } from '@/lib/gstVerificationPreview';
+import { getGstVerificationTemplateFields } from '@/lib/gstVerificationPreview';
 
 export type KycVerificationPreview = {
   side: 'purchase' | 'sell';
@@ -357,7 +357,7 @@ export function KycVerificationPreviewModal({
   const panCardData = preview.kind === 'pan' ? buildPanCardData(preview, result) : null;
   const aadhaarCardData = preview.kind === 'aadhaar' ? buildAadhaarCardData(preview, result) as AadhaarCardData : null;
   const showAadhaarCard = Boolean(aadhaarCardData && hasAadhaarCardData(aadhaarCardData));
-  const gstPreviewFields = preview.kind === 'gst' ? getGstPreviewFields(result) : [];
+  const gstTemplateFields = preview.kind === 'gst' ? getGstVerificationTemplateFields(result) : [];
   const generatedDocumentKey = getGeneratedKycDocumentKey(preview);
 
   const captureAadhaarCards = async (format: 'png' | 'jpeg') => {
@@ -552,16 +552,16 @@ export function KycVerificationPreviewModal({
             </section>
           ) : null}
 
-          {gstPreviewFields.length ? (
+          {gstTemplateFields.length ? (
             <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">GSTIN details</h4>
-                  <p className="mt-0.5 text-xs text-slate-500">Verified business details returned by the Surepass GSTIN API.</p>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">GST verification PDF preview</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">Generated from verified GST API data. This is not an official government-issued GST certificate.</p>
                 </div>
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Verified data</span>
               </div>
-              <PreviewTable entries={gstPreviewFields} />
+              <PreviewTable entries={gstTemplateFields} />
             </section>
           ) : null}
 

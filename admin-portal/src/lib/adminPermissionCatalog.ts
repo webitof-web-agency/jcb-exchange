@@ -22,6 +22,32 @@ export type AdminPermissionGroupDefinition = {
   permissions: AdminPermissionDefinition[];
 };
 
+// CRM & follow-ups. Mirrors backend/src/modules/crm/permissions.ts. The older
+// enquiries.manage key still means "every enquiry" (same as crm.manage_all).
+export const CRM_PERMISSION_GROUPS: AdminPermissionGroupDefinition[] = [
+  {
+    groupName: 'Leads & follow-ups',
+    permissions: [
+      { id: 'crm.read', label: 'View CRM (own leads)' },
+      { id: 'crm.manage', label: 'Work own leads & follow-ups' },
+      { id: 'crm.manage_all', label: 'See & work every lead' },
+      { id: 'crm.assign', label: 'Assign / reassign leads' },
+    ],
+  },
+  {
+    groupName: 'Reports, data & campaigns',
+    permissions: [
+      { id: 'crm.reports', label: 'View CRM reports' },
+      { id: 'crm.export', label: 'Export leads' },
+      { id: 'crm.import', label: 'Import leads (CSV)' },
+      { id: 'crm.campaigns', label: 'Segments & WhatsApp campaigns' },
+      { id: 'crm.settings', label: 'CRM settings & automation' },
+    ],
+  },
+];
+
+export const CRM_VIEW_PERMISSIONS = ['enquiries.manage', ...CRM_PERMISSION_GROUPS.flatMap((group) => group.permissions.map((permission) => permission.id))];
+
 // Financial Reports & CA Workspace. Mirrors backend/src/modules/finance-hub/permissions.ts.
 // finance.read / finance.manage stay limited to the old Expenses page and grant none of these.
 export const FINANCE_WORKSPACE_PERMISSION_GROUPS: AdminPermissionGroupDefinition[] = [

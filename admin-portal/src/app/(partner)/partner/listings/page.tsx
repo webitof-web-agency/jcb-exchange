@@ -131,6 +131,13 @@ type ListingRecord = {
   id: string;
   title: string;
   price: string;
+  // Your price + JCB Exchange margin + expenses = the price buyers see.
+  pricing?: {
+    sellerPrice: number;
+    marginAmount: number;
+    expenseAmount: number;
+    finalPrice: number;
+  } | null;
   manufacturingYear: number;
   locationState: string;
   locationCity: string;
@@ -482,7 +489,7 @@ const localizedAvailability = (status: string) => {
     case 'AVAILABLE':
       return 'Available';
     case 'PENDING':
-      return 'Pending Approval';
+      return 'Pending approval from admin';
     case 'RESERVED':
       return 'Reserved';
     case 'SOLD':
@@ -1922,7 +1929,19 @@ export default function PartnerListingsPage() {
                           {listing.category?.name || '-'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-bold text-gray-900 text-xs">{formatCurrency(listing.price)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <span className="font-bold text-gray-900">{formatCurrency(listing.pricing?.finalPrice ?? listing.price)}</span>
+                        {listing.pricing && (listing.pricing.marginAmount > 0 || listing.pricing.expenseAmount > 0) ? (
+                          <span
+                            className="mt-0.5 block whitespace-nowrap text-[10px] text-gray-500"
+                            title={`Your price ${formatCurrency(listing.pricing.sellerPrice)} + margin ${formatCurrency(listing.pricing.marginAmount)} + expenses ${formatCurrency(listing.pricing.expenseAmount)}`}
+                          >
+                            Your price {formatCurrency(listing.pricing.sellerPrice)}
+                            <br />+ Margin {formatCurrency(listing.pricing.marginAmount)}
+                            <br />+ Expenses {formatCurrency(listing.pricing.expenseAmount)}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-xs text-gray-600 font-medium">{listing.manufacturingYear || '-'}</td>
                       <td className="px-4 py-3 text-xs text-gray-600 font-medium">
                         {listing.locationCity ? `${listing.locationCity}, ${listing.locationState}` : '-'}
@@ -2414,6 +2433,9 @@ export default function PartnerListingsPage() {
                         className={fieldClassName}
                         placeholder="Enter price"
                       />
+                      <p className="mt-1 text-[11px] leading-snug text-amber-700">
+                        Listing goes live after admin approval. The admin can add the JCB Exchange margin and expenses to your price; buyers see the final price. Changing the price of a live listing sends it for approval again.
+                      </p>
                     </Field>
                     <div className="flex items-end pb-1 md:pb-3">
                       <label className="flex items-center gap-2 cursor-pointer pt-2">

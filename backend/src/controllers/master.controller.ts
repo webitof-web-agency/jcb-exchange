@@ -10,6 +10,7 @@ import {
 } from '../utils/publicListingVisibility';
 import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.service';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { getListingFinalPrice, getPublicListingPricing, type ListingPricingSource } from '../utils/listingPricing';
 
 const prismaAny = prisma as any;
 
@@ -116,21 +117,20 @@ const buildVisibleSoldListingWhere = (now = new Date()) => {
   };
 };
 
-const getPublicListingPrice = (listing: {
+const getPublicListingPrice = (listing: ListingPricingSource & {
   status?: string | null;
-  price?: unknown;
   saleRecord?: {
     soldPrice?: unknown;
   } | null;
 }) => {
-  const basePrice = Number(listing.price || 0);
   const soldPrice = Number(listing.saleRecord?.soldPrice || 0);
 
   if (String(listing.status || '').toUpperCase() === 'SOLD' && Number.isFinite(soldPrice) && soldPrice > 0) {
     return soldPrice;
   }
 
-  return Number.isFinite(basePrice) ? basePrice : 0;
+  // Buyers see the seller price plus the admin margin and expenses.
+  return getListingFinalPrice(listing);
 };
 
 const isBuyNowPaymentConfigured = (settings: Awaited<ReturnType<typeof getAppSettings>>['listingPayment']) =>
@@ -1492,11 +1492,15 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
 
     const latestRto = (listing.rtoRecords as any)?.[0] || null;
     const formDetails = parsePublicListingFormDetails(listing.description);
+    // Buyers see the final price and the expenses; the seller price and margin stay private.
+    const publicPricing = getPublicListingPricing(listing);
 
     const responseData = {
       id: listing.id,
       title: listing.title,
-      price: Number(listing.price || 0),
+      price: publicPricing.finalPrice,
+      expenseAmount: publicPricing.expenseAmount,
+      expenseBreakdown: publicPricing.expenseBreakdown,
       isNegotiable: Boolean(listing.isNegotiable),
       manufacturingYear: listing.manufacturingYear,
       operatingHours: listing.operatingHours,

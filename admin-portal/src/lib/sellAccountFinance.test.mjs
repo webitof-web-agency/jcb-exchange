@@ -10,11 +10,12 @@ import {
   sumExpenseBreakdown,
 } from './sellAccountFinance.mjs';
 
-test('calculates 18 percent GST on the margin (not net of expenses) for an intra-state sale', () => {
+test('older records: 18 percent GST on the margin (not net of expenses) for an intra-state sale', () => {
   const breakdown = calculateSellAccountGst({
     sellAmount: 118000,
     purchaseAmount: 90000,
     expenses: 5000,
+    marginBasis: 'SALE_MINUS_PURCHASE',
     taxMode: 'INCLUSIVE',
     sellerState: 'Chhattisgarh',
     purchaserState: 'Chhattisgarh',
@@ -51,11 +52,12 @@ test('keeps the entered sell amount payable while calculating GST on profit', ()
   assert.equal(breakdown.netProfitAfterGst, 84745.76);
 });
 
-test('calculates IGST for an inter-state sale using inclusive profit tax', () => {
+test('older records: IGST for an inter-state sale using inclusive profit tax', () => {
   const breakdown = calculateSellAccountGst({
     sellAmount: 100000,
     purchaseAmount: 60000,
     expenses: 5000,
+    marginBasis: 'SALE_MINUS_PURCHASE',
     taxMode: 'EXCLUSIVE',
     sellerState: 'Chhattisgarh',
     purchaserState: 'Maharashtra',
@@ -71,11 +73,12 @@ test('calculates IGST for an inter-state sale using inclusive profit tax', () =>
   assert.equal(breakdown.netProfitAfterGst, 28898.31);
 });
 
-test('still owes GST on a positive margin when expenses turn the deal into a loss', () => {
+test('older records: still owe GST on a positive margin when expenses turn the deal into a loss', () => {
   const breakdown = calculateSellAccountGst({
     sellAmount: 100000,
     purchaseAmount: 90000,
     expenses: 15000,
+    marginBasis: 'SALE_MINUS_PURCHASE',
     sellerState: 'Chhattisgarh',
     purchaserState: 'Chhattisgarh',
   });
@@ -86,8 +89,32 @@ test('still owes GST on a positive margin when expenses turn the deal into a los
   assert.equal(breakdown.netProfitAfterGst, -6525.42);
 });
 
+test('margin after expenses: GST is extracted from sell - purchase - expenses', () => {
+  const breakdown = calculateSellAccountGst({
+    purchaseAmount: 1000000,
+    sellAmount: 1200000,
+    expenses: 50000,
+    sellerState: 'Chhattisgarh',
+    purchaserState: 'Chhattisgarh',
+  });
+  assert.equal(breakdown.marginBasis, 'AFTER_EXPENSES');
+  assert.equal(breakdown.marginAmount, 150000);
+  assert.equal(breakdown.taxableAmount, 127118.64);
+  assert.equal(breakdown.gstAmount, 22881.36);
+  assert.equal(breakdown.cgst + breakdown.sgst, 22881.36);
+  assert.equal(breakdown.netProfitBeforeGst, 150000);
+  assert.equal(breakdown.netProfitAfterGst, 127118.64);
+});
+
+test('margin after expenses: no GST when expenses use up the whole margin', () => {
+  const breakdown = calculateSellAccountGst({ sellAmount: 100000, purchaseAmount: 90000, expenses: 15000 });
+  assert.equal(breakdown.marginAmount, -5000);
+  assert.equal(breakdown.gstAmount, 0);
+  assert.equal(breakdown.netProfitAfterGst, -5000);
+});
+
 test('does not charge GST when the vehicle is sold below its purchase price', () => {
-  const breakdown = calculateSellAccountGst({ sellAmount: 90000, purchaseAmount: 100000, expenses: 2000 });
+  const breakdown = calculateSellAccountGst({ sellAmount: 90000, purchaseAmount: 100000, expenses: 2000, marginBasis: 'SALE_MINUS_PURCHASE' });
   assert.equal(breakdown.marginAmount, -10000);
   assert.equal(breakdown.gstAmount, 0);
   assert.equal(breakdown.netProfitAfterGst, -12000);

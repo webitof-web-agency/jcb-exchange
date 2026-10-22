@@ -14,6 +14,7 @@ import {
   submitListingPayment,
   updateListing,
   updateListingStatus,
+  updateListingPricing,
   updateListingAvailability,
 } from '../controllers/listing.controller';
 import { verifyRcFullForListing } from '../controllers/rcFull.controller';
@@ -36,6 +37,7 @@ router.get('/:id', requireAuth, getListingById);
 router.put('/:id', requireAuth, updateListing);
 router.delete('/:id', requireAuth, deleteListing);
 router.patch('/:id/status', requireAuth, requireAdmin, updateListingStatus);
+router.patch('/:id/pricing', requireAuth, requireAdmin, updateListingPricing);
 router.patch('/:id/availability', requireAuth, updateListingAvailability);
 
 export default router;

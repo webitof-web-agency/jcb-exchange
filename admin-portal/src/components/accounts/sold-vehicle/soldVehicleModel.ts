@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 import type { UploadedFileResult } from '@/lib/fileUpload';
 import { createEmptySellAccountDocuments, normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
 import { createEmptySellAccountKyc, normalizeSellAccountKyc } from '@/lib/sellAccountKyc.mjs';
-import { createEmptyExpenseBreakdown, GST_RATE_PERCENT, normalizeExpenseBreakdown } from '@/lib/sellAccountFinance.mjs';
+import { createEmptyExpenseBreakdown, GST_RATE_PERCENT, normalizeExpenseBreakdown, resolveMarginBasis } from '@/lib/sellAccountFinance.mjs';
 import { normalizeSellAccountChassisNumber, omitSellAccountEngineNumber } from '@/lib/sellAccountForm.mjs';
 
 export type SellAccountDocument = Pick<UploadedFileResult, 'access' | 'fileName' | 'originalName' | 'mimeType' | 'size' | 'fileUrl' | 'absoluteUrl'>;
@@ -72,6 +72,8 @@ export type SellAccountInvoiceDelivery = {
   channels?: Array<{ channel: 'WHATSAPP' | 'SMS'; sent: boolean; status: string; detail?: string | null }>;
 };
 
+export type SellAccountMarginBasis = 'SALE_MINUS_PURCHASE' | 'AFTER_EXPENSES';
+
 export interface SellAccountRecord {
   id: string;
   recordNumber?: string;
@@ -118,6 +120,8 @@ export interface SellAccountRecord {
   noteSheet: string;
   remarks?: string;
   taxMode?: 'INCLUSIVE' | 'EXCLUSIVE';
+  // SALE_MINUS_PURCHASE only on records saved before 2026-10-22 and not edited since.
+  marginBasis?: SellAccountMarginBasis;
   gstRatePercent?: number;
   payments?: SellAccountPayment[];
   rtoStatusSnapshot?: string;
@@ -211,6 +215,7 @@ export const normalizeSellAccountRecord = (record: StoredSellAccountRecord): Sel
   }) as SellAccountExpenseBreakdown,
   // Sell Account policy: GST is inclusive in the margin and extracted from it.
   taxMode: 'INCLUSIVE',
+  marginBasis: resolveMarginBasis(record.marginBasis) as SellAccountMarginBasis,
   gstRatePercent: GST_RATE_PERCENT,
   payments: Array.isArray(record.payments) ? record.payments : [],
   rtoStatusSnapshot: record.rtoStatusSnapshot || 'PENDING',

@@ -31,11 +31,28 @@ test('extracts 18% GST from the GST-inclusive margin (10L bought, 12L sold)', ()
   assert.equal(gst.netProfitAfterGst, 169491.53);
 });
 
-test('keeps expenses out of the GST base and deducts them from the final profit', () => {
+test('takes the GST-inclusive margin after purchase and expenses (10L bought, 12L sold, 50k expenses)', () => {
+  const gst = calculateSellAccountGst({
+    purchaseAmount: 1000000,
+    sellAmount: 1200000,
+    expenses: 50000,
+    sellerState: 'Chhattisgarh',
+    purchaserState: 'Maharashtra',
+  });
+  assert.equal(gst.marginBasis, 'AFTER_EXPENSES');
+  assert.equal(gst.marginAmount, 150000);
+  assert.equal(gst.gstAmount, 22881.36);
+  assert.equal(gst.igst, 22881.36);
+  assert.equal(gst.netProfitBeforeGst, 150000);
+  assert.equal(gst.netProfitAfterGst, 127118.64);
+});
+
+test('older records keep expenses out of the GST base and deduct them from the final profit', () => {
   const gst = calculateSellAccountGst({
     purchaseAmount: 1000000,
     sellAmount: 1200000,
     expenses: 20000,
+    marginBasis: 'SALE_MINUS_PURCHASE',
     sellerState: 'Chhattisgarh',
     purchaserState: 'Maharashtra',
   });

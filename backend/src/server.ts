@@ -4,6 +4,7 @@ import { startKeepAlive } from './utils/keepAlive';
 import { startDatabaseBackupJob } from './jobs/dbBackup.job';
 import { storagePersistenceConfigured } from './utils/documentUpload';
 import { startFinanceHubWorker } from './modules/finance-hub';
+import { startCrmWorker } from './modules/crm';
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,6 +12,8 @@ startSoldListingRetentionJob();
 startDatabaseBackupJob();
 // Finance Hub automatic posting; idle while posting mode is OFF.
 startFinanceHubWorker();
+// CRM follow-up reminders, missed marking, SLA and (opt-in) automation.
+startCrmWorker();
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

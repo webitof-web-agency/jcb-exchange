@@ -197,5 +197,12 @@ whatsappfront/
 # Local vehicle-sale document templates contain business stationery and are provisioned separately.
 /backend/templates/vehicle-sale/*.docx
 
+# GST verification source templates contain official/provider document artwork and are provisioned separately.
+/gstverification.pdf
+/gstverifiction.pdf
+/backend/templates/gst-verification/*.pdf
+/GST-*-verification.pdf
+/admin-portal/public/templates/gst-verification/*.pdf
+
 # Locally rendered PDF/DOCX previews are temporary verification artifacts.
 /preview-output/

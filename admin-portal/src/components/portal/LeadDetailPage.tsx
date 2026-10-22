@@ -41,6 +41,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { resolveLeadId } from '@/lib/routeResolvers';
+import { PartnerLeadFollowUps } from '@/components/crm/PartnerFollowUps';
 import { generateAdminLeadDetailPath, generateAdminListingPaymentDetailPath } from '@/lib/routePaths';
 
 type ActivityItem = {
@@ -150,7 +151,7 @@ const getDealStage = (status: string): DealStage => {
     return 'CLOSED';
   }
 
-  if (normalized === 'CONTACTED' || normalized === 'INTERESTED' || normalized === 'INSPECTION_SCHEDULED') {
+  if (['CONTACTED', 'QUALIFIED', 'INTERESTED', 'INSPECTION_SCHEDULED', 'NEGOTIATION', 'ON_HOLD'].includes(normalized)) {
     return 'ONGOING';
   }
 
@@ -175,7 +176,7 @@ const getStageStatusOptions = (stage: DealStage) => {
   }
 
   if (stage === 'ONGOING') {
-    return ['CONTACTED', 'INTERESTED', 'INSPECTION_SCHEDULED'] as const;
+    return ['CONTACTED', 'QUALIFIED', 'INTERESTED', 'INSPECTION_SCHEDULED', 'NEGOTIATION', 'ON_HOLD'] as const;
   }
 
   return ['NEW'] as const;
@@ -1225,6 +1226,8 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
             {savingStatus ? 'Saving...' : 'Save Deal Status'}
           </button>
         </div>
+
+        {currentUserRole === 'PARTNER' && lead?.id ? <PartnerLeadFollowUps leadId={lead.id} /> : null}
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sticky top-6">
           <div className="flex items-center gap-3 border-b border-gray-100 pb-4">

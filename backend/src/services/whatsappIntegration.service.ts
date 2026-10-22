@@ -42,6 +42,13 @@ export const marketplaceWhatsAppEvents = [
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
   'VEHICLE_SALE_INVOICE',
   'VEHICLE_SALE_PAYMENT_RECEIPT',
+  // CRM (src/modules/crm/services/notify.service.ts documents each template's body variables).
+  'CRM_LEAD_ACKNOWLEDGEMENT',
+  'CRM_LEAD_ASSIGNED',
+  'CRM_FOLLOW_UP_REMINDER',
+  'CRM_APPOINTMENT_REMINDER',
+  'CRM_MATCHING_LISTING',
+  'CRM_REENGAGEMENT',
 ] as const;
 
 
@@ -619,7 +626,7 @@ export const getWhatsAppMessageLogs = async ({
   limit?: number;
 }) => {
   const allowedStatuses = ['QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'SKIPPED'];
-  const allowedRecipientTypes = ['CUSTOMER', 'PARTNER', 'SUPER_ADMIN', 'RECRUITER', 'CANDIDATE', 'TEST'];
+  const allowedRecipientTypes = ['CUSTOMER', 'PARTNER', 'SUPER_ADMIN', 'RECRUITER', 'CANDIDATE', 'TEST', 'EMPLOYEE'];
   const logs = await prisma.whatsAppMessageLog.findMany({
     where: {
       ...(status && allowedStatuses.includes(status) ? { status: status as any } : {}),

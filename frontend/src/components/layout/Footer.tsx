@@ -246,6 +246,18 @@ export default function Footer() {
                   </Link>
                 </li>
                 <li>
+                  <Link href="/post-requirement" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
+                    <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                    {t('footer.postRequirement', 'Post a Requirement')}
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/sell-machine" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
+                    <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                    {t('footer.sellMachineOffer', 'Sell Your Machine (Quick Offer)')}
+                  </Link>
+                </li>
+                <li>
                   <Link href="/support" className="group flex items-center text-[13px] text-[#B3B3B3] hover:text-white transition-colors whitespace-nowrap">
                     <ChevronRight size={14} className="text-[#F0C85C] mr-3 group-hover:translate-x-1 transition-transform flex-shrink-0" />
                     Support
