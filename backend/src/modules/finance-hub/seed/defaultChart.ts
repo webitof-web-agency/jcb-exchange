@@ -174,6 +174,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   asset('6910', 'Bad Debts Written Off', '6000', { systemKey: 'BAD_DEBTS' }),
   asset('6930', 'Discount Allowed', '6000', { systemKey: 'DISCOUNT_ALLOWED' }),
   asset('6940', 'Loss on Sale / Discard of Fixed Assets', '6000', { systemKey: 'ASSET_SALE_LOSS' }),
+  asset('6950', 'Income Tax Expense', '6000', { systemKey: 'INCOME_TAX_EXPENSE' }),
   asset('6920', 'Interest & Penalty', '6000'),
   asset('6990', 'Miscellaneous Expenses', '6000', { systemKey: 'MISC_EXPENSE' }),
 ];

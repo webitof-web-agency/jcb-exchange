@@ -3670,3 +3670,71 @@ model FinPeriodicRun {
 
   @@index([kind, periodKey])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P8: taxation (challans, GSTR-2B uploads, e-invoice / e-way bill refs)
+// ---------------------------------------------------------------------------
+
+enum FinTaxType {
+  GST
+  TDS
+  TCS
+  ADVANCE_TAX
+  SELF_ASSESSMENT
+  PROFESSIONAL_TAX
+  PF
+  ESI
+  OTHER
+}
+
+/// A tax payment (GST PMT-06, TDS ITNS 281, advance tax 280…). The payment voucher clears the liability ledgers.
+model FinTaxChallan {
+  id            String     @id @default(uuid())
+  taxType       FinTaxType
+  period        String     @db.VarChar(20)
+  challanNo     String     @db.VarChar(40)
+  bsrCode       String?    @db.VarChar(10)
+  date          DateTime   @db.Date
+  total         Decimal    @db.Decimal(14, 2)
+  breakdown     Json
+  bankAccountId String
+  voucherId     String     @unique
+  proofUrl      String?
+  notes         String?    @db.Text
+  createdById   String?
+  createdAt     DateTime   @default(now())
+
+  @@index([taxType, period])
+}
+
+/// GSTR-2B rows downloaded from the GST portal for a return period (latest upload wins).
+model FinGstr2bUpload {
+  id           String   @id @default(uuid())
+  period       String   @unique @db.VarChar(7)
+  fileName     String?
+  rows         Json
+  rowCount     Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// IRN / e-way bill details entered against an invoice (document or Sold Vehicle sale voucher).
+model FinTaxDocRef {
+  id           String    @id @default(uuid())
+  sourceKind   String    @db.VarChar(20)
+  sourceId     String    @db.VarChar(60)
+  irn          String?   @db.VarChar(64)
+  ackNo        String?   @db.VarChar(30)
+  ackDate      DateTime? @db.Date
+  ewbNo        String?   @db.VarChar(20)
+  ewbDate      DateTime? @db.Date
+  ewbValidUpto DateTime? @db.Date
+  status       String    @default("PENDING") @db.VarChar(20)
+  notes        String?   @db.Text
+  updatedById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([sourceKind, sourceId])
+}

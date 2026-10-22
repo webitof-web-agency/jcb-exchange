@@ -8,6 +8,7 @@ import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as posting from './controllers/posting.controller';
 import * as receivables from './controllers/receivables.controller';
+import * as tax from './controllers/tax.controller';
 import * as vehicleFinance from './controllers/vehicleFinance.controller';
 import { FH_ANY_PERMISSIONS, FH_PERMISSIONS as P } from './permissions';
 
@@ -180,5 +181,20 @@ router.post('/assets/runs/:kind/:id/reverse', allow([P.booksPost]), expenses.rev
 router.get('/assets/:id/schedule', expenseReaders, expenses.assetSchedule);
 router.put('/assets/:id', expenseManagers, expenses.editAsset);
 router.post('/assets/:id/dispose', allow([P.booksPost]), expenses.disposeFixedAsset);
+
+// Taxation & compliance (P8)
+const taxReaders = allow([P.taxRead, P.taxManage, P.booksRead, P.reportsRead, P.caRead]);
+router.get('/tax/gst/register', taxReaders, tax.gstRegister);
+router.get('/tax/gst/summary', taxReaders, tax.gstSummary);
+router.post('/tax/gst/set-off', allow([P.booksPost]), tax.gstSetOff);
+router.post('/tax/gst/2b', allow([P.taxManage]), tax.gstr2bUpload);
+router.get('/tax/gst/2b', taxReaders, tax.gstr2bRecon);
+router.get('/tax/gst/e-invoices', taxReaders, tax.eInvoices);
+router.put('/tax/gst/e-invoices', allow([P.taxManage]), tax.saveEInvoice);
+router.get('/tax/withholding', taxReaders, tax.withholding);
+router.get('/tax/challans', taxReaders, tax.challans);
+router.post('/tax/challans', allow([P.booksPost]), tax.newChallan);
+router.get('/tax/income-tax', taxReaders, tax.incomeTax);
+router.post('/tax/income-tax/provision', allow([P.booksPost]), tax.newProvision);
 
 export default router;
