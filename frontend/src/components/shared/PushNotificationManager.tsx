@@ -13,8 +13,58 @@ type PushConfigResponse = {
   };
 };
 
+// "Maybe Later", the close button or a failed subscribe hides the prompt for a week,
+// instead of showing it again on every page load.
+const PROMPT_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+const promptSnoozeKey = (userId?: string) => `push_prompt_snoozed_until_${userId || 'guest'}`;
+
+const isPromptSnoozed = (userId?: string) => {
+  try {
+    return Number(window.localStorage.getItem(promptSnoozeKey(userId)) || 0) > Date.now();
+  } catch {
+    return false;
+  }
+};
+
+const snoozePrompt = (userId?: string) => {
+  try {
+    window.localStorage.setItem(promptSnoozeKey(userId), String(Date.now() + PROMPT_SNOOZE_MS));
+  } catch {
+    // Storage blocked (private mode); the prompt just stays hidden for this page view.
+  }
+};
+
+// Utility function for VAPID key encoding
+function urlB64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function subscribeAndSave(registration: ServiceWorkerRegistration, publicKey: string) {
+  const sub = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlB64ToUint8Array(publicKey),
+  });
+
+  try {
+    await api.post('/notifications/push-subscription', sub.toJSON());
+  } catch (error) {
+    await sub.unsubscribe().catch(() => undefined);
+    throw error;
+  }
+
+  return sub;
+}
+
 export default function PushNotificationManager() {
-  const { hasHydrated, hydrateAuth, isAuthenticated } = useAuthStore();
+  const { hasHydrated, hydrateAuth, isAuthenticated, user } = useAuthStore();
+  const userId = user?.id;
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,7 +127,16 @@ export default function PushNotificationManager() {
           return;
         }
 
-        if (Notification.permission !== 'denied') {
+        // Permission was already given, so subscribe quietly instead of asking again.
+        if (Notification.permission === 'granted') {
+          const newSub = await subscribeAndSave(registration, key);
+          if (!isCancelled) {
+            setSubscription(newSub);
+          }
+          return;
+        }
+
+        if (Notification.permission === 'default' && !isPromptSnoozed(userId)) {
           promptTimer = window.setTimeout(() => setShowPrompt(true), 3000);
         }
       } catch (error) {
@@ -94,7 +153,7 @@ export default function PushNotificationManager() {
         window.clearTimeout(promptTimer);
       }
     };
-  }, [hasHydrated, isAuthenticated, isSupported]);
+  }, [hasHydrated, isAuthenticated, isSupported, userId]);
 
   async function subscribeToPush() {
     if (!publicKey) {
@@ -104,38 +163,22 @@ export default function PushNotificationManager() {
     setIsLoading(true);
     try {
       const registration = await navigator.serviceWorker.ready;
-      const applicationServerKey = urlB64ToUint8Array(publicKey);
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
-
-      try {
-        await api.post('/notifications/push-subscription', sub.toJSON());
-      } catch (error) {
-        await sub.unsubscribe().catch(() => undefined);
-        throw error;
-      }
-
+      const sub = await subscribeAndSave(registration, publicKey);
       setSubscription(sub);
       setShowPrompt(false);
     } catch (error) {
+      // Blocked in the browser dialog or not saved: don't keep asking on every page.
       console.error('Failed to subscribe: ', error);
+      snoozePrompt(userId);
+      setShowPrompt(false);
     } finally {
       setIsLoading(false);
     }
   }
 
-  // Utility function for VAPID key encoding
-  function urlB64ToUint8Array(base64String: string) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
+  function dismissPrompt() {
+    snoozePrompt(userId);
+    setShowPrompt(false);
   }
 
   if (!hasHydrated || !isAuthenticated || !isSupported || !showPrompt || subscription) {
@@ -161,7 +204,7 @@ export default function PushNotificationManager() {
             {isLoading ? 'Enabling...' : 'Enable Alerts'}
           </button>
           <button
-            onClick={() => setShowPrompt(false)}
+            onClick={dismissPrompt}
             className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-xl transition-all active:scale-95"
           >
             Maybe Later
@@ -169,7 +212,7 @@ export default function PushNotificationManager() {
         </div>
       </div>
       <button 
-        onClick={() => setShowPrompt(false)}
+        onClick={dismissPrompt}
         className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 p-1 bg-gray-50/50 hover:bg-gray-100 rounded-full transition-colors"
       >
         <X className="w-4 h-4" />
