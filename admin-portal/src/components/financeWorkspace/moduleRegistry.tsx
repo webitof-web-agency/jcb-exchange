@@ -46,6 +46,12 @@ const UnmatchedModule = dynamic(() => import('./BankingModules').then((module) =
 const StatementImportsModule = dynamic(() => import('./BankingModules').then((module) => module.StatementImportsModule), { loading });
 const CashBookModule = dynamic(() => import('./BankingModules').then((module) => module.CashBookModule), { loading });
 const GatewayModule = dynamic(() => import('./BankingModules').then((module) => module.GatewayModule), { loading });
+const ExpenseRegisterModule = dynamic(() => import('./ExpensesModules').then((module) => module.ExpenseRegisterModule), { loading });
+const RecurringExpensesModule = dynamic(() => import('./ExpensesModules').then((module) => module.RecurringExpensesModule), { loading });
+const ReimbursementsModule = dynamic(() => import('./ExpensesModules').then((module) => module.ReimbursementsModule), { loading });
+const FixedAssetsModule = dynamic(() => import('./ExpensesModules').then((module) => module.FixedAssetsModule), { loading });
+const PeriodicRunPanel = dynamic(() => import('./ExpensesModules').then((module) => module.PeriodicRunPanel), { loading });
+const PrepaidExpensesModule = dynamic(() => import('./ExpensesModules').then((module) => module.PrepaidExpensesModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -71,6 +77,8 @@ const PurchaseReturns = () => <DocumentsModule title="Purchase returns" descript
 const SalesReturns = () => <DocumentsModule title="Sales returns & refunds" description="Credit notes for returns; they reduce what the customer owes and the output GST. Pay any refund with a payment voucher." types={['CREDIT_NOTE']} createTypes={['CREDIT_NOTE']} reason="RETURN" />;
 const VirtualBankLedger = () => <BankReconModule types={['VIRTUAL']} title="HDFC virtual bank ledger" description="Virtual accounts (VAN) and their parent current account: credits from the statement, matched to receipts in the books. Live e-Collect / API feed needs bank credentials (off)." />;
 const BankTransfers = () => <VouchersModule title="Bank transfers" description="Transfers between own bank, cash, wallet and gateway accounts (contra vouchers), including petty cash top-ups and cash deposits." types={['CONTRA']} createTypes={['CONTRA']} />;
+const VendorBills = () => <DocumentsModule title="Vendor bills" description="Bills from vendors for services, supplies and assets with GST input credit, reverse charge and TDS. Pay them with a payment voucher or from Supplier Payables." types={['PURCHASE_BILL', 'DEBIT_NOTE']} createTypes={['PURCHASE_BILL']} />;
+const DepreciationRuns = () => <PeriodicRunPanel kind="depreciation" />;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
@@ -134,4 +142,11 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'bank-transfers': BankTransfers,
   'cash-book-petty-cash': CashBookModule,
   'upi-gateway-settlement': GatewayModule,
+  'expense-register': ExpenseRegisterModule,
+  'vendor-bills': VendorBills,
+  'recurring-expenses': RecurringExpensesModule,
+  'employee-reimbursements': ReimbursementsModule,
+  'fixed-assets': FixedAssetsModule,
+  depreciation: DepreciationRuns,
+  'prepaid-expenses': PrepaidExpensesModule,
 };
