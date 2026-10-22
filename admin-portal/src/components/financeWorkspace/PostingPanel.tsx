@@ -10,7 +10,7 @@ import { Badge, Button, ErrorBanner, Field, inputClass, LoadingState, Modal, Mod
 import { useResource } from './useResource';
 
 type Mode = 'OFF' | 'SHADOW' | 'LIVE';
-type Source = 'SELL_ACCOUNT' | 'LISTING_PAYMENT' | 'CUSTOMER_PRIME' | 'PARTNER_DEPOSIT' | 'API_WALLET';
+type Source = 'SELL_ACCOUNT' | 'LISTING_PAYMENT' | 'CUSTOMER_PRIME' | 'PARTNER_DEPOSIT' | 'API_WALLET' | 'FINANCE_TRANSACTION';
 type Status = {
   postingMode: Mode;
   config: { sources: Record<Source, boolean>; capitaliseVehicleCosts: boolean };
@@ -27,6 +27,7 @@ const SOURCE_LABELS: Record<Source, string> = {
   CUSTOMER_PRIME: 'Customer Prime subscriptions → subscription income + GST',
   PARTNER_DEPOSIT: 'Partner security deposits (received and refunded)',
   API_WALLET: 'Verification API wallet (recharges and daily usage)',
+  FINANCE_TRANSACTION: 'Expenses page manual entries (category → ledger, account → bank/cash). Off by default: switch on only if those entries are not also recorded elsewhere',
 };
 const MODE_HELP: Record<Mode, string> = {
   OFF: 'Nothing is posted. Existing screens work as before.',

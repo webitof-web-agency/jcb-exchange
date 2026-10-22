@@ -9,6 +9,7 @@ import { normalizeGstin, isValidGstin, normalizeIndianMobile } from '../utils/in
 import { istToday } from '../utils/fy';
 import {
   buildCustomerPrimeVouchers,
+  buildExpenseEntryVouchers,
   buildListingPaymentVouchers,
   buildPartnerDepositVouchers,
   buildSellAccountVouchers,
@@ -22,12 +23,12 @@ import {
 
 type Tx = Prisma.TransactionClient;
 
-export const POSTING_SOURCE_TYPES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER', 'API_WALLET_DAY'] as const;
+export const POSTING_SOURCE_TYPES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER', 'API_WALLET_DAY', 'FINANCE_TRANSACTION'] as const;
 export type PostingSourceType = (typeof POSTING_SOURCE_TYPES)[number];
 
 /** Which settings toggle controls a queue source type. */
 export const configSourceOf = (sourceType: PostingSourceType) => (sourceType.startsWith('API_WALLET') ? 'API_WALLET' : sourceType) as
-  'SELL_ACCOUNT' | 'LISTING_PAYMENT' | 'CUSTOMER_PRIME' | 'PARTNER_DEPOSIT' | 'API_WALLET';
+  'SELL_ACCOUNT' | 'LISTING_PAYMENT' | 'CUSTOMER_PRIME' | 'PARTNER_DEPOSIT' | 'API_WALLET' | 'FINANCE_TRANSACTION';
 
 const SYSTEM_ACCESS: LedgerAccess = {
   actor: { actorUserId: null, ipAddress: null, userAgent: null },
@@ -215,6 +216,16 @@ const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId:
       const start = new Date(day.getTime() - IST_MS);
       const usage = await tx.apiWalletLedger.aggregate({ where: { type: 'DEBIT', createdAt: { gte: start, lt: new Date(start.getTime() + DAY_MS) } }, _sum: { amountPaise: true } });
       return buildWalletUsageVouchers(day, usage._sum.amountPaise ?? 0, context);
+    }
+    case 'FINANCE_TRANSACTION': {
+      const entry = await tx.financeTransaction.findUnique({ where: { id: sourceId } });
+      if (!entry || entry.source !== 'MANUAL') return [];
+      const map = await tx.finCategoryMap.findUnique({ where: { category: entry.category }, select: { accountId: true } });
+      const name = entry.accountName.trim().toLowerCase();
+      const banks = await tx.finBankAccount.findMany({ where: { isActive: true }, select: { accountId: true, statementAliases: true } });
+      const bank = banks.find((item) => item.statementAliases.some((alias) => alias.trim().toLowerCase() === name));
+      const cashBankAccountId = bank?.accountId ?? (name === 'cash' ? context.accounts.system('CASH_IN_HAND') : null);
+      return buildExpenseEntryVouchers(entry, { categoryAccountId: map?.accountId ?? null, cashBankAccountId, booksBegin: context.booksBegin });
     }
     default:
       return [];

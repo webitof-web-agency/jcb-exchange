@@ -3,6 +3,7 @@ import { requireAdminOrEmployeePermissions, requireAuth } from '../../middleware
 import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } from './controllers/foundation.controller';
 import * as banking from './controllers/banking.controller';
 import * as documents from './controllers/documents.controller';
+import * as expenses from './controllers/expenses.controller';
 import * as ledger from './controllers/ledger.controller';
 import * as masters from './controllers/masters.controller';
 import * as posting from './controllers/posting.controller';
@@ -155,5 +156,29 @@ router.delete('/banking/recon/:id', allow([P.bankingReconcile]), banking.removeM
 router.get('/banking/:id/reconciliation', bankReaders, banking.reconciliation);
 router.get('/banking/:id/brs', bankReaders, banking.brs);
 router.post('/banking/:id/auto-match', allow([P.bankingReconcile]), banking.runAutoMatch);
+
+// Expenses & assets (P7)
+const expenseReaders = allow([P.expensesRead, P.expensesManage, P.booksRead, P.booksPost, P.reportsRead, P.caRead]);
+const expenseManagers = allow([P.expensesManage]);
+router.get('/expenses/register', expenseReaders, expenses.register);
+router.get('/expenses/recurring', expenseReaders, expenses.recurring);
+router.post('/expenses/recurring', expenseManagers, expenses.newRecurring);
+router.put('/expenses/recurring/:id', expenseManagers, expenses.editRecurring);
+router.post('/expenses/recurring/generate', allow([P.expensesManage, P.booksManage]), expenses.generateRecurring);
+router.get('/expenses/reimbursements', expenseReaders, expenses.reimbursements);
+router.post('/expenses/reimbursements', expenseManagers, expenses.newReimbursement);
+router.post('/expenses/reimbursements/:id/approve', allow([P.approve]), expenses.approveClaim);
+router.post('/expenses/reimbursements/:id/reject', allow([P.approve]), expenses.rejectClaim);
+router.post('/expenses/reimbursements/:id/pay', allow([P.booksPost]), expenses.payClaim);
+router.get('/assets', expenseReaders, expenses.assets);
+router.post('/assets', expenseManagers, expenses.newAsset);
+router.get('/assets/prepaid', expenseReaders, expenses.prepaid);
+router.post('/assets/prepaid', expenseManagers, expenses.newPrepaid);
+router.get('/assets/runs/:kind', expenseReaders, expenses.runs);
+router.post('/assets/runs/:kind', allow([P.booksPost]), expenses.newRun);
+router.post('/assets/runs/:kind/:id/reverse', allow([P.booksPost]), expenses.reverseRunNow);
+router.get('/assets/:id/schedule', expenseReaders, expenses.assetSchedule);
+router.put('/assets/:id', expenseManagers, expenses.editAsset);
+router.post('/assets/:id/dispose', allow([P.booksPost]), expenses.disposeFixedAsset);
 
 export default router;

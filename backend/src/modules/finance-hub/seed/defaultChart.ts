@@ -139,6 +139,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   liability('4501', 'Interest Income', '4500'),
   liability('4502', 'Discount Received', '4500'),
   liability('4503', 'Write-back of Payables', '4500', { systemKey: 'WRITE_BACK' }),
+  liability('4504', 'Profit on Sale of Fixed Assets', '4500', { systemKey: 'ASSET_SALE_PROFIT' }),
   liability('4590', 'Round Off', '4500', { kind: 'ROUND_OFF', systemKey: 'ROUND_OFF' }),
 
   asset('5100', 'Cost of Vehicles Sold', '5000', { systemKey: 'COGS_VEHICLES', vehicle: true }),
@@ -172,6 +173,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   asset('6901', 'Depreciation', '6900', { systemKey: 'DEPRECIATION', manual: false }),
   asset('6910', 'Bad Debts Written Off', '6000', { systemKey: 'BAD_DEBTS' }),
   asset('6930', 'Discount Allowed', '6000', { systemKey: 'DISCOUNT_ALLOWED' }),
+  asset('6940', 'Loss on Sale / Discard of Fixed Assets', '6000', { systemKey: 'ASSET_SALE_LOSS' }),
   asset('6920', 'Interest & Penalty', '6000'),
   asset('6990', 'Miscellaneous Expenses', '6000', { systemKey: 'MISC_EXPENSE' }),
 ];

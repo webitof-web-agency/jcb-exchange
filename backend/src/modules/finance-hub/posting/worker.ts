@@ -52,6 +52,9 @@ export const sweepChangedSources = async (since: Date | null, enabled: Enabled) 
     }
     for (const day of days) await add('API_WALLET_DAY', day, 'SWEEP');
   }
+  if (enabled.FINANCE_TRANSACTION) {
+    for (const row of await prisma.financeTransaction.findMany({ where: { ...changed('updatedAt'), source: 'MANUAL' }, select: { id: true } })) await add('FINANCE_TRANSACTION', row.id, 'SWEEP');
+  }
   return queued;
 };
 
@@ -62,7 +65,7 @@ export const sweepChangedSources = async (since: Date | null, enabled: Enabled) 
 export const queueOrphans = async () => {
   let queued = 0;
   const active = await prisma.finVoucher.findMany({
-    where: { sourceType: { in: ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER'] }, reversalOfId: null, status: { in: ['DRAFT', 'POSTED'] } },
+    where: { sourceType: { in: ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER', 'FINANCE_TRANSACTION'] }, reversalOfId: null, status: { in: ['DRAFT', 'POSTED'] } },
     select: { sourceType: true, sourceId: true, sourceEvent: true },
   });
   const byType = new Map<string, Set<string>>();
@@ -79,6 +82,7 @@ export const queueOrphans = async () => {
     CUSTOMER_PRIME: (ids: string[]) => prisma.customerPrimeSubscription.findMany({ where: { id: { in: ids } }, select: { id: true } }),
     PARTNER_DEPOSIT: (ids: string[]) => prisma.partnerDeposit.findMany({ where: { id: { in: ids } }, select: { id: true } }),
     API_WALLET_LEDGER: (ids: string[]) => prisma.apiWalletLedger.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+    FINANCE_TRANSACTION: (ids: string[]) => prisma.financeTransaction.findMany({ where: { id: { in: ids } }, select: { id: true } }),
   } as const;
   for (const [type, ids] of byType) {
     const list = Array.from(ids);

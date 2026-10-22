@@ -652,3 +652,43 @@ export const buildWalletUsageVouchers = (
     ],
   }];
 };
+
+// ---------------------------------------------------------------------------
+// Expenses page entries (FinanceTransaction, manual only) — rule R10
+// ---------------------------------------------------------------------------
+
+export type ExpenseEntrySource = {
+  id: string; type: string; amount: Prisma.Decimal; transactionDate: Date; name: string; category: string; narration: string;
+  reference: string | null; chequeNumber: string | null; invoiceNumber: string | null; paymentMethod: string; source: string; status: string;
+};
+
+/**
+ * A manual entry on the old Expenses page: money out (DEBIT) is a payment from the bank/cash
+ * account to the category ledger; money in (CREDIT) a receipt. Imported statement rows are not
+ * posted here; they are reconciled against vouchers from their real source.
+ */
+export const buildExpenseEntryVouchers = (
+  entry: ExpenseEntrySource,
+  context: { categoryAccountId: string | null; cashBankAccountId: string | null; booksBegin: Date },
+): DesiredVoucher[] => {
+  if (entry.source !== 'MANUAL' || entry.status !== 'POSTED' || (entry.type !== 'DEBIT' && entry.type !== 'CREDIT')) return [];
+  const amount = D(entry.amount);
+  if (!amount.greaterThan(0)) return [];
+  const date = istDay(entry.transactionDate);
+  if (!withinBooks(date, context.booksBegin)) return [];
+  if (!context.categoryAccountId) throw new PostingError(`Map the expense category "${entry.category}" to a ledger in Finance Settings → Account & Ledger Masters.`);
+  if (!context.cashBankAccountId) throw new PostingError(`Link the account "${entry.name}" entries' bank/cash account: add it as a statement alias of a bank account, or use "Cash".`);
+  const out = entry.type === 'DEBIT';
+  const narration = `${entry.name}: ${entry.narration}`.slice(0, 1000);
+  return [{
+    key: 'ENTRY',
+    type: out ? 'PAYMENT' : 'RECEIPT',
+    date,
+    narration,
+    reference: (entry.reference ?? entry.chequeNumber ?? entry.invoiceNumber)?.slice(0, 80) ?? null,
+    paymentMethod: entry.paymentMethod,
+    lines: out
+      ? [debit(context.categoryAccountId, amount, { narration: entry.category }), credit(context.cashBankAccountId, amount)]
+      : [debit(context.cashBankAccountId, amount), credit(context.categoryAccountId, amount, { narration: entry.category })],
+  }];
+};

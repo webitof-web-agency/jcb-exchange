@@ -174,7 +174,9 @@ export const updateFinSettings = async (
 // worker progress lives in config.postingState and is only written by the worker.
 // ---------------------------------------------------------------------------
 
-export const POSTING_SOURCES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET'] as const;
+export const POSTING_SOURCES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET', 'FINANCE_TRANSACTION'] as const;
+/** Sources that stay off until switched on (old Expenses-page entries may repeat money already posted from other sources). */
+const OFF_BY_DEFAULT: readonly string[] = ['FINANCE_TRANSACTION'];
 export type PostingSource = (typeof POSTING_SOURCES)[number];
 
 export type PostingConfig = {
@@ -186,7 +188,7 @@ export type PostingConfig = {
 export const readPostingConfig = (config: Prisma.JsonValue | null | undefined): PostingConfig => {
   const posting = (configObject(config).posting ?? {}) as { sources?: Record<string, unknown>; capitaliseVehicleCosts?: unknown };
   return {
-    sources: Object.fromEntries(POSTING_SOURCES.map((source) => [source, posting.sources?.[source] !== false])) as Record<PostingSource, boolean>,
+    sources: Object.fromEntries(POSTING_SOURCES.map((source) => [source, OFF_BY_DEFAULT.includes(source) ? posting.sources?.[source] === true : posting.sources?.[source] !== false])) as Record<PostingSource, boolean>,
     capitaliseVehicleCosts: posting.capitaliseVehicleCosts !== false,
   };
 };

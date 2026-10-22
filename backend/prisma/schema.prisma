@@ -3494,3 +3494,179 @@ model FinCashCount {
 
   @@index([accountId, date])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P7: expenses & assets
+// ---------------------------------------------------------------------------
+
+enum FinRecurringFrequency {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+}
+
+enum FinRecurringMode {
+  BILL
+  ACCRUAL
+}
+
+/// Repeating expense (rent, AMC, subscriptions). Each due period creates a draft for review.
+model FinRecurringExpense {
+  id          String                @id @default(uuid())
+  name        String
+  mode        FinRecurringMode      @default(ACCRUAL)
+  partyId     String?
+  accountId   String
+  amount      Decimal               @db.Decimal(14, 2)
+  gstRate     Decimal               @default(0) @db.Decimal(5, 2)
+  frequency   FinRecurringFrequency @default(MONTHLY)
+  dayOfMonth  Int                   @default(1)
+  startDate   DateTime              @db.Date
+  endDate     DateTime?             @db.Date
+  nextRunDate DateTime              @db.Date
+  isActive    Boolean               @default(true)
+  notes       String?               @db.Text
+  createdById String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  runs FinRecurringRun[]
+
+  @@index([isActive, nextRunDate])
+}
+
+model FinRecurringRun {
+  id          String   @id @default(uuid())
+  recurringId String
+  periodKey   String   @db.VarChar(10)
+  runDate     DateTime @db.Date
+  documentId  String?
+  voucherId   String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  recurring FinRecurringExpense @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringId, periodKey])
+}
+
+enum FinReimbursementStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+/// Employee expense claim: approval books the expense, payment clears the payable.
+model FinReimbursement {
+  id                String                 @id @default(uuid())
+  partyId           String
+  date              DateTime               @db.Date
+  accountId         String
+  amount            Decimal                @db.Decimal(14, 2)
+  description       String                 @db.Text
+  receiptUrl        String?
+  status            FinReimbursementStatus @default(SUBMITTED)
+  approvalVoucherId String?
+  paymentVoucherId  String?
+  approvedById      String?
+  approvedAt        DateTime?
+  paidById          String?
+  paidAt            DateTime?
+  rejectReason      String?                @db.Text
+  createdById       String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, date])
+  @@index([partyId])
+}
+
+enum FinAssetMethod {
+  SLM
+  WDV
+}
+
+enum FinAssetStatus {
+  ACTIVE
+  DISPOSED
+}
+
+/// Fixed asset register. The purchase itself is booked by its bill / voucher; this holds the
+/// depreciation basis. Accumulated depreciation = opening + posted depreciation runs.
+model FinFixedAsset {
+  id                 String         @id @default(uuid())
+  code               String         @unique @db.VarChar(30)
+  name               String
+  category           String?
+  assetAccountId     String
+  purchaseDate       DateTime       @db.Date
+  putToUseDate       DateTime       @db.Date
+  cost               Decimal        @db.Decimal(14, 2)
+  salvageValue       Decimal        @default(0) @db.Decimal(14, 2)
+  method             FinAssetMethod @default(WDV)
+  usefulLifeMonths   Int?
+  wdvRatePercent     Decimal?       @db.Decimal(6, 2)
+  openingAccumulated Decimal        @default(0) @db.Decimal(14, 2)
+  location           String?
+  custodian          String?
+  serialNumber       String?
+  vendorPartyId      String?
+  documentId         String?
+  status             FinAssetStatus @default(ACTIVE)
+  disposedAt         DateTime?      @db.Date
+  disposalAmount     Decimal?       @db.Decimal(14, 2)
+  disposalVoucherId  String?
+  notes              String?        @db.Text
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([status])
+}
+
+/// Amount paid in advance and expensed month by month.
+model FinPrepaidExpense {
+  id               String   @id @default(uuid())
+  name             String
+  expenseAccountId String
+  prepaidAccountId String
+  partyId          String?
+  totalAmount      Decimal  @db.Decimal(14, 2)
+  startDate        DateTime @db.Date
+  months           Int
+  reference        String?  @db.VarChar(80)
+  notes            String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum FinRunKind {
+  DEPRECIATION
+  PREPAID
+}
+
+enum FinRunStatus {
+  POSTED
+  REVERSED
+}
+
+/// One month's depreciation or prepaid amortisation; `lines` holds [{ refId, amount }].
+model FinPeriodicRun {
+  id          String       @id @default(uuid())
+  kind        FinRunKind
+  periodKey   String       @db.VarChar(7)
+  runDate     DateTime     @db.Date
+  total       Decimal      @db.Decimal(14, 2)
+  lines       Json
+  voucherId   String       @unique
+  status      FinRunStatus @default(POSTED)
+  createdById String?
+  reversedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([kind, periodKey])
+}
