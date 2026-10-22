@@ -9,6 +9,7 @@ export interface User {
   status?: string;
   permissions?: string[];
   ownerName?: string | null;
+  businessName?: string | null;
   onboardingStatus?: string | null;
   accountStatus?: string | null;
   kycStatus?: string | null;

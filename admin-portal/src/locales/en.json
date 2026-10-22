@@ -30,7 +30,8 @@
     "saveChanges": "Save Changes",
     "saving": "Saving...",
     "adminEmailFallback": "admin@jcbexchange.com",
-    "partnerEmailFallback": "partner@jcbexchange.com"
+    "partnerEmailFallback": "partner@jcbexchange.com",
+    "viewAllNotifications": "View all notifications"
   },
   "admin": {
     "portalTitle": "Admin Portal",

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu, BarChart3 } from 'lucide-react';
+import { CreditCard, FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu, BarChart3, CheckCircle2, ChevronRight, Clock, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
@@ -361,13 +361,15 @@ export default function PartnerLayout({
     );
   }
 
+  const isKycApproved = isApproved || user.kycStatus === 'APPROVED' || user.onboardingStatus === 'APPROVED';
+
   const navItems = [
     { href: '/partner/dashboard', label: t('partner.dashboard'), icon: LayoutDashboard, disabled: !isApproved },
     { href: '/partner/analytics', label: 'Analytics', icon: BarChart3, disabled: !isApproved },
     { href: '/partner/listings', label: t('partner.listings'), icon: Truck, disabled: !isApproved },
     { href: '/partner/leads', label: t('partner.enquiries'), icon: MessagesSquare, disabled: !isApproved },
     { href: '/partner/payments', label: 'Payments', icon: CreditCard, disabled: !isApproved },
-    { href: '/partner/kyc', label: t('partner.onboarding'), icon: FileCheck2 }
+    ...(!isKycApproved ? [{ href: '/partner/kyc', label: t('partner.onboarding'), icon: FileCheck2 }] : []),
   ];
 
   const displayName = user.name || user.email || t('partner.partnerAccount');
@@ -379,6 +381,7 @@ export default function PartnerLayout({
     '/partner/payments': 'Listing Payments',
     '/partner/profile': t('partner.myProfilePage'),
     '/partner/kyc': t('partner.partnerOnboarding'),
+    '/partner/notifications': t('common.notifications', 'Notification Center'),
   };
   const pageTitle = pageTitleMap[pathname] || t('partner.partnerDashboard');
   const profileHref = '/partner/profile';
@@ -431,20 +434,22 @@ export default function PartnerLayout({
         </div>
       ) : null}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-5 sm:p-6 border-b border-white/10 relative">
-          <div>
-            <PortalBrand href="/partner/dashboard" subtitle={t('partner.partnerPortal')} />
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-[268px] bg-gradient-to-b from-[#00000d] via-[#00113b] to-[#00000d] border-r border-slate-800/80 text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-4 py-3 border-b border-slate-800/80 relative flex items-center justify-between overflow-hidden">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-8 bg-amber-400/10 blur-xl pointer-events-none rounded-full" />
+          <div className="flex-1 min-w-0">
+            <PortalBrand href="/partner/dashboard" maxHeightClassName="max-h-[58px]" />
           </div>
           <button 
             onClick={() => setIsMobileMenuOpen(false)}
-            className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-colors z-10"
+            className="lg:hidden p-1.5 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors ml-2 shrink-0"
+            aria-label="Close Sidebar"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
+        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto custom-scrollbar-dark">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -462,17 +467,17 @@ export default function PartnerLayout({
                   if (item.disabled) e.preventDefault();
                   setIsMobileMenuOpen(false);
                 }}
-                className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200 ${
+                className={`group relative flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs transition-all duration-150 ${
                   item.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
                 } ${
                   isActive
-                    ? 'border border-[#FFC107] text-white bg-[#FFC107]/5 font-semibold'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                    ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107] shadow-2xs'
+                    : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Icon className={`w-5 h-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="relative shrink-0">
+                    <Icon className={`w-4 h-4 transition-colors ${isActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
                     {badgeCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -492,22 +497,89 @@ export default function PartnerLayout({
           })}
         </nav>
 
-        <div className="border-t border-white/10 px-6 py-5 shrink-0">
-          <div className="mb-4 rounded-lg border border-white/10 bg-white/5 p-4">
-            <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-400">
-              {formatPartnerTypeLabel(user.partnerType, translatedOnboardingStatus || t('partner.onboarding'))}
-            </p>
-            <p className="mt-3 text-xs text-gray-400">
-              {isApproved ? t('partner.accountApproved') : t('partner.completeOnboarding')}
-            </p>
-          </div>
+        <div className="border-t border-slate-800/80 px-4 py-3.5 shrink-0 bg-[#00000d]/95 backdrop-blur-xs">
+          <Link
+            href={profileHref}
+            className={`group mb-3 block relative overflow-hidden rounded-xl border p-3.5 transition-all duration-200 shadow-md ${
+              isApproved
+                ? 'border-emerald-500/40 bg-gradient-to-b from-emerald-950/40 via-emerald-950/20 to-slate-900/80 hover:border-emerald-400/70 hover:shadow-emerald-950/50'
+                : 'border-amber-500/40 bg-gradient-to-b from-amber-950/40 via-amber-950/20 to-slate-900/80 hover:border-amber-400/70 hover:shadow-amber-950/50'
+            }`}
+            title={t('partner.myProfilePage') || 'View Partner Profile'}
+          >
+            {/* Top glowing ambient highlight line */}
+            <div
+              className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${
+                isApproved
+                  ? 'from-transparent via-emerald-400 to-transparent'
+                  : 'from-transparent via-amber-400 to-transparent'
+              }`}
+            />
+
+            <div className="flex items-center gap-3">
+              <div className="shrink-0 relative">
+                <UserAvatar user={user} size="header" />
+                {isApproved && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-[#00000d] text-slate-950">
+                    <CheckCircle2 className="h-3 w-3 text-slate-950 stroke-[3]" />
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-bold text-white truncate leading-tight group-hover:text-emerald-300 transition-colors">
+                    {displayName}
+                  </p>
+                </div>
+
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${
+                      isApproved
+                        ? 'bg-amber-400/15 text-[#FFC107] border border-amber-400/30'
+                        : 'bg-slate-800 text-slate-300 border border-slate-700'
+                    }`}
+                  >
+                    {formatPartnerTypeLabel(user.partnerType, translatedOnboardingStatus || t('partner.onboarding'))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Ribbon Pill */}
+            <div
+              className={`mt-3 flex items-center justify-between rounded-lg px-2.5 py-1.5 border text-xs transition-colors ${
+                isApproved
+                  ? 'bg-emerald-950/70 border-emerald-500/30 text-emerald-300'
+                  : 'bg-amber-950/70 border-amber-500/30 text-amber-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {isApproved ? (
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                ) : (
+                  <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-semibold truncate text-emerald-300">
+                  {isApproved
+                    ? t('partner.accountApproved') || 'Account approved and active.'
+                    : t('partner.completeOnboarding') || 'Complete Onboarding'}
+                </span>
+              </div>
+
+              <ChevronRight className="h-3.5 w-3.5 text-slate-500 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+            </div>
+          </Link>
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 border border-[#FFC107] text-[#FFC107] hover:bg-[#FFC107]/10 py-2.5 rounded-lg transition-colors font-medium"
+            className="w-full flex items-center justify-center gap-2 border border-slate-700/80 hover:border-amber-400/60 bg-white/[0.03] hover:bg-[#FFC107]/10 text-slate-300 hover:text-[#FFC107] py-2 rounded-xl transition-all duration-200 text-xs font-semibold shadow-2xs"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4" />
             <span>{t('common.logout')}</span>
           </button>
         </div>
@@ -585,6 +657,16 @@ export default function PartnerLayout({
                             ))}
                           </div>
                         )}
+                      </div>
+                      <div className="border-t border-gray-100 bg-gray-50/90 p-2.5 text-center">
+                        <Link
+                          href="/partner/notifications"
+                          onClick={() => setIsNotificationsOpen(false)}
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-700 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        >
+                          <span>{t('notifications.viewAll', 'View all notifications')}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
                       </div>
                     </div>
                   </>

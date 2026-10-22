@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Phone, Crown, ChevronLeft, ChevronRight, ChevronDown, CircleDot, PlayCircle, BadgeCheck, Check, type LucideIcon } from 'lucide-react';
+import { Search, Phone, Crown, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, CircleDot, PlayCircle, BadgeCheck, Check, type LucideIcon } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -333,17 +333,56 @@ export default function LeadInboxPage() {
   const endItemIndex = Math.min(safeCurrentPage * pageSize, totalLeads);
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <div className="relative w-full sm:max-w-md">
+    <div className="space-y-4 max-w-7xl mx-auto pb-12">
+      {/* Executive Command Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 border border-blue-500/20">
+            <MessageSquare className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                Buyer Enquiries & Leads
+              </h1>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200/80">
+                {totalLeads} Total
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              Track incoming buyer requests, phone calls, WhatsApp messages, and close deals.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Stage Status Badges */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {data.summary.new > 0 && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
+              {data.summary.new} New
+            </span>
+          )}
+          <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
+            {data.summary.active} Active
+          </span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+            {data.summary.won} Won Deals
+          </span>
+        </div>
+      </div>
+
+      {/* Toolbar: Search input */}
+      <div className="flex items-center justify-between gap-3 bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type="text"
-            placeholder="Search enquiries..."
+            placeholder="Search enquiries by customer, mobile, vehicle or type..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="w-full rounded-full border border-gray-300 bg-white px-5 py-2.5 pl-11 text-sm font-medium text-gray-700 shadow-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-8 text-xs text-slate-900 shadow-2xs placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
           />
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         </div>
       </div>
 

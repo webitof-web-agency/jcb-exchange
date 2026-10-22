@@ -18,7 +18,7 @@ import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
 import { CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
-import { Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
+import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
@@ -648,6 +648,9 @@ export default function AdminLayout({
     '/superadmin/users/roles': t('common.usersRole'),
     '/superadmin/listings': t('admin.platformListings'),
     '/superadmin/profile': t('admin.myProfilePage'),
+        '/superadmin/notifications': 'Notification Center',
+    '/admin/notifications': 'Notification Center',
+    '/employee/notifications': 'Notification Center',
     '/superadmin/settings': t('admin.platformSettings'),
     '/superadmin/translations': t('admin.translationManager'),
     '/superadmin/footer': t('admin.footerContent'),
@@ -804,12 +807,13 @@ export default function AdminLayout({
     return 0;
   };
 
-  const sectionLabelClassName = 'text-xs font-semibold leading-5 tracking-[0.08em]';
-
   const renderSectionLabel = (label: string) => (
-    <p className={`px-4 pb-2 pt-4 text-gray-500 ${sectionLabelClassName}`}>
-      {label}
-    </p>
+    <div className="px-3 pt-3.5 pb-1 flex items-center justify-between select-none">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        {label}
+      </span>
+      <div className="h-px flex-1 ml-2.5 bg-white/[0.06]" />
+    </div>
   );
 
   const renderCollapsibleSectionLabel = (key: string, label: string, badgeCount = 0) => {
@@ -817,29 +821,32 @@ export default function AdminLayout({
     const isGroupActive = Boolean(sidebarSectionActive[key]);
 
     return (
-      <>
-        <div className="mx-4 mb-2 mt-3 h-px bg-white/[0.06]" />
+      <div className="pt-2">
         <button
           type="button"
           onClick={() => toggleSidebarSection(key)}
           aria-expanded={isExpanded}
-          className="group flex w-full items-center gap-2 rounded-md px-4 py-2 text-left transition-colors duration-150 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FFC107]/60"
+          className={`group flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left transition-all duration-150 hover:bg-white/[0.04] focus-visible:outline-none ${
+            isGroupActive ? 'text-amber-400' : 'text-zinc-400'
+          }`}
         >
-          <span
-            className={`flex-1 text-base transition-colors duration-150 ${isGroupActive ? 'font-semibold text-white' : 'text-gray-400 group-hover:text-white'}`}
-          >
+          <span className="text-[10.5px] font-bold uppercase tracking-wider transition-colors duration-150 group-hover:text-zinc-200">
             {label}
           </span>
-          {!isExpanded && badgeCount > 0 ? (
-            <span className="min-w-[1.25rem] rounded-full bg-red-500/90 px-1.5 py-px text-center text-[10px] font-semibold leading-4 text-white">
-              {badgeCount > 99 ? '99+' : badgeCount}
-            </span>
-          ) : null}
-          <ChevronRight
-            className={`h-4 w-4 shrink-0 text-gray-400 transition-all duration-200 group-hover:text-white ${isExpanded ? 'rotate-90' : ''}`}
-          />
+          <div className="flex items-center gap-1.5">
+            {!isExpanded && badgeCount > 0 ? (
+              <span className="min-w-[1.15rem] rounded-full bg-red-500 px-1.5 py-0.2 text-center text-[9px] font-bold text-white shadow-xs">
+                {badgeCount > 99 ? '99+' : badgeCount}
+              </span>
+            ) : null}
+            <ChevronDown
+              className={`h-3 w-3 shrink-0 transition-transform duration-200 ${
+                isExpanded ? 'rotate-0 text-zinc-400' : '-rotate-90 text-zinc-600 group-hover:text-zinc-400'
+              }`}
+            />
+          </div>
         </button>
-      </>
+      </div>
     );
   };
 
@@ -868,25 +875,26 @@ export default function AdminLayout({
         key={item.href}
         href={item.href}
         onClick={() => setIsMobileMenuOpen(false)}
-        className={`flex items-center justify-between rounded-lg border px-4 py-2.5 transition-all duration-200 ${isActive
-          ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-          : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-          }`}
+        className={`group relative flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-all duration-150 ${
+          isActive
+            ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107] shadow-2xs'
+            : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
+        }`}
       >
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Icon className={`h-5 w-5 ${isActive ? 'text-[#FFC107]' : ''}`} />
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="relative shrink-0">
+            <Icon className={`h-4 w-4 transition-colors ${isActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
             {badgeCount > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+              <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
               </span>
             ) : null}
           </div>
-          <span>{item.defaultLabel ? t(item.labelKey, item.defaultLabel) : t(item.labelKey)}</span>
+          <span className="truncate">{item.defaultLabel ? t(item.labelKey, item.defaultLabel) : t(item.labelKey)}</span>
         </div>
         {badgeCount > 0 ? (
-          <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+          <span className="ml-1.5 shrink-0 min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-xs">
             {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         ) : null}
@@ -919,24 +927,27 @@ export default function AdminLayout({
           type="button"
           onClick={() => setCrmMenuExpansion({ pathname, value: !isExpanded })}
           aria-expanded={isExpanded}
-          className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isGroupActive
-            ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-            : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-            }`}
+          className={`group flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs text-left transition-all duration-150 ${
+            isGroupActive
+              ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107]'
+              : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
+          }`}
         >
-          <span className="flex items-center gap-3">
-            <MessagesSquare className={`h-5 w-5 ${isGroupActive ? 'text-[#FFC107]' : ''}`} />
-            <span>{t('admin.crm', 'CRM')}</span>
+          <span className="flex items-center gap-2.5 min-w-0">
+            <MessagesSquare className={`h-4 w-4 shrink-0 transition-colors ${isGroupActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
+            <span className="truncate">{t('admin.crm', 'CRM')}</span>
           </span>
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 shrink-0 ml-1.5">
             {!isExpanded && groupBadge > 0 ? (
-              <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{groupBadge > 99 ? '99+' : groupBadge}</span>
+              <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-xs">{groupBadge > 99 ? '99+' : groupBadge}</span>
             ) : null}
-            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${isGroupActive ? 'text-[#FFC107]' : 'text-gray-500'}`} />
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${isGroupActive ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+            />
           </span>
         </button>
         {isExpanded ? (
-          <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+          <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">
             {children.map((child) => {
               const active = child.exact ? pathname === child.href : pathname === child.href || pathname.startsWith(`${child.href}/`);
               const Icon = child.icon;
@@ -945,17 +956,20 @@ export default function AdminLayout({
                   key={child.href}
                   href={child.href}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${active
-                    ? 'bg-[#FFC107]/10 font-semibold text-white'
-                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                    }`}
+                  className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                    active
+                      ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                  }`}
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Icon className={`h-4 w-4 ${active ? 'text-[#FFC107]' : ''}`} />
-                    <span>{t(`admin.crmMenu.${child.label}`, child.label)}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Icon className={`h-3.5 w-3.5 shrink-0 transition-colors ${active ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
+                    <span className="truncate">{t(`admin.crmMenu.${child.label}`, child.label)}</span>
                   </span>
                   {child.badge > 0 ? (
-                    <span className="min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{child.badge > 99 ? '99+' : child.badge}</span>
+                    <span className="min-w-[1.15rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[9px] font-bold text-white">
+                      {child.badge > 99 ? '99+' : child.badge}
+                    </span>
                   ) : null}
                 </Link>
               );
@@ -976,19 +990,22 @@ export default function AdminLayout({
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-[10px] border-b border-white/10">
-          <div>
-            <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[70px]" />
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-[268px] bg-gradient-to-b from-[#00000d] via-[#00113b] to-[#00000d] border-r border-slate-800/80 text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-4 py-3 border-b border-slate-800/80 relative flex items-center justify-between overflow-hidden">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-8 bg-amber-400/10 blur-xl pointer-events-none rounded-full" />
+          <div className="flex-1 min-w-0">
+            <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[58px]" />
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-colors z-10"
+            className="lg:hidden p-1.5 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors ml-2 shrink-0"
+            aria-label="Close Sidebar"
           >
             <XIcon className="w-5 h-5" />
           </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
+
+        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto custom-scrollbar-dark">
           {renderStandardNavItem(dashboardNavItem)}
 
           {hasDailyOperationsNav ? (
@@ -1010,46 +1027,61 @@ export default function AdminLayout({
                       pathname,
                       value: !isPartnersDropdownExpanded,
                     })}
-                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isPartnersSectionActive
-                      ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                      : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                      }`}
+                    className={`group flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs text-left transition-all duration-150 ${
+                      isPartnersSectionActive
+                        ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107]'
+                        : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
+                    }`}
                   >
-                    <span className="flex items-center gap-3">
-                      <List className={`h-5 w-5 ${isPartnersSectionActive ? 'text-[#FFC107]' : ''}`} />
-                      <span>{t('admin.partners', 'Partners')}</span>
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <List className={`h-4 w-4 shrink-0 transition-colors ${isPartnersSectionActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
+                      <span className="truncate">{t('admin.partners', 'Partners')}</span>
                     </span>
                     <ChevronDown
-                      className={`h-4 w-4 transition-transform duration-200 ${isPartnersDropdownExpanded ? 'rotate-180' : ''} ${isPartnersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'}`}
+                      className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isPartnersDropdownExpanded ? 'rotate-180' : ''} ${isPartnersSectionActive ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
                     />
                   </button>
 
                   {isPartnersDropdownExpanded ? (
-                    <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                    <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">
                       {partnersNavItem ? (
                         <Link
                           href={partnersNavItem.href}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === partnersNavItem.href || pathname.startsWith(`${partnersNavItem.href}/`)
-                            ? 'bg-[#FFC107]/10 font-semibold text-white'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                            }`}
+                          className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                            pathname === partnersNavItem.href || pathname.startsWith(`${partnersNavItem.href}/`)
+                              ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                          }`}
                         >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                          <span>All Partners</span>
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all ${
+                              pathname === partnersNavItem.href || pathname.startsWith(`${partnersNavItem.href}/`)
+                                ? 'bg-[#FFC107] shadow-[0_0_6px_#FFC107]'
+                                : 'bg-zinc-600 group-hover:bg-zinc-400'
+                            }`}
+                          />
+                          <span className="truncate">All Partners</span>
                         </Link>
                       ) : null}
                       {partnerAgreementsNavItem ? (
                         <Link
                           href={partnerAgreementsNavItem.href}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === partnerAgreementsNavItem.href
-                            ? 'bg-[#FFC107]/10 font-semibold text-white'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                            }`}
+                          className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                            pathname === partnerAgreementsNavItem.href
+                              ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                          }`}
                         >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                          <span>{t('admin.partnerAgreements', 'Partner Agreements')}</span>
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all ${
+                              pathname === partnerAgreementsNavItem.href
+                                ? 'bg-[#FFC107] shadow-[0_0_6px_#FFC107]'
+                                : 'bg-zinc-600 group-hover:bg-zinc-400'
+                            }`}
+                          />
+                          <span className="truncate">{t('admin.partnerAgreements', 'Partner Agreements')}</span>
                         </Link>
                       ) : null}
                     </div>
@@ -1065,12 +1097,12 @@ export default function AdminLayout({
             <section className="space-y-1">
               {renderCollapsibleSectionLabel('finance', 'Finance & Accounts', badges.recurrence || 0)}
               {renderCollapsibleSectionBody('finance', (
-              <>
-              {renderStandardNavItem(getVisibleNavItem('/finance/workspace'))}
-              {renderStandardNavItem(getVisibleNavItem('/invoices'))}
-              {renderStandardNavItem(getVisibleNavItem('/finance/expenses'))}
-              {renderStandardNavItem(getVisibleNavItem('/recurrence'))}
-              </>
+                <>
+                  {renderStandardNavItem(getVisibleNavItem('/finance/workspace'))}
+                  {renderStandardNavItem(getVisibleNavItem('/invoices'))}
+                  {renderStandardNavItem(getVisibleNavItem('/finance/expenses'))}
+                  {renderStandardNavItem(getVisibleNavItem('/recurrence'))}
+                </>
               ))}
             </section>
           ) : null}
@@ -1090,38 +1122,7 @@ export default function AdminLayout({
                 (badges.recruitmentApplications || 0) + (badges.recruitmentInterviews || 0),
               )}
               {renderCollapsibleSectionBody('recruitment', (
-              <>
-              <button
-                type="button"
-                onClick={() => setRecruitmentMenuExpansion({
-                  pathname,
-                  value: !isRecruitmentDropdownExpanded,
-                })}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isRecruitmentSectionActive
-                    ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                    : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                <span className="flex items-center gap-3">
-                  <div className="relative">
-                    <Briefcase className={`h-5 w-5 ${isRecruitmentSectionActive ? 'text-[#FFC107]' : ''}`} />
-                    {(badges.recruitmentApplications || 0) + (badges.recruitmentInterviews || 0) > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                      </span>
-                    )}
-                  </div>
-                  <span>{t('admin.recruitment', 'Recruitment')}</span>
-                </span>
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-200 ${isRecruitmentDropdownExpanded ? 'rotate-180' : ''} ${isRecruitmentSectionActive ? 'text-[#FFC107]' : 'text-gray-500'
-                    }`}
-                />
-              </button>
-
-              {isRecruitmentDropdownExpanded ? (
-                <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">
                   {visibleRecruitmentNavItems.map((item) => {
                     const prefix = isEmployee ? '/employee' : '/superadmin';
                     const href = `${prefix}/recruitment/${item.key}`;
@@ -1139,17 +1140,24 @@ export default function AdminLayout({
                         key={item.key}
                         href={href}
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center justify-between rounded-lg px-4 py-2 text-sm transition-all duration-200 ${isActive
-                            ? 'bg-[#FFC107]/10 font-semibold text-white'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                          }`}
+                        className={`group flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                          isActive
+                            ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                        }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-[#FFC107]' : 'bg-current'}`} />
-                          <span>{t(item.labelKey, item.defaultLabel)}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all ${
+                              isActive
+                                ? 'bg-[#FFC107] shadow-[0_0_6px_#FFC107]'
+                                : 'bg-zinc-600 group-hover:bg-zinc-400'
+                            }`}
+                          />
+                          <span className="truncate">{t(item.labelKey, item.defaultLabel)}</span>
                         </div>
                         {badgeCount > 0 && (
-                          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                          <span className="min-w-[1.15rem] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[9px] font-bold text-white shadow-xs">
                             {badgeCount > 99 ? '99+' : badgeCount}
                           </span>
                         )}
@@ -1157,8 +1165,6 @@ export default function AdminLayout({
                     );
                   })}
                 </div>
-              ) : null}
-              </>
               ))}
             </section>
           ) : null}
@@ -1194,88 +1200,134 @@ export default function AdminLayout({
             <section className="space-y-1">
               {renderCollapsibleSectionLabel('administration', 'Administration')}
               {renderCollapsibleSectionBody('administration', (
-              <>
-              {canShowUsersMenu ? (
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => setUsersMenuExpansion({
-                      pathname,
-                      value: !isUsersDropdownExpanded,
-                    })}
-                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-2.5 text-left transition-all duration-200 ${isUsersSectionActive
-                      ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                      : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                      }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Users className={`h-5 w-5 ${isUsersSectionActive ? 'text-[#FFC107]' : ''}`} />
-                      <span>{t('admin.users')}</span>
-                    </span>
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-gray-500'}`}
-                    />
-                  </button>
+                <>
+                  {canShowUsersMenu ? (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setUsersMenuExpansion({
+                          pathname,
+                          value: !isUsersDropdownExpanded,
+                        })}
+                        className={`group flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs text-left transition-all duration-150 ${
+                          isUsersSectionActive
+                            ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107]'
+                            : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <Users className={`h-4 w-4 shrink-0 transition-colors ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
+                          <span className="truncate">{t('admin.users')}</span>
+                        </span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isUsersDropdownExpanded ? 'rotate-180' : ''} ${isUsersSectionActive ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                        />
+                      </button>
 
-                  {isUsersDropdownExpanded ? (
-                    <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
-                      {isSuperAdmin || employeeCanSeeUsers ? (
-                        <Link
-                          href={usersListHref}
-                          onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === usersListHref
-                            ? 'bg-[#FFC107]/10 font-semibold text-white'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                            }`}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                          <span>{t('common.allUsers')}</span>
-                        </Link>
-                      ) : null}
-                      {isSuperAdmin || employeeCanSeeRoles ? (
-                        <Link
-                          href={rolesListHref}
-                          onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all duration-200 ${pathname === rolesListHref
-                            ? 'bg-[#FFC107]/10 font-semibold text-white'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                            }`}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                          <span>{t('common.usersRole')}</span>
-                        </Link>
+                      {isUsersDropdownExpanded ? (
+                        <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">
+                          {isSuperAdmin || employeeCanSeeUsers ? (
+                            <Link
+                              href={usersListHref}
+                              onClick={() => setIsMobileMenuOpen(false)}
+                              className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                                pathname === usersListHref
+                                  ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all ${
+                                  pathname === usersListHref
+                                    ? 'bg-[#FFC107] shadow-[0_0_6px_#FFC107]'
+                                    : 'bg-zinc-600 group-hover:bg-zinc-400'
+                                }`}
+                              />
+                              <span className="truncate">{t('common.allUsers')}</span>
+                            </Link>
+                          ) : null}
+                          {isSuperAdmin || employeeCanSeeRoles ? (
+                            <Link
+                              href={rolesListHref}
+                              onClick={() => setIsMobileMenuOpen(false)}
+                              className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${
+                                pathname === rolesListHref
+                                  ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs'
+                                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all ${
+                                  pathname === rolesListHref
+                                    ? 'bg-[#FFC107] shadow-[0_0_6px_#FFC107]'
+                                    : 'bg-zinc-600 group-hover:bg-zinc-400'
+                                }`}
+                              />
+                              <span className="truncate">{t('common.usersRole')}</span>
+                            </Link>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
-                </div>
-              ) : null}
 
-              {canShowSettingsLink ? (
-                <Link
-                  href={settingsHref}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 transition-all duration-200 ${pathname === settingsHref
-                    ? 'border-[#FFC107] bg-[#FFC107]/5 font-semibold text-white'
-                    : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-                    }`}
-                >
-                  <Settings className={`h-5 w-5 ${pathname === settingsHref ? 'text-[#FFC107]' : ''}`} />
-                  <span>{t('common.settings')}</span>
-                </Link>
-              ) : null}
-              </>
+                  {canShowSettingsLink ? (
+                    <Link
+                      href={settingsHref}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs transition-all duration-150 ${
+                        pathname === settingsHref
+                          ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107]'
+                          : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'
+                      }`}
+                    >
+                      <Settings className={`h-4 w-4 shrink-0 transition-colors ${pathname === settingsHref ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
+                      <span className="truncate">{t('common.settings')}</span>
+                    </Link>
+                  ) : null}
+                </>
               ))}
             </section>
           ) : null}
         </nav>
-        <div className="p-4 border-t border-white/10 shrink-0">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 border border-[#FFC107] text-[#FFC107] hover:bg-[#FFC107]/10 py-2.5 rounded-lg transition-colors font-medium"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>{t('common.logout')}</span>
-          </button>
+
+        <div className="p-3 border-t border-slate-800/80 shrink-0 bg-[#00000d]/95 backdrop-blur-xs">
+          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-amber-400/30 hover:bg-white/[0.06] transition-all">
+            <Link
+              href={profileHref}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 min-w-0 flex-1 group"
+              title="View Profile & Settings"
+            >
+              <div className="relative shrink-0">
+                <UserAvatar user={user} size="header" />
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-2 ring-[#00000d]" />
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-white truncate group-hover:text-[#FFC107] transition-colors">
+                  {displayName}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider uppercase bg-amber-400/15 text-[#FFC107] border border-amber-400/30">
+                    {translatedRoleLabel}
+                  </span>
+                </div>
+              </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              title={t('common.logout')}
+              className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all shrink-0"
+              aria-label={t('common.logout')}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1393,6 +1445,16 @@ export default function AdminLayout({
                           All operational queues are clear!
                         </div>
                       )}
+                    </div>
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
+                      <Link
+                        href={isSuperAdmin ? '/superadmin/notifications' : isEmployee ? '/employee/notifications' : '/admin/notifications'}
+                        onClick={() => setIsNotificationOpen(false)}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-700 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                      >
+                        <span>View all notifications</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
                 </> 

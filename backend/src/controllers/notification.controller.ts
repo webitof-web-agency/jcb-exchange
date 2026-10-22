@@ -17,14 +17,37 @@ export const getNotifications = async (req: Request, res: Response, next: NextFu
 
     const scope = getNotificationScope(req.query.scope);
     const status = getNotificationStatus(req.query.status);
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10)));
+    const skip = (page - 1) * limit;
 
-    const notifications = await prisma.notification.findMany({
-      where: buildNotificationWhereClause(userId, { scope, status }),
-      orderBy: { createdAt: 'desc' },
-      take: 50,
+    const where = buildNotificationWhereClause(userId, { scope, status, search });
+
+    const [notifications, total, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where }),
+      prisma.notification.count({
+        where: buildNotificationWhereClause(userId, { scope: 'all', status: 'unread' }),
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: notifications,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        unreadCount,
+      },
     });
-
-    res.status(200).json({ success: true, data: notifications });
   } catch (error) {
     next(error);
   }
@@ -81,6 +104,47 @@ export const markAllAsRead = async (req: Request, res: Response, next: NextFunct
     });
 
     res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteNotification = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const notificationId = typeof req.params.id === 'string' ? req.params.id : '';
+
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!notificationId) return res.status(400).json({ error: 'Notification id is required' });
+
+    const notification = await prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    await prisma.notification.delete({
+      where: { id: notificationId },
+    });
+
+    res.status(200).json({ success: true, message: 'Notification deleted' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const clearNotifications = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    await prisma.notification.deleteMany({
+      where: { userId },
+    });
+
+    res.status(200).json({ success: true, message: 'All notifications cleared' });
   } catch (error) {
     next(error);
   }
