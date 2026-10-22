@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 'use client';
 
 import Image from 'next/image';
@@ -45,7 +46,13 @@ import {
   Send,
   Eye,
   Edit3,
+  ShieldAlert,
+  Lock,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
@@ -85,20 +92,20 @@ interface PartnerListing {
 }
 
 const statusClassNames: Record<string, string> = {
-  ACTIVE: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-  AVAILABLE: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-  PENDING: 'bg-amber-50 text-amber-700 border-amber-200/80',
-  REVIEW_PENDING: 'bg-amber-50 text-amber-700 border-amber-200/80',
-  PROFILE_PENDING: 'bg-amber-50 text-amber-700 border-amber-200/80',
-  KYC_PENDING: 'bg-amber-50 text-amber-700 border-amber-200/80',
-  AGREEMENT_PENDING: 'bg-amber-50 text-amber-700 border-amber-200/80',
-  REJECTED: 'bg-rose-50 text-rose-700 border-rose-200/80',
-  CHANGES_REQUESTED: 'bg-amber-50 text-amber-800 border-amber-200/80',
-  SOLD: 'bg-blue-50 text-blue-700 border-blue-200/80',
-  EXPIRED: 'bg-slate-100 text-slate-600 border-slate-200/80',
-  INACTIVE: 'bg-slate-100 text-slate-600 border-slate-200/80',
-  SUSPENDED: 'bg-orange-50 text-orange-700 border-orange-200/80',
-  BLOCKED: 'bg-rose-50 text-rose-700 border-rose-200/80',
+  ACTIVE: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  AVAILABLE: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  PENDING: 'bg-amber-50 text-amber-900 border-amber-300',
+  REVIEW_PENDING: 'bg-amber-50 text-amber-900 border-amber-300',
+  PROFILE_PENDING: 'bg-amber-50 text-amber-900 border-amber-300',
+  KYC_PENDING: 'bg-amber-50 text-amber-900 border-amber-300',
+  AGREEMENT_PENDING: 'bg-amber-50 text-amber-900 border-amber-300',
+  REJECTED: 'bg-rose-50 text-rose-800 border-rose-300',
+  CHANGES_REQUESTED: 'bg-amber-50 text-amber-950 border-amber-300',
+  SOLD: 'bg-blue-50 text-blue-800 border-blue-300',
+  EXPIRED: 'bg-slate-100 text-slate-700 border-slate-300',
+  INACTIVE: 'bg-slate-100 text-slate-700 border-slate-300',
+  SUSPENDED: 'bg-orange-50 text-orange-800 border-orange-300',
+  BLOCKED: 'bg-rose-50 text-rose-800 border-rose-300',
 };
 
 interface PartnerProfile {
@@ -175,6 +182,8 @@ interface PartnerDetailPageProps {
   listingDetailBaseHref: string;
 }
 
+type ActiveTab = 'inventory' | 'profile' | 'kyc' | 'agreements';
+
 export default function PartnerDetailPage({
   partnerId,
   backHref,
@@ -213,6 +222,9 @@ export default function PartnerDetailPage({
   const [resolvedPartnerId, setResolvedPartnerId] = useState<string | null>(null);
   const [verificationDetail, setVerificationDetail] = useState<VerificationDetail | null>(null);
 
+  // Active Workspace Tab
+  const [activeTab, setActiveTab] = useState<ActiveTab>('inventory');
+
   // Filter & Search State for Listings
   const [listingSearch, setListingSearch] = useState('');
   const [listingStatusFilter, setListingStatusFilter] = useState<string>('ALL');
@@ -244,31 +256,26 @@ export default function PartnerDetailPage({
   const [passwordSuccessMsg, setPasswordSuccessMsg] = useState('');
   const [passwordErrorMsg, setPasswordErrorMsg] = useState('');
 
-  // Expandable sections
+  // Expandable description
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-  const [isKycVaultExpanded, setIsKycVaultExpanded] = useState(true);
-  const [isAgreementsExpanded, setIsAgreementsExpanded] = useState(true);
 
   // Copy helper
-  const handleCopy = useCallback((text: string, fieldName: string) => {
+  const handleCopy = useCallback((text?: string | null, fieldName?: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 2000);
+    if (fieldName) {
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+    }
   }, []);
 
-  // Fetch listings
-  const fetchPartnerListings = useCallback(async () => {
-    if (!resolvedPartnerId) {
-      setListings([]);
-      setLoadingListings(false);
-      return;
-    }
-
+  // Fetch partner listings
+  const fetchPartnerListings = useCallback(async (partnerDbId: string) => {
+    if (!partnerDbId) return;
     try {
       setLoadingListings(true);
       const response = await api.get<{ listings: PartnerListing[] }>('/superadmin/listings', {
-        params: { partnerId: resolvedPartnerId, compact: 'true' },
+        params: { partnerId: partnerDbId, compact: 'true' },
       });
       setListings(response.data.listings || []);
     } catch (err) {
@@ -276,14 +283,16 @@ export default function PartnerDetailPage({
     } finally {
       setLoadingListings(false);
     }
-  }, [resolvedPartnerId]);
+  }, []);
 
   // Fetch partner details & KYC
   const fetchPartnerDetails = useCallback(async () => {
     try {
       setLoading(true);
+      setError('');
       const nextResolvedPartnerId = (await resolvePartnerId(partnerId)) || partnerId;
       setResolvedPartnerId(nextResolvedPartnerId);
+
       const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners', {
         params: { id: nextResolvedPartnerId },
       });
@@ -293,6 +302,8 @@ export default function PartnerDetailPage({
         setError(t('partnerDetails.partnerNotFound', 'Partner not found'));
       } else {
         setPartner(foundPartner);
+        void fetchPartnerListings(nextResolvedPartnerId);
+
         try {
           const verificationResponse = await api.get<{ verification: VerificationDetail }>(
             `/superadmin/verifications/${nextResolvedPartnerId}`,
@@ -321,14 +332,11 @@ export default function PartnerDetailPage({
     } finally {
       setLoading(false);
     }
-  }, [partnerId, t]);
+  }, [partnerId, t, fetchPartnerListings]);
 
   useEffect(() => {
-    const loadPartnerData = async () => {
-      await Promise.all([fetchPartnerDetails(), fetchPartnerListings()]);
-    };
-    void loadPartnerData();
-  }, [fetchPartnerDetails, fetchPartnerListings]);
+    void fetchPartnerDetails();
+  }, [fetchPartnerDetails]);
 
   // Canonical path redirect
   useEffect(() => {
@@ -346,179 +354,63 @@ export default function PartnerDetailPage({
     }
   }, [partner, backHref, pathname, router]);
 
-  // Format Status Label
+  // Status & Color Helpers
   const formatStatusLabel = useCallback(
-    (value?: string | null) => {
-      if (!value) return t('partnerDetails.notSet', 'Not Set');
-
-      switch (value.toUpperCase()) {
-        case 'APPROVED':
-        case 'ACTIVE':
-          return t('partnerDetails.active', 'Active');
-        case 'PENDING':
-        case 'REVIEW_PENDING':
-        case 'PROFILE_PENDING':
-        case 'KYC_PENDING':
-        case 'AGREEMENT_PENDING':
-          return t('partnerDetails.pending', 'Pending');
-        case 'REJECTED':
-          return t('partnerDetails.rejected', 'Rejected');
-        case 'CHANGES_REQUESTED':
-          return t('partnerDetails.changesRequested', 'Changes Requested');
-        case 'INACTIVE':
-          return t('partnerDetails.inactive', 'Inactive');
-        case 'SUSPENDED':
-          return t('partnerDetails.suspended', 'Suspended');
-        case 'BLOCKED':
-          return t('partnerDetails.blocked', 'Blocked');
-        case 'SOLD':
-          return t('partnerDetails.sold', 'Sold');
-        case 'EXPIRED':
-          return t('partnerDetails.expired', 'Expired');
-        default:
-          return value
-            .toLowerCase()
-            .split('_')
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-      }
+    (status?: string | null) => {
+      if (!status) return t('partnerDetails.statusUnknown', 'Unknown');
+      return status
+        .toLowerCase()
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
     },
     [t],
   );
 
-  // Partner overall health status
   const getPartnerStatus = useCallback(
-    (currentPartner: ManagedUser) => {
-      if (currentPartner.status === 'INACTIVE') return t('partnerDetails.inactive', 'Inactive');
-      if (currentPartner.status === 'SUSPENDED') return t('partnerDetails.suspended', 'Suspended');
-      if (currentPartner.status === 'BLOCKED') return t('partnerDetails.blocked', 'Blocked');
-      if (
-        currentPartner.accountStatus === 'ACTIVE' &&
-        currentPartner.kycStatus === 'APPROVED' &&
-        currentPartner.onboardingStatus === 'APPROVED'
-      ) {
-        return t('partnerDetails.active', 'Active');
+    (target: ManagedUser | null) => {
+      if (!target) return t('partnerDetails.statusUnknown', 'Unknown');
+      if (target.status === 'INACTIVE') return t('partnerDetails.statusInactive', 'Inactive');
+      if (target.accountStatus === 'REJECTED' || target.kycStatus === 'REJECTED') {
+        return t('partnerDetails.statusRejected', 'Rejected');
       }
-      if (currentPartner.onboardingStatus === 'REJECTED' || currentPartner.kycStatus === 'REJECTED') {
-        return t('partnerDetails.rejected', 'Rejected');
+      if (target.accountStatus === 'CHANGES_REQUESTED') {
+        return t('partnerDetails.statusChangesRequested', 'Changes Requested');
       }
-      if (
-        currentPartner.onboardingStatus === 'CHANGES_REQUESTED' ||
-        currentPartner.kycStatus === 'CHANGES_REQUESTED'
-      ) {
-        return t('partnerDetails.changesRequested', 'Changes Requested');
+      if (target.accountStatus === 'ACTIVE' || target.status === 'ACTIVE') {
+        return t('partnerDetails.statusActive', 'Active');
       }
-      return t('partnerDetails.pending', 'Pending');
+      return target.onboardingStatus ? formatStatusLabel(target.onboardingStatus) : target.status;
     },
-    [t],
+    [formatStatusLabel, t],
   );
 
-  const getPartnerStatusClassName = useCallback((currentPartner: ManagedUser) => {
-    if (currentPartner.status === 'INACTIVE') return 'bg-slate-100 text-slate-700 border-slate-200';
-    if (currentPartner.status === 'SUSPENDED') return 'bg-orange-50 text-orange-700 border-orange-200';
-    if (currentPartner.status === 'BLOCKED') return 'bg-rose-50 text-rose-700 border-rose-200';
-    if (
-      currentPartner.accountStatus === 'ACTIVE' &&
-      currentPartner.kycStatus === 'APPROVED' &&
-      currentPartner.onboardingStatus === 'APPROVED'
-    ) {
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  const getPartnerStatusClassName = useCallback((target: ManagedUser | null) => {
+    if (!target) return 'bg-slate-100 text-slate-700 border-slate-300';
+    if (target.status === 'INACTIVE') return 'bg-slate-100 text-slate-700 border-slate-300';
+    if (target.accountStatus === 'REJECTED' || target.kycStatus === 'REJECTED') {
+      return 'bg-rose-50 text-rose-800 border-rose-300 font-bold';
     }
-    if (currentPartner.onboardingStatus === 'REJECTED' || currentPartner.kycStatus === 'REJECTED') {
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+    if (target.accountStatus === 'CHANGES_REQUESTED') {
+      return 'bg-amber-50 text-amber-950 border-amber-300 font-bold';
     }
-    if (
-      currentPartner.onboardingStatus === 'CHANGES_REQUESTED' ||
-      currentPartner.kycStatus === 'CHANGES_REQUESTED'
-    ) {
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+    if (target.accountStatus === 'ACTIVE' || target.status === 'ACTIVE') {
+      return 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
     }
-    return 'bg-blue-50 text-blue-700 border-blue-200';
+    return statusClassNames[target.status] || 'bg-amber-50 text-amber-900 border-amber-300';
   }, []);
 
-  const editHref = partner
-    ? generateAdminPartnerEditPath(editBaseHref, {
-        id: partner.id,
-        name: partner.name,
-        district: partner.partnerProfile?.district || '',
-      })
-    : backHref;
+  const editHref = useMemo(() => {
+    if (!partner) return backHref;
+    return generateAdminPartnerEditPath(editBaseHref, {
+      id: partner.id,
+      name: partner.name,
+      businessName: partner.name,
+      district: partner.partnerProfile?.district || '',
+    });
+  }, [partner, editBaseHref, backHref]);
 
-  // Custom Navbar Header Injection
-  const setCustomHeader = useHeaderStore((state) => state.setCustomHeader);
-
-  useEffect(() => {
-    if (partner) {
-      const partnerStatus = getPartnerStatus(partner);
-      const statusClass = getPartnerStatusClassName(partner);
-
-      setCustomHeader(
-        <div className="flex w-full items-center justify-between gap-3 overflow-hidden">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <Link
-              href={backHref}
-              className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-2xs transition hover:bg-slate-100 hover:text-slate-900"
-              title={t('partnerDetails.goBack', 'Back to directory')}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1
-                  className="truncate text-sm sm:text-base font-extrabold text-slate-900"
-                  title={partner.name || t('partnerDetails.unnamedBusiness', 'Partner Account')}
-                >
-                  {partner.name || t('partnerDetails.unnamedBusiness', 'Partner Account')}
-                </h1>
-                <span
-                  className={`hidden sm:inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}
-                >
-                  {partnerStatus}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                <span className="font-semibold text-slate-700">
-                  {formatPartnerTypeLabel(partner.partnerType, 'Partner')}
-                </span>
-                {partner.partnerProfile?.district && (
-                  <>
-                    <span className="text-slate-300">•</span>
-                    <span className="truncate">{partner.partnerProfile.district}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            {partner.mobile && (
-              <a
-                href={`tel:${partner.mobile}`}
-                className="hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
-                title="Call Partner"
-              >
-                <Phone className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Call</span>
-              </a>
-            )}
-            {canEditOnboarding && (
-              <Link
-                href={editHref}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#FFC107] px-3 text-xs font-bold text-slate-900 shadow-2xs transition hover:bg-[#E5AD06]"
-              >
-                <Edit3 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t('partnerDetails.editOnboarding', 'Edit Profile')}</span>
-                <span className="inline sm:hidden">Edit</span>
-              </Link>
-            )}
-          </div>
-        </div>,
-      );
-    }
-    return () => setCustomHeader(null);
-  }, [partner, backHref, editHref, canEditOnboarding, setCustomHeader, getPartnerStatus, getPartnerStatusClassName, t]);
-
-  // Clean document preview
+  // Clean document preview blob URL
   useEffect(() => {
     return () => {
       if (documentPreview?.previewUrl) {
@@ -529,7 +421,6 @@ export default function PartnerDetailPage({
 
   const openDocumentPreview = useCallback(async (document: VerificationDetailDocument) => {
     if (!document.fileUrl) return;
-
     const kind = getPartnerDocumentKind(document.fileName, document.fileUrl);
     setDocumentPreview({ document, kind, previewUrl: null, loading: true, error: '' });
 
@@ -550,28 +441,21 @@ export default function PartnerDetailPage({
 
   const downloadDocument = useCallback(async (document: VerificationDetailDocument) => {
     if (!document.fileUrl) return;
-
     try {
       await downloadSecureDocument(document.fileUrl, document.fileName || 'document');
     } catch (downloadError) {
       console.error('Failed to download KYC document', downloadError);
-      setDocumentPreview((current) =>
-        current?.document.id === document.id
-          ? { ...current, error: 'Unable to download this document. Please try again.' }
-          : current,
-      );
+      toast.error('Unable to download this document.');
     }
   }, []);
 
   const openOrDownloadDocument = useCallback(
     async (document: VerificationDetailDocument) => {
       if (!document.fileUrl) return;
-
       if (!canPreviewPartnerDocument(document.fileName, document.fileUrl)) {
         await downloadDocument(document);
         return;
       }
-
       await openDocumentPreview(document);
     },
     [downloadDocument, openDocumentPreview],
@@ -587,9 +471,10 @@ export default function PartnerDetailPage({
       });
       setPartner((prev) => (prev ? { ...prev, status: statusActionType } : null));
       setShowStatusModal(false);
+      toast.success(`Partner status updated to ${statusActionType === 'ACTIVE' ? 'Active' : 'Inactive'}`);
     } catch (err) {
       console.error('Failed to update status', err);
-      alert('Failed to update partner status. Please try again.');
+      toast.error('Failed to update partner status. Please try again.');
     } finally {
       setStatusSubmitting(false);
     }
@@ -607,10 +492,11 @@ export default function PartnerDetailPage({
       setPartner((prev) => (prev ? { ...prev, kycStatus: kycDecision } : null));
       setShowKycModal(false);
       setKycNotes('');
+      toast.success(`KYC status updated to ${kycDecision}`);
       await fetchPartnerDetails();
     } catch (err) {
       console.error('Failed to update KYC status', err);
-      alert('Failed to update verification status. Please try again.');
+      toast.error('Failed to update verification status. Please try again.');
     } finally {
       setKycSubmitting(false);
     }
@@ -628,11 +514,12 @@ export default function PartnerDetailPage({
         password: newPassword.trim(),
       });
       setPasswordSuccessMsg('Password updated successfully!');
+      toast.success('Partner login password reset successfully');
       setTimeout(() => {
         setShowPasswordModal(false);
         setNewPassword('');
         setPasswordSuccessMsg('');
-      }, 1500);
+      }, 1200);
     } catch (err: unknown) {
       console.error('Failed to reset password', err);
       const msg =
@@ -697,7 +584,7 @@ export default function PartnerDetailPage({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl py-12">
+      <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-slate-200/90 bg-white p-12">
         <BrandLoader variant="section" size="md" bg="light" text="Loading partner dossier..." />
       </div>
     );
@@ -706,14 +593,18 @@ export default function PartnerDetailPage({
   if (error || !partner) {
     return (
       <div className="mx-auto max-w-xl py-12">
-        <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
+        <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-xs">
           <AlertCircle className="mx-auto h-12 w-12 text-rose-500" />
-          <h3 className="mt-4 text-base font-bold text-slate-900">{t('partnerDetails.loadFailed', 'Partner Profile Unavailable')}</h3>
-          <p className="mt-1 text-xs text-slate-500">{error || t('partnerDetails.partnerNotFound', 'Partner could not be located.')}</p>
+          <h3 className="mt-4 text-base font-bold text-slate-900">
+            {t('partnerDetails.loadFailed', 'Partner Profile Unavailable')}
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {error || t('partnerDetails.partnerNotFound', 'Partner could not be located.')}
+          </p>
           <div className="mt-6">
             <Link
               href={backHref}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-slate-800"
             >
               <ArrowLeft className="h-4 w-4" />
               {t('partnerDetails.goBack', 'Return to Partners')}
@@ -728,55 +619,57 @@ export default function PartnerDetailPage({
   const statusClass = getPartnerStatusClassName(partner);
   const cleanPhone = (partner.mobile || '').replace(/\D/g, '');
   const cleanWhatsapp = (partner.whatsappNumber || partner.mobile || '').replace(/\D/g, '');
+  const partnerInitials =
+    partner.name
+      ?.split(' ')
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase() || 'P';
 
   return (
-    <div className="space-y-4 pb-14">
-      {/* 1. EXECUTIVE HERO BANNER & QUICK ACTIONS */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
-        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-3.5 pb-12">
+      {/* 1. COMPACT EXECUTIVE HERO HEADER */}
+      <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs sm:p-4">
+        <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between">
           {/* Identity & Badges */}
-          <div className="flex items-start gap-3 sm:gap-4">
-            <div className="relative flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100 text-lg sm:text-xl font-black text-amber-900 shadow-2xs">
+          <div className="flex items-start gap-3 sm:gap-3.5 min-w-0">
+            {/* Avatar / Logo */}
+            <div className="relative flex h-13 w-13 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-xl border border-amber-300 bg-gradient-to-br from-amber-100 to-amber-200 font-black text-amber-950 shadow-2xs text-base sm:text-lg">
               {profile?.businessLogoUrl ? (
                 <Image
                   src={getAbsoluteFileUrl(profile.businessLogoUrl)}
                   alt={partner.name}
                   fill
-                  className="rounded-2xl object-cover"
+                  className="rounded-xl object-cover"
                 />
               ) : (
-                <span>
-                  {partner.name
-                    ?.split(' ')
-                    .slice(0, 2)
-                    .map((w) => w[0])
-                    .join('')
-                    .toUpperCase() || 'P'}
-                </span>
+                <span>{partnerInitials}</span>
               )}
               {partner.kycStatus === 'APPROVED' && (
                 <div
-                  className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs"
-                  title="KYC Verified"
+                  className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs border border-white"
+                  title="KYC Verified Partner"
                 >
                   <Check className="h-3 w-3 stroke-[3]" />
                 </div>
               )}
             </div>
 
+            {/* Business Info */}
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-base sm:text-xl font-black text-slate-900 tracking-tight">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight truncate max-w-[280px] sm:max-w-md">
                   {partner.name || 'Unnamed Business'}
                 </h1>
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-current" />
                   {partnerStatus}
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/80 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
-                  <Tag className="h-3 w-3 text-amber-700" />
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                  <Tag className="h-2.5 w-2.5 text-amber-700" />
                   {formatPartnerTypeLabel(partner.partnerType, 'Partner')}
                 </span>
               </div>
@@ -784,31 +677,43 @@ export default function PartnerDetailPage({
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                 {profile?.ownerName && (
                   <span className="flex items-center gap-1 font-semibold text-slate-700">
-                    <User className="h-3.5 w-3.5 text-slate-400" />
+                    <User className="h-3 w-3 text-slate-400" />
                     {profile.ownerName}
                   </span>
                 )}
-                {partner.city && (
+                {(partner.city || profile?.district || partner.state) && (
                   <span className="flex items-center gap-1 text-slate-600">
-                    <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                    <MapPin className="h-3 w-3 text-amber-600" />
                     {[partner.city, profile?.district, partner.state].filter(Boolean).join(', ')}
                   </span>
                 )}
                 <span className="flex items-center gap-1 text-slate-400">
-                  <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                  <Calendar className="h-3 w-3 text-slate-400" />
                   Member since {formatPortalDate(partner.createdAt)}
                 </span>
+                <div
+                  onClick={() => handleCopy(partner.id, 'partnerId')}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-400 hover:text-slate-800 cursor-pointer select-all"
+                  title="Copy Partner UUID"
+                >
+                  <span>ID: {partner.id.slice(0, 8)}</span>
+                  {copiedField === 'partnerId' ? (
+                    <Check className="h-2.5 w-2.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-2.5 w-2.5" />
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 lg:border-t-0 lg:pt-0">
-            {/* Call Action */}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3 lg:border-t-0 lg:pt-0">
+            {/* Call */}
             {cleanPhone && (
               <a
                 href={`tel:${cleanPhone}`}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 shadow-2xs transition hover:bg-emerald-100"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition-colors"
                 title={`Call ${cleanPhone}`}
               >
                 <Phone className="h-3.5 w-3.5 text-emerald-600" />
@@ -816,7 +721,7 @@ export default function PartnerDetailPage({
               </a>
             )}
 
-            {/* WhatsApp Action */}
+            {/* WhatsApp */}
             {cleanWhatsapp && (
               <a
                 href={`https://wa.me/91${cleanWhatsapp}?text=${encodeURIComponent(
@@ -824,7 +729,7 @@ export default function PartnerDetailPage({
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-bold text-emerald-700 shadow-2xs transition hover:bg-emerald-50"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 text-xs font-bold text-emerald-700 shadow-2xs hover:bg-emerald-50 transition-colors"
                 title="Open WhatsApp Chat"
               >
                 <Send className="h-3.5 w-3.5 text-emerald-600" />
@@ -832,29 +737,15 @@ export default function PartnerDetailPage({
               </a>
             )}
 
-            {/* Email Action */}
+            {/* Email */}
             {partner.email && (
               <a
                 href={`mailto:${partner.email}`}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                className="hidden sm:inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
                 title={`Email ${partner.email}`}
               >
                 <Mail className="h-3.5 w-3.5 text-slate-500" />
-                <span className="hidden sm:inline">Email</span>
-              </a>
-            )}
-
-            {/* Google Maps link */}
-            {profile?.googleMapsLocation && (
-              <a
-                href={profile.googleMapsLocation}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-blue-700 shadow-2xs transition hover:bg-blue-50"
-                title="View on Google Maps"
-              >
-                <Map className="h-3.5 w-3.5 text-blue-600" />
-                <span className="hidden sm:inline">Map</span>
+                <span>Email</span>
               </a>
             )}
 
@@ -866,10 +757,10 @@ export default function PartnerDetailPage({
                   setStatusActionType(partner.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE');
                   setShowStatusModal(true);
                 }}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition ${
+                className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-bold transition-colors ${
                   partner.status === 'ACTIVE'
-                    ? 'border-slate-300 bg-white text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
-                    : 'border-emerald-300 bg-emerald-600 text-white hover:bg-emerald-700'
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
+                    : 'border-emerald-400 bg-emerald-700 text-white hover:bg-emerald-800 shadow-2xs'
                 }`}
               >
                 {partner.status === 'ACTIVE' ? 'Deactivate' : 'Activate Account'}
@@ -884,19 +775,19 @@ export default function PartnerDetailPage({
                   setKycDecision(partner.kycStatus === 'APPROVED' ? 'APPROVED' : 'APPROVED');
                   setShowKycModal(true);
                 }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 shadow-2xs transition hover:bg-amber-100"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-bold text-amber-900 shadow-2xs hover:bg-amber-100 transition-colors"
               >
                 <ShieldCheck className="h-3.5 w-3.5 text-amber-700" />
                 <span>KYC Decision</span>
               </button>
             )}
 
-            {/* Reset Password Action */}
+            {/* Reset Password */}
             {canResetPassword && (
               <button
                 type="button"
                 onClick={() => setShowPasswordModal(true)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
                 title="Reset Password"
               >
                 <KeyRound className="h-3.5 w-3.5 text-slate-500" />
@@ -904,11 +795,11 @@ export default function PartnerDetailPage({
               </button>
             )}
 
-            {/* Edit Onboarding / Profile Primary Button */}
+            {/* Edit Profile Button */}
             {canEditOnboarding && (
               <Link
                 href={editHref}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#FFC107] px-3.5 text-xs font-black text-slate-900 shadow-2xs transition hover:bg-[#E5AD06]"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#FFC107] px-3 text-xs font-black text-slate-950 shadow-2xs hover:bg-[#E5AD06] transition-colors"
               >
                 <Edit3 className="h-3.5 w-3.5" />
                 <span>{t('partnerDetails.editOnboarding', 'Edit Profile')}</span>
@@ -918,803 +809,685 @@ export default function PartnerDetailPage({
         </div>
       </div>
 
-      {/* 2. EXECUTIVE KPI METRIC RIBBON */}
+      {/* 2. EXECUTIVE 5-CARD KPI METRIC RIBBON */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Metric 1: Total Machinery */}
-        <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+        {/* Metric 1: Listed Machinery */}
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Listed Machinery</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-              <Package className="h-4 w-4" />
-            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Listed Machinery
+            </span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+              <Package className="h-3.5 w-3.5" />
+            </span>
           </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black text-slate-900">{listings.length}</span>
-              <span className="text-[11px] font-semibold text-slate-500">units</span>
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-              <span>{activeListingsCount} Active</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-500">{soldListingsCount} Sold</span>
-            </div>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-slate-900">{listings.length}</span>
+            <span className="text-[11px] font-semibold text-slate-500">units</span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span>{activeListingsCount} Active</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-slate-500">{soldListingsCount} Sold</span>
           </div>
         </div>
 
-        {/* Metric 2: Portfolio Inventory Value */}
-        <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+        {/* Metric 2: Inventory Valuation */}
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Portfolio Value</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-              <TrendingUp className="h-4 w-4" />
-            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Catalog Value
+            </span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+              <TrendingUp className="h-3.5 w-3.5" />
+            </span>
           </div>
-          <div className="mt-2">
-            <div className="text-base sm:text-lg font-black text-slate-900 truncate" title={formatPortalCurrency(totalInventoryValue)}>
+          <div className="mt-1">
+            <span className="text-base sm:text-lg font-black text-slate-900 truncate block">
               {formatPortalCurrency(totalInventoryValue)}
-            </div>
-            <div className="mt-1 text-[10px] font-medium text-slate-500">
-              Combined catalog value
-            </div>
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500 truncate">Combined asking value</p>
+        </div>
+
+        {/* Metric 3: Listing Capacity */}
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Listing Quota
+            </span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-700">
+              <Layers className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <div className="mt-1 flex items-baseline justify-between text-xs font-bold text-slate-800">
+            <span>{activeListingsCount} of {listingLimit} slots</span>
+            <span className="text-[10px] text-slate-500">{quotaPercentage}%</span>
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                quotaPercentage >= 100
+                  ? 'bg-rose-500'
+                  : quotaPercentage >= 80
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+              }`}
+              style={{ width: `${quotaPercentage}%` }}
+            />
           </div>
         </div>
 
-        {/* Metric 3: Listing Capacity & Limit */}
-        <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+        {/* Metric 4: KYC Compliance */}
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Listing Quota</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-              <Layers className="h-4 w-4" />
-            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              KYC Compliance
+            </span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-700">
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </span>
           </div>
-          <div className="mt-2">
-            <div className="flex items-baseline justify-between text-xs font-bold text-slate-800">
-              <span>{activeListingsCount} of {listingLimit} slots</span>
-              <span className="text-[10px] text-slate-500">{quotaPercentage}%</span>
-            </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  quotaPercentage >= 100
-                    ? 'bg-rose-500'
-                    : quotaPercentage >= 80
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                }`}
-                style={{ width: `${quotaPercentage}%` }}
-              />
-            </div>
+          <div className="mt-1">
+            {partner.kycStatus === 'APPROVED' ? (
+              <span className="flex items-center gap-1 text-xs font-black text-emerald-800">
+                <CheckCircle className="h-4 w-4 text-emerald-600" /> Verified Partner
+              </span>
+            ) : partner.kycStatus === 'REJECTED' ? (
+              <span className="flex items-center gap-1 text-xs font-black text-rose-700">
+                <XCircle className="h-4 w-4" /> KYC Rejected
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-black text-amber-800">
+                <Clock3 className="h-4 w-4 text-amber-600" /> Under Review
+              </span>
+            )}
           </div>
+          <p className="mt-1 text-[10px] text-slate-500">
+            {verificationDetail?.documents.length || 0} statutory documents
+          </p>
         </div>
 
-        {/* Metric 4: KYC & Compliance Health */}
-        <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+        {/* Metric 5: Territory */}
+        <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">KYC Compliance</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Operating Territory
+            </span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+              <MapPin className="h-3.5 w-3.5" />
+            </span>
           </div>
-          <div className="mt-2">
-            <div className="flex items-center gap-1.5 text-sm font-extrabold text-slate-900">
-              {partner.kycStatus === 'APPROVED' ? (
-                <span className="flex items-center gap-1 text-emerald-700">
-                  <CheckCircle className="h-4 w-4" /> Verified
-                </span>
-              ) : partner.kycStatus === 'REJECTED' ? (
-                <span className="flex items-center gap-1 text-rose-700">
-                  <XCircle className="h-4 w-4" /> Rejected
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-amber-700">
-                  <Clock3 className="h-4 w-4" /> Under Review
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-[10px] font-medium text-slate-500">
-              {verificationDetail?.documents.length || 0} documents on file
-            </div>
+          <div className="mt-1">
+            <span className="text-sm font-bold text-slate-900 truncate block">
+              {profile?.district || partner.city || 'Location unset'}
+            </span>
           </div>
-        </div>
-
-        {/* Metric 5: Territory & Location */}
-        <div className="col-span-2 sm:col-span-1 flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Operating Territory</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-              <MapPin className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-sm font-bold text-slate-900 truncate" title={profile?.district || partner.city || 'Not set'}>
-              {profile?.district || partner.city || 'Not set'}
-            </div>
-            <div className="mt-1 text-[10px] font-medium text-slate-500 truncate">
-              {partner.state ? `${partner.state} - ${profile?.pinCode || ''}` : 'State unassigned'}
-            </div>
-          </div>
+          <p className="mt-1 text-[10px] text-slate-500 truncate">
+            {partner.state ? `${partner.state} - ${profile?.pinCode || ''}` : 'State unassigned'}
+          </p>
         </div>
       </div>
 
-      {/* 3. BENTO GRID ARCHITECTURE (7 / 5 BALANCED SPLIT) */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      {/* 3. BALANCED BENTO GRID ARCHITECTURE (8 / 4 SPLIT) */}
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-12">
         {/* LEFT PRIMARY PANEL (8 of 12 columns) */}
-        <div className="space-y-4 lg:col-span-7 xl:col-span-8">
-          {/* Card A: Business & Commercial Profile */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  {t('partnerDetails.businessProfile', 'Commercial & Business Profile')}
-                </h2>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-500">
-                Partner ID: <code className="text-slate-800 font-mono text-[10px]">{partner.id.slice(0, 8)}...</code>
+        <div className="space-y-3.5 lg:col-span-7 xl:col-span-8">
+          {/* TAB NAVIGATION STRIP */}
+          <div className="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('inventory')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'inventory'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <Package className="h-3.5 w-3.5" />
+              Machinery Inventory
+              <span className="rounded-full bg-black/20 px-1.5 py-0.2 text-[10px]">
+                {listings.length}
               </span>
-            </div>
+            </button>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 text-xs">
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {t('partnerDetails.businessName', 'Business Legal Name')}
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900 truncate" title={partner.name}>
-                  {partner.name || '-'}
-                </p>
-              </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('profile')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'profile'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Commercial Profile
+            </button>
 
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {t('partnerDetails.ownerName', 'Owner / Signatory')}
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900 truncate" title={profile?.ownerName || partner.fullName}>
-                  {profile?.ownerName || partner.fullName || '-'}
-                </p>
-              </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('kyc')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'kyc'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              KYC & Statutory Vault
+              <span className="rounded-full bg-black/20 px-1.5 py-0.2 text-[10px]">
+                {verificationDetail?.documents.length || 0}
+              </span>
+            </button>
 
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {t('partnerDetails.partnerType', 'Category')}
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {formatPartnerTypeLabel(partner.partnerType, 'Standard Partner')}
-                </p>
-              </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('agreements')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'agreements'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Agreements & Audit
+            </button>
+          </div>
 
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {t('partnerDetails.experience', 'Industry Experience')}
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {profile?.businessExperience ? `${profile.businessExperience} Years` : '-'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {t('partnerDetails.teamSize', 'Team Size')}
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {profile?.teamSize ? `${profile.teamSize} Members` : '-'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Expected Monthly Flow
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {profile?.expectedMonthlyListings ? `${profile.expectedMonthlyListings} machines/mo` : '-'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Contact Preference
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {profile?.contactPreference || 'Phone & WhatsApp'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Working Hours
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900 truncate" title={profile?.workingHours || 'Standard'}>
-                  {profile?.workingHours || '09:00 AM - 07:00 PM'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Deposit Status
-                </p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {profile?.depositStatus ? formatStatusLabel(profile.depositStatus) : 'Not Submitted'}
-                </p>
-              </div>
-            </div>
-
-            {/* Business Description */}
-            {profile?.businessDescription ? (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    {t('partnerDetails.businessDescription', 'About Business & Dealership')}
+          {/* TAB 1: MACHINERY INVENTORY */}
+          {activeTab === 'inventory' && (
+            <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Package className="h-4 w-4 text-amber-600" />
+                    Registered Machinery Inventory
+                  </h2>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    Live machinery listings published and managed by this partner on the exchange.
                   </p>
-                  {profile.businessDescription.length > 200 && (
+                </div>
+
+                {/* Status Chips Filter */}
+                <div className="flex flex-wrap items-center gap-1 text-xs">
+                  {(['ALL', 'ACTIVE', 'PENDING', 'SOLD'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setListingStatusFilter(st)}
+                      className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors ${
+                        listingStatusFilter === st
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {st === 'ALL' ? 'All' : st === 'ACTIVE' ? 'Active' : st === 'PENDING' ? 'Pending' : 'Sold'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Filter & Search Bar */}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search machinery by name, brand, model..."
+                    value={listingSearch}
+                    onChange={(e) => setListingSearch(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 py-1.5 pl-8 pr-8 text-xs font-semibold text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
+                  />
+                  {listingSearch && (
                     <button
                       type="button"
-                      onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-                      className="text-[11px] font-bold text-amber-600 hover:text-amber-700"
+                      onClick={() => setListingSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
-                      {isDescriptionExpanded ? 'Show less' : 'Read more'}
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                 </div>
-                <div
-                  className={`mt-1.5 rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-xs leading-relaxed text-slate-700 transition-all ${
-                    !isDescriptionExpanded && profile.businessDescription.length > 200 ? 'line-clamp-3' : ''
-                  }`}
-                >
-                  {profile.businessDescription}
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sort:</span>
+                  <select
+                    value={listingSort}
+                    onChange={(e) => setListingSort(e.target.value as any)}
+                    className="rounded-lg border border-slate-200 bg-white py-1 px-2 text-xs font-semibold text-slate-700 outline-none"
+                  >
+                    <option value="newest">Recently Listed</option>
+                    <option value="price_desc">Price: High to Low</option>
+                    <option value="price_asc">Price: Low to High</option>
+                  </select>
                 </div>
               </div>
-            ) : null}
-          </div>
 
-          {/* Card B: Machinery Inventory Showcase */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Package className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  {t('partnerDetails.vehicleListings', 'Machinery Inventory')}
-                </h2>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
-                  {filteredListings.length} of {listings.length}
-                </span>
-              </div>
-
-              {/* Status Chips Filter */}
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                {(['ALL', 'ACTIVE', 'PENDING', 'SOLD'] as const).map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setListingStatusFilter(st)}
-                    className={`rounded-md px-2 py-0.75 text-[10px] font-bold transition ${
-                      listingStatusFilter === st
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {st === 'ALL' ? 'All' : st === 'ACTIVE' ? 'Active' : st === 'PENDING' ? 'Pending' : 'Sold'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filter & Search Bar */}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search machinery by name, model..."
-                  value={listingSearch}
-                  onChange={(e) => setListingSearch(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50/60 py-1.5 pl-8 pr-3 text-xs font-semibold text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
-                />
-                {listingSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setListingSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sort:</span>
-                <select
-                  value={listingSort}
-                  onChange={(e) => setListingSort(e.target.value as any)}
-                  className="rounded-lg border border-slate-200 bg-white py-1 px-2 text-xs font-semibold text-slate-700 outline-none"
-                >
-                  <option value="newest">Recently Listed</option>
-                  <option value="price_desc">Price: High to Low</option>
-                  <option value="price_asc">Price: Low to High</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Listings Grid */}
-            <div className="mt-4">
-              {loadingListings ? (
-                <div className="py-10">
-                  <BrandLoader variant="section" size="sm" bg="light" text="Refreshing machinery portfolio..." />
-                </div>
-              ) : filteredListings.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                    <Package className="h-5 w-5" />
+              {/* Machinery Grid */}
+              <div className="mt-4">
+                {loadingListings ? (
+                  <div className="py-12">
+                    <BrandLoader variant="section" size="sm" bg="light" text="Loading inventory catalog..." />
                   </div>
-                  <p className="mt-2 text-xs font-bold text-slate-700">
-                    {listings.length === 0
-                      ? t('partnerDetails.noListings', 'No machinery listings registered yet.')
-                      : 'No machinery matches your filter criteria.'}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    {listings.length === 0
-                      ? 'Machines added by this partner will appear here in real-time.'
-                      : 'Try clearing the search query or changing status filters.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {filteredListings.map((listing) => {
-                    const statusBadgeClass =
-                      statusClassNames[listing.status] || 'bg-slate-100 text-slate-700 border-slate-200';
-                    const targetUrl = generateAdminListingDetailPath(listingDetailBaseHref, listing);
+                ) : filteredListings.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-12 text-center">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                      <Package className="h-5 w-5" />
+                    </div>
+                    <p className="mt-2.5 text-xs font-bold text-slate-800">
+                      {listings.length === 0
+                        ? 'No machinery listings registered yet'
+                        : 'No machinery matches your filter criteria'}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-400 max-w-sm">
+                      {listings.length === 0
+                        ? 'When this partner lists excavators, backhoe loaders, or road equipment, their catalog units will appear here in real time.'
+                        : 'Try relaxing your search terms or clearing status filters.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredListings.map((listing) => {
+                      const statusBadgeClass =
+                        statusClassNames[listing.status] || 'bg-slate-100 text-slate-700 border-slate-200';
+                      const targetUrl = generateAdminListingDetailPath(listingDetailBaseHref, listing);
 
-                    return (
-                      <div
-                        key={listing.id}
-                        onClick={() => router.push(targetUrl)}
-                        className="group flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md cursor-pointer"
-                      >
-                        {/* Machine Image */}
-                        <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
-                          {listing.imageUrl ? (
-                            <Image
-                              src={getAbsoluteFileUrl(listing.imageUrl)}
-                              alt={listing.title}
-                              fill
-                              sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                              className="object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-                          ) : listing.images && listing.images.length > 0 ? (
-                            <Image
-                              src={getAbsoluteFileUrl(
-                                listing.images.find((image) => image.isFeatured)?.url || listing.images[0].url,
-                              )}
-                              alt={listing.title}
-                              fill
-                              sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                              className="object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
-                              <ImageIcon className="h-7 w-7 opacity-40" />
-                              <span className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                No Photo
+                      return (
+                        <div
+                          key={listing.id}
+                          onClick={() => router.push(targetUrl)}
+                          className="group flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-xs cursor-pointer"
+                        >
+                          {/* Machine Image */}
+                          <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
+                            {listing.imageUrl ? (
+                              <Image
+                                src={getAbsoluteFileUrl(listing.imageUrl)}
+                                alt={listing.title}
+                                fill
+                                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : listing.images && listing.images.length > 0 ? (
+                              <Image
+                                src={getAbsoluteFileUrl(
+                                  listing.images.find((image) => image.isFeatured)?.url || listing.images[0].url,
+                                )}
+                                alt={listing.title}
+                                fill
+                                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
+                                <ImageIcon className="h-6 w-6 opacity-40" />
+                                <span className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  No Photo
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Status Badge */}
+                            <div className="absolute right-2 top-2">
+                              <span
+                                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold shadow-2xs backdrop-blur-xs border ${statusBadgeClass}`}
+                              >
+                                {formatStatusLabel(listing.status)}
                               </span>
                             </div>
-                          )}
-
-                          {/* Status Badge */}
-                          <div className="absolute right-2 top-2">
-                            <span
-                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold shadow-2xs backdrop-blur-xs ${statusBadgeClass}`}
-                            >
-                              {formatStatusLabel(listing.status)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Card Meta */}
-                        <div className="flex flex-1 flex-col justify-between p-3">
-                          <div>
-                            <h3
-                              className="line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-amber-800"
-                              title={listing.title}
-                            >
-                              {listing.title}
-                            </h3>
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              Listed on {formatPortalDate(listing.createdAt)}
-                            </p>
                           </div>
 
-                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
+                          {/* Machine Meta */}
+                          <div className="flex flex-1 flex-col justify-between p-3">
                             <div>
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                Asking Price
-                              </span>
-                              <p className="text-sm font-black text-amber-800">
-                                {formatPortalCurrency(listing.price)}
+                              <h3
+                                className="line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-amber-900 transition-colors"
+                                title={listing.title}
+                              >
+                                {listing.title}
+                              </h3>
+                              <p className="mt-0.5 text-[10px] text-slate-400">
+                                Listed {formatPortalDate(listing.createdAt)}
                               </p>
                             </div>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 group-hover:text-amber-700">
-                              <span>Inspect</span>
-                              <ExternalLink className="h-3 w-3" />
-                            </span>
+
+                            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2">
+                              <div>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  Asking Price
+                                </span>
+                                <p className="text-xs font-black text-amber-900">
+                                  {formatPortalCurrency(listing.price)}
+                                </p>
+                              </div>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 group-hover:text-amber-800">
+                                <span>Inspect</span>
+                                <ExternalLink className="h-3 w-3" />
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* RIGHT SECONDARY PANEL (4 of 12 columns) */}
-        <div className="space-y-4 lg:col-span-5 xl:col-span-4">
-          {/* Card C: Direct Contact & Territory */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  {t('partnerDetails.contactLocation', 'Contact & Operations')}
+          {/* TAB 2: COMMERCIAL PROFILE & OPERATIONS */}
+          {activeTab === 'profile' && (
+            <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-4">
+              <div className="border-b border-slate-100 pb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4 text-amber-600" />
+                  Commercial & Dealership Profile
                 </h2>
-              </div>
-            </div>
-
-            <div className="mt-3.5 space-y-2.5 text-xs">
-              {/* Primary Mobile */}
-              <div className="flex items-center justify-between rounded-lg bg-slate-50/70 p-2 border border-slate-100">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {t('partnerDetails.mobileNumber', 'Primary Mobile')}
-                  </span>
-                  <p className="font-bold text-slate-900 truncate">{partner.mobile || 'Not provided'}</p>
-                </div>
-                {partner.mobile && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(partner.mobile, 'mobile')}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                      title="Copy Mobile"
-                    >
-                      {copiedField === 'mobile' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                    <a
-                      href={`tel:${cleanPhone}`}
-                      className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
-                      title="Call"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                )}
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Business structure, operational parameters, and dealership terms.
+                </p>
               </div>
 
-              {/* Alternate Mobile */}
-              <div className="flex items-center justify-between rounded-lg bg-slate-50/70 p-2 border border-slate-100">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {t('partnerDetails.alternateMobile', 'Alternate Phone')}
-                  </span>
-                  <p className="font-bold text-slate-900 truncate">{profile?.alternateMobile || 'Not provided'}</p>
-                </div>
-                {profile?.alternateMobile && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(profile.alternateMobile, 'altMobile')}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                      title="Copy Alternate Phone"
-                    >
-                      {copiedField === 'altMobile' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                    <a
-                      href={`tel:${profile.alternateMobile.replace(/\D/g, '')}`}
-                      className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
-                      title="Call Alternate"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {/* WhatsApp */}
-              <div className="flex items-center justify-between rounded-lg bg-slate-50/70 p-2 border border-slate-100">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    WhatsApp Hotline
-                  </span>
-                  <p className="font-bold text-slate-900 truncate">
-                    {partner.whatsappNumber || partner.mobile || 'Not provided'}
+              {/* 9 Data Points Grid */}
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 text-xs">
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Legal Entity Name</p>
+                  <p className="mt-0.5 font-bold text-slate-900 truncate" title={partner.name}>
+                    {partner.name || '—'}
                   </p>
                 </div>
-                {cleanWhatsapp && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(partner.whatsappNumber || partner.mobile, 'whatsapp')}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                      title="Copy WhatsApp"
-                    >
-                      {copiedField === 'whatsapp' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                    <a
-                      href={`https://wa.me/91${cleanWhatsapp}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
-                      title="WhatsApp Chat"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                )}
-              </div>
 
-              {/* Email */}
-              <div className="flex items-center justify-between rounded-lg bg-slate-50/70 p-2 border border-slate-100">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {t('partnerDetails.emailAddress', 'Email Address')}
-                  </span>
-                  <p className="font-bold text-slate-900 truncate">{partner.email || 'Not provided'}</p>
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Proprietor / Signatory</p>
+                  <p className="mt-0.5 font-bold text-slate-900 truncate" title={profile?.ownerName || partner.fullName}>
+                    {profile?.ownerName || partner.fullName || '—'}
+                  </p>
                 </div>
-                {partner.email && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(partner.email, 'email')}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                      title="Copy Email"
-                    >
-                      {copiedField === 'email' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                    <a
-                      href={`mailto:${partner.email}`}
-                      className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                      title="Send Email"
-                    >
-                      <Mail className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                )}
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Partner Tier / Role</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {formatPartnerTypeLabel(partner.partnerType, 'Standard Partner')}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Industry Experience</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {profile?.businessExperience ? `${profile.businessExperience} Years` : '—'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team Size</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {profile?.teamSize ? `${profile.teamSize} Members` : '—'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expected Monthly Flow</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {profile?.expectedMonthlyListings ? `${profile.expectedMonthlyListings} units/mo` : '—'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Preference</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {profile?.contactPreference || 'Phone & WhatsApp'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Operating Hours</p>
+                  <p className="mt-0.5 font-bold text-slate-900 truncate" title={profile?.workingHours || 'Standard'}>
+                    {profile?.workingHours || '09:00 AM - 07:00 PM'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Deposit Status</p>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {profile?.depositStatus ? formatStatusLabel(profile.depositStatus) : 'Not Submitted'}
+                  </p>
+                </div>
               </div>
 
-              {/* Physical Operating Address */}
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {t('partnerDetails.businessAddress', 'Physical Address')}
-                </span>
-                <p className="mt-0.5 font-semibold text-slate-800 leading-snug">
-                  {[profile?.businessAddress, profile?.district, profile?.pinCode, profile?.state].filter(Boolean).join(', ') ||
-                    'Not provided'}
-                </p>
-              </div>
+              {/* Business Description */}
+              {profile?.businessDescription ? (
+                <div className="rounded-lg bg-slate-50/70 p-3 border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      About Business & Dealership
+                    </p>
+                    {profile.businessDescription.length > 200 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                        className="text-[11px] font-bold text-amber-700 hover:text-amber-800"
+                      >
+                        {isDescriptionExpanded ? 'Show less' : 'Read more'}
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    className={`mt-1.5 text-xs leading-relaxed text-slate-700 ${
+                      !isDescriptionExpanded && profile.businessDescription.length > 200 ? 'line-clamp-3' : ''
+                    }`}
+                  >
+                    {profile.businessDescription}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Service Areas */}
-              <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {t('partnerDetails.serviceAreas', 'Service Areas Covered')}
-                </span>
-                <p className="mt-0.5 font-semibold text-slate-800">
-                  {profile?.serviceAreas || 'Standard District Coverage'}
+              <div className="rounded-lg bg-slate-50/70 p-3 border border-slate-100">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Territory & Service Areas Covered
+                </p>
+                <p className="mt-1 font-semibold text-slate-800 text-xs">
+                  {profile?.serviceAreas || 'Standard Regional Territory'}
                 </p>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Card D: Statutory & Tax Identification */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  {t('partnerDetails.registrationDetails', 'Statutory & Tax Identity')}
-                </h2>
-              </div>
-            </div>
-
-            <div className="mt-3.5 space-y-2 text-xs">
-              {/* GSTIN */}
-              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
-                <span className="text-[11px] font-medium text-slate-500">GST Number</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-bold text-slate-900">
-                    {profile?.gstNumber || 'Not provided'}
-                  </span>
-                  {profile?.gstNumber && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(profile.gstNumber, 'gst')}
-                      className="text-slate-400 hover:text-slate-700"
-                      title="Copy GSTIN"
-                    >
-                      {copiedField === 'gst' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  )}
+          {/* TAB 3: KYC & STATUTORY VAULT */}
+          {activeTab === 'kyc' && (
+            <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-amber-600" />
+                    KYC Documents & Statutory Verification
+                  </h2>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    Statutory tax identifiers and uploaded official identity records.
+                  </p>
                 </div>
-              </div>
-
-              {/* Trade License / Registration */}
-              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
-                <span className="text-[11px] font-medium text-slate-500">Registration / CIN</span>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="max-w-[140px] truncate font-mono font-bold text-slate-900"
-                    title={profile?.businessRegistrationNumber}
+                {canManageKyc && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKycDecision(partner.kycStatus === 'APPROVED' ? 'APPROVED' : 'APPROVED');
+                      setShowKycModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-bold text-slate-950 hover:bg-amber-400 shadow-2xs"
                   >
-                    {profile?.businessRegistrationNumber || 'Not provided'}
-                  </span>
-                  {profile?.businessRegistrationNumber && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(profile.businessRegistrationNumber, 'regNo')}
-                      className="text-slate-400 hover:text-slate-700"
-                      title="Copy Registration Number"
-                    >
-                      {copiedField === 'regNo' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Referral Code */}
-              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
-                <span className="text-[11px] font-medium text-slate-500">Referral Code</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-bold text-slate-900">
-                    {profile?.referralCode || 'None'}
-                  </span>
-                  {profile?.referralCode && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(profile.referralCode, 'refCode')}
-                      className="text-slate-400 hover:text-slate-700"
-                      title="Copy Referral Code"
-                    >
-                      {copiedField === 'refCode' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Website */}
-              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
-                <span className="text-[11px] font-medium text-slate-500">Official Website</span>
-                {profile?.websiteUrl ? (
-                  <a
-                    href={profile.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-blue-600 hover:underline"
-                  >
-                    <span>Visit link</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  <span className="text-slate-400">Not provided</span>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Update KYC
+                  </button>
                 )}
               </div>
 
-              {/* Social Links */}
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-[11px] font-medium text-slate-500">Social Channels</span>
-                <span className="max-w-[140px] truncate text-slate-700 font-semibold" title={profile?.socialLinks}>
-                  {profile?.socialLinks || 'None listed'}
-                </span>
-              </div>
-            </div>
-          </div>
+              {/* Statutory Identification Details */}
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 text-xs">
+                {/* GSTIN */}
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    GST Number
+                  </span>
+                  <div className="mt-0.5 flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-900 truncate">
+                      {profile?.gstNumber || 'Not provided'}
+                    </span>
+                    {profile?.gstNumber && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(profile.gstNumber, 'tab-gst')}
+                        className="text-slate-400 hover:text-slate-700"
+                        title="Copy GST"
+                      >
+                        {copiedField === 'tab-gst' ? (
+                          <Check className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-          {/* Card E: KYC Verification & Document Vault */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div
-              onClick={() => setIsKycVaultExpanded(!isKycVaultExpanded)}
-              className="flex cursor-pointer items-center justify-between border-b border-slate-100 pb-3"
-            >
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  KYC Document Vault
-                </h2>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
-                  {verificationDetail?.documents.length || 0}
-                </span>
-              </div>
-              <button type="button" className="text-slate-400 hover:text-slate-700">
-                {isKycVaultExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-            </div>
+                {/* CIN / Reg No */}
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Registration / CIN
+                  </span>
+                  <div className="mt-0.5 flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-900 truncate" title={profile?.businessRegistrationNumber}>
+                      {profile?.businessRegistrationNumber || 'Not provided'}
+                    </span>
+                    {profile?.businessRegistrationNumber && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(profile.businessRegistrationNumber, 'tab-reg')}
+                        className="text-slate-400 hover:text-slate-700"
+                        title="Copy Reg #"
+                      >
+                        {copiedField === 'tab-reg' ? (
+                          <Check className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-            {isKycVaultExpanded && (
-              <div className="mt-3.5 space-y-3">
+                {/* Referral Code */}
+                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Referral Code
+                  </span>
+                  <div className="mt-0.5 flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-900 truncate">
+                      {profile?.referralCode || 'None'}
+                    </span>
+                    {profile?.referralCode && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(profile.referralCode, 'tab-ref')}
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        {copiedField === 'tab-ref' ? (
+                          <Check className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Uploaded Documents List */}
+              <div className="space-y-2.5">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Submitted KYC Credentials ({verificationDetail?.documents.length || 0})
+                </h3>
+
                 {!verificationDetail || verificationDetail.documents.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-4 text-center">
-                    <ShieldCheck className="mx-auto h-6 w-6 text-slate-300" />
-                    <p className="mt-1 text-xs font-bold text-slate-600">No documents submitted yet</p>
-                    <p className="text-[10px] text-slate-400">Partner has not completed statutory document upload.</p>
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+                    <ShieldCheck className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-2 text-xs font-bold text-slate-700">No KYC documents on file</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      The partner has not completed statutory document upload yet.
+                    </p>
                   </div>
                 ) : (
-                  verificationDetail.documents.map((document) => {
-                    const documentType = document.documentType as KycVerificationDocumentType;
-                    const safeFields =
-                      document.verificationResult &&
-                      ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)
-                        ? getKycVerificationFields(documentType, document.verificationResult)
-                        : [];
-                    const detailFields = safeFields.map((field) => {
-                      if (field.label === 'Masked PAN' && document.documentNumber) {
-                        return { ...field, label: 'PAN Number', value: document.documentNumber };
-                      }
-                      if (field.label === 'Masked GSTIN' && document.documentNumber) {
-                        return { ...field, label: 'GSTIN', value: document.documentNumber };
-                      }
-                      return field;
-                    });
-                    const status = formatPartnerDocumentStatus(document.verificationStatus);
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    {verificationDetail.documents.map((document) => {
+                      const documentType = document.documentType as KycVerificationDocumentType;
+                      const safeFields =
+                        document.verificationResult &&
+                        ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)
+                          ? getKycVerificationFields(documentType, document.verificationResult)
+                          : [];
+                      const status = formatPartnerDocumentStatus(document.verificationStatus);
 
-                    return (
-                      <div
-                        key={document.id}
-                        className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs transition hover:border-slate-300"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-extrabold text-slate-900 tracking-tight">
-                              {document.documentType.replaceAll('_', ' ')}
-                            </p>
-                            <p className="mt-0.5 truncate text-[10px] text-slate-500 font-medium">
-                              {document.fileName || 'No file attached'}
-                            </p>
+                      return (
+                        <div
+                          key={document.id}
+                          className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs hover:border-amber-300 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-extrabold text-slate-900 tracking-tight">
+                                {document.documentType.replaceAll('_', ' ')}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-slate-500 font-medium">
+                                {document.fileName || 'No file attached'}
+                              </p>
+                            </div>
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold border ${
+                                status === 'VERIFIED'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : status === 'FAILED'
+                                  ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                  : 'bg-amber-50 text-amber-900 border-amber-300'
+                              }`}
+                            >
+                              {status === 'VERIFIED' ? (
+                                <CheckCircle2 className="h-3 w-3" />
+                              ) : (
+                                <Clock3 className="h-3 w-3" />
+                              )}
+                              {status.replaceAll('_', ' ')}
+                            </span>
                           </div>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                              status === 'VERIFIED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : status === 'FAILED'
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {status === 'VERIFIED' ? (
-                              <CheckCircle2 className="h-3 w-3" />
-                            ) : (
-                              <Clock3 className="h-3 w-3" />
-                            )}
-                            {status.replaceAll('_', ' ')}
-                          </span>
-                        </div>
 
-                        {/* Document Number & Signatory Name */}
-                        <div className="mt-2.5 grid grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-slate-400">Doc No.</span>
-                            <p className="font-mono font-bold text-slate-800 truncate">
-                              {document.documentNumber || '-'}
-                            </p>
+                          {/* Document Number & Name */}
+                          <div className="mt-2.5 grid grid-cols-2 gap-2 text-[11px] bg-white p-2 rounded-lg border border-slate-100">
+                            <div>
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block">Doc No.</span>
+                              <span className="font-mono font-bold text-slate-800 truncate block">
+                                {document.documentNumber || '—'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block">Name on Doc</span>
+                              <span className="font-bold text-slate-800 truncate block">
+                                {document.nameOnDocument || '—'}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-slate-400">Name on Doc</span>
-                            <p className="font-bold text-slate-800 truncate">
-                              {document.nameOnDocument || '-'}
-                            </p>
-                          </div>
-                        </div>
 
-                        {/* Verified Date & Document Actions */}
-                        <div className="mt-2.5 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[11px]">
-                          <span className="text-[10px] text-slate-400">
-                            {document.verificationCompletedAt
-                              ? `Verified ${formatPortalDate(document.verificationCompletedAt)}`
-                              : 'Pending check'}
-                          </span>
+                          {/* Actions */}
+                          <div className="mt-2.5 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[11px]">
+                            <span className="text-[10px] text-slate-400">
+                              {document.verificationCompletedAt
+                                ? `Verified ${formatPortalDate(document.verificationCompletedAt)}`
+                                : 'Pending verification'}
+                            </span>
 
-                          {document.fileUrl ? (
-                            <div className="flex items-center gap-2">
+                            {document.fileUrl ? (
                               <button
                                 type="button"
                                 onClick={() => void openOrDownloadDocument(document)}
-                                className="inline-flex items-center gap-1 font-bold text-amber-700 hover:text-amber-800"
+                                className="inline-flex items-center gap-1 font-bold text-amber-800 hover:text-amber-900"
                               >
                                 {canPreviewPartnerDocument(document.fileName, document.fileUrl) ? (
                                   <>
@@ -1728,118 +1501,325 @@ export default function PartnerDetailPage({
                                   </>
                                 )}
                               </button>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-slate-400">No file</span>
-                          )}
-                        </div>
-
-                        {/* Detailed Verified Meta (if available) */}
-                        {detailFields.length > 0 && (
-                          <div className="mt-2 space-y-1 rounded bg-white p-2 border border-slate-100 text-[10px]">
-                            {detailFields.slice(0, 3).map((f) => (
-                              <div key={f.label} className="flex justify-between">
-                                <span className="text-slate-400 font-semibold">{f.label}:</span>
-                                <span className="font-bold text-slate-800 text-right truncate max-w-[150px]">
-                                  {f.value}
-                                </span>
-                              </div>
-                            ))}
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">No file attached</span>
+                            )}
                           </div>
-                        )}
-
-                        {document.verificationMessage && (
-                          <p className="mt-1.5 text-[10px] font-semibold text-rose-600">
-                            {document.verificationMessage}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-
-          {/* Card F: Legal Agreements & Audit Trail */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs">
-            <div
-              onClick={() => setIsAgreementsExpanded(!isAgreementsExpanded)}
-              className="flex cursor-pointer items-center justify-between border-b border-slate-100 pb-3"
-            >
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-amber-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Agreements & Audit History
-                </h2>
-              </div>
-              <button type="button" className="text-slate-400 hover:text-slate-700">
-                {isAgreementsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
             </div>
+          )}
 
-            {isAgreementsExpanded && (
-              <div className="mt-3.5 space-y-3 text-xs">
-                {/* Legal Agreements */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Accepted Agreements
-                  </p>
-                  {!verificationDetail?.agreements || verificationDetail.agreements.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">No agreements recorded yet.</p>
-                  ) : (
-                    verificationDetail.agreements.map((agreement) => (
+          {/* TAB 4: LEGAL AGREEMENTS & AUDIT */}
+          {activeTab === 'agreements' && (
+            <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-4">
+              <div className="border-b border-slate-100 pb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <ClipboardCheck className="h-4 w-4 text-amber-600" />
+                  Legal Agreements & Review Activity
+                </h2>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Accepted dealership terms, platform agreements, and administrative audit logs.
+                </p>
+              </div>
+
+              {/* Agreements */}
+              <div>
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Accepted Agreements ({verificationDetail?.agreements.length || 0})
+                </h3>
+                {!verificationDetail?.agreements || verificationDetail.agreements.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No legal agreements recorded yet.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {verificationDetail.agreements.map((agreement) => (
                       <div
                         key={`${agreement.agreementType}-${agreement.version}`}
-                        className="mb-1.5 flex items-center justify-between rounded-lg bg-slate-50/70 p-2 border border-slate-100"
+                        className="flex items-center justify-between rounded-lg bg-slate-50/70 p-2.5 border border-slate-100 text-xs"
                       >
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-900 truncate">
+                        <div>
+                          <p className="font-bold text-slate-900">
                             {agreement.agreementType.replaceAll('_', ' ')}
                           </p>
                           <p className="text-[10px] text-slate-400">Version {agreement.version}</p>
                         </div>
-                        <span className="text-right text-[10px] font-bold text-emerald-700 shrink-0">
-                          Accepted<br />
-                          {formatPortalDate(agreement.acceptedAt)}
+                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                          Accepted on {formatPortalDate(agreement.acceptedAt)}
                         </span>
                       </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Audit & Review History */}
-                {verificationDetail?.reviewHistory && verificationDetail.reviewHistory.length > 0 && (
-                  <div className="border-t border-slate-100 pt-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                      Review Activity
-                    </p>
-                    <div className="space-y-2">
-                      {verificationDetail.reviewHistory.slice(0, 4).map((review) => (
-                        <div key={review.id} className="rounded-lg bg-slate-50/60 p-2 border border-slate-100 text-[11px]">
-                          <div className="flex items-center justify-between font-bold text-slate-800">
-                            <span>{review.action.replaceAll('_', ' ')}</span>
-                            <span className="text-[10px] font-semibold text-slate-400">
-                              {formatPortalDate(review.createdAt)}
-                            </span>
-                          </div>
-                          {review.comment && (
-                            <p className="mt-1 text-[10px] text-slate-600 italic">
-                              &ldquo;{review.comment}&rdquo;
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>
-            )}
+
+              {/* Review History */}
+              {verificationDetail?.reviewHistory && verificationDetail.reviewHistory.length > 0 && (
+                <div className="border-t border-slate-100 pt-3">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    Review Activity History
+                  </h3>
+                  <div className="space-y-2">
+                    {verificationDetail.reviewHistory.map((review) => (
+                      <div
+                        key={review.id}
+                        className="rounded-lg bg-slate-50/60 p-2.5 border border-slate-100 text-xs"
+                      >
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <span>{review.action.replaceAll('_', ' ')}</span>
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            {formatPortalDate(review.createdAt)}
+                          </span>
+                        </div>
+                        {review.comment && (
+                          <p className="mt-1 text-[11px] text-slate-600 italic">
+                            &ldquo;{review.comment}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT SECONDARY PANEL (4 of 12 columns) */}
+        <div className="space-y-3.5 lg:col-span-5 xl:col-span-4">
+          {/* Card A: Direct Contact Dossier */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-4 w-4 text-amber-600" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Contact Coordinates
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2 text-xs">
+              {/* Primary Mobile */}
+              <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 border border-slate-100">
+                <div className="min-w-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Primary Mobile
+                  </span>
+                  <span className="font-bold text-slate-900 truncate block">
+                    {partner.mobile || 'Not provided'}
+                  </span>
+                </div>
+                {partner.mobile && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(partner.mobile, 'mobile')}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                      title="Copy Mobile"
+                    >
+                      {copiedField === 'mobile' ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                    <a
+                      href={`tel:${cleanPhone}`}
+                      className="rounded p-1 text-emerald-700 hover:bg-emerald-50"
+                      title="Call"
+                    >
+                      <Phone className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Alternate Mobile */}
+              <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 border border-slate-100">
+                <div className="min-w-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Alternate Phone
+                  </span>
+                  <span className="font-bold text-slate-900 truncate block">
+                    {profile?.alternateMobile || 'Not provided'}
+                  </span>
+                </div>
+                {profile?.alternateMobile && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(profile.alternateMobile, 'altMobile')}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                      title="Copy Alternate Mobile"
+                    >
+                      {copiedField === 'altMobile' ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                    <a
+                      href={`tel:${profile.alternateMobile.replace(/\D/g, '')}`}
+                      className="rounded p-1 text-emerald-700 hover:bg-emerald-50"
+                      title="Call"
+                    >
+                      <Phone className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* WhatsApp Hotline */}
+              <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 border border-slate-100">
+                <div className="min-w-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                    WhatsApp Hotline
+                  </span>
+                  <span className="font-bold text-slate-900 truncate block">
+                    {partner.whatsappNumber || partner.mobile || 'Not provided'}
+                  </span>
+                </div>
+                {cleanWhatsapp && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(partner.whatsappNumber || partner.mobile, 'whatsapp')}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                      title="Copy WhatsApp"
+                    >
+                      {copiedField === 'whatsapp' ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                    <a
+                      href={`https://wa.me/91${cleanWhatsapp}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded p-1 text-emerald-700 hover:bg-emerald-50"
+                      title="Open WhatsApp"
+                    >
+                      <Send className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Email */}
+              <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 border border-slate-100">
+                <div className="min-w-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Email Address
+                  </span>
+                  <span className="font-bold text-slate-900 truncate block" title={partner.email}>
+                    {partner.email || 'Not provided'}
+                  </span>
+                </div>
+                {partner.email && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(partner.email, 'email')}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                      title="Copy Email"
+                    >
+                      {copiedField === 'email' ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                    <a
+                      href={`mailto:${partner.email}`}
+                      className="rounded p-1 text-slate-600 hover:bg-slate-100"
+                      title="Send Email"
+                    >
+                      <Mail className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Physical Address */}
+              <div className="rounded-lg bg-slate-50/80 p-2.5 border border-slate-100">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Operating Address
+                </span>
+                <p className="mt-0.5 font-semibold text-slate-800 leading-snug">
+                  {[profile?.businessAddress, profile?.district, profile?.pinCode, profile?.state].filter(Boolean).join(', ') ||
+                    'Not specified'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Card B: Quick Governance & Security Hub */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <Lock className="h-4 w-4 text-amber-600" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Account Governance
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2 text-xs">
+              {/* Account Status Row */}
+              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
+                <span className="text-slate-500 font-medium">Account Status</span>
+                <span className={`rounded px-2 py-0.5 text-[10px] font-bold border ${statusClass}`}>
+                  {partnerStatus}
+                </span>
+              </div>
+
+              {/* KYC Status Row */}
+              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
+                <span className="text-slate-500 font-medium">KYC Decision</span>
+                <span
+                  className={`rounded px-2 py-0.5 text-[10px] font-bold border ${
+                    partner.kycStatus === 'APPROVED'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : partner.kycStatus === 'REJECTED'
+                      ? 'bg-rose-50 text-rose-800 border-rose-300'
+                      : 'bg-amber-50 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  {partner.kycStatus || 'PENDING'}
+                </span>
+              </div>
+
+              {/* Onboarding Status Row */}
+              <div className="flex items-center justify-between border-b border-slate-50 py-1.5">
+                <span className="text-slate-500 font-medium">Onboarding Status</span>
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                  {partner.onboardingStatus || 'PENDING'}
+                </span>
+              </div>
+
+              {/* Password Reset Action */}
+              {canResetPassword && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(true)}
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    <KeyRound className="h-3.5 w-3.5 text-slate-500" />
+                    Reset Partner Password
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 4. INTERACTIVE MODALS */}
+      {/* 4. MODALS */}
 
       {/* Document Preview Modal */}
       {documentPreview ? (
@@ -1850,69 +1830,64 @@ export default function PartnerDetailPage({
           onClick={() => setDocumentPreview(null)}
         >
           <div
-            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-150"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/90">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
               <div className="min-w-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {documentPreview.document.documentType.replaceAll('_', ' ')}
-                </span>
-                <h3 className="truncate text-sm font-bold text-slate-900">
-                  {documentPreview.document.fileName || 'KYC Document Preview'}
-                </h3>
+                <p className="text-sm font-bold text-slate-900 truncate">
+                  {documentPreview.document.fileName || documentPreview.document.documentType}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {documentPreview.document.documentType.replaceAll('_', ' ')} • Secure viewer
+                </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {documentPreview.document.fileUrl && (
-                  <button
-                    type="button"
-                    onClick={() => void downloadDocument(documentPreview.document)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    <span>Download</span>
-                  </button>
-                )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void downloadDocument(documentPreview.document)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setDocumentPreview(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="flex min-h-[350px] max-h-[75vh] items-center justify-center overflow-auto bg-slate-950 p-4">
+            {/* Modal Body */}
+            <div className="flex flex-1 items-center justify-center overflow-auto bg-slate-900/90 p-4 min-h-[380px]">
               {documentPreview.loading ? (
-                <div className="text-center text-sm font-semibold text-slate-400">
-                  Decrypting & loading secure document preview...
-                </div>
+                <BrandLoader size="sm" text="Decrypting document..." />
               ) : documentPreview.error ? (
-                <div className="flex flex-col items-center gap-3 text-center">
-                  <AlertCircle className="h-8 w-8 text-rose-500" />
-                  <p className="text-xs font-semibold text-rose-400">{documentPreview.error}</p>
+                <div className="rounded-xl border border-rose-200 bg-white p-6 text-center text-xs text-rose-700 max-w-md">
+                  <AlertCircle className="mx-auto h-8 w-8 text-rose-500" />
+                  <p className="mt-2 font-bold">{documentPreview.error}</p>
                 </div>
-              ) : documentPreview.previewUrl && documentPreview.kind === 'image' ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+              ) : documentPreview.kind === 'pdf' && documentPreview.previewUrl ? (
+                <iframe
                   src={documentPreview.previewUrl}
-                  alt={documentPreview.document.fileName || 'KYC Document'}
-                  className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-2xl"
+                  title={documentPreview.document.fileName || 'Document PDF Preview'}
+                  className="h-[75vh] w-full rounded-lg bg-white"
                 />
-              ) : (
-                <div className="flex flex-col items-center gap-3 text-center text-slate-300">
-                  <FileText className="h-12 w-12 text-slate-400" />
-                  <p className="text-sm font-semibold">Direct in-browser preview is available for images.</p>
-                  <button
-                    type="button"
-                    onClick={() => void downloadDocument(documentPreview.document)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-4 py-2 text-xs font-bold text-slate-900 transition hover:bg-[#E5AD06]"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span>Download File to Inspect</span>
-                  </button>
+              ) : documentPreview.previewUrl ? (
+                <div className="relative max-h-[75vh] max-w-full">
+                  <img
+                    src={documentPreview.previewUrl}
+                    alt={documentPreview.document.fileName || 'KYC Document'}
+                    className="max-h-[75vh] max-w-full rounded-lg object-contain shadow-md"
+                  />
                 </div>
+              ) : (
+                <p className="text-xs text-white">Preview unavailable.</p>
               )}
             </div>
           </div>
@@ -1921,44 +1896,45 @@ export default function PartnerDetailPage({
 
       {/* Account Status Modal */}
       {showStatusModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowStatusModal(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-extrabold text-slate-900">
-              {statusActionType === 'ACTIVE' ? 'Activate Partner Account?' : 'Deactivate Partner Account?'}
-            </h3>
-            <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-              {statusActionType === 'ACTIVE'
-                ? `Activating ${partner.name} will restore partner portal login access and make their live machine listings visible to buyers.`
-                : `Deactivating ${partner.name} will suspend partner portal access and hide their active machine listings.`}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-900">
+                <AlertCircle className="h-4.5 w-4.5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {statusActionType === 'ACTIVE' ? 'Activate Partner Account' : 'Deactivate Partner Account'}
+                </h3>
+                <p className="text-[11px] text-slate-500">Confirm account status modification</p>
+              </div>
+            </div>
+
+            <p className="mt-3.5 text-xs text-slate-600">
+              Are you sure you want to change <strong className="font-bold text-slate-900">{partner.name}</strong> to{' '}
+              <strong className="font-bold text-slate-900">{statusActionType === 'ACTIVE' ? 'Active' : 'Inactive'}</strong>?
+              {statusActionType === 'INACTIVE' && ' This will temporarily suspend their listing and portal privileges.'}
             </p>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
               <button
                 type="button"
                 onClick={() => setShowStatusModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 disabled={statusSubmitting}
-                onClick={handleToggleStatus}
-                className={`rounded-lg px-4 py-2 text-xs font-bold text-white shadow-2xs transition ${
+                onClick={() => void handleToggleStatus()}
+                className={`rounded-lg px-4 py-1.5 text-xs font-bold text-white shadow-2xs disabled:opacity-50 ${
                   statusActionType === 'ACTIVE'
                     ? 'bg-emerald-600 hover:bg-emerald-700'
                     : 'bg-rose-600 hover:bg-rose-700'
-                } disabled:opacity-50`}
+                }`}
               >
-                {statusSubmitting ? 'Updating...' : statusActionType === 'ACTIVE' ? 'Confirm Activation' : 'Confirm Deactivation'}
+                {statusSubmitting ? 'Saving...' : 'Confirm Status Change'}
               </button>
             </div>
           </div>
@@ -1967,84 +1943,74 @@ export default function PartnerDetailPage({
 
       {/* KYC Decision Modal */}
       {showKycModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowKycModal(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-900">
+                <ShieldCheck className="h-4.5 w-4.5" />
+              </span>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Update KYC Verification Status</h3>
-                <p className="text-xs text-slate-500 font-medium">Partner: {partner.name}</p>
+                <h3 className="text-sm font-bold text-slate-900">Update KYC Decision</h3>
+                <p className="text-[11px] text-slate-500">Record verification outcome and compliance notes</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowKycModal(false)}
-                className="rounded p-1 text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">Decision</label>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Verification Decision
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['APPROVED', 'CHANGES_REQUESTED', 'REJECTED'] as const).map((dec) => (
                     <button
                       key={dec}
                       type="button"
                       onClick={() => setKycDecision(dec)}
-                      className={`rounded-xl border p-2.5 text-center text-xs font-bold transition ${
+                      className={`rounded-lg border p-2 text-center text-xs font-bold transition-all ${
                         kycDecision === dec
                           ? dec === 'APPROVED'
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/20'
                             : dec === 'CHANGES_REQUESTED'
-                              ? 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20'
-                              : 'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20'
+                            ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-400/20'
+                            : 'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-400/20'
                           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {dec === 'APPROVED' ? 'Approve' : dec === 'CHANGES_REQUESTED' ? 'Request Changes' : 'Reject'}
+                      {dec === 'APPROVED' ? 'Approve' : dec === 'CHANGES_REQUESTED' ? 'Req. Changes' : 'Reject'}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Internal Verification Notes / Reason
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Compliance Notes / Reason
                 </label>
                 <textarea
                   rows={3}
                   value={kycNotes}
                   onChange={(e) => setKycNotes(e.target.value)}
-                  placeholder="E.g., PAN and GSTIN verified successfully with authorized signatory match."
-                  className="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+                  placeholder="e.g. GST and PAN verified successfully against MCA registry."
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
                 />
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+            <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
               <button
                 type="button"
                 onClick={() => setShowKycModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 disabled={kycSubmitting}
-                onClick={handleUpdateKycStatus}
-                className="rounded-lg bg-[#FFC107] px-4 py-2 text-xs font-black text-slate-900 shadow-2xs hover:bg-[#E5AD06] disabled:opacity-50"
+                onClick={() => void handleUpdateKycStatus()}
+                className="rounded-lg bg-[#FFC107] px-4 py-1.5 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs disabled:opacity-50"
               >
-                {kycSubmitting ? 'Saving Decision...' : 'Save Decision'}
+                {kycSubmitting ? 'Saving...' : 'Apply Decision'}
               </button>
             </div>
           </div>
@@ -2053,64 +2019,59 @@ export default function PartnerDetailPage({
 
       {/* Reset Password Modal */}
       {showPasswordModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowPasswordModal(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-900">
+                <KeyRound className="h-4.5 w-4.5" />
+              </span>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Reset Partner Password</h3>
-                <p className="text-xs text-slate-500 font-medium">Partner: {partner.name}</p>
+                <h3 className="text-sm font-bold text-slate-900">Reset Partner Password</h3>
+                <p className="text-[11px] text-slate-500">Provide new credentials for {partner.name}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowPasswordModal(false)}
-                className="rounded p-1 text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
 
-            <form onSubmit={handleResetPassword} className="mt-4 space-y-4">
+            <form onSubmit={handleResetPassword} className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">New Password</label>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  New Password (min 6 characters)
+                </label>
                 <input
-                  type="text"
+                  type="password"
                   required
+                  minLength={6}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter strong new password"
-                  className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+                  placeholder="Enter new strong password"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
                 />
               </div>
 
-              {passwordErrorMsg && (
-                <p className="text-xs font-semibold text-rose-600">{passwordErrorMsg}</p>
-              )}
               {passwordSuccessMsg && (
-                <p className="text-xs font-semibold text-emerald-600">{passwordSuccessMsg}</p>
+                <div className="rounded-lg bg-emerald-50 p-2 text-xs font-bold text-emerald-800 border border-emerald-200">
+                  {passwordSuccessMsg}
+                </div>
+              )}
+              {passwordErrorMsg && (
+                <div className="rounded-lg bg-rose-50 p-2 text-xs font-bold text-rose-800 border border-rose-200">
+                  {passwordErrorMsg}
+                </div>
               )}
 
-              <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={passwordSubmitting || !newPassword.trim()}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-slate-800 disabled:opacity-50"
+                  disabled={passwordSubmitting}
+                  className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-bold text-white hover:bg-slate-800 shadow-2xs disabled:opacity-50"
                 >
-                  {passwordSubmitting ? 'Resetting...' : 'Update Password'}
+                  {passwordSubmitting ? 'Updating...' : 'Update Password'}
                 </button>
               </div>
             </form>
