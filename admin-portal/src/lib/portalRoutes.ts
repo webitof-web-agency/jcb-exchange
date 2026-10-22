@@ -12,6 +12,7 @@ import {
   recruitmentAnyPermissions,
 } from './recruitmentPermissions';
 import { blogAnyPermissions } from './blogPermissions';
+import { CRM_VIEW_PERMISSIONS } from './adminPermissionCatalog';
 import {
   IDENTITY_HUB_VIEW_PERMISSIONS,
   VEHICLE_TRANSPORT_VIEW_PERMISSIONS,
@@ -36,6 +37,12 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     permissions: ['kyc.manage'],
   },
   {
+    superadminPath: '/superadmin/crm',
+    employeePath: '/employee/crm',
+    permissions: CRM_VIEW_PERMISSIONS,
+  },
+  {
+    // Old enquiry links; the page redirects into the CRM.
     superadminPath: '/superadmin/enquiries',
     employeePath: '/employee/enquiries',
     permissions: ['enquiries.manage'],

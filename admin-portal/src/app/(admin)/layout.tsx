@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
+import { CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -50,7 +51,7 @@ const navItems = [
   { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/superadmin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
   { href: '/superadmin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
-  { href: '/superadmin/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare },
+  { href: '/superadmin/crm', labelKey: 'admin.crm', defaultLabel: 'CRM & Follow-ups', icon: MessagesSquare },
   { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
   { href: '/superadmin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
   { href: '/superadmin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
@@ -75,6 +76,7 @@ const adminNavItems = [
   { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
   { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
   { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/admin/crm', labelKey: 'admin.crm', defaultLabel: 'CRM & Follow-ups', icon: MessagesSquare },
   { href: '/admin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
   { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
   { href: '/admin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
@@ -86,7 +88,7 @@ const employeeModuleNavItems = [
   { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage', 'kyc.edit.override'] },
   { href: '/employee/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
   { href: '/employee/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
-  { href: '/employee/enquiries', labelKey: 'admin.enquiries', icon: MessagesSquare, permissions: ['enquiries.manage'] },
+  { href: '/employee/crm', labelKey: 'admin.crm', defaultLabel: 'CRM & Follow-ups', icon: MessagesSquare, permissions: CRM_VIEW_PERMISSIONS },
   { href: '/employee/listings', labelKey: 'admin.listings', icon: Truck, permissions: ['listings.read'] },
   { href: '/employee/partners', labelKey: 'admin.partners', icon: List, permissions: ['partners.read'] },
   { href: '/employee/visitors', labelKey: 'admin.visitors', icon: UsersRound, permissions: ['visitors.read'] },
@@ -472,7 +474,7 @@ export default function AdminLayout({
     // Mark current page as "seen" immediately when we navigate to it
     const markCurrentPageSeen = () => {
       const now = new Date().toISOString();
-      if (pathname.startsWith('/superadmin/enquiries') || pathname.startsWith('/employee/enquiries')) {
+      if (/^\/(superadmin|admin|employee)\/crm/.test(pathname)) {
         setModuleSeenAt('enquiries', now);
       }
       if (pathname.startsWith('/superadmin/visitors') || pathname.startsWith('/employee/visitors')) {
@@ -617,6 +619,9 @@ export default function AdminLayout({
     '/superadmin/partners': t('admin.partnerDirectory'),
     '/superadmin/leads': t('admin.visitors'),
     '/superadmin/enquiries': t('admin.enquiryManagement'),
+    '/superadmin/crm': t('admin.crm', 'CRM & Follow-ups'),
+    '/admin/crm': t('admin.crm', 'CRM & Follow-ups'),
+    '/employee/crm': t('admin.crm', 'CRM & Follow-ups'),
     '/superadmin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/superadmin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/superadmin/visitors': t('admin.visitors'),
@@ -688,6 +693,8 @@ export default function AdminLayout({
       return t('admin.analyticsDetail', 'Listing Analytics');
     }
     if (pathname.startsWith('/superadmin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
+    if (/^\/(superadmin|admin|employee)\/crm\/leads\//.test(pathname)) return t('admin.crmLead', 'Lead');
+    if (/^\/(superadmin|admin|employee)\/crm\/contacts\//.test(pathname)) return t('admin.crmContact', 'Contact');
     if (pathname.startsWith('/superadmin/partners/') || pathname.startsWith('/employee/partners/')) {
       if (pathname.endsWith('/edit')) return t('admin.editPartnerProfile');
       if (pathname.endsWith('/deposit')) return t('admin.partnerDeposit');
@@ -732,7 +739,7 @@ export default function AdminLayout({
       icon: accountsSidebarIcons[item.key],
     }));
   const hasDailyOperationsNav = accountsSidebarItems.length > 0 || [
-    '/enquiries',
+    '/crm',
     '/listings',
     '/tasks',
     '/verifications',
@@ -768,7 +775,7 @@ export default function AdminLayout({
   };
 
   const getNavBadgeCount = (href: string) => {
-    if (href.includes('enquiries')) return badges.enquiries || 0;
+    if (href.endsWith('/crm')) return badges.enquiries || 0;
     if (href.includes('listings')) return badges.listingsPendingApproval || 0;
     if (href.includes('verifications')) return pathname.startsWith(href) ? 0 : badges.verifications;
     if (href.includes('visitors')) return badges.visitors || 0;
@@ -894,7 +901,7 @@ export default function AdminLayout({
           {hasDailyOperationsNav ? (
             <section className="space-y-1">
               {renderSectionLabel('Daily Operations')}
-              {renderStandardNavItem(getVisibleNavItem('/enquiries'))}
+              {renderStandardNavItem(getVisibleNavItem('/crm'))}
               {renderStandardNavItem(getVisibleNavItem('/listings'))}
               {accountsSidebarItems.map((item) => renderStandardNavItem(item))}
               {renderStandardNavItem(getVisibleNavItem('/tasks'))}
@@ -1275,7 +1282,7 @@ export default function AdminLayout({
                       )}
                       {badges.enquiries > 0 && (
                         <Link
-                          href="/superadmin/enquiries"
+                          href="/superadmin/crm?tab=leads"
                           onClick={() => setIsNotificationOpen(false)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-purple-50 text-slate-700 hover:text-purple-950 transition-colors"
                         >

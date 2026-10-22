@@ -1,7 +1,6 @@
-'use client';
+import LegacyEnquiryRedirect from '@/components/crm/LegacyEnquiryRedirect';
 
-import LeadInboxPage from '@/components/portal/LeadInboxPage';
-
-export default function SuperAdminEnquiriesPage() {
-  return <LeadInboxPage />;
+// Enquiries moved into the CRM (Leads tab).
+export default function EnquiriesPage() {
+  return <LegacyEnquiryRedirect />;
 }

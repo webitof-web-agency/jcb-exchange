@@ -8,7 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
+import { CRM_PERMISSION_GROUPS, FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
 
 interface EmployeeRole {
   id: string;
@@ -39,13 +39,14 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
-  'Enquiries': [
+  'CRM & Enquiries': [
     {
-      groupName: 'Enquiries',
+      groupName: 'Enquiries (legacy)',
       permissions: [
-        { id: 'enquiries.manage', label: 'Manage Enquiries' },
+        { id: 'enquiries.manage', label: 'Manage all enquiries (= CRM, every lead)' },
       ],
     },
+    ...CRM_PERMISSION_GROUPS.map((group) => ({ groupName: `CRM: ${group.groupName}`, permissions: group.permissions })),
   ],
   'WhatsApp': [
     {
