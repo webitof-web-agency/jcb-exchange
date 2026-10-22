@@ -140,6 +140,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   liability('4502', 'Discount Received', '4500'),
   liability('4503', 'Write-back of Payables', '4500', { systemKey: 'WRITE_BACK' }),
   liability('4504', 'Profit on Sale of Fixed Assets', '4500', { systemKey: 'ASSET_SALE_PROFIT' }),
+  liability('4505', 'Notice Pay Recovered', '4500', { systemKey: 'NOTICE_PAY_RECOVERY' }),
   liability('4590', 'Round Off', '4500', { kind: 'ROUND_OFF', systemKey: 'ROUND_OFF' }),
 
   asset('5100', 'Cost of Vehicles Sold', '5000', { systemKey: 'COGS_VEHICLES', vehicle: true }),
@@ -155,6 +156,7 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   asset('6110', 'Employer PF Contribution', '6100', { systemKey: 'EMPLOYER_PF' }),
   asset('6120', 'Employer ESI Contribution', '6100', { systemKey: 'EMPLOYER_ESI' }),
   asset('6130', 'Staff Welfare', '6100'),
+  asset('6140', 'Gratuity & Leave Encashment', '6100', { systemKey: 'GRATUITY_EXPENSE' }),
 
   asset('6200', 'Rent', '6000', { gstRate: 18 }),
   asset('6210', 'Electricity & Water', '6000'),

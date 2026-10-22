@@ -3738,3 +3738,141 @@ model FinTaxDocRef {
 
   @@unique([sourceKind, sourceId])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P9: payroll
+// ---------------------------------------------------------------------------
+
+/// Template of earnings / deductions used to fill a salary profile.
+model FinSalaryStructure {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  components Json
+  isActive   Boolean  @default(true)
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// Monthly salary of an employee party. `earnings` = [{ code, name, amount, pfWage }].
+model FinEmployeeSalary {
+  id              String    @id @default(uuid())
+  partyId         String    @unique
+  employeeCode    String?   @db.VarChar(30)
+  designation     String?
+  department      String?
+  dateOfJoining   DateTime? @db.Date
+  dateOfLeaving   DateTime? @db.Date
+  structureId     String?
+  earnings        Json
+  pfApplicable    Boolean   @default(true)
+  pfWageCap       Boolean   @default(true)
+  esiApplicable   Boolean   @default(true)
+  ptState         String?   @db.VarChar(2)
+  monthlyTds      Decimal   @default(0) @db.Decimal(14, 2)
+  uan             String?   @db.VarChar(12)
+  esiNumber       String?   @db.VarChar(17)
+  costCentreId    String?
+  isActive        Boolean   @default(true)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum FinPayrollStatus {
+  DRAFT
+  POSTED
+  PAID
+  CANCELLED
+}
+
+model FinPayrollRun {
+  id               String           @id @default(uuid())
+  month            String           @db.VarChar(7)
+  status           FinPayrollStatus @default(DRAFT)
+  payDate          DateTime?        @db.Date
+  totals           Json
+  voucherId        String?          @unique
+  paymentVoucherId String?          @unique
+  notes            String?          @db.Text
+  createdById      String?
+  approvedById     String?
+  postedAt         DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  payslips FinPayslip[]
+
+  @@index([month, status])
+}
+
+/// One employee's pay for a run. Amount fields are monthly figures after loss-of-pay.
+model FinPayslip {
+  id               String   @id @default(uuid())
+  runId            String
+  partyId          String
+  daysInMonth      Int
+  paidDays         Decimal  @db.Decimal(5, 1)
+  earnings         Json
+  additions        Decimal  @default(0) @db.Decimal(14, 2)
+  gross            Decimal  @db.Decimal(14, 2)
+  pfWage           Decimal  @default(0) @db.Decimal(14, 2)
+  employeePf       Decimal  @default(0) @db.Decimal(14, 2)
+  employeeEsi      Decimal  @default(0) @db.Decimal(14, 2)
+  professionalTax  Decimal  @default(0) @db.Decimal(14, 2)
+  tds              Decimal  @default(0) @db.Decimal(14, 2)
+  advanceRecovery  Decimal  @default(0) @db.Decimal(14, 2)
+  net              Decimal  @db.Decimal(14, 2)
+  employerPf       Decimal  @default(0) @db.Decimal(14, 2)
+  employerEsi      Decimal  @default(0) @db.Decimal(14, 2)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  run FinPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, partyId])
+}
+
+/// Salary advance / loan to an employee, recovered through payroll.
+model FinEmployeeAdvance {
+  id              String   @id @default(uuid())
+  partyId         String
+  date            DateTime @db.Date
+  amount          Decimal  @db.Decimal(14, 2)
+  monthlyRecovery Decimal  @db.Decimal(14, 2)
+  voucherId       String   @unique
+  isActive        Boolean  @default(true)
+  notes           String?  @db.Text
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  @@index([partyId, isActive])
+}
+
+enum FinSettlementDocStatus {
+  DRAFT
+  POSTED
+  PAID
+}
+
+/// Full & final settlement when an employee leaves. `items` = [{ code, label, amount }] (negative = recovery).
+model FinFullFinal {
+  id               String                 @id @default(uuid())
+  partyId          String
+  lastWorkingDay   DateTime               @db.Date
+  items            Json
+  tds              Decimal                @default(0) @db.Decimal(14, 2)
+  advanceRecovery  Decimal                @default(0) @db.Decimal(14, 2)
+  net              Decimal                @db.Decimal(14, 2)
+  status           FinSettlementDocStatus @default(DRAFT)
+  voucherId        String?                @unique
+  paymentVoucherId String?                @unique
+  notes            String?                @db.Text
+  createdById      String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([partyId])
+}
