@@ -1309,15 +1309,44 @@ export default function AdminLayout({
             {/* Profile Dropdown Container */}
             <div className="relative shrink-0">
               <button
+                type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-1.5 sm:gap-2 focus:outline-none hover:bg-slate-50 px-1.5 py-1 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                className={`group flex items-center gap-2 sm:gap-2.5 rounded-xl border px-2 sm:px-2.5 py-1 sm:py-1.5 transition-all duration-150 focus:outline-none select-none ${
+                  isDropdownOpen
+                    ? 'border-amber-400 bg-amber-50/50 shadow-xs ring-2 ring-amber-400/20'
+                    : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-2xs'
+                }`}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+                title={`${displayName} (${translatedRoleLabel})`}
               >
-                <div className="text-right hidden sm:block">
-                  <p className="text-xs font-bold text-slate-900 leading-tight">{displayName}</p>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold leading-none">{translatedRoleLabel}</span>
+                {/* User Name & Role Pill */}
+                <div className="text-right hidden sm:flex flex-col items-end justify-center min-w-0">
+                  <span className="text-xs font-bold text-slate-900 tracking-tight leading-tight truncate max-w-[130px] group-hover:text-slate-950">
+                    {displayName}
+                  </span>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center rounded-sm bg-amber-100/90 px-1.5 py-0.25 text-[8.5px] font-black uppercase tracking-wider text-amber-950 border border-amber-200/80 leading-none">
+                      {translatedRoleLabel}
+                    </span>
+                  </div>
                 </div>
-                <UserAvatar user={user} size="header-compact" />
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+
+                {/* Avatar with Live Indicator */}
+                <div className="relative shrink-0">
+                  <UserAvatar user={user} size="header-compact" />
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-1.5 ring-white shadow-2xs"
+                    title="Active Session"
+                  />
+                </div>
+
+                {/* Animated Chevron */}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+                    isDropdownOpen ? 'rotate-180 text-amber-700' : 'group-hover:text-slate-600'
+                  }`}
+                />
               </button>
 
               {/* Dropdown Menu */}
@@ -1329,40 +1358,68 @@ export default function AdminLayout({
                     onClick={() => setIsDropdownOpen(false)}
                   />
 
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden transform origin-top-right transition-all duration-200 ease-out">
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white">
-                      <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{user.email || t('common.adminEmailFallback')}</p>
+                  <div className="absolute right-0 top-full mt-2 w-68 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 transform origin-top-right transition-all duration-150 ease-out animate-in fade-in zoom-in-95">
+                    {/* Header Summary */}
+                    <div className="px-4 py-3.5 bg-gradient-to-b from-slate-50/90 to-white flex items-center gap-3">
+                      <div className="relative shrink-0">
+                        <UserAvatar user={user} size="header" />
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-extrabold text-slate-900 truncate">{displayName}</p>
+                        <p className="text-[11px] text-slate-500 truncate mt-0.5">{user.email || t('common.adminEmailFallback')}</p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className="inline-flex items-center rounded-sm bg-amber-100 px-1.5 py-0.25 text-[8.5px] font-black uppercase tracking-wider text-amber-950 border border-amber-200">
+                            {translatedRoleLabel}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Live
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="p-1.5">
+
+                    {/* Navigation Items */}
+                    <div className="p-1.5 space-y-0.5 text-xs">
                       <button
                         type="button"
                         onClick={() => {
                           setIsDropdownOpen(false);
                           router.push(profileHref);
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors group"
+                        className="w-full flex items-center justify-between px-3 py-2 text-slate-700 hover:bg-slate-50 hover:text-slate-950 rounded-lg transition-colors group"
                       >
-                        <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                        <span>{t('common.myProfile')}</span>
+                        <div className="flex items-center gap-2.5">
+                          <UserIcon className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition-colors" />
+                          <span className="font-semibold">{t('common.myProfile')}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">Account</span>
                       </button>
+
                       <button
                         type="button"
                         onClick={() => {
                           setIsDropdownOpen(false);
                           router.push(settingsHref);
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors group"
+                        className="w-full flex items-center justify-between px-3 py-2 text-slate-700 hover:bg-slate-50 hover:text-slate-950 rounded-lg transition-colors group"
                       >
-                        <Settings className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                        <span>{t('common.settings')}</span>
+                        <div className="flex items-center gap-2.5">
+                          <Settings className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition-colors" />
+                          <span className="font-semibold">{t('common.settings')}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">System</span>
                       </button>
-                      <div className="h-px bg-gray-100 my-1.5 mx-2"></div>
+                    </div>
+
+                    {/* Logout Footer */}
+                    <div className="p-1.5">
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors group"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-colors group"
                       >
-                        <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600" />
+                        <LogOut className="w-4 h-4 text-rose-500 group-hover:text-rose-600 transition-colors" />
                         <span>{t('common.logoutSecurely')}</span>
                       </button>
                     </div>

@@ -33,17 +33,24 @@ const getErrorMessage = (error: unknown) => {
 };
 
 export function UserAvatar({ user, size = 'header' }: Omit<AvatarUploadProps, 'onUploaded'>) {
-  const sizeClass = size === 'profile' ? 'h-20 w-20 rounded-2xl text-2xl' : size === 'header-compact' ? 'h-7 w-7 rounded-full text-xs font-bold' : 'h-8 w-8 sm:h-9 sm:w-9 rounded-full text-sm';
+  const sizeClass =
+    size === 'profile'
+      ? 'h-20 w-20 rounded-2xl text-2xl font-black'
+      : size === 'header-compact'
+        ? 'h-7.5 w-7.5 rounded-full text-[11px] font-black'
+        : 'h-8.5 w-8.5 sm:h-9 sm:w-9 rounded-full text-xs font-black';
   const avatarUrl = getAvatarUrl(user?.avatarUrl);
 
   return (
-    <div className={`flex shrink-0 items-center justify-center overflow-hidden bg-gray-100 font-bold text-gray-700 ${sizeClass}`}>
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-amber-100 via-amber-200 to-amber-300 text-amber-950 border border-amber-300/80 shadow-2xs font-black select-none ${sizeClass}`}
+    >
       {avatarUrl ? (
         // Avatar URLs are runtime-configured by the API, so Next image domains are not static here.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={avatarUrl} alt={`${user?.name || 'User'} avatar`} className="h-full w-full object-cover" />
       ) : (
-        <span aria-hidden="true">{getInitials(user)}</span>
+        <span aria-hidden="true" className="tracking-tight">{getInitials(user)}</span>
       )}
     </div>
   );
