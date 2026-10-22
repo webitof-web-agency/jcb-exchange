@@ -1,5 +1,10 @@
 import { NextFunction, Request, Response, Router } from 'express';
-import { buildVehicleSaleInvoicePdf, findSellAccountIdByInvoiceToken } from '../services/vehicleSaleInvoice.service';
+import {
+  buildVehicleSaleInvoicePdf,
+  buildVehicleSalePaymentReceiptPdf,
+  findPaymentIdByReceiptToken,
+  findSellAccountIdByInvoiceToken,
+} from '../services/vehicleSaleInvoice.service';
 
 const router = Router();
 
@@ -49,6 +54,23 @@ router.get('/sale-invoices/:token', publicInvoiceRateLimit, async (req: Request,
     return res.send(invoice.buffer);
   } catch {
     return res.status(404).type('text/plain').send('This invoice link is invalid or has expired.');
+  }
+});
+
+router.get('/payment-receipts/:token', publicInvoiceRateLimit, async (req: Request, res: Response) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  try {
+    const paymentId = await findPaymentIdByReceiptToken(req.params.token);
+    if (!paymentId) return res.status(404).type('text/plain').send('This payment receipt link is invalid or has expired.');
+    const receipt = await buildVehicleSalePaymentReceiptPdf(paymentId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${receipt.fileName}"`);
+    return res.send(receipt.buffer);
+  } catch {
+    return res.status(404).type('text/plain').send('This payment receipt link is invalid or has expired.');
   }
 });
 

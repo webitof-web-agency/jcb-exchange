@@ -18,6 +18,13 @@ test('masks GSTIN and normalizes documented GST business fields', () => {
     legal_name: 'MADAN LAL JAT',
     gstin_status: 'Active',
     date_of_cancellation: '1800-01-01',
+    contact_details: { principal: { address: 'Main road', email: 'gst@example.test' } },
+    promoters: ['Director One', 7],
+    annual_turnover: 'Slab: Rs. 1 Cr. to 5 Cr.',
+    annual_turnover_fy: '2023-2024',
+    percentage_in_cash: '10%',
+    einvoice_status: true,
+    liability_percentage_details: { liability: '5%' },
     nature_bus_activities: ['Retail Business', 4, ''],
     address_details: { address: 'Main road', ignored: 'not needed' },
     filing_status: [],
@@ -31,6 +38,13 @@ test('masks GSTIN and normalizes documented GST business fields', () => {
       legal_name: 'MADAN LAL JAT',
       gstin_status: 'Active',
       date_of_cancellation: '1800-01-01',
+      contact_details: { principal: { address: 'Main road', email: 'gst@example.test' } },
+      promoters: ['Director One', 7],
+      annual_turnover: 'Slab: Rs. 1 Cr. to 5 Cr.',
+      annual_turnover_fy: '2023-2024',
+      percentage_in_cash: '10%',
+      einvoice_status: true,
+      liability_percentage_details: { liability: '5%' },
       nature_bus_activities: ['Retail Business', 4, ''],
       address_details: { address: 'Main road', ignored: 'not needed' },
       filing_status: [],
@@ -40,6 +54,13 @@ test('masks GSTIN and normalizes documented GST business fields', () => {
     legalName: 'MADAN LAL JAT',
     gstinStatus: 'Active',
     dateOfCancellation: '1800-01-01',
+    contactDetails: { principal: { address: 'Main road', email: 'gst@example.test' } },
+    promoters: ['Director One'],
+    annualTurnover: 'Slab: Rs. 1 Cr. to 5 Cr.',
+    annualTurnoverFy: '2023-2024',
+    percentageInCash: '10%',
+    einvoiceStatus: true,
+    liabilityPercentageDetails: { liability: '5%' },
     natureOfBusinessActivities: ['Retail Business'],
     addressDetails: { address: 'Main road' },
     filingStatus: [],
@@ -115,7 +136,9 @@ test('persists an encrypted safe result for a successful GST lookup', async () =
 
   const result = await service.verifyGstin({ id_number: ' 08akwpj1234h1zn ' }, 'user-1');
   const cached = await service.verifyGstin({ id_number: '08AKWPJ1234H1ZN' }, 'user-1');
-  assert.deepEqual(payload, { id_number: '08AKWPJ1234H1ZN' });
+  assert.deepEqual(payload, {
+    id_number: '08AKWPJ1234H1ZN',
+  });
   assert.equal(result.record.status, 'SUCCESS');
   assert.equal(result.record.gstinStatus, 'Inactive');
   assert.equal((cached as { cacheHit?: boolean }).cacheHit, true);

@@ -169,6 +169,10 @@ export const normalizeGstVerificationResult = (value: unknown): GstVerificationR
     ['aadhaarValidation', data.aadhaar_validation ?? data.aadhaarValidation, 50],
     ['aadhaarValidationDate', data.aadhaar_validation_date ?? data.aadhaarValidationDate, 30],
     ['address', data.address, 1000],
+    ['annualTurnover', data.annual_turnover ?? data.annualTurnover, 200],
+    ['annualTurnoverFy', data.annual_turnover_fy ?? data.annualTurnoverFy, 30],
+    ['percentageInCash', data.percentage_in_cash ?? data.percentageInCash, 100],
+    ['percentageInCashFy', data.percentage_in_cash_fy ?? data.percentageInCashFy, 30],
   ];
   for (const [key, valueToAdd, maxLength] of fields) {
     const normalized = safeText(valueToAdd, maxLength);
@@ -177,6 +181,14 @@ export const normalizeGstVerificationResult = (value: unknown): GstVerificationR
 
   const addressDetails = safeAddressDetails(data.address_details ?? data.addressDetails);
   if (addressDetails) result.addressDetails = addressDetails;
+  const contactDetails = safeStructuredValue(data.contact_details ?? data.contactDetails);
+  if (contactDetails !== null) result.contactDetails = contactDetails;
+  result.promoters = safeStringArray(data.promoters);
+  if (typeof data.einvoice_status === 'boolean' || typeof data.einvoiceStatus === 'boolean') {
+    result.einvoiceStatus = data.einvoice_status ?? data.einvoiceStatus;
+  }
+  const liabilityPercentageDetails = safeStructuredValue(data.liability_percentage_details ?? data.liabilityPercentageDetails);
+  if (liabilityPercentageDetails !== null) result.liabilityPercentageDetails = liabilityPercentageDetails;
   result.natureOfBusinessActivities = safeStringArray(data.nature_bus_activities ?? data.natureOfBusinessActivities);
   if (data.filing_status !== undefined || data.filingStatus !== undefined) {
     result.filingStatus = safeList(data.filing_status ?? data.filingStatus);
@@ -397,7 +409,9 @@ export class GstVerificationService {
             requestedById,
           })
         : undefined;
-      const body = await runtime.provider.verifyGstin({ id_number: gstin });
+      const body = await runtime.provider.verifyGstin({
+        id_number: gstin,
+      });
       const { response, data } = ensureProviderData(body);
       const result = normalizeGstVerificationResult({ ...data, gstin: data.gstin || gstin });
       const encryptedResult = encryptPanData(JSON.stringify(result), runtime.dataSecret);
@@ -443,7 +457,9 @@ export class GstVerificationService {
     const gstin = normalizeGstin(input.id_number ?? input.gstin);
     const validationError = validateGstin(gstin);
     if (validationError) throw operationError(validationError);
-    const payload = { id_number: gstin };
+    const payload = {
+      id_number: gstin,
+    };
     return this.run(gstin, requestedById, createVerificationFingerprint('GST_VERIFY', payload));
   }
 

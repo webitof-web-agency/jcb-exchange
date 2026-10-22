@@ -79,6 +79,7 @@ import {
   lockSellAccountRecord,
   completeSellAccountSale,
   resendSellAccountInvoice,
+  resendSellAccountPaymentReceipt,
   downloadSellAccountInvoice,
 } from '../controllers/sellAccount.controller';
 
@@ -204,6 +205,7 @@ router.post('/admin/sell-accounts/:id/invoice/resend', canUpdateSell, resendSell
 router.get('/admin/sell-accounts/:id/invoice', canViewSell, downloadSellAccountInvoice);
 router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
+router.post('/admin/sell-accounts/:id/payments/:paymentId/receipt/resend', canUpdateSell, resendSellAccountPaymentReceipt);
 router.delete('/admin/sell-accounts/:id/payments/:paymentId', canDeleteSell, deleteSellAccountPaymentRecord);
 
 // Applications

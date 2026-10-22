@@ -57,6 +57,7 @@ export default function AadhaarBackTemplate({
         Dimensions: 490px x 309px
       */}
       <div
+        data-aadhaar-card-surface="back"
         className={`relative w-[490px] h-[309px] select-none overflow-hidden rounded-[14px] border border-slate-300 bg-[#fbfdfc] text-slate-900 transition-all ${
           interactive
             ? 'hover:shadow-[0_20px_40px_-10px_rgba(15,23,42,0.3)] hover:-translate-y-0.5'

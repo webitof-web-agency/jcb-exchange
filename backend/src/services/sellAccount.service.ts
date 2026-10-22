@@ -25,6 +25,8 @@ import { normalizeRtoWorkStatus, statusForSellAccountHandoff } from './rtoStatus
 import { assertDealDoneBeforeLock, assertRecordEditable } from './recordLock';
 import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linkedRecordDeletion';
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
+import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
+import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -105,10 +107,14 @@ const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatus
   const { invoiceTokenHash, ...record } = rawRecord;
   const rtoState = normalizeRtoState(rtoStateInput);
   const isDraft = record.isDraft === true;
-  const payments = (record.payments || []).map((payment: any) => ({
-    ...payment,
+  const payments = (record.payments || []).map((payment: any) => {
+    const { receiptTokenHash, receiptTokenCiphertext, ...safePayment } = payment;
+    return {
+    ...safePayment,
     amount: Number(payment.amount),
-  }));
+    hasPublicReceiptLink: Boolean(receiptTokenHash) && (!payment.receiptTokenExpiresAt || new Date(payment.receiptTokenExpiresAt) > new Date()),
+  };
+  });
   const financeInput = {
     sellAmount: Number(record.sellAmount),
     purchaseAmount: Number(record.purchaseAmount),
@@ -547,16 +553,38 @@ export const addSellAccountPayment = async (id: string, body: any, actorId?: str
   const side = validEnum(body.side, Object.values(SellAccountPaymentSide), SellAccountPaymentSide.PURCHASER_RECEIPT);
   const method = validEnum(body.method, Object.values(SellAccountPaymentMethod), SellAccountPaymentMethod.OTHER);
   const paymentDate = dateOrNull(body.paymentDate) || new Date();
-  const record = await prisma.$transaction(async (tx) => {
-    await tx.sellAccountPayment.create({ data: { sellAccountId: id, ...buildPaymentPayload({ ...body, side, method, paymentDate }, actorId) } });
+  const result = await prisma.$transaction(async (tx) => {
+    const receipt = side === SellAccountPaymentSide.PURCHASER_RECEIPT
+      ? issuePaymentReceiptToken(paymentDate)
+      : null;
+    const receiptNumber = receipt
+      ? await nextVehicleSalePaymentReceiptNumberFor(tx, paymentDate, existing.purchaserCity)
+      : null;
+    const payment = await tx.sellAccountPayment.create({
+      data: {
+        sellAccountId: id,
+        ...buildPaymentPayload({ ...body, side, method, paymentDate }, actorId),
+        ...(receipt && receiptNumber ? {
+          receiptNumber,
+          receiptTokenHash: receipt.tokenHash,
+          receiptTokenCiphertext: encryptDocumentLinkToken(receipt.token),
+          receiptTokenExpiresAt: receipt.expiresAt,
+          receiptGeneratedAt: new Date(),
+        } : {}),
+      },
+    });
     const current = await tx.sellAccount.findUnique({ where: { id }, include });
     if (!current) throw new Error('Sold Vehicle not found.');
     await syncStatus(tx, current, actorId);
-    return tx.sellAccount.findUnique({ where: { id }, include });
+    return { record: await tx.sellAccount.findUnique({ where: { id }, include }), paymentId: payment.id, receiptToken: receipt?.token || null };
   });
-  if (!record) return null;
-  const synced = await syncStatus(prisma, record, actorId);
-  return serialize(record, synced.rtoState, synced.nextStatus);
+  if (!result?.record) return null;
+  const synced = await syncStatus(prisma, result.record, actorId);
+  return {
+    record: serialize(result.record, synced.rtoState, synced.nextStatus),
+    paymentId: result.paymentId,
+    receiptToken: result.receiptToken,
+  };
 };
 
 export const saveAndStartRtoWork = async (id: string | undefined, body: unknown, actorId?: string) => {

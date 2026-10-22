@@ -1,4 +1,4 @@
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { KycVerificationPreview } from './SellAccountDocumentWidgets';
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -72,6 +72,8 @@ const styles = StyleSheet.create({
   panField: { width: '50%', marginBottom: 18 },
   panFieldValue: { marginTop: 5, color: '#172033', fontSize: 12 },
   panNotice: { marginTop: 7, paddingTop: 12, borderTop: '1 solid #c7d2fe', color: '#64748b', fontSize: 8.5 },
+  panImage: { alignSelf: 'center', width: 490, marginTop: 22 },
+  aadhaarImage: { alignSelf: 'center', width: 490, marginTop: 22 },
 });
 
 function PanPdfCard({ preview, result }: { preview: KycVerificationPreview; result: Record<string, unknown> }) {
@@ -120,7 +122,7 @@ function TableSection({ title, entries }: { title: string; entries: Array<[strin
   );
 }
 
-export function KycVerificationPreviewPdf({ preview }: { preview: KycVerificationPreview }) {
+export function KycVerificationPreviewPdf({ preview, panCardImage, aadhaarCardImage }: { preview: KycVerificationPreview; panCardImage?: string; aadhaarCardImage?: string }) {
   const record = isObject(preview.response.record) ? preview.response.record : {};
   const result = isObject(preview.response.result) ? preview.response.result : {};
   const summary = Object.entries(result).filter(([, value]) => !isObject(value));
@@ -132,8 +134,26 @@ export function KycVerificationPreviewPdf({ preview }: { preview: KycVerificatio
       <Document title={`PAN Verification Copy - ${preview.number}`}>
         <Page size="A4" style={styles.panPage}>
           <Text style={styles.panEyebrow}>API verification preview</Text>
-          <PanPdfCard preview={preview} result={result} />
+          {panCardImage ? (
+            // PDF images do not expose HTML alt text; this is the visual PAN card export.
+            // eslint-disable-next-line jsx-a11y/alt-text
+            <Image src={panCardImage} style={styles.panImage} />
+          ) : <PanPdfCard preview={preview} result={result} />}
           <Text style={styles.footer}>This digital copy contains the stored PAN verification response for audit and record-keeping.</Text>
+        </Page>
+      </Document>
+    );
+  }
+
+  if (preview.kind === 'aadhaar' && aadhaarCardImage) {
+    return (
+      <Document title={`Aadhaar Verification Copy - ${preview.number}`}>
+        <Page size="A4" style={styles.panPage}>
+          <Text style={styles.panEyebrow}>API verification preview</Text>
+          {/* PDF images do not expose HTML alt text; this is the visual Aadhaar card export. */}
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image src={aadhaarCardImage} style={styles.aadhaarImage} />
+          <Text style={styles.footer}>This digital copy contains the fetched Aadhaar front and back card previews for audit and record-keeping.</Text>
         </Page>
       </Document>
     );

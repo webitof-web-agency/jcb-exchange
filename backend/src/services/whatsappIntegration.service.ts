@@ -24,7 +24,7 @@ import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
-import { buildVehicleSaleInvoicePdf } from './vehicleSaleInvoice.service';
+import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
 
 const SETTINGS_ID = 'default';
 const MAX_TEST_MESSAGE_LENGTH = 500;
@@ -41,6 +41,7 @@ export const marketplaceWhatsAppEvents = [
   'MARKETPLACE_NEW_PAYMENT_SUPERADMIN',
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
   'VEHICLE_SALE_INVOICE',
+  'VEHICLE_SALE_PAYMENT_RECEIPT',
 ] as const;
 
 
@@ -539,6 +540,21 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
         {
           type: 'header',
           parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: invoice.fileName } }],
+        },
+        ...(Array.isArray(templateComponents) ? templateComponents : []),
+      ];
+    } else if (eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
+      if (!messageLog.relatedEntityId) throw new Error('Payment record is missing for receipt delivery.');
+      const receipt = await buildVehicleSalePaymentReceiptPdf(messageLog.relatedEntityId);
+      const uploadedMedia = await uploadWhatsAppDocument({
+        accessToken,
+        phoneNumberId: settings.phoneNumberId!,
+        graphApiVersion: graphApiVersion(settings.graphApiVersion),
+      }, receipt.buffer, receipt.fileName);
+      deliveryComponents = [
+        {
+          type: 'header',
+          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: receipt.fileName } }],
         },
         ...(Array.isArray(templateComponents) ? templateComponents : []),
       ];

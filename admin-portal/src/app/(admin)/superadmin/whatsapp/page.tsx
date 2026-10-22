@@ -194,6 +194,7 @@ const marketplaceEventDetails: Record<string, { title: string; recipient: string
   MARKETPLACE_NEW_PAYMENT_SUPERADMIN: { title: 'New payment received (Admin)', recipient: 'Superadmin', preview: 'Admin audit copy when a buyer submits a payment receipt for review.' },
   MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: { title: 'KYC submitted for review (Admin)', recipient: 'Superadmin', preview: 'Alerts admin when a partner submits KYC documents for verification.' },
   VEHICLE_SALE_INVOICE: { title: 'Vehicle sale invoice', recipient: 'Customer (vehicle buyer)', preview: 'Sent when a sale is completed. Template needs a DOCUMENT header (invoice PDF) and 6 body variables: {{1}} customer name, {{2}} vehicle, {{3}} registration no., {{4}} invoice no., {{5}} amount, {{6}} invoice link.' },
+  VEHICLE_SALE_PAYMENT_RECEIPT: { title: 'Vehicle payment receipt', recipient: 'Customer (vehicle buyer)', preview: 'Sent after each customer payment. Template needs a DOCUMENT header (money receipt PDF) and 7 body variables: {{1}} customer, {{2}} vehicle, {{3}} amount, {{4}} receipt no., {{5}} balance, {{6}} payment method, {{7}} receipt link.' },
 };
 
 const recruitmentEventDetails: Record<string, { title: string; recipient: string; preview: string }> = {

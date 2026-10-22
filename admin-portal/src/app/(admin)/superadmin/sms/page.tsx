@@ -64,6 +64,7 @@ const marketplaceEvents: Record<string, { title: string; recipient: string }> = 
   CUSTOMER_PRIME_REJECTED: { title: 'Customer Prime rejected', recipient: 'Customer' },
   MARKETPLACE_NEW_LISTING_PUBLISHED: { title: 'New vehicle listing published', recipient: 'Active customers' },
   VEHICLE_SALE_INVOICE: { title: 'Vehicle sale invoice', recipient: 'Customer (vehicle buyer)' },
+  VEHICLE_SALE_PAYMENT_RECEIPT: { title: 'Vehicle payment receipt', recipient: 'Customer (vehicle buyer)' },
 };
 
 const recruitmentEvents: Record<string, { title: string; recipient: string }> = {

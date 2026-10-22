@@ -49,10 +49,14 @@ const INDIAN_STATES = [
 
 type CompanyInvoiceFormState = {
   companyName: string;
+  cin: string;
   gstin: string;
   address: string;
   state: string;
   city: string;
+  country: string;
+  authorisedSignatoryName: string;
+  authorisedSignatoryDesignation: string;
   defaultGstRate: string;
   termsAndConditions: string;
 };
@@ -405,10 +409,14 @@ export default function SuperAdminSettingsPage() {
 
   const [companyInvoiceForm, setCompanyInvoiceForm] = useState<CompanyInvoiceFormState>({
     companyName: 'JCB Exchange',
+    cin: '',
     gstin: '',
     address: '',
     state: 'Maharashtra',
     city: 'Mumbai',
+    country: 'India',
+    authorisedSignatoryName: '',
+    authorisedSignatoryDesignation: 'Authorised Signatory',
     defaultGstRate: '18',
     termsAndConditions: 'This is a computer-generated tax invoice and does not require a physical signature.',
   });
@@ -588,10 +596,14 @@ export default function SuperAdminSettingsPage() {
       if (response.data.companyInvoice) {
         setCompanyInvoiceForm({
           companyName: response.data.companyInvoice.companyName || 'JCB Exchange',
+          cin: response.data.companyInvoice.cin || '',
           gstin: response.data.companyInvoice.gstin || '',
           address: response.data.companyInvoice.address || '',
           state: response.data.companyInvoice.state || 'Maharashtra',
           city: response.data.companyInvoice.city || 'Mumbai',
+          country: response.data.companyInvoice.country || 'India',
+          authorisedSignatoryName: response.data.companyInvoice.authorisedSignatoryName || '',
+          authorisedSignatoryDesignation: response.data.companyInvoice.authorisedSignatoryDesignation || 'Authorised Signatory',
           defaultGstRate: response.data.companyInvoice.defaultGstRate !== undefined ? String(response.data.companyInvoice.defaultGstRate) : '18',
           termsAndConditions: response.data.companyInvoice.termsAndConditions || 'This is a computer-generated tax invoice and does not require a physical signature.',
         });
@@ -1172,10 +1184,14 @@ export default function SuperAdminSettingsPage() {
       }>('/superadmin/settings', {
         companyInvoice: {
           companyName: companyInvoiceForm.companyName,
+          cin: companyInvoiceForm.cin,
           gstin: companyInvoiceForm.gstin,
           address: companyInvoiceForm.address,
           state: companyInvoiceForm.state,
           city: companyInvoiceForm.city,
+          country: companyInvoiceForm.country,
+          authorisedSignatoryName: companyInvoiceForm.authorisedSignatoryName,
+          authorisedSignatoryDesignation: companyInvoiceForm.authorisedSignatoryDesignation,
           defaultGstRate: Number(companyInvoiceForm.defaultGstRate) || 18,
           termsAndConditions: companyInvoiceForm.termsAndConditions,
         },
@@ -1184,10 +1200,14 @@ export default function SuperAdminSettingsPage() {
       if (response.data.companyInvoice) {
         setCompanyInvoiceForm({
           companyName: response.data.companyInvoice.companyName || 'JCB Exchange',
+          cin: response.data.companyInvoice.cin || '',
           gstin: response.data.companyInvoice.gstin || '',
           address: response.data.companyInvoice.address || '',
           state: response.data.companyInvoice.state || 'Maharashtra',
           city: response.data.companyInvoice.city || 'Mumbai',
+          country: response.data.companyInvoice.country || 'India',
+          authorisedSignatoryName: response.data.companyInvoice.authorisedSignatoryName || '',
+          authorisedSignatoryDesignation: response.data.companyInvoice.authorisedSignatoryDesignation || 'Authorised Signatory',
           defaultGstRate: response.data.companyInvoice.defaultGstRate !== undefined ? String(response.data.companyInvoice.defaultGstRate) : '18',
           termsAndConditions: response.data.companyInvoice.termsAndConditions || 'This is a computer-generated tax invoice and does not require a physical signature.',
         });
@@ -1535,7 +1555,7 @@ export default function SuperAdminSettingsPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-5 md:grid-cols-2">
+                  <div className="grid gap-5 md:grid-cols-4">
                     <SettingsInput
                       key={`mobile-otp-api-key-${isMaskedSecretValue(mobileOtpForm.apiKey) ? 'masked' : 'editable'}`}
                       label="SMS API Key"
@@ -1570,6 +1590,18 @@ export default function SuperAdminSettingsPage() {
                         onChange={(event) => updateMobileOtpForm({ otpExpiry: event.target.value })}
                         placeholder="15"
                         className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">CIN (Corporate Identity Number)</span>
+                      <input
+                        type="text"
+                        value={companyInvoiceForm.cin}
+                        onChange={(e) => setCompanyInvoiceForm((prev) => ({ ...prev, cin: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. U46594CT2026OPC020990"
+                        maxLength={21}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-mono text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                       />
                     </label>
 
@@ -2381,6 +2413,17 @@ export default function SuperAdminSettingsPage() {
                     </label>
 
                     <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Country</span>
+                      <input
+                        type="text"
+                        value={companyInvoiceForm.country}
+                        onChange={(e) => setCompanyInvoiceForm((prev) => ({ ...prev, country: e.target.value }))}
+                        placeholder="India"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-2 focus:ring-[#FFC107]/20"
+                      />
+                    </label>
+
+                    <label className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">Default GST Rate (%)</span>
                       <input
                         type="number"
@@ -2405,6 +2448,30 @@ export default function SuperAdminSettingsPage() {
                       className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                     />
                   </label>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Authorised Signatory Name</span>
+                      <input
+                        type="text"
+                        value={companyInvoiceForm.authorisedSignatoryName}
+                        onChange={(e) => setCompanyInvoiceForm((prev) => ({ ...prev, authorisedSignatoryName: e.target.value }))}
+                        placeholder="e.g. Mitali Sharma"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Signatory Designation</span>
+                      <input
+                        type="text"
+                        value={companyInvoiceForm.authorisedSignatoryDesignation}
+                        onChange={(e) => setCompanyInvoiceForm((prev) => ({ ...prev, authorisedSignatoryDesignation: e.target.value }))}
+                        placeholder="e.g. Director / Authorised Signatory"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
+                      />
+                    </label>
+                  </div>
 
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-semibold text-gray-700">Invoice Terms & Conditions / Note</span>

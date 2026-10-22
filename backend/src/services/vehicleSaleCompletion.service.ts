@@ -101,6 +101,37 @@ export const deliverVehicleSaleInvoice = async (
   return { invoiceUrl, channels, anySent };
 };
 
+/** Issues the final Bill of Supply as soon as the customer balance reaches zero.
+ * RTO completion and record locking remain a separate workflow step. */
+export const issueAndDeliverVehicleSaleInvoiceAfterFullPayment = async (
+  sellAccountId: string,
+  publicApiBaseUrl: string,
+) => {
+  const issued = issueInvoiceToken();
+  const prepared = await prisma.$transaction(async (tx) => {
+    const current = await tx.sellAccount.findUnique({ where: { id: sellAccountId }, include: { payments: true } });
+    if (!current || current.deletedAt) return null;
+    const payments = paymentSummaryForRecord(current, current.payments);
+    if (payments.purchaserPaymentStatus !== 'FULL') return null;
+    if (current.invoiceNumber && current.invoiceTokenHash) return { id: current.id, alreadyIssued: true };
+    const now = new Date();
+    const invoiceNumber = current.invoiceNumber || await nextVehicleSaleInvoiceNumberFor(tx, now);
+    await tx.sellAccount.update({
+      where: { id: current.id },
+      data: {
+        invoiceNumber,
+        invoiceGeneratedAt: current.invoiceGeneratedAt || now,
+        invoiceTokenHash: issued.tokenHash,
+        invoiceTokenExpiresAt: issued.expiresAt,
+      },
+    });
+    return { id: current.id, alreadyIssued: false };
+  });
+  if (!prepared) return null;
+  if (prepared.alreadyIssued) return { delivery: null, alreadyIssued: true };
+  return { delivery: await deliverVehicleSaleInvoice(prepared.id, issued.token, publicApiBaseUrl), alreadyIssued: false };
+};
+
 /**
  * Final step of a vehicle sale: every transfer task is done and the customer has paid in full.
  * Marks the deal done, issues the invoice, locks both records and notifies the customer.
@@ -112,8 +143,6 @@ export const completeVehicleSale = async (
   publicApiBaseUrl: string,
 ) => {
   const remark = assertRemark(body.remark, 'completing the sale');
-  const issued = issueInvoiceToken();
-
   const completedId = await prisma.$transaction(async (tx) => {
     const current = await tx.sellAccount.findFirst({
       where: { OR: [{ id }, { recordNumber: id }], deletedAt: null },
@@ -135,6 +164,7 @@ export const completeVehicleSale = async (
     }
 
     const now = new Date();
+    const issued = current.invoiceNumber && current.invoiceTokenHash ? null : issueInvoiceToken();
     const invoiceNumber = current.invoiceNumber || await nextVehicleSaleInvoiceNumberFor(tx, now);
     const previousRtoStatus = normalizeRtoWorkStatus(rto.rtoStatus);
 
@@ -151,8 +181,7 @@ export const completeVehicleSale = async (
         completedAt: now,
         invoiceNumber,
         invoiceGeneratedAt: current.invoiceGeneratedAt || now,
-        invoiceTokenHash: issued.tokenHash,
-        invoiceTokenExpiresAt: issued.expiresAt,
+        ...(issued ? { invoiceTokenHash: issued.tokenHash, invoiceTokenExpiresAt: issued.expiresAt } : {}),
         isLocked: true,
         lockedAt: now,
         lockedById: actorId || null,
@@ -164,12 +193,14 @@ export const completeVehicleSale = async (
         data: { sellAccountId: current.id, oldStatus: current.dealStatus, newStatus: SellAccountDealStatus.DEAL_DONE, reason: remark, changedById: actorId || null },
       });
     }
-    return current.id;
+    return { id: current.id, token: issued?.token || null };
   });
 
   if (!completedId) return null;
-  const delivery = await deliverVehicleSaleInvoice(completedId, issued.token, publicApiBaseUrl);
-  return { record: await getSellAccount(completedId), delivery };
+  const delivery = completedId.token
+    ? await deliverVehicleSaleInvoice(completedId.id, completedId.token, publicApiBaseUrl)
+    : null;
+  return { record: await getSellAccount(completedId.id), delivery };
 };
 
 /** Issues a fresh public link (the old one stops working) and sends the invoice again. */

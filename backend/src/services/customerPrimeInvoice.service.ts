@@ -1,5 +1,7 @@
+import { promises as fs } from 'node:fs';
 import prisma from '../lib/prisma';
 import { getAppSettings } from '../utils/appSettings';
+import { resolveLocalBrandingFilePath } from '../utils/brandingStorage';
 import {
   buildCustomerPrimeInvoiceData,
   renderCustomerPrimeInvoicePdf,
@@ -21,7 +23,19 @@ const getPrimePlanName = (settingsSnapshot: unknown) => {
 };
 
 export const loadInvoiceLogo = async (logoUrl?: string | null) => {
-  if (!logoUrl || !/^https?:\/\//i.test(logoUrl)) return null;
+  if (!logoUrl) return null;
+
+  const localPath = resolveLocalBrandingFilePath(logoUrl);
+  if (localPath) {
+    try {
+      const stats = await fs.stat(localPath);
+      if (!stats.isFile() || stats.size > 5 * 1024 * 1024) return null;
+      return await fs.readFile(localPath);
+    } catch {
+      return null;
+    }
+  }
+  if (!/^https?:\/\//i.test(logoUrl)) return null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);

@@ -70,6 +70,11 @@ export const resolveSurepassEnvironment = (value: unknown): SurepassEnvironment 
   throw new Error('Surepass environment must be SANDBOX or PRODUCTION.');
 };
 
+export const resolveSurepassRuntimeEnvironment = (
+  storedEnvironment: unknown,
+  environmentOverride: unknown,
+): SurepassEnvironment => resolveSurepassEnvironment(storedEnvironment || environmentOverride || 'SANDBOX');
+
 export const normalizePanVerificationBaseUrl = (value: unknown) => {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error('Surepass base URL is required.');
@@ -289,8 +294,9 @@ export const updatePanVerificationSettings = async (input: {
   return serializePanVerificationSettings(record as PanSettingsRecord);
 };
 
-const runtimeEnvironment = (stored: PanSettingsRecord | null) => resolveSurepassEnvironment(
-  process.env.SUREPASS_ENVIRONMENT?.trim() || stored?.activeEnvironment || 'SANDBOX',
+const runtimeEnvironment = (stored: PanSettingsRecord | null) => resolveSurepassRuntimeEnvironment(
+  stored?.activeEnvironment,
+  process.env.SUREPASS_ENVIRONMENT?.trim(),
 );
 
 export const getPanVerificationRuntimeConfig = async (): Promise<PanVerificationRuntimeConfig | null> => {

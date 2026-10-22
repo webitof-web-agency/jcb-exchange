@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import NationalEmblemSvg from '../pancard/NationalEmblemSvg';
-import QrCodeSvg from '../pancard/QrCodeSvg';
 import AadhaarLogoSvg from './AadhaarLogoSvg';
 import AadhaarBackTemplate from './AadhaarBackTemplate';
 import AadhaarHeaderRibbon from './AadhaarHeaderRibbon';
@@ -71,6 +70,39 @@ export default function AadhaarCardTemplate({
 }: AadhaarCardTemplateProps) {
   const [photoError, setPhotoError] = useState(false);
   const [emblemError, setEmblemError] = useState(false);
+  const hasProvidedData = Boolean(data);
+
+  const aadhaarNumber = data?.aadhaarNumber || data?.aadhaar_number || (hasProvidedData ? '—' : '1234 5678 9101');
+  const addressHindi =
+    data?.addressHindi ||
+    data?.address_hindi ||
+    'सरायं दान शाह, कतरौली, पूरे दुर्गी, फूलपुर, इलाहाबाद, उत्तर प्रदेश, 212402';
+  const addressEnglish =
+    data?.addressEnglish ||
+    data?.address_english ||
+    'saray dan shah, KATRAULI, Poore Durgi, Phoolpur, Allahabad, Uttar Pradesh, 212402';
+
+  const nameHindi = data?.nameHindi || data?.name_hindi || 'मेराज खान';
+  const nameEnglish = (data?.nameEnglish || data?.name_english || data?.name || (hasProvidedData ? '—' : 'MERAJ KHAN')).trim();
+  const fatherHindi = data?.fatherNameHindi || data?.father_name_hindi || 'सुध्दशन खांन';
+  const fatherEnglish = data?.fatherNameEnglish || data?.father_name_english || (hasProvidedData ? '—' : 'Sudhdan Khan');
+  const dob = data?.dob || (hasProvidedData ? '—' : '12/12/1988');
+  const gender = data?.gender || (hasProvidedData ? '—' : 'Male');
+  const genderHindi = data?.genderHindi || (gender.toLowerCase().startsWith('f') ? 'महिला' : 'पुरुष');
+  const photoUrl = data?.photoUrl || data?.photo_url || '';
+  const issueDate = data?.issueDate || data?.issue_date || (hasProvidedData ? '—' : '10/07/2025');
+
+  const formattedAadhaar = formatAadhaarNumber(aadhaarNumber);
+
+  const aadhaarParts = (() => {
+    const clean = aadhaarNumber.replace(/\D/g, '');
+    if (clean.length === 12) {
+      return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
+    }
+    const split = aadhaarNumber.trim().split(/\s+/);
+    if (split.length === 3) return split;
+    return [aadhaarNumber, '', ''];
+  })();
 
   if (side === 'full') {
     return (
@@ -82,16 +114,6 @@ export default function AadhaarCardTemplate({
       />
     );
   }
-
-  const aadhaarNumber = data?.aadhaarNumber || data?.aadhaar_number || '1234 5678 9101';
-  const addressHindi =
-    data?.addressHindi ||
-    data?.address_hindi ||
-    'सरायं दान शाह, कतरौली, पूरे दुर्गी, फूलपुर, इलाहाबाद, उत्तर प्रदेश, 212402';
-  const addressEnglish =
-    data?.addressEnglish ||
-    data?.address_english ||
-    'saray dan shah, KATRAULI, Poore Durgi, Phoolpur, Allahabad, Uttar Pradesh, 212402';
 
   if (side === 'back') {
     return (
@@ -106,33 +128,6 @@ export default function AadhaarCardTemplate({
     );
   }
 
-  const nameHindi = data?.nameHindi || data?.name_hindi || 'मेराज खान';
-  const nameEnglish = (data?.nameEnglish || data?.name_english || data?.name || 'MERAJ KHAN').trim();
-  const fatherHindi = data?.fatherNameHindi || data?.father_name_hindi || 'सुध्दशन खांन';
-  const fatherEnglish = data?.fatherNameEnglish || data?.father_name_english || 'Sudhdan Khan';
-  const dob = data?.dob || '12/12/1988';
-  const gender = data?.gender || 'Male';
-  const genderHindi = data?.genderHindi || (gender.toLowerCase().startsWith('f') ? 'महिला' : 'पुरुष');
-  const photoUrl = data?.photoUrl || data?.photo_url || '';
-  const issueDate = data?.issueDate || data?.issue_date || '10/07/2025';
-
-  const qrPayload = useMemo(() => {
-    if (data?.qrData) return data.qrData;
-    return `UIDAI:${aadhaarNumber}|NAME:${nameEnglish}|DOB:${dob}|GENDER:${gender}`;
-  }, [data?.qrData, aadhaarNumber, nameEnglish, dob, gender]);
-
-  const formattedAadhaar = formatAadhaarNumber(aadhaarNumber);
-
-  const aadhaarParts = useMemo(() => {
-    const clean = aadhaarNumber.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
-    }
-    const split = aadhaarNumber.trim().split(/\s+/);
-    if (split.length === 3) return split;
-    return [aadhaarNumber, '', ''];
-  }, [aadhaarNumber]);
-
   return (
     <div
       style={{
@@ -146,6 +141,7 @@ export default function AadhaarCardTemplate({
         Dimensions: 490px x 309px
       */}
       <div
+        data-aadhaar-card-surface="front"
         className={`relative w-[490px] h-[309px] select-none overflow-hidden rounded-[14px] border border-slate-300 bg-[#fbfdfc] text-slate-900 transition-all ${
           interactive
             ? 'hover:shadow-[0_20px_40px_-10px_rgba(15,23,42,0.3)] hover:-translate-y-0.5'
@@ -170,8 +166,8 @@ export default function AadhaarCardTemplate({
           {/* Left: State Emblem of India with सत्यमेव जयते */}
           <div className="shrink-0 flex flex-col items-center justify-center -ml-1 w-[32px] select-none">
             {!emblemError ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <div className="w-[30px] h-[34px] flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/images/aadhaar/ashoka-emblem.png?v=2"
                   alt="State Emblem of India"

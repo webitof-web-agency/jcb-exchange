@@ -1302,6 +1302,12 @@ model SellAccountPayment {
   method         SellAccountPaymentMethod @default(OTHER)
   reference      String?
   note           String?                 @db.Text
+  receiptNumber  String?                 @unique
+  receiptTokenHash String?               @unique
+  receiptTokenCiphertext String?
+  receiptTokenExpiresAt DateTime?
+  receiptGeneratedAt DateTime?
+  receiptDelivery Json?
   createdById    String?
   createdAt      DateTime                @default(now())
 

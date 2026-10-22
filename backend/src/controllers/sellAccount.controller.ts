@@ -13,8 +13,14 @@ import {
 } from '../services/sellAccount.service';
 import { RecordLockedError } from '../services/recordLock';
 import { RtoHandoffRequiredError } from '../services/linkedRecordDeletion';
-import { completeVehicleSale, resendVehicleSaleInvoice, VehicleSaleCompletionError } from '../services/vehicleSaleCompletion.service';
+import { completeVehicleSale, issueAndDeliverVehicleSaleInvoiceAfterFullPayment, resendVehicleSaleInvoice, VehicleSaleCompletionError } from '../services/vehicleSaleCompletion.service';
 import { buildVehicleSaleInvoicePdf } from '../services/vehicleSaleInvoice.service';
+import {
+  deliverVehicleSalePaymentReceipt,
+  normalizeVehicleSaleReceiptChannel,
+  refreshVehicleSalePaymentReceiptToken,
+  type VehicleSaleReceiptChannel,
+} from '../services/vehicleSalePayment.service';
 import { getPublicApiBaseUrl } from '../utils/publicApiUrl';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to process Sold Vehicle request.';
@@ -97,9 +103,15 @@ export const deleteSellAccountRecord = async (req: Request, res: Response, next:
 
 export const addSellAccountPaymentRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const record = await addSellAccountPayment(String(req.params.id), req.body, req.user?.id);
-    if (!record) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
-    res.status(201).json({ success: true, record });
+    const result = await addSellAccountPayment(String(req.params.id), req.body, req.user?.id);
+    if (!result) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
+    const delivery = result.receiptToken
+      ? await deliverVehicleSalePaymentReceipt(result.paymentId, result.receiptToken, getPublicApiBaseUrl(req))
+      : null;
+    const finalDocument = result.record.finance?.payments?.purchaserPaymentStatus === 'FULL'
+      ? await issueAndDeliverVehicleSaleInvoiceAfterFullPayment(String(req.params.id), getPublicApiBaseUrl(req))
+      : null;
+    res.status(201).json({ success: true, record: result.record, delivery, finalDocument });
   } catch (error) { res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) }); }
 };
 
@@ -108,6 +120,20 @@ export const deleteSellAccountPaymentRecord = async (req: Request, res: Response
     const deleted = await deleteSellAccountPayment(String(req.params.id), String(req.params.paymentId), req.user?.id);
     if (!deleted) return res.status(404).json({ success: false, error: 'Payment entry not found.' });
     res.json({ success: true });
+  } catch (error) { res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) }); }
+};
+
+export const resendSellAccountPaymentReceipt = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestedChannel = req.body?.channel;
+    const channel = normalizeVehicleSaleReceiptChannel(requestedChannel) as VehicleSaleReceiptChannel;
+    if (requestedChannel !== undefined && !['SMS', 'WHATSAPP'].includes(String(requestedChannel))) {
+      return res.status(400).json({ success: false, error: 'Receipt channel must be SMS or WHATSAPP.' });
+    }
+    const refreshed = await refreshVehicleSalePaymentReceiptToken(String(req.params.paymentId));
+    if (!refreshed) return res.status(404).json({ success: false, error: 'Customer payment receipt not found.' });
+    const delivery = await deliverVehicleSalePaymentReceipt(refreshed.paymentId, refreshed.token, getPublicApiBaseUrl(req), channel === 'BOTH' ? 'WHATSAPP' : channel, `resend-${Date.now()}`);
+    res.json({ success: true, delivery });
   } catch (error) { res.status(errorStatus(error)).json({ success: false, error: errorMessage(error) }); }
 };
 

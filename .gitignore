@@ -193,3 +193,9 @@ whatsappfront/
 
 # Local Codex handoff/audit documents; do not commit or push.
 /docs/
+
+# Local vehicle-sale document templates contain business stationery and are provisioned separately.
+/backend/templates/vehicle-sale/*.docx
+
+# Locally rendered PDF/DOCX previews are temporary verification artifacts.
+/preview-output/

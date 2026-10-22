@@ -1098,10 +1098,14 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       listingPayment?: Partial<ListingPaymentSettings>;
       companyInvoice?: {
         companyName?: string;
+        cin?: string;
         gstin?: string;
         address?: string;
         state?: string;
         city?: string;
+        country?: string;
+        authorisedSignatoryName?: string;
+        authorisedSignatoryDesignation?: string;
         defaultGstRate?: number;
         termsAndConditions?: string;
       };
@@ -1258,10 +1262,14 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
     if (companyInvoice) {
       settingsPayload.companyInvoice = {
         ...(companyInvoice.companyName !== undefined ? { companyName: companyInvoice.companyName } : {}),
+        ...(companyInvoice.cin !== undefined ? { cin: companyInvoice.cin } : {}),
         ...(companyInvoice.gstin !== undefined ? { gstin: companyInvoice.gstin } : {}),
         ...(companyInvoice.address !== undefined ? { address: companyInvoice.address } : {}),
         ...(companyInvoice.state !== undefined ? { state: companyInvoice.state } : {}),
         ...(companyInvoice.city !== undefined ? { city: companyInvoice.city } : {}),
+        ...(companyInvoice.country !== undefined ? { country: companyInvoice.country } : {}),
+        ...(companyInvoice.authorisedSignatoryName !== undefined ? { authorisedSignatoryName: companyInvoice.authorisedSignatoryName } : {}),
+        ...(companyInvoice.authorisedSignatoryDesignation !== undefined ? { authorisedSignatoryDesignation: companyInvoice.authorisedSignatoryDesignation } : {}),
         ...(companyInvoice.defaultGstRate !== undefined ? { defaultGstRate: Number(companyInvoice.defaultGstRate) || 18 } : {}),
         ...(companyInvoice.termsAndConditions !== undefined ? { termsAndConditions: companyInvoice.termsAndConditions } : {}),
       };

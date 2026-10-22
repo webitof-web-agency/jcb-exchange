@@ -4,6 +4,7 @@ import {
   normalizePanVerificationBaseUrl,
   normalizeSurepassRuntimeBaseUrl,
   resolveSurepassEnvironment,
+  resolveSurepassRuntimeEnvironment,
   selectSurepassProfile,
   serializePanVerificationSettings,
 } from './panVerificationSettings.service';
@@ -123,4 +124,10 @@ test('selects the configured environment profile and rejects invalid environment
     token: 'production-token',
     customerId: 'customer-id',
   });
+});
+
+test('prefers the saved admin environment over the legacy environment variable', () => {
+  assert.equal(resolveSurepassRuntimeEnvironment('PRODUCTION', 'SANDBOX'), 'PRODUCTION');
+  assert.equal(resolveSurepassRuntimeEnvironment(null, 'PRODUCTION'), 'PRODUCTION');
+  assert.equal(resolveSurepassRuntimeEnvironment(null, null), 'SANDBOX');
 });

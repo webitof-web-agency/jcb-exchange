@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Bookmark, Car, CheckCircle2, ClipboardCheck, Copy, ExternalLink, FileText, Handshake, IndianRupee,
-  Loader2, MessageCircle, Plus, Repeat, ShoppingCart, Trash2, Truck, Wallet, X,
+  Loader2, MessageCircle, MessageSquareText, Plus, Repeat, ShoppingCart, Trash2, Truck, Wallet, X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
@@ -14,7 +14,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { getAccountCreatePermissions, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
-import { deleteSecureFileFromServer, type UploadedFileResult } from '@/lib/fileUpload';
+import { deleteSecureFileFromServer, type UploadedFileResult, uploadFileToServer } from '@/lib/fileUpload';
 import { normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
 import {
   calculateSellAccountFinance,
@@ -31,7 +31,7 @@ import {
   toEditableAmount,
 } from '@/lib/sellAccountForm.mjs';
 import { getListingAccountPrefill } from '@/lib/listingAccountPrefill.mjs';
-import { getSellAccountPaymentBalances } from '@/lib/sellAccountPaymentPresentation.mjs';
+import { getSellAccountPaymentBalances, getSellAccountPaymentsForSide } from '@/lib/sellAccountPaymentPresentation.mjs';
 import {
   applySourceTypeChange,
   getListingDealParties,
@@ -52,6 +52,7 @@ import {
 import { PAN_COMPREHENSIVE_ROUTE, validatePan } from '@/lib/panVerification';
 import { validateGstin } from '@/lib/gstVerification';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
+import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
 import {
   accountsPortalBase,
   createInitialSellAccountForm,
@@ -195,8 +196,8 @@ const removeLocalRecord = (id: string) => {
   }
 };
 
-const initialPaymentDraft = () => ({
-  side: 'PURCHASER_RECEIPT' as SellAccountPayment['side'],
+const initialPaymentDraft = (side: SellAccountPayment['side'] = 'PURCHASER_RECEIPT') => ({
+  side,
   amount: '',
   paymentDate: todayInput(),
   method: 'BANK_TRANSFER' as SellAccountPayment['method'],
@@ -239,7 +240,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | 'payment' | null>(null);
+  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | 'payment' | 'payment-sms' | 'payment-whatsapp' | null>(null);
   const [startRtoRequested, setStartRtoRequested] = useState(false);
   const [listedPrice, setListedPrice] = useState(0);
   const [categories, setCategories] = useState<NamedOption[]>([]);
@@ -441,6 +442,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     payments: form.payments,
   }), [expenseTotal, form.payments, form.purchaseAmount, form.purchaserState, form.sellAmount, form.sellerState, purchaseExchangeValue, saleExchangeValue]);
   const paymentBalances = getSellAccountPaymentBalances(finance.payments);
+  const visiblePaymentRows = useMemo(() => {
+    const allPayments = form.payments || [];
+    const visiblePayments = getSellAccountPaymentsForSide(allPayments, paymentDraft.side);
+    return visiblePayments.map((payment) => ({
+      payment,
+      index: allPayments.indexOf(payment),
+    }));
+  }, [form.payments, paymentDraft.side]);
 
   const dealStatus = deriveSellAccountDealStatus({
     purchaserPaymentStatus: finance.payments.purchaserPaymentStatus,
@@ -469,8 +478,9 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       : getVerificationCache<KycVerificationPreview>(buildVerificationCacheKey(kind, normalized));
     if (currentState.number !== normalized) {
       setVerificationPreviews((current) => {
-        if (!current[previewKey] && !cachedPreview) return current;
         const next = { ...current };
+        if (kind === 'pan') delete next[`${side}-aadhaar`];
+        if (!current[previewKey] && !cachedPreview && kind !== 'pan') return current;
         if (cachedPreview) {
           next[previewKey] = { ...cachedPreview, side, kind: kind as 'pan' | 'gst' };
         } else {
@@ -507,6 +517,18 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     }
   };
 
+  const buildAadhaarPreview = (side: 'purchase' | 'sell', response: Record<string, unknown>): KycVerificationPreview | null => {
+    const result = isRecord(response.result) ? response.result : {};
+    const data = buildAadhaarCardData({ side, kind: 'aadhaar', number: '', response }, result);
+    if (!hasAadhaarCardData(data)) return null;
+    return {
+      side,
+      kind: 'aadhaar',
+      number: data.aadhaarNumber === '—' ? '' : data.aadhaarNumber || '',
+      response,
+    };
+  };
+
   const handleKycVerify = async (side: 'purchase' | 'sell', kind: 'pan' | 'gst') => {
     const currentState = (form.kyc || createEmptySellAccountKyc())[side][kind];
     const normalized = normalizeSellAccountKycNumber(kind.toUpperCase(), currentState.number);
@@ -526,11 +548,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
         ...(form.kyc || createEmptySellAccountKyc()),
         [side]: { ...(form.kyc || createEmptySellAccountKyc())[side], [kind]: nextState },
       } as SellAccountKyc;
+      const aadhaarPreview = kind === 'pan' ? buildAadhaarPreview(side, cachedResponse) : null;
       updateKycState(side, kind, nextState);
-      setVerificationPreviews((current) => ({
-        ...current,
-        [key]: preview,
-      }));
+      setVerificationPreviews((current) => {
+        const next = { ...current, [key]: preview };
+        if (aadhaarPreview) next[`${side}-aadhaar`] = aadhaarPreview;
+        else if (kind === 'pan') delete next[`${side}-aadhaar`];
+        return next;
+      });
       setActiveVerificationPreview(preview);
       void persistVerifiedKyc(nextKyc);
       toast.info(`${kind === 'pan' ? 'PAN' : 'GSTIN'} details loaded from temporary cache. No API call was made.`);
@@ -547,11 +572,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       const previewKey = `${side}-${kind}`;
       if (nextState.status === SELL_ACCOUNT_KYC_STATUS.VERIFIED) {
         const preview = { side, kind, number: normalized, response: responseData } as KycVerificationPreview;
+        const aadhaarPreview = kind === 'pan' ? buildAadhaarPreview(side, responseData) : null;
         setVerificationCache(cacheKey, preview);
-        setVerificationPreviews((current) => ({
-          ...current,
-          [previewKey]: preview,
-        }));
+        setVerificationPreviews((current) => {
+          const next = { ...current, [previewKey]: preview };
+          if (aadhaarPreview) next[`${side}-aadhaar`] = aadhaarPreview;
+          else if (kind === 'pan') delete next[`${side}-aadhaar`];
+          return next;
+        });
         setActiveVerificationPreview(preview);
         const nextKyc = {
           ...(form.kyc || createEmptySellAccountKyc()),
@@ -577,7 +605,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     }
   };
 
-  const openVerificationPreview = (side: 'purchase' | 'sell', kind: 'pan' | 'gst') => {
+  const openVerificationPreview = (side: 'purchase' | 'sell', kind: 'pan' | 'gst' | 'aadhaar') => {
     const preview = verificationPreviews[`${side}-${kind}`];
     if (preview) setActiveVerificationPreview(preview);
   };
@@ -600,6 +628,21 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     }
     setForm((current) => ({ ...current, documents: { ...(normalizeSellAccountDocuments(current) as SellAccountDocuments), [key]: file } }));
   };
+  const saveGeneratedKycDocument = async (file: File, key: SellAccountDocumentKey) => {
+    setActiveUploads((count) => count + 1);
+    try {
+      const uploaded = await uploadFileToServer({ file, visibility: 'secure' });
+      replaceDocument(key, uploaded);
+      toast.success('Verification document uploaded to KYC. Save Changes to finalize it on this account.');
+      return uploaded;
+    } catch (error) {
+      const message = apiErrorMessage(error, 'Unable to upload the verification document.');
+      toast.error(message);
+      throw new Error(message);
+    } finally {
+      setActiveUploads((count) => Math.max(0, count - 1));
+    }
+  };
   const handleUploadState = (uploading: boolean) => setActiveUploads((count) => Math.max(0, count + (uploading ? 1 : -1)));
 
   // ---- Payments ----
@@ -620,7 +663,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     };
     if (!isPersisted) {
       setForm((current) => ({ ...current, payments: [...(current.payments || []), entry] }));
-      setPaymentDraft(initialPaymentDraft());
+      setPaymentDraft(initialPaymentDraft(paymentDraft.side));
       return;
     }
 
@@ -632,7 +675,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       );
       if (!response.data?.record) throw new Error('Payment was not returned by the server.');
       applyPaymentRecord(normalizeServerSellAccount(response.data.record));
-      setPaymentDraft(initialPaymentDraft());
+      setPaymentDraft(initialPaymentDraft(paymentDraft.side));
       toast.success('Payment added and balance updated.');
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to add this payment.'));
@@ -668,10 +711,38 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       setBusyAction(null);
     }
   };
-  const sharePaymentOnWhatsApp = (payment: SellAccountPayment) => {
-    const number = String(form.purchaserNumber || '').replace(/\D/g, '');
+  const sendPaymentReceipt = (payment: SellAccountPayment, channel: 'SMS' | 'WHATSAPP') => {
+    const isCustomerReceipt = payment.side === 'PURCHASER_RECEIPT';
+    const number = String((isCustomerReceipt ? form.purchaserNumber : form.sellerNumber) || '').replace(/\D/g, '');
     if (!number) {
-      toast.info('Add the customer mobile number before sharing a payment receipt.');
+      toast.info(`Add the ${isCustomerReceipt ? 'customer' : 'seller'} mobile number before sending this payment.`);
+      return;
+    }
+    if (isCustomerReceipt && isPersisted && existingRecord?.id && payment.id) {
+      if (busyAction) return;
+      setBusyAction(channel === 'SMS' ? 'payment-sms' : 'payment-whatsapp');
+      void api.post<{ delivery?: { channels?: Array<{ channel?: string; sent?: boolean }> } }>(
+        `/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord.id)}/payments/${encodeURIComponent(payment.id)}/receipt/resend`,
+        { channel },
+      )
+        .then((response) => {
+          const delivery = response.data?.delivery?.channels?.find((item) => item.channel === channel);
+          if (delivery?.sent) {
+            toast.success(`${channel === 'SMS' ? 'SMS' : 'WhatsApp'} money receipt sent with the public PDF link.`);
+          } else {
+            toast.warning(`${channel === 'SMS' ? 'SMS' : 'WhatsApp'} is not configured or could not be sent.`);
+          }
+        })
+        .catch((error) => toast.error(apiErrorMessage(error, 'Unable to send this money receipt.')))
+        .finally(() => setBusyAction(null));
+      return;
+    }
+    if (!isCustomerReceipt) {
+      toast.info('Save the customer receipt first to send its configured SMS or WhatsApp money receipt.');
+      return;
+    }
+    if (!payment.id) {
+      toast.info('Save the payment first to generate its secure public receipt link.');
       return;
     }
     const message = [
@@ -682,9 +753,13 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       `Method: ${payment.method.replaceAll('_', ' ')}`,
       payment.reference ? `Reference: ${payment.reference}` : '',
       '',
-      `Vehicle: ${form.vehicleNumber || 'N/A'}`,
+      `Payment received for vehicle: ${form.vehicleNumber || 'N/A'}`,
     ].filter((line, index, lines) => line || lines[index - 1]).join('\n');
-    window.open(`https://wa.me/${number.length === 10 ? `91${number}` : number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    if (channel === 'WHATSAPP') {
+      window.open(`https://wa.me/${number.length === 10 ? `91${number}` : number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    } else {
+      window.open(`sms:${number}?body=${encodeURIComponent(message)}`, '_self');
+    }
   };
 
   // ---- Save ----
@@ -1162,14 +1237,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             <input type="text" disabled={busy} value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="UTR / cheque / receipt no." className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
             <input type="text" disabled={busy} value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note (optional)" className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
           </div>
-          {(form.payments || []).length ? (
+          {visiblePaymentRows.length ? (
             <div className="mt-2.5 overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full text-left text-xs">
                 <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
                   <tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th><th className="px-2.5 py-2 text-right" /></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(form.payments || []).map((payment, index) => (
+                  {visiblePaymentRows.map(({ payment, index }) => (
                     <tr key={payment.id || `${payment.paymentDate}-${index}`}>
                       <td className="px-2.5 py-1.5 font-semibold text-gray-800">{payment.side === 'PURCHASER_RECEIPT' ? 'Customer' : 'Seller'}</td>
                       <td className="px-2.5 py-1.5 font-bold tabular-nums text-gray-900">{formatInr(payment.amount)}</td>
@@ -1178,7 +1253,16 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                       <td className="max-w-[140px] truncate px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}</td>
                       <td className="px-2.5 py-1.5 text-right">
                         <span className="inline-flex items-center gap-1">
-                          {payment.side === 'PURCHASER_RECEIPT' ? <button type="button" onClick={() => sharePaymentOnWhatsApp(payment)} className="rounded-md p-1 text-[#25D366] hover:bg-green-50" title="Share receipt on WhatsApp" aria-label="Share receipt on WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></button> : null}
+                          {payment.side === 'PURCHASER_RECEIPT' ? (
+                            <>
+                              <button type="button" disabled={busy} onClick={() => sendPaymentReceipt(payment, 'SMS')} className="rounded-md p-1 text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by SMS" aria-label="Send customer money receipt by SMS">
+                                {busyAction === 'payment-sms' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquareText className="h-3.5 w-3.5" />}
+                              </button>
+                              <button type="button" disabled={busy} onClick={() => sendPaymentReceipt(payment, 'WHATSAPP')} className="rounded-md p-1 text-[#25D366] hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by WhatsApp" aria-label="Send customer money receipt by WhatsApp">
+                                {busyAction === 'payment-whatsapp' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                              </button>
+                            </>
+                          ) : null}
                           <button type="button" disabled={busy} onClick={() => void removePayment(index)} className="rounded-md p-1 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" title="Remove payment" aria-label="Remove payment"><Trash2 className="h-3.5 w-3.5" /></button>
                         </span>
                       </td>
@@ -1188,7 +1272,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               </table>
             </div>
           ) : (
-            <p className="mt-2.5 rounded-lg border border-dashed border-gray-300 px-3 py-2.5 text-center text-xs text-gray-500">No payments yet. Deal status updates automatically as customer receipts are added.</p>
+            <p className="mt-2.5 rounded-lg border border-dashed border-gray-300 px-3 py-2.5 text-center text-xs text-gray-500">No {paymentDraft.side === 'PURCHASER_RECEIPT' ? 'customer receipts' : 'seller payments'} yet.</p>
           )}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
             <span>Customer balance: <b className="tabular-nums text-gray-900">{formatInr(paymentBalances.customer.amount)}</b></span>
@@ -1250,8 +1334,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {([
-            { side: 'purchase' as const, title: 'Purchase side', subtitle: form.sellerName || 'Seller', deedKey: 'purchaseDeed' as const, deedLabel: 'Purchase Deed' },
-            { side: 'sell' as const, title: 'Sale side', subtitle: form.purchaserName || 'Customer', deedKey: 'sellDeed' as const, deedLabel: 'Sell Deed' },
+            { side: 'purchase' as const, title: 'Purchase side', subtitle: form.sellerName || 'Seller', deedKey: 'purchaseDeed' as const, deedLabel: 'Purchase Deed', panKey: 'purchasePanCard' as const, aadhaarKey: 'purchaseAadhaarCard' as const },
+            { side: 'sell' as const, title: 'Sale side', subtitle: form.purchaserName || 'Customer', deedKey: 'sellDeed' as const, deedLabel: 'Sell Deed', panKey: 'sellPanCard' as const, aadhaarKey: 'sellAadhaarCard' as const },
           ]).map((group) => (
             <div key={group.side} className="space-y-3 rounded-lg border border-gray-200 p-3">
               <p className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-gray-700">
@@ -1278,8 +1362,11 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                 onNumberChange={(kind, value) => handleKycNumberChange(group.side, kind, value)}
                 onVerify={(kind) => void handleKycVerify(group.side, kind)}
                 previewAvailable={Boolean(verificationPreviews[`${group.side}-gst`])}
-                onPreview={() => openVerificationPreview(group.side, 'gst')}
+                aadhaarPreviewAvailable={Boolean(verificationPreviews[`${group.side}-aadhaar`])}
+                onPreview={(kind) => openVerificationPreview(group.side, kind)}
               />
+              <DeedDocumentPreview label={`${group.title} PAN verification`} document={documents[group.panKey]} onRemove={() => replaceDocument(group.panKey, null)} />
+              <DeedDocumentPreview label={`${group.title} Aadhaar verification`} document={documents[group.aadhaarKey]} onRemove={() => replaceDocument(group.aadhaarKey, null)} />
             </div>
           ))}
         </div>
@@ -1317,7 +1404,12 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
         </div>
       </div>
       {activeVerificationPreview ? (
-        <KycVerificationPreviewModal preview={activeVerificationPreview} onClose={() => setActiveVerificationPreview(null)} />
+        <KycVerificationPreviewModal
+          key={`${activeVerificationPreview.side}-${activeVerificationPreview.kind}-${activeVerificationPreview.number}`}
+          preview={activeVerificationPreview}
+          onClose={() => setActiveVerificationPreview(null)}
+          onSaveToKyc={saveGeneratedKycDocument}
+        />
       ) : null}
     </div>
   );

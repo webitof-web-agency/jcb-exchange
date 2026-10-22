@@ -192,10 +192,14 @@ export const normalizeListingPaymentSettings = (
 
 export type CompanyInvoiceSettings = {
   companyName: string | null;
+  cin: string | null;
   gstin: string | null;
   address: string | null;
   state: string | null;
   city: string | null;
+  country: string | null;
+  authorisedSignatoryName: string | null;
+  authorisedSignatoryDesignation: string | null;
   defaultGstRate: number;
   termsAndConditions: string | null;
   updatedAt: string | null;
@@ -206,10 +210,14 @@ export const normalizeCompanyInvoiceSettings = (
   settings?: Partial<CompanyInvoiceSettings> | null,
 ): CompanyInvoiceSettings => ({
   companyName: settings?.companyName?.trim() || 'JCB Exchange',
+  cin: settings?.cin?.trim().toUpperCase() || null,
   gstin: settings?.gstin?.trim().toUpperCase() || null,
   address: settings?.address?.trim() || null,
   state: settings?.state?.trim() || 'Maharashtra',
   city: settings?.city?.trim() || 'Mumbai',
+  country: settings?.country?.trim() || 'India',
+  authorisedSignatoryName: settings?.authorisedSignatoryName?.trim() || null,
+  authorisedSignatoryDesignation: settings?.authorisedSignatoryDesignation?.trim() || 'Authorised Signatory',
   defaultGstRate: typeof settings?.defaultGstRate === 'number' && !Number.isNaN(settings.defaultGstRate) ? settings.defaultGstRate : 18,
   termsAndConditions: settings?.termsAndConditions?.trim() || 'This is a computer-generated tax invoice and does not require a physical signature.',
   updatedAt: settings?.updatedAt || null,
@@ -384,10 +392,14 @@ const defaultSettings: AppSettings = {
   mobileApp: normalizeMobileAppSettings(),
   companyInvoice: {
     companyName: 'JCB Exchange',
+    cin: null,
     gstin: null,
     address: null,
     state: 'Maharashtra',
     city: 'Mumbai',
+    country: 'India',
+    authorisedSignatoryName: null,
+    authorisedSignatoryDesignation: 'Authorised Signatory',
     defaultGstRate: 18,
     termsAndConditions: 'This is a computer-generated tax invoice and does not require a physical signature.',
     updatedAt: null,

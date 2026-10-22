@@ -1,22 +1,29 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, Database, Download, Eye, FileText, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Database, Download, Eye, FileText, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import { FileUploadField } from '@/components/upload/FileUploadField';
 import { ApiSparkleIcon } from '@/components/ui/ApiFillBadge';
+import PanCardTemplate, { type PanCardData } from '@/components/pancard/PanCardTemplate';
+import AadhaarCardTemplate, { type AadhaarCardData } from '@/components/aadhaar/AadhaarCardTemplate';
 import type { UploadedFileResult } from '@/lib/fileUpload';
 import { SELL_ACCOUNT_DOCUMENT_ACCEPT } from '@/lib/sellAccountDocuments.mjs';
 import { SELL_ACCOUNT_KYC_STATUS } from '@/lib/sellAccountKyc.mjs';
+import { getGeneratedKycDocumentFileName, getGeneratedKycDocumentKey, getGeneratedKycUploadLabel } from '@/lib/kycGeneratedDocument.mjs';
 import { useTranslation } from '@/hooks/useTranslation';
-import type { SellAccountDocument, SellAccountKycKind, SellAccountKycSide, SellAccountKycState } from './soldVehicleModel';
+import type { SellAccountDocument, SellAccountDocumentKey, SellAccountKycKind, SellAccountKycSide, SellAccountKycState } from './soldVehicleModel';
+import { buildPanCardData as buildVerifiedPanCardData } from './panCardVerification.mjs';
+import { buildPanCardExportSvg } from './panCardExport.mjs';
+import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
+import { getGstPreviewFields } from '@/lib/gstVerificationPreview';
 
 export type KycVerificationPreview = {
   side: 'purchase' | 'sell';
-  kind: 'pan' | 'gst';
+  kind: 'pan' | 'gst' | 'aadhaar';
   number: string;
   response: Record<string, unknown>;
 };
@@ -117,79 +124,142 @@ const organizedPreviewValue = (value: unknown): string => {
   return String(value);
 };
 
-type PanCardData = {
-  pan: string;
-  fullName: string;
-  fatherName: string;
-  dateOfBirth: string;
-  maskedAadhaar: string;
-};
+type VerificationPanCardData = PanCardData & { maskedAadhaar?: string };
 
-const normalizePreviewKey = (value: string) => value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+const buildPanCardData = (preview: KycVerificationPreview, result: Record<string, unknown>): VerificationPanCardData =>
+  buildVerifiedPanCardData(preview, result) as VerificationPanCardData;
 
-const findPreviewField = (value: unknown, keys: string[]): unknown => {
-  if (!isObject(value)) return undefined;
-  const wantedKeys = new Set(keys.map(normalizePreviewKey));
-  for (const [key, entryValue] of Object.entries(value)) {
-    if (wantedKeys.has(normalizePreviewKey(key)) && entryValue !== null && entryValue !== undefined && entryValue !== '') {
-      return entryValue;
-    }
-  }
-  for (const entryValue of Object.values(value)) {
-    const nestedValue = findPreviewField(entryValue, keys);
-    if (nestedValue !== undefined) return nestedValue;
-  }
-  return undefined;
-};
-
-const buildPanCardData = (preview: KycVerificationPreview, result: Record<string, unknown>): PanCardData => ({
-  pan: preview.number || organizedPreviewValue(findPreviewField(result, ['pan', 'panNumber'])),
-  fullName: organizedPreviewValue(findPreviewField(result, ['fullName', 'name'])),
-  fatherName: organizedPreviewValue(findPreviewField(result, ['fatherName', 'father', 'fathersName'])),
-  dateOfBirth: organizedPreviewValue(findPreviewField(result, ['dateOfBirth', 'dob', 'birthDate'])),
-  maskedAadhaar: organizedPreviewValue(findPreviewField(result, ['maskedAadhaar', 'maskedAadhar', 'aadhaar', 'aadhar'])),
+const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.onerror = () => reject(reader.error || new Error('Unable to read image data.'));
+  reader.readAsDataURL(blob);
 });
 
-const escapeSvgText = (value: string) => value
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&apos;');
+const inlineImageSources = async (root: HTMLElement) => {
+  await Promise.all(Array.from(root.querySelectorAll('img')).map(async (image) => {
+    const source = image.getAttribute('src');
+    if (!source || source.startsWith('data:')) return;
+    try {
+      const response = await fetch(new URL(source, window.location.href), { credentials: 'include' });
+      if (!response.ok) throw new Error(`Unable to load PAN card image (${response.status}).`);
+      image.setAttribute('src', await blobToDataUrl(await response.blob()));
+    } catch (error) {
+      console.warn('PAN card image could not be embedded in the export.', error);
+      image.removeAttribute('src');
+      image.style.display = 'none';
+    }
+  }));
 
-const createPanCardSvg = (data: PanCardData) => `
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
-  <defs>
-    <linearGradient id="panCardGradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#eef2ff"/><stop offset="55%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0e7ff"/>
-    </linearGradient>
-    <linearGradient id="panAccentGradient" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#6D28D9"/><stop offset="50%" stop-color="#4F46E5"/><stop offset="100%" stop-color="#3B61D9"/>
-    </linearGradient>
-  </defs>
-  <rect x="12" y="12" width="1376" height="856" rx="42" fill="url(#panCardGradient)" stroke="#c7d2fe" stroke-width="4"/>
-  <rect x="12" y="12" width="1376" height="18" rx="9" fill="url(#panAccentGradient)"/>
-  <circle cx="1180" cy="160" r="130" fill="#4F46E5" opacity="0.06"/>
-  <circle cx="1280" cy="250" r="190" fill="#6D28D9" opacity="0.04"/>
-  <rect x="76" y="82" width="128" height="128" rx="28" fill="url(#panAccentGradient)"/>
-  <text x="140" y="164" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="#ffffff">IN</text>
-  <text x="238" y="116" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="3" fill="#172033">PAN VERIFICATION COPY</text>
-  <text x="238" y="158" font-family="Arial, sans-serif" font-size="22" letter-spacing="1" fill="#64748b">DIGITAL IDENTITY PREVIEW</text>
-  <line x1="76" y1="270" x2="1324" y2="270" stroke="#c7d2fe" stroke-width="3"/>
-  <text x="76" y="342" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#3B61D9">PERMANENT ACCOUNT NUMBER</text>
-  <text x="76" y="410" font-family="Arial, sans-serif" font-size="48" font-weight="700" letter-spacing="5" fill="#172033">${escapeSvgText(data.pan)}</text>
-  <text x="76" y="500" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#3B61D9">FULL NAME</text>
-  <text x="76" y="548" font-family="Arial, sans-serif" font-size="30" font-weight="600" fill="#172033">${escapeSvgText(data.fullName)}</text>
-  <text x="76" y="632" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#3B61D9">FATHER'S NAME</text>
-  <text x="76" y="680" font-family="Arial, sans-serif" font-size="26" font-weight="600" fill="#172033">${escapeSvgText(data.fatherName)}</text>
-  <text x="780" y="500" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#3B61D9">DATE OF BIRTH</text>
-  <text x="780" y="548" font-family="Arial, sans-serif" font-size="26" font-weight="600" fill="#172033">${escapeSvgText(data.dateOfBirth)}</text>
-  <text x="780" y="632" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#3B61D9">MASKED AADHAAR</text>
-  <text x="780" y="680" font-family="Arial, sans-serif" font-size="26" font-weight="600" fill="#172033">${escapeSvgText(data.maskedAadhaar)}</text>
-  <line x1="76" y1="758" x2="1324" y2="758" stroke="#c7d2fe" stroke-width="3"/>
+  const allWithBg = Array.from(root.querySelectorAll<HTMLElement>('*')).filter(
+    (el) => el.style.backgroundImage && el.style.backgroundImage.includes('url(')
+  );
+  await Promise.all(allWithBg.map(async (el) => {
+    const match = el.style.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
+    if (!match || !match[1] || match[1].startsWith('data:')) return;
+    try {
+      const response = await fetch(new URL(match[1], window.location.href), { credentials: 'include' });
+      if (response.ok) {
+        const dataUrl = await blobToDataUrl(await response.blob());
+        el.style.backgroundImage = `url("${dataUrl}")`;
+      }
+    } catch (e) {
+      console.warn('Background image could not be embedded in export.', e);
+    }
+  }));
+};
+
+const inlineComputedStyles = (source: Element, clone: Element) => {
+  const computed = window.getComputedStyle(source);
+  const targetStyle = (clone as HTMLElement | SVGElement).style;
+  for (let index = 0; index < computed.length; index += 1) {
+    const property = computed.item(index);
+    targetStyle.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+  }
+
+  const sourceChildren = Array.from(source.children);
+  const cloneChildren = Array.from(clone.children);
+  sourceChildren.forEach((child, index) => {
+    const clonedChild = cloneChildren[index];
+    if (clonedChild) inlineComputedStyles(child, clonedChild);
+  });
+};
+
+const captureCardAsDataUrl = async (container: HTMLDivElement, selector: string, format: 'png' | 'jpeg') => {
+  const surface = container.querySelector<HTMLElement>(selector);
+  if (!surface) throw new Error('Identity card preview is not ready.');
+
+  // Use the card's layout size so the compact on-screen scale never reduces exports.
+  const width = Math.ceil(surface.offsetWidth || 490);
+  const height = Math.ceil(surface.offsetHeight || 309);
+  const clone = surface.cloneNode(true) as HTMLElement;
+  inlineComputedStyles(surface, clone);
+  clone.style.transform = 'none';
+  clone.style.width = `${width}px`;
+  clone.style.height = `${height}px`;
+  await inlineImageSources(clone);
+
+  const serialized = new XMLSerializer().serializeToString(clone);
+  const svg = buildPanCardExportSvg({ width, height, markup: serialized });
+  const image = new window.Image();
+  const loaded = new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('Unable to render PAN card image.'));
+  });
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await loaded;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width * 2;
+  canvas.height = height * 2;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas is not available.');
+  context.scale(2, 2);
+  if (format === 'jpeg') {
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+  }
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL(format === 'png' ? 'image/png' : 'image/jpeg', 0.95);
+};
+
+const loadImage = (source: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const image = new window.Image();
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error('Unable to prepare identity card image.'));
+  image.src = source;
+});
+
+const combineCardImages = async (sources: string[], format: 'png' | 'jpeg') => {
+  const images = await Promise.all(sources.map(loadImage));
+  const width = Math.max(...images.map((image) => image.naturalWidth || image.width));
+  const height = images.reduce((total, image) => total + (image.naturalHeight || image.height), 0);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas is not available.');
+  if (format === 'jpeg') {
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+  }
+  let top = 0;
+  images.forEach((image) => {
+    const imageHeight = image.naturalHeight || image.height;
+    context.drawImage(image, 0, top, width, imageHeight);
+    top += imageHeight;
+  });
+  return canvas.toDataURL(format === 'png' ? 'image/png' : 'image/jpeg', 0.95);
+};
+
+/* Legacy SVG card renderer removed; exports now capture the real PanCardTemplate.
+
+
   <text x="76" y="812" font-family="Arial, sans-serif" font-size="18" fill="#64748b">Generated from verified API data · Not an official government-issued card</text>
 </svg>`;
+*/
 
+/* Legacy custom verification card retained only in history; modal now renders PanCardTemplate.
 function PanDigitalCard({ data }: { data: PanCardData }) {
   return (
     <section className="overflow-hidden rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-blue-50 p-3 shadow-sm">
@@ -209,11 +279,11 @@ function PanDigitalCard({ data }: { data: PanCardData }) {
         <div className="relative mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Permanent account number</p>
-            <p className="mt-1 text-xl font-semibold tracking-[0.16em] text-slate-900">{data.pan}</p>
+            <p className="mt-1 text-xl font-semibold tracking-[0.16em] text-slate-900">{data.panNumber}</p>
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Full name</p>
-            <p className="mt-1 text-sm font-medium text-slate-800">{data.fullName}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{data.name}</p>
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Father&apos;s name</p>
@@ -221,11 +291,11 @@ function PanDigitalCard({ data }: { data: PanCardData }) {
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Date of birth</p>
-            <p className="mt-1 text-sm font-medium text-slate-800">{data.dateOfBirth}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{data.dob}</p>
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Masked Aadhaar</p>
-            <p className="mt-1 text-sm font-medium text-slate-800">{data.maskedAadhaar}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{(data as VerificationPanCardData).maskedAadhaar}</p>
           </div>
         </div>
         <p className="relative mt-3 border-t border-indigo-100 pt-2 text-[10px] text-slate-500">Generated from verified API data · Not an official government-issued card</p>
@@ -233,6 +303,8 @@ function PanDigitalCard({ data }: { data: PanCardData }) {
     </section>
   );
 }
+
+*/
 
 const flattenPreviewFields = (value: Record<string, unknown>, prefix = ''): Array<[string, unknown]> => Object.entries(value).flatMap(([key, entryValue]) => {
   const label = prefix ? `${prefix} / ${previewLabel(key)}` : previewLabel(key);
@@ -256,24 +328,60 @@ function PreviewTable({ entries }: { entries: Array<[string, unknown]> }) {
   );
 }
 
-export function KycVerificationPreviewModal({ preview, onClose }: { preview: KycVerificationPreview; onClose: () => void }) {
+type KycGeneratedDocumentUpload = (file: File, documentKey: SellAccountDocumentKey) => Promise<UploadedFileResult>;
+
+export function KycVerificationPreviewModal({
+  preview,
+  onClose,
+  onSaveToKyc,
+}: {
+  preview: KycVerificationPreview;
+  onClose: () => void;
+  onSaveToKyc?: KycGeneratedDocumentUpload;
+}) {
   const record = isObject(preview.response.record) ? preview.response.record : {};
   const result = isObject(preview.response.result) ? preview.response.result : {};
   const [showRawResponse, setShowRawResponse] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [uploadingKyc, setUploadingKyc] = useState(false);
+  const [kycUploadError, setKycUploadError] = useState('');
+  const [uploadedKycDocument, setUploadedKycDocument] = useState<UploadedFileResult | null>(null);
+  const [aadhaarSide, setAadhaarSide] = useState<'front' | 'back'>('front');
+  const panCardContainerRef = useRef<HTMLDivElement>(null);
+  const aadhaarFrontExportRef = useRef<HTMLDivElement>(null);
+  const aadhaarBackExportRef = useRef<HTMLDivElement>(null);
   const overviewEntries = Object.entries(result).filter(([, value]) => !isObject(value));
   const groupedEntries = Object.entries(result).filter(([, value]) => isObject(value));
   const cacheHit = preview.response.cacheHit === true;
   const previewSource = cacheHit ? 'Temporary cache' : isObject(preview.response.record) ? 'Saved verification' : 'Live API';
   const panCardData = preview.kind === 'pan' ? buildPanCardData(preview, result) : null;
+  const aadhaarCardData = preview.kind === 'aadhaar' ? buildAadhaarCardData(preview, result) as AadhaarCardData : null;
+  const showAadhaarCard = Boolean(aadhaarCardData && hasAadhaarCardData(aadhaarCardData));
+  const gstPreviewFields = preview.kind === 'gst' ? getGstPreviewFields(result) : [];
+  const generatedDocumentKey = getGeneratedKycDocumentKey(preview);
+
+  const captureAadhaarCards = async (format: 'png' | 'jpeg') => {
+    if (!aadhaarFrontExportRef.current || !aadhaarBackExportRef.current) throw new Error('Aadhaar card preview is not ready.');
+    const front = await captureCardAsDataUrl(aadhaarFrontExportRef.current, '[data-aadhaar-card-surface="front"]', format);
+    const back = await captureCardAsDataUrl(aadhaarBackExportRef.current, '[data-aadhaar-card-surface="back"]', format);
+    return combineCardImages([front, back], format);
+  };
+
+  const buildVerificationPdf = async () => {
+    const { pdf } = await import('@react-pdf/renderer');
+    const { KycVerificationPreviewPdf } = await import('./KycVerificationPreviewPdf');
+    const panCardImage = panCardData && panCardContainerRef.current
+      ? await captureCardAsDataUrl(panCardContainerRef.current, '[data-pan-card-surface="true"]', 'png')
+      : undefined;
+    const aadhaarCardImage = showAadhaarCard ? await captureAadhaarCards('png') : undefined;
+    return pdf(<KycVerificationPreviewPdf preview={preview} panCardImage={panCardImage} aadhaarCardImage={aadhaarCardImage} />).toBlob();
+  };
 
   const downloadResult = async () => {
     if (downloading) return;
     setDownloading(true);
     try {
-      const { pdf } = await import('@react-pdf/renderer');
-      const { KycVerificationPreviewPdf } = await import('./KycVerificationPreviewPdf');
-      const blob = await pdf(<KycVerificationPreviewPdf preview={preview} />).toBlob();
+      const blob = await buildVerificationPdf();
       const url = URL.createObjectURL(blob);
       const link = window.document.createElement('a');
       link.href = url;
@@ -292,38 +400,15 @@ export function KycVerificationPreviewModal({ preview, onClose }: { preview: Kyc
   };
 
   const downloadPanImage = async (format: 'png' | 'jpeg') => {
-    if (!panCardData || downloading) return;
+    if (!panCardData || !panCardContainerRef.current || downloading) return;
     setDownloading(true);
     try {
-      const image = new window.Image();
-      const imageUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(createPanCardSvg(panCardData))}`;
-      const loadedImage = new Promise<HTMLImageElement>((resolve, reject) => {
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('Unable to render PAN card preview.'));
-      });
-      image.src = imageUrl;
-      await loadedImage;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = 1400;
-      canvas.height = 880;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Canvas is not available.');
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-      const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((resultBlob) => {
-          if (resultBlob) resolve(resultBlob);
-          else reject(new Error('Unable to create image download.'));
-        }, mimeType, 0.95);
-      });
+      const dataUrl = await captureCardAsDataUrl(panCardContainerRef.current, '[data-pan-card-surface="true"]', format);
+      const blob = await (await fetch(dataUrl)).blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `PAN-${panCardData.pan}-verification.${format === 'png' ? 'png' : 'jpg'}`;
+      link.download = `PAN-${panCardData.panNumber}-verification.${format === 'png' ? 'png' : 'jpg'}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -332,6 +417,51 @@ export function KycVerificationPreviewModal({ preview, onClose }: { preview: Kyc
     } catch (error) {
       console.error('Failed to generate PAN image:', error);
       toast.error('Unable to generate PAN image.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const saveToKyc = async () => {
+    if (!onSaveToKyc || !generatedDocumentKey || uploadingKyc) return;
+    setUploadingKyc(true);
+    setKycUploadError('');
+    try {
+      const blob = await buildVerificationPdf();
+      const file = new File([blob], getGeneratedKycDocumentFileName(preview), {
+        type: 'application/pdf',
+        lastModified: Date.now(),
+      });
+      const uploaded = await onSaveToKyc(file, generatedDocumentKey);
+      setUploadedKycDocument(uploaded);
+      toast.success(`${preview.kind === 'aadhaar' ? 'Aadhaar' : 'PAN'} document uploaded to KYC.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to upload the verification document.';
+      setKycUploadError(message);
+      toast.error(message);
+    } finally {
+      setUploadingKyc(false);
+    }
+  };
+
+  const downloadAadhaarImage = async (format: 'png' | 'jpeg') => {
+    if (!showAadhaarCard || downloading) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await captureAadhaarCards(format);
+      const blob = await (await fetch(dataUrl)).blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `AADHAAR-${aadhaarCardData?.aadhaarNumber || 'verification'}-front-back.${format === 'png' ? 'png' : 'jpg'}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`Aadhaar ${format === 'png' ? 'PNG' : 'JPG'} downloaded.`);
+    } catch (error) {
+      console.error('Failed to generate Aadhaar image:', error);
+      toast.error('Unable to generate Aadhaar image.');
     } finally {
       setDownloading(false);
     }
@@ -373,7 +503,67 @@ export function KycVerificationPreviewModal({ preview, onClose }: { preview: Kyc
         </div>
 
         <div className="min-h-0 overflow-y-auto bg-slate-50/70 px-4 py-3 sm:px-5">
-          {panCardData ? <PanDigitalCard data={panCardData} /> : null}
+          {panCardData ? (
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">PAN card preview</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Verified details filled into the PAN card template.</p>
+                </div>
+                {panCardData.maskedAadhaar ? <span className="text-[11px] font-medium text-slate-500">Masked Aadhaar: {panCardData.maskedAadhaar}</span> : null}
+              </div>
+              <div ref={panCardContainerRef} className="overflow-x-auto rounded-lg bg-slate-50 p-3" aria-label="PAN card preview">
+                <div className="flex h-[260px] min-w-[430px] justify-center overflow-hidden">
+                  <PanCardTemplate data={panCardData} interactive={false} scale={0.84} />
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {showAadhaarCard && aadhaarCardData ? (
+            <section className="relative mt-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">Aadhaar card preview</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Fetched Aadhaar fields filled into the front and back templates.</p>
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  <button type="button" onClick={() => setAadhaarSide('front')} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold ${aadhaarSide === 'front' ? 'bg-white text-[#3B61D9] shadow-sm' : 'text-slate-500'}`} aria-label="Show Aadhaar front">
+                    <ArrowLeft className="h-3 w-3" /> Front
+                  </button>
+                  <button type="button" onClick={() => setAadhaarSide('back')} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold ${aadhaarSide === 'back' ? 'bg-white text-[#3B61D9] shadow-sm' : 'text-slate-500'}`} aria-label="Show Aadhaar back">
+                    Back <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg bg-slate-50 p-3" aria-label={`Aadhaar ${aadhaarSide} preview`}>
+                <div className="flex h-[260px] min-w-[430px] justify-center overflow-hidden">
+                  <AadhaarCardTemplate data={aadhaarCardData} interactive={false} scale={0.84} side={aadhaarSide} />
+                </div>
+              </div>
+              <div className="absolute left-[-10000px] top-0 h-[309px] w-[490px]" aria-hidden="true">
+                <div ref={aadhaarFrontExportRef}>
+                  <AadhaarCardTemplate data={aadhaarCardData} interactive={false} scale={1} side="front" />
+                </div>
+                <div ref={aadhaarBackExportRef}>
+                  <AadhaarCardTemplate data={aadhaarCardData} interactive={false} scale={1} side="back" />
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {gstPreviewFields.length ? (
+            <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3B61D9]">GSTIN details</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">Verified business details returned by the Surepass GSTIN API.</p>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Verified data</span>
+              </div>
+              <PreviewTable entries={gstPreviewFields} />
+            </section>
+          ) : null}
 
           {overviewEntries.length ? (
             <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
@@ -405,19 +595,47 @@ export function KycVerificationPreviewModal({ preview, onClose }: { preview: Kyc
           </section>
         </div>
 
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5">
+          {generatedDocumentKey && onSaveToKyc ? (
+            <div className="mr-auto min-w-[220px] flex-1" role="status" aria-live="polite">
+              {uploadedKycDocument ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+                  <p className="flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Uploaded to KYC</p>
+                  <p className="mt-0.5 truncate text-[10px] text-emerald-700">{uploadedKycDocument.originalName || uploadedKycDocument.fileName}</p>
+                </div>
+              ) : kycUploadError ? (
+                <p className="text-[11px] font-medium text-rose-600">{kycUploadError}</p>
+              ) : null}
+            </div>
+          ) : null}
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Close</button>
+          {generatedDocumentKey && onSaveToKyc ? (
+            <button type="button" onClick={() => void saveToKyc()} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">
+              {uploadingKyc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {getGeneratedKycUploadLabel({ uploading: uploadingKyc, hasUploadedDocument: Boolean(uploadedKycDocument) })}
+            </button>
+          ) : null}
           {panCardData ? (
             <>
-              <button type="button" onClick={() => void downloadPanImage('png')} disabled={downloading} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
+              <button type="button" onClick={() => void downloadPanImage('png')} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
                 <Download className="h-3.5 w-3.5" /> PNG
               </button>
-              <button type="button" onClick={() => void downloadPanImage('jpeg')} disabled={downloading} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
+              <button type="button" onClick={() => void downloadPanImage('jpeg')} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
                 <Download className="h-3.5 w-3.5" /> JPG
               </button>
             </>
           ) : null}
-          <button type="button" onClick={() => void downloadResult()} disabled={downloading} className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-3.5 py-1.5 text-xs font-semibold text-slate-950 shadow-sm transition hover:bg-amber-400 disabled:cursor-wait disabled:opacity-60">
+          {showAadhaarCard ? (
+            <>
+              <button type="button" onClick={() => void downloadAadhaarImage('png')} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
+                <Download className="h-3.5 w-3.5" /> Aadhaar PNG
+              </button>
+              <button type="button" onClick={() => void downloadAadhaarImage('jpeg')} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg border border-[#3B61D9] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#3B61D9] transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60">
+                <Download className="h-3.5 w-3.5" /> Aadhaar JPG
+              </button>
+            </>
+          ) : null}
+          <button type="button" onClick={() => void downloadResult()} disabled={downloading || uploadingKyc} className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-3.5 py-1.5 text-xs font-semibold text-slate-950 shadow-sm transition hover:bg-amber-400 disabled:cursor-wait disabled:opacity-60">
             <Download className="h-3.5 w-3.5" /> {downloading ? 'Preparing PDF...' : 'Download PDF'}
           </button>
         </div>
@@ -609,7 +827,7 @@ export function DeedDocumentPreview({
               <iframe
                 title={label}
                 src={viewerUrl}
-                className="h-64 w-full rounded border-0"
+                className="h-[560px] min-h-[500px] w-full rounded border-0"
               />
             )
           ) : null}
@@ -699,6 +917,7 @@ export function SellAccountKycFields({
   onNumberChange,
   onVerify,
   previewAvailable = false,
+  aadhaarPreviewAvailable = false,
   onPreview,
 }: {
   side: 'purchase' | 'sell';
@@ -707,7 +926,8 @@ export function SellAccountKycFields({
   onNumberChange: (kind: SellAccountKycKind, value: string) => void;
   onVerify: (kind: 'pan' | 'gst') => void;
   previewAvailable?: boolean;
-  onPreview?: (kind: 'gst') => void;
+  aadhaarPreviewAvailable?: boolean;
+  onPreview?: (kind: 'gst' | 'aadhaar') => void;
 }) {
   const statusLabel = (status: string) => {
     if (status === SELL_ACCOUNT_KYC_STATUS.VERIFIED) return 'Verified';
@@ -787,6 +1007,11 @@ export function SellAccountKycFields({
           />
         </div>
         <p className="mt-1 text-xs text-gray-500">Aadhaar verification will be enabled after its provider is configured.</p>
+        {aadhaarPreviewAvailable && onPreview ? (
+          <button type="button" onClick={() => onPreview('aadhaar')} className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-violet-700 hover:text-violet-900 hover:underline">
+            <Eye className="h-3.5 w-3.5" />Preview fetched data
+          </button>
+        ) : null}
       </div>
     </div>
   );

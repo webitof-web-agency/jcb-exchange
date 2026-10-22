@@ -210,7 +210,7 @@ export default function GstVerificationPage() {
     <main className="min-h-full bg-slate-50 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600">Admin tool</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">GST Verification</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">Verify a business GSTIN using the standard Surepass GSTIN Verification API. GST status is shown exactly as returned by the provider.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600">Admin tool</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">GST Verification</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">Verify a business GSTIN using the Surepass GSTIN Advanced Verification API. Enhanced business, filing and compliance details are shown exactly as returned by the provider.</p></div>
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Provider: Surepass</div>
         </div>
 

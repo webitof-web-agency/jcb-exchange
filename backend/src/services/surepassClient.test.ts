@@ -76,7 +76,7 @@ test('sends sandbox PAN comprehensive requests to the documented endpoint with i
   });
 });
 
-test('sends standard GSTIN verification only to the configured Surepass backend', async () => {
+test('sends standard GSTIN verification to the documented production endpoint', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
     baseUrl: 'https://kyc-api.surepass.app',
