@@ -43,6 +43,13 @@ import {
   isUsableRcFullVerification,
   syncListingVehicleVerification,
 } from '../services/listingVehicleVerification';
+import {
+  getListingFinalPrice,
+  getListingPricing,
+  listingPricingSelect,
+  parseListingPricingInput,
+  shouldResubmitListingForPriceChange,
+} from '../utils/listingPricing';
 
 const prismaAny = prisma as any;
 const latestListingRtoRecords = {
@@ -156,7 +163,7 @@ const getPaymentReadyListing = async (listingId: string) =>
     select: {
       id: true,
       title: true,
-      price: true,
+      ...listingPricingSelect,
       status: true,
       partnerId: true,
       partner: {
@@ -631,6 +638,10 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
   return {
     ...listing,
     media: normalizeListingMedia(listing.media),
+    // Only owners and admins get here, so the full breakdown (seller price, margin) is fine.
+    ...(Object.prototype.hasOwnProperty.call(listing, 'price')
+      ? { pricing: getListingPricing(listing as Record<string, unknown>) }
+      : {}),
     ...(Object.prototype.hasOwnProperty.call(listing, 'vehicleVerification')
       ? {
           vehicleVerification: verification
@@ -1492,7 +1503,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
     const normalizedTitle = normalizeText(title);
     const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
-    const nextStatus = isAdmin
+    let nextStatus = isAdmin
       ? normalizedStatus
       : hasOwnField('status') && !isReviewPendingStatus(existingListing.status)
         ? normalizedStatus
@@ -1549,6 +1560,16 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
       : null;
     const providerVerificationSnapshot = providerVerificationDetail || null;
+    const resubmitForPriceChange = shouldResubmitListingForPriceChange({
+      isAdmin,
+      previousStatus: existingListing.status,
+      nextStatus,
+      previousPrice: existingListing.price,
+      nextPrice: parsedPrice,
+    });
+    if (resubmitForPriceChange) {
+      nextStatus = 'PENDING_APPROVAL';
+    }
     const nextIsNegotiable = hasOwnField('isNegotiable')
       ? Boolean(isNegotiable)
       : Boolean(existingListing.isNegotiable);
@@ -1738,6 +1759,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     return res.json({
       message: isAdmin
         ? 'Listing updated successfully.'
+        : resubmitForPriceChange
+          ? 'Price updated. Your listing is pending admin approval again and will go live once approved.'
         : isPublicListingStatus(existingListing.status)
           ? 'Listing updated successfully. Your approved listing remains live.'
           : 'Listing updated successfully. Approval status is unchanged.',
@@ -1839,6 +1862,11 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
       return res.status(400).json({ error: 'Invalid approval status.' });
     }
 
+    const pricingInput = requestedStatus === 'PUBLISHED' ? parseListingPricingInput(req.body) : null;
+    if (pricingInput && 'error' in pricingInput) {
+      return res.status(400).json({ error: pricingInput.error });
+    }
+
     const existingListing = await prismaAny.listing.findUnique({
       where: { id: listingId },
       include: {
@@ -1865,7 +1893,12 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
 
     const updatedListing = await prismaAny.listing.update({
       where: { id: listingId },
-      data: { status: requestedStatus },
+      data: {
+        status: requestedStatus,
+        ...(pricingInput
+          ? { ...pricingInput, pricingUpdatedAt: new Date(), pricingUpdatedById: req.user.id }
+          : {}),
+      },
       include: {
         partner: {
           select: {
@@ -1900,7 +1933,7 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
         creatorUserId: updatedListing.partnerId,
         creatorRole: updatedListing.partner?.role || 'PARTNER',
         title: updatedListing.title,
-        price: updatedListing.price,
+        price: getListingFinalPrice(updatedListing),
         locationCity: updatedListing.locationCity,
         locationState: updatedListing.locationState,
         categoryName: updatedListing.category?.name,
@@ -1952,6 +1985,47 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
           'Unknown partner',
         dealerCategory: getDealerCategoryLabel(updatedListing.partner),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateListingPricing = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || !['SUPER_ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Admin approval access required.' });
+    }
+
+    if (req.user.role === 'EMPLOYEE') {
+      const permissions = await getEmployeePermissions(req.user.id);
+      if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.approve')) {
+        return res.status(403).json({ error: 'You do not have permission to change listing pricing.' });
+      }
+    }
+
+    const pricingInput = parseListingPricingInput(req.body);
+    if (!pricingInput) {
+      return res.status(400).json({ error: 'Margin or expenses are required.' });
+    }
+    if ('error' in pricingInput) {
+      return res.status(400).json({ error: pricingInput.error });
+    }
+
+    const listingId = String(req.params.id || '');
+    const existingListing = await prismaAny.listing.findUnique({ where: { id: listingId }, select: { id: true } });
+    if (!existingListing) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+
+    const updatedListing = await prismaAny.listing.update({
+      where: { id: listingId },
+      data: { ...pricingInput, pricingUpdatedAt: new Date(), pricingUpdatedById: req.user.id },
+    });
+
+    return res.json({
+      message: 'Listing pricing updated successfully.',
+      listing: { id: updatedListing.id, status: updatedListing.status, pricing: getListingPricing(updatedListing) },
     });
   } catch (error) {
     next(error);
@@ -2103,7 +2177,7 @@ export const getListingPaymentSettings = async (req: Request, res: Response, nex
       listing: {
         id: listing!.id,
         title: listing!.title,
-        amount: Number(listing!.price || 0),
+        amount: getListingFinalPrice(listing!),
       },
       paymentSettings: publicSettings,
       existingSubmission: existingSubmission
@@ -2121,10 +2195,13 @@ export const getListingPaymentSettings = async (req: Request, res: Response, nex
 const mapPartnerListingPaymentSubmission = (payment: any) => ({
   ...payment,
   amount: Number(payment.amount || 0),
+  // Buyers see this too, so only the final price leaves the server, never the margin.
   listing: payment.listing
     ? {
-      ...payment.listing,
-      price: Number(payment.listing.price || 0),
+      id: payment.listing.id,
+      title: payment.listing.title,
+      status: payment.listing.status,
+      price: getListingFinalPrice(payment.listing),
     }
     : null,
 });
@@ -2173,7 +2250,7 @@ export const getPartnerListingPaymentSubmissions = async (req: Request, res: Res
           select: {
             id: true,
             title: true,
-            price: true,
+            ...listingPricingSelect,
             status: true,
           },
         },
@@ -2224,7 +2301,7 @@ export const getCustomerListingPaymentSubmissions = async (req: Request, res: Re
           select: {
             id: true,
             title: true,
-            price: true,
+            ...listingPricingSelect,
             status: true,
           },
         },
@@ -2284,7 +2361,7 @@ export const createListingRazorpayOrder = async (req: Request, res: Response, ne
 
     await prismaAny.user.update({ where: { id: req.user.id }, data: billingLocation });
 
-    const amountInPaise = Math.round(Number(listing!.price || 0) * 100);
+    const amountInPaise = Math.round(getListingFinalPrice(listing!) * 100);
     if (!amountInPaise || amountInPaise <= 0) {
       return res.status(400).json({ error: 'Listing amount is invalid.' });
     }
@@ -2369,7 +2446,7 @@ export const createListingPhonePeOrder = async (req: Request, res: Response, nex
       return res.status(400).json({ error: 'PhonePe is not configured for listing payments.' });
     }
 
-    const amountInPaise = Math.round(Number(listing!.price || 0) * 100);
+    const amountInPaise = Math.round(getListingFinalPrice(listing!) * 100);
     if (!amountInPaise || amountInPaise < 100) {
       return res.status(400).json({ error: 'Listing amount is invalid.' });
     }
@@ -2431,7 +2508,7 @@ export const createListingPhonePeOrder = async (req: Request, res: Response, nex
         partnerId: listing!.partnerId,
         method: 'PHONEPE',
         status: 'PENDING_VERIFICATION',
-        amount: listing!.price,
+        amount: getListingFinalPrice(listing!),
         customerCity: billingLocation.city,
         customerState: billingLocation.state,
         transactionRef: merchantOrderId,
@@ -2697,7 +2774,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         return res.status(502).json({ error: 'Unable to verify the Razorpay order.' });
       }
 
-      const expectedAmountInPaise = Math.round(Number(listing!.price || 0) * 100);
+      const expectedAmountInPaise = Math.round(getListingFinalPrice(listing!) * 100);
       if (
         order.notes?.listingId !== listing!.id ||
         order.notes?.buyerId !== req.user.id ||
@@ -2716,7 +2793,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
         partnerId: listing!.partnerId,
         method,
         status: paymentOutcome.status,
-        amount: listing!.price,
+        amount: getListingFinalPrice(listing!),
         customerCity: billingLocation.city,
         customerState: billingLocation.state,
         transactionRef: transactionRef || razorpayPaymentId || null,

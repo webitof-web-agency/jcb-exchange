@@ -1076,6 +1076,13 @@ model Listing {
   additionalDescription String?       @db.Text
   grossPower            String?
   engineNumber          String?
+  // `price` stays the seller's own price. Admin adds margin and expenses at approval;
+  // buyers see price + adminMarginAmount + adminExpenseAmount (see utils/listingPricing.ts).
+  adminMarginAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  adminExpenseAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  adminExpenseBreakdown Json?
+  pricingUpdatedAt      DateTime?
+  pricingUpdatedById    String?
   status                ListingStatus @default(DRAFT)
   soldAt                DateTime?
   contactMode           String?
@@ -1200,6 +1207,14 @@ enum SellAccountTaxMode {
   EXCLUSIVE
 }
 
+// How the GST-inclusive margin is worked out. Records saved before 2026-10-22 keep
+// SALE_MINUS_PURCHASE; every new or edited record uses AFTER_EXPENSES
+// (sell - purchase - expenses).
+enum SellAccountMarginBasis {
+  SALE_MINUS_PURCHASE
+  AFTER_EXPENSES
+}
+
 // Who the vehicle was bought from before JCB Exchange (the broker) sold it on.
 enum SellAccountSourceType {
   PARTNER
@@ -1269,6 +1284,7 @@ model SellAccount {
   netProfitAfterGst     Decimal                @default(0) @db.Decimal(14, 2)
   gstRatePercent        Decimal                @default(18) @db.Decimal(5, 2)
   taxMode               SellAccountTaxMode     @default(INCLUSIVE)
+  marginBasis           SellAccountMarginBasis @default(AFTER_EXPENSES)
   transferDetails       String?                @db.Text
   remarks               String?                @db.Text
   documents             Json?

@@ -1,6 +1,7 @@
 export const SELL_ACCOUNT_GST_RATE_PERCENT = 18;
 
 export type SellAccountTaxMode = 'INCLUSIVE' | 'EXCLUSIVE';
+export type SellAccountMarginBasis = 'SALE_MINUS_PURCHASE' | 'AFTER_EXPENSES';
 export type SellAccountPaymentSide = 'PURCHASER_RECEIPT' | 'SELLER_PAYMENT';
 export type SellAccountPaymentStatus = 'UNPAID' | 'PARTIAL' | 'FULL';
 export type SellAccountDealStatus =
@@ -23,6 +24,8 @@ export interface SellAccountFinanceInput {
   purchaseAmount?: number | string;
   expenses?: number | string;
   taxMode?: SellAccountTaxMode | string;
+  // Older records keep SALE_MINUS_PURCHASE; anything else uses AFTER_EXPENSES.
+  marginBasis?: SellAccountMarginBasis | string | null;
   sellerState?: string;
   purchaserState?: string;
   // Value of the vehicle JCB Exchange handed over (purchase) or took back (sale) in an exchange.
@@ -73,18 +76,25 @@ export const normalizeSellAccountExpenseBreakdown = (value: unknown): SellAccoun
 export const sumSellAccountExpenseBreakdown = (breakdown: SellAccountExpenseBreakdown) =>
   roundMoney(SELL_ACCOUNT_EXPENSE_KEYS.reduce((total, key) => total + number(breakdown[key]), 0));
 
+export const resolveSellAccountMarginBasis = (value: unknown): SellAccountMarginBasis =>
+  value === 'SALE_MINUS_PURCHASE' ? 'SALE_MINUS_PURCHASE' : 'AFTER_EXPENSES';
+
 /**
- * GST follows the margin scheme for second-hand goods (Rule 32(5), CGST Rules 2017):
- * tax is due on the margin (sale value - purchase value) and that margin is GST-inclusive,
- * so the tax is extracted from it. Operating expenses are not deductible from the GST base;
- * they only reduce the business profit after GST.
+ * The broker margin is GST-inclusive and the 18% GST is extracted from it.
+ * AFTER_EXPENSES (current): margin = sell - purchase - expenses, so what is left after
+ * GST is the final profit.
+ * SALE_MINUS_PURCHASE (records saved before 2026-10-22): margin = sell - purchase, and the
+ * expenses only reduce the profit after GST.
  */
 export const calculateSellAccountGst = (input: SellAccountFinanceInput = {}) => {
   const enteredSaleAmount = roundMoney(input.sellAmount);
   const purchaseAmount = roundMoney(input.purchaseAmount);
   const expenses = roundMoney(input.expenses);
   const rate = SELL_ACCOUNT_GST_RATE_PERCENT / 100;
-  const marginAmount = roundSignedMoney(enteredSaleAmount - purchaseAmount);
+  const marginBasis = resolveSellAccountMarginBasis(input.marginBasis);
+  const marginAmount = roundSignedMoney(
+    enteredSaleAmount - purchaseAmount - (marginBasis === 'AFTER_EXPENSES' ? expenses : 0),
+  );
   const taxableAmount = roundMoney(Math.max(marginAmount, 0) / (1 + rate));
   const gstAmount = roundMoney(Math.max(marginAmount, 0) - taxableAmount);
   // GST is tracked separately; the purchaser still pays the entered sell amount.
@@ -93,11 +103,12 @@ export const calculateSellAccountGst = (input: SellAccountFinanceInput = {}) => 
   const cgst = intraState ? roundMoney(gstAmount / 2) : 0;
   const sgst = intraState ? roundMoney(gstAmount - cgst) : 0;
   const igst = intraState ? 0 : gstAmount;
-  const netProfitBeforeGst = roundSignedMoney(marginAmount - expenses);
+  const netProfitBeforeGst = marginBasis === 'AFTER_EXPENSES' ? marginAmount : roundSignedMoney(marginAmount - expenses);
 
   return {
     gstRatePercent: SELL_ACCOUNT_GST_RATE_PERCENT,
     taxMode: 'INCLUSIVE' as const,
+    marginBasis,
     marginAmount,
     expenses,
     taxableAmount,

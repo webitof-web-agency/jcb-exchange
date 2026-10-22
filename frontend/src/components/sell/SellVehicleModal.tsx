@@ -2224,6 +2224,13 @@ export default function SellVehicleModal({
                       <span>Pricing & Machine Location</span>
                     </div>
 
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                      {t(
+                        'sellModal.adminPricingNote',
+                        'Your listing goes live after admin approval. The admin can add the JCB Exchange margin and expenses (transport, paperwork, RTO) to your price, so buyers will see the final price. You can see the full breakdown in My Listings.',
+                      )}
+                    </p>
+
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                       <Field label="Price (₹) *">
                         <input

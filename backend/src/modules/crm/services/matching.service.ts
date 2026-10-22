@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { hasRequirement, listingMatch, type Requirement } from '../rules';
 import { toNumber } from './common';
+import { getListingFinalPrice, listingPricingSelect } from '../../../utils/listingPricing';
 
 type LeadRequirementFields = {
   categoryId: string | null;
@@ -39,6 +40,7 @@ export const findMatchingListings = async (lead: LeadRequirementFields, options:
     ...(requirement.yearFrom || requirement.yearTo
       ? { manufacturingYear: { ...(requirement.yearFrom ? { gte: requirement.yearFrom } : {}), ...(requirement.yearTo ? { lte: requirement.yearTo } : {}) } }
       : {}),
+    // Seller price <= final price, so this pre-filter never drops a listing the budget check below keeps.
     ...(requirement.budgetMax ? { price: { lte: new Prisma.Decimal(Math.ceil(requirement.budgetMax * 1.1)) } } : {}),
     ...(options.excludeIds?.length ? { id: { notIn: options.excludeIds } } : {}),
     ...(options.publishedSince ? { updatedAt: { gte: options.publishedSince } } : {}),
@@ -48,15 +50,20 @@ export const findMatchingListings = async (lead: LeadRequirementFields, options:
     orderBy: { createdAt: 'desc' },
     take: 60,
     select: {
-      id: true, title: true, price: true, manufacturingYear: true, locationState: true, locationCity: true,
+      id: true, title: true, ...listingPricingSelect, manufacturingYear: true, locationState: true, locationCity: true,
       categoryId: true, brandId: true, modelId: true, operatingHours: true,
       brand: { select: { name: true } }, model: { select: { name: true } }, category: { select: { name: true } },
     },
   });
   return listings
-    .map((listing) => ({ listing, score: listingMatch(requirement, { ...listing, price: Number(listing.price) }) }))
+    // Buyers are matched on, and offered, the final price; the margin itself is dropped.
+    .map(({ adminMarginAmount, adminExpenseAmount, adminExpenseBreakdown, ...listing }) => ({
+      ...listing,
+      price: getListingFinalPrice({ price: listing.price, adminMarginAmount, adminExpenseAmount, adminExpenseBreakdown }),
+    }))
+    .map((listing) => ({ listing, score: listingMatch(requirement, listing) }))
     .filter((row): row is { listing: typeof row.listing; score: number } => row.score !== null)
     .sort((a, b) => b.score - a.score)
     .slice(0, options.limit ?? 10)
-    .map(({ listing, score }) => ({ ...listing, price: Number(listing.price), matchScore: score }));
+    .map(({ listing, score }) => ({ ...listing, matchScore: score }));
 };

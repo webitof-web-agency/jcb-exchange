@@ -82,6 +82,7 @@ export type SellAccountSource = {
   saleExchangeValue: Prisma.Decimal;
   expenses: Prisma.Decimal;
   expenseBreakdown: unknown;
+  marginBasis: string;
   sellerState: string | null;
   purchaserState: string | null;
   isDraft: boolean;
@@ -280,6 +281,7 @@ export const buildSellAccountVouchers = (
       sellAmount: sellAmount.toNumber(),
       purchaseAmount: purchaseAmount.toNumber(),
       expenses: D(deal.expenses).toNumber(),
+      marginBasis: deal.marginBasis,
       sellerState: deal.sellerState ?? '',
       purchaserState: deal.purchaserState ?? '',
     });

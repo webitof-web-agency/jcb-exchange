@@ -38,6 +38,7 @@ import { findMatchingListings } from './matching.service';
 import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
 import { rescoreLead } from './scoring.service';
 import { getCrmConfig, type CrmConfig } from './settings.service';
+import { getListingFinalPrice, listingPricingSelect } from '../../../utils/listingPricing';
 
 export const NEXT_FOLLOW_UP_REQUIRED = 'NEXT_FOLLOW_UP_REQUIRED';
 
@@ -177,7 +178,7 @@ export const getLead = async (access: CrmAccess, id: string) => {
       dealer: { select: { id: true, name: true, role: true, mobile: true, whatsappNumber: true } },
       listing: {
         select: {
-          id: true, title: true, price: true, status: true, manufacturingYear: true, locationCity: true, locationState: true,
+          id: true, title: true, ...listingPricingSelect, status: true, manufacturingYear: true, locationCity: true, locationState: true,
           brand: { select: { name: true } }, model: { select: { name: true } }, category: { select: { name: true } },
         },
       },
@@ -213,7 +214,14 @@ export const getLead = async (access: CrmAccess, id: string) => {
   return {
     lead: {
       ...serializeLead(lead),
-      listing: lead.listing ? { ...lead.listing, price: toNumber(lead.listing.price) } : null,
+      listing: lead.listing
+        ? {
+          id: lead.listing.id, title: lead.listing.title, status: lead.listing.status, manufacturingYear: lead.listing.manufacturingYear,
+          locationCity: lead.listing.locationCity, locationState: lead.listing.locationState,
+          brand: lead.listing.brand, model: lead.listing.model, category: lead.listing.category,
+          price: getListingFinalPrice(lead.listing),
+        }
+        : null,
       requirement: { category: catalog[0], brand: catalog[1], model: catalog[2] },
       wonDeal: wonDeal ? { ...wonDeal, sellAmount: toNumber(wonDeal.sellAmount) } : null,
     },
@@ -299,7 +307,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
   const contactInput = (body.contact && typeof body.contact === 'object' ? body.contact : body) as Record<string, unknown>;
   const listingId = textOrNull(body.listingId, 60);
   const listing = listingId
-    ? await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, title: true, status: true, price: true, locationCity: true, locationState: true, partnerId: true, categoryId: true, brandId: true, modelId: true } })
+    ? await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, title: true, status: true, ...listingPricingSelect, locationCity: true, locationState: true, partnerId: true, categoryId: true, brandId: true, modelId: true } })
     : null;
   if (listingId && !listing) throw badRequest('Listing not found.');
   if (access.isPartner && listing && listing.partnerId !== access.userId) throw forbidden('You can only attach your own listings.');
@@ -353,7 +361,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
           ? {
             listingTitleSnapshot: listing.title,
             listingStatusSnapshot: listing.status,
-            listingPriceSnapshot: listing.price,
+            listingPriceSnapshot: getListingFinalPrice(listing),
             listingLocationCitySnapshot: listing.locationCity,
             listingLocationStateSnapshot: listing.locationState,
             categoryId: listing.categoryId,

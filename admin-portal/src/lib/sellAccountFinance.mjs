@@ -53,16 +53,21 @@ export const getSellAccountTaxLines = ({ isIntraState = false, cgst = 0, sgst = 
     : [{ key: 'igst', label: 'IGST (18%)', ratePercent: 18, amount: igst }]
 );
 
+export const resolveMarginBasis = (value) => (value === 'SALE_MINUS_PURCHASE' ? 'SALE_MINUS_PURCHASE' : 'AFTER_EXPENSES');
+
 /**
- * Margin scheme for second-hand goods (Rule 32(5), CGST Rules 2017): GST is due on the
- * margin (sell - purchase), which is GST-inclusive, so the tax is extracted from it.
- * Expenses are not deducted from the GST base; they only reduce the final profit.
+ * The broker margin is GST-inclusive and the 18% GST is extracted from it.
+ * AFTER_EXPENSES (current): margin = sell - purchase - expenses, so what is left after
+ * GST is the final profit.
+ * SALE_MINUS_PURCHASE (records saved before 2026-10-22): margin = sell - purchase, and the
+ * expenses only reduce the profit after GST.
  * Mirrors backend/src/services/sellAccountFinance.ts.
  */
 export const calculateSellAccountGst = ({
   sellAmount = 0,
   purchaseAmount = 0,
   expenses = 0,
+  marginBasis = 'AFTER_EXPENSES',
   sellerState = '',
   purchaserState = '',
 } = {}) => {
@@ -70,7 +75,8 @@ export const calculateSellAccountGst = ({
   const purchase = roundMoney(purchaseAmount);
   const operatingExpenses = roundMoney(expenses);
   const rate = GST_RATE_PERCENT / 100;
-  const marginAmount = roundSignedMoney(enteredSaleAmount - purchase);
+  const basis = resolveMarginBasis(marginBasis);
+  const marginAmount = roundSignedMoney(enteredSaleAmount - purchase - (basis === 'AFTER_EXPENSES' ? operatingExpenses : 0));
   const taxableAmount = roundMoney(Math.max(marginAmount, 0) / (1 + rate));
   const gstAmount = roundMoney(Math.max(marginAmount, 0) - taxableAmount);
   // GST is tracked separately; the purchaser still pays the entered sell amount.
@@ -79,11 +85,12 @@ export const calculateSellAccountGst = ({
   const cgst = intraState ? roundMoney(gstAmount / 2) : 0;
   const sgst = intraState ? roundMoney(gstAmount - cgst) : 0;
   const igst = intraState ? 0 : gstAmount;
-  const netProfitBeforeGst = roundSignedMoney(marginAmount - operatingExpenses);
+  const netProfitBeforeGst = basis === 'AFTER_EXPENSES' ? marginAmount : roundSignedMoney(marginAmount - operatingExpenses);
 
   return {
     gstRatePercent: GST_RATE_PERCENT,
     taxMode: 'INCLUSIVE',
+    marginBasis: basis,
     marginAmount,
     expenses: operatingExpenses,
     taxableAmount,

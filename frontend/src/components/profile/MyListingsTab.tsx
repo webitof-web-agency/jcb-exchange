@@ -34,7 +34,17 @@ type ListingItem = {
   locationCity?: string | null;
   locationState?: string | null;
   price?: string | number | null;
+  // Owner-only breakdown: your price + JCB Exchange margin + expenses = price buyers see.
+  pricing?: {
+    sellerPrice: number;
+    marginAmount: number;
+    expenseAmount: number;
+    finalPrice: number;
+  } | null;
 };
+
+const isPendingAdminApproval = (status?: string | null) =>
+  ['PENDING', 'PENDING_APPROVAL'].includes(String(status || '').toUpperCase());
 
 const formatPrice = (value?: string | number | null) => {
   if (value === null || value === undefined || value === '') {
@@ -279,7 +289,11 @@ export default function MyListingsTab() {
                     />
 
                     <div className="absolute right-3 top-3 rounded-md bg-white/90 px-2.5 py-1 text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm">
-                      <span className={getStatusClassName(listing.status)}>{String(listing.status || 'UNKNOWN')}</span>
+                      <span className={getStatusClassName(listing.status)}>
+                        {isPendingAdminApproval(listing.status)
+                          ? t('profile.pendingAdminApproval', 'Pending approval from admin')
+                          : String(listing.status || 'UNKNOWN')}
+                      </span>
                     </div>
                   </Link>
 
@@ -301,8 +315,21 @@ export default function MyListingsTab() {
                       </div>
                     </div>
 
+                    {isPendingAdminApproval(listing.status) ? (
+                      <p className="mt-3 rounded-md bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+                        {t('profile.pendingAdminApprovalNote', 'Your vehicle will go live after admin approval. The admin can add a margin and expenses to your price; buyers will see the final price.')}
+                      </p>
+                    ) : listing.pricing && (listing.pricing.marginAmount > 0 || listing.pricing.expenseAmount > 0) ? (
+                      <div className="mt-3 space-y-1 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        <div className="flex justify-between"><span>{t('profile.yourPrice', 'Your price')}</span><span className="font-semibold">{formatPrice(listing.pricing.sellerPrice)}</span></div>
+                        <div className="flex justify-between"><span>{t('profile.adminMargin', 'JCB Exchange margin')}</span><span className="font-semibold">{formatPrice(listing.pricing.marginAmount)}</span></div>
+                        <div className="flex justify-between"><span>{t('profile.adminExpenses', 'Expenses')}</span><span className="font-semibold">{formatPrice(listing.pricing.expenseAmount)}</span></div>
+                        <div className="flex justify-between border-t border-gray-200 pt-1 font-bold text-gray-900"><span>{t('profile.buyersSeePrice', 'Price shown to buyers')}</span><span>{formatPrice(listing.pricing.finalPrice)}</span></div>
+                      </div>
+                    ) : null}
+
                     <div className="mt-5 flex items-center justify-between border-t border-gray-50 pt-4">
-                      <span className="text-lg font-bold text-[#FFC107]">{formatPrice(listing.price)}</span>
+                      <span className="text-lg font-bold text-[#FFC107]">{formatPrice(listing.pricing?.finalPrice ?? listing.price)}</span>
 
                       <div className="flex items-center gap-3">
                         {!isReadOnlySoldListing ? (

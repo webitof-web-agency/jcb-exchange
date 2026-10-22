@@ -1082,11 +1082,10 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           {([
             { label: 'Purchase', value: form.purchaseAmount, tone: 'text-gray-900', note: form.purchaseType === 'EXCHANGE' ? `incl. ${formatInr(purchaseExchangeValue)} exchange` : 'Bought at' },
             { label: 'Sell', value: form.sellAmount, tone: 'text-gray-900', note: form.saleType === 'EXCHANGE' ? `incl. ${formatInr(saleExchangeValue)} exchange` : 'Sold at' },
-            { label: 'Margin (incl. GST)', value: finance.gst.marginAmount, tone: finance.gst.marginAmount >= 0 ? 'text-gray-950' : 'text-rose-600', note: 'Sell − Purchase' },
-            ...taxLines.map((line) => ({ label: line.label, value: line.amount, tone: 'text-blue-800', note: 'Extracted from margin', accent: 'blue' })),
-            { label: 'Margin after GST', value: finance.gst.taxableAmount, tone: 'text-gray-900', note: 'Taxable value' },
             { label: 'Expenses', value: expenseTotal, tone: 'text-gray-900', note: 'Transport, paperwork, RTO…' },
-            { label: 'Final profit', value: finance.gst.netProfitAfterGst, tone: finance.gst.netProfitAfterGst >= 0 ? 'text-emerald-700' : 'text-rose-600', note: 'After GST & expenses', accent: 'emerald' },
+            { label: 'Margin (incl. GST)', value: finance.gst.marginAmount, tone: finance.gst.marginAmount >= 0 ? 'text-gray-950' : 'text-rose-600', note: 'Sell − Purchase − Expenses' },
+            ...taxLines.map((line) => ({ label: line.label, value: line.amount, tone: 'text-blue-800', note: 'Extracted from margin', accent: 'blue' })),
+            { label: 'Final profit', value: finance.gst.netProfitAfterGst, tone: finance.gst.netProfitAfterGst >= 0 ? 'text-emerald-700' : 'text-rose-600', note: 'Margin after GST', accent: 'emerald' },
           ] as Array<{ label: string; value: number; tone: string; note: string; accent?: 'blue' | 'emerald' }>).map((tile) => (
             <div key={tile.label} className={`rounded-lg border px-3 py-2 ${tile.accent === 'blue' ? 'border-blue-200 bg-blue-50/60' : tile.accent === 'emerald' ? 'border-emerald-200 bg-emerald-50/70' : 'border-gray-200 bg-gray-50/60'}`}>
               <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-500">{tile.label}</p>
@@ -1096,10 +1095,15 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           ))}
         </div>
         <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-600">
-          <span>GST {GST_RATE_PERCENT}% on margin (margin scheme): <b className="tabular-nums text-gray-900">{formatInr(finance.gst.gstAmount)}</b></span>
+          <span>GST {GST_RATE_PERCENT}% included in the margin (after purchase + expenses): <b className="tabular-nums text-gray-900">{formatInr(finance.gst.gstAmount)}</b></span>
           <span>Customer pays in cash: <b className="tabular-nums text-gray-900">{formatInr(finance.payments.customerCashReceivable)}</b></span>
           <span>Payable to seller in cash: <b className="tabular-nums text-gray-900">{formatInr(finance.payments.sellerCashPayable)}</b></span>
         </div>
+        {existingRecord?.marginBasis === 'SALE_MINUS_PURCHASE' ? (
+          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+            This record was saved with the old margin (Sell − Purchase). Saving it now recalculates GST and profit on the margin after expenses.
+          </p>
+        ) : null}
       </Section>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">

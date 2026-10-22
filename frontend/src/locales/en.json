@@ -161,6 +161,11 @@
     "whatsappIntro": "Hi, I found your profile on JCBExchange. I am interested in your machines."
   },
   "machineDetails": {
+    "includesExpenses": "Includes expenses of {amount}",
+    "expenseTransport": "Vehicle transport",
+    "expensePaperwork": "Paperwork",
+    "expenseRtoWork": "RTO work",
+    "expenseOther": "Other",
     "errorTag": "Unable to load listing",
     "errorTitle": "Something went wrong while fetching this machine.",
     "errorDescription": "Please try again. If the listing was removed or unpublished, the page may no longer be available.",
@@ -413,7 +418,8 @@
       "dashboardLeft": "Dashboard Left",
       "dashboardRight": "Dashboard Right",
       "walkaroundVideo": "Video (Max 1)"
-    }
+    },
+    "adminPricingNote": "Your listing goes live after admin approval. The admin can add the JCB Exchange margin and expenses (transport, paperwork, RTO) to your price, so buyers will see the final price. You can see the full breakdown in My Listings."
   },
   "profile": {
     "registrationDate": "Registration Date",
@@ -486,7 +492,13 @@
     "ownerVisibilityDescription": "How this vehicle behaves across your account after status changes.",
     "ownerVisibilityPointOne": "This page always shows the full saved form data for the listing owner.",
     "ownerVisibilityPointTwo": "All vehicle specifications, media, and registration details remain preserved in the database.",
-    "ownerVisibilityPointSold": "If the vehicle is sold, the sale record stays visible here and the listing becomes view-only for prime customers."
+    "ownerVisibilityPointSold": "If the vehicle is sold, the sale record stays visible here and the listing becomes view-only for prime customers.",
+    "pendingAdminApproval": "Pending approval from admin",
+    "pendingAdminApprovalNote": "Your vehicle will go live after admin approval. The admin can add a margin and expenses to your price; buyers will see the final price.",
+    "yourPrice": "Your price",
+    "adminMargin": "JCB Exchange margin",
+    "adminExpenses": "Expenses",
+    "buyersSeePrice": "Price shown to buyers"
   },
   "auth": {
     "welcomeBack": "Welcome Back",

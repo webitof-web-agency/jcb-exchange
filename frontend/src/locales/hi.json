@@ -153,6 +153,11 @@
                           "whatsappIntro":  "नमस्ते, मैंने आपका प्रोफाइल JCBExchange पर देखा। मुझे आपकी मशीनों में रुचि है।"
                       },
     "machineDetails":  {
+                           "includesExpenses":  "{amount} के खर्च शामिल हैं",
+                           "expenseTransport":  "वाहन ट्रांसपोर्ट",
+                           "expensePaperwork":  "पेपरवर्क",
+                           "expenseRtoWork":  "RTO कार्य",
+                           "expenseOther":  "अन्य",
                            "errorTag":  "लिस्टिंग लोड नहीं हो सकी",
                            "errorTitle":  "इस मशीन को fetch करते समय कुछ गलत हो गया।",
                            "errorDescription":  "कृपया दोबारा कोशिश करें। अगर लिस्टिंग remove या unpublish हो चुकी है, तो पेज अब उपलब्ध न हो।",
@@ -250,6 +255,7 @@
                                    }
                    },
     "sellModal":  {
+                      "adminPricingNote":  "आपकी लिस्टिंग एडमिन अप्रूवल के बाद लाइव होगी। एडमिन आपकी कीमत में JCB Exchange का मार्जिन और खर्च (ट्रांसपोर्ट, पेपरवर्क, RTO) जोड़ सकता है, इसलिए खरीदारों को अंतिम कीमत दिखेगी। पूरा ब्रेकअप My Listings में देखें।",
                       "autoCompressed":  "अपलोड से पहले ऑटो-कंप्रेस किया गया। अधिकतम",
                       "inputMaxSuffix":  "input",
                       "maxLabel":  "अधिकतम",
@@ -400,6 +406,12 @@
                                      }
                   },
     "profile":  {
+                    "pendingAdminApproval":  "एडमिन अप्रूवल लंबित",
+                    "pendingAdminApprovalNote":  "एडमिन अप्रूवल के बाद आपका वाहन लाइव होगा। एडमिन आपकी कीमत में मार्जिन और खर्च जोड़ सकता है; खरीदारों को अंतिम कीमत दिखेगी।",
+                    "yourPrice":  "आपकी कीमत",
+                    "adminMargin":  "JCB Exchange मार्जिन",
+                    "adminExpenses":  "खर्च",
+                    "buyersSeePrice":  "खरीदारों को दिखने वाली कीमत",
                     "primeMembership":  "प्राइम मेंबरशिप",
                     "membership":  "मेंबरशिप",
                     "membershipDetails":  "मेंबरशिप विवरण",

@@ -450,6 +450,12 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     : hasValidAskingPrice
       ? formatCurrency(listing.price)
       : t('machineDetails.notSpecified');
+  const expenseLines = [
+    { label: t('machineDetails.expenseTransport', 'Vehicle transport'), amount: Number(listing.expenseBreakdown?.transport || 0) },
+    { label: t('machineDetails.expensePaperwork', 'Paperwork'), amount: Number(listing.expenseBreakdown?.paperwork || 0) },
+    { label: t('machineDetails.expenseRtoWork', 'RTO work'), amount: Number(listing.expenseBreakdown?.rtoWork || 0) },
+    { label: listing.expenseBreakdown?.otherLabel || t('machineDetails.expenseOther', 'Other'), amount: Number(listing.expenseBreakdown?.other || 0) },
+  ].filter((line) => line.amount > 0);
   const buyerName = listing.saleRecord?.buyerName?.trim()
     ? maskName(listing.saleRecord.buyerName.trim())
     : '';
@@ -842,6 +848,19 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                       ? soldPriceLabel
                       : formatCurrency(listing.price || 0)}
                   </div>
+                  {listing.status !== 'SOLD' && Number(listing.expenseAmount || 0) > 0 ? (
+                    <div className="mt-3 border-t border-gray-200/80 pt-2.5 text-xs text-gray-600">
+                      <p className="mb-1 font-semibold text-gray-700">
+                        {t('machineDetails.includesExpenses', 'Includes expenses of {amount}', { amount: formatCurrency(listing.expenseAmount || 0) })}
+                      </p>
+                      {expenseLines.map((line) => (
+                        <div key={line.label} className="flex justify-between">
+                          <span>{line.label}</span>
+                          <span className="font-semibold tabular-nums">{formatCurrency(line.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 {listing.status === 'SOLD' ? (
