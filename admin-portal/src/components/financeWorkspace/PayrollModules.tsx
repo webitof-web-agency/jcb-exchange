@@ -480,7 +480,7 @@ export function PayslipsModule() {
         <div className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
           {detail.data.payslips.map((slip) => (
             <div key={slip.id} className="rounded-xl border border-slate-200 p-4">
-              <div className="flex items-start justify-between"><div><p className="font-semibold">{slip.party?.name}</p><p className="text-xs text-slate-500">{slip.profile?.designation ?? ''} · {slip.paidDays}/{slip.daysInMonth} days</p></div><button type="button" onClick={() => printPayslips(detail.data!, [slip])} className="text-slate-400 hover:text-slate-900" aria-label="Print"><Printer className="h-4 w-4" /></button></div>
+              <div className="flex items-start justify-between"><div><p className="font-semibold">{slip.party?.name}</p><p className="text-xs text-slate-500">{[slip.profile?.designation, `${slip.paidDays}/${slip.daysInMonth} days`].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => printPayslips(detail.data!, [slip])} className="text-slate-400 hover:text-slate-900" aria-label="Print"><Printer className="h-4 w-4" /></button></div>
               <p className="mt-2 text-sm">Gross {formatInr(slip.gross)} · Deductions {formatInr(slip.gross - slip.net)}</p>
               <p className="text-lg font-bold">Net {formatInr(slip.net)}</p>
             </div>
