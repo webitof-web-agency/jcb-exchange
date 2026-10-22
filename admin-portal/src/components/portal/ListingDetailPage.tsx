@@ -726,7 +726,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     currentUserRole === 'CUSTOMER' ||
     (currentUserRole === 'EMPLOYEE' && hasPermission(user?.permissions, 'listings.delete'));
 
-  const backHref = isSuperAdmin ? '/superadmin/listings' : isEmployee ? '/employee/listings' : '/partner/listings';
+  const backHref = isSuperAdmin ? '/admin/listings' : isEmployee ? '/employee/listings' : '/partner/listings';
   const effectiveSelectedStateId =
     form?.selectedStateId ||
     states.find((state) => state.name.trim().toLowerCase() === form?.locationState.trim().toLowerCase())?.id?.toString() ||
@@ -740,12 +740,12 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
   const analyticsUrl = useMemo(() => {
     if (!listing) return '#';
-    return isSuperAdmin ? `/superadmin/analytics/${listing.id}` : `/employee/analytics/${listing.id}`;
+    return isSuperAdmin ? `/admin/analytics/${listing.id}` : `/employee/analytics/${listing.id}`;
   }, [listing, isSuperAdmin]);
 
   const paymentsUrl = useMemo(() => {
     if (!listing) return '#';
-    return isSuperAdmin ? `/superadmin/listings/payments/${listing.id}` : `/employee/listings/payments/${listing.id}`;
+    return isSuperAdmin ? `/admin/listings/payments/${listing.id}` : `/employee/listings/payments/${listing.id}`;
   }, [listing, isSuperAdmin]);
 
   useEffect(() => {

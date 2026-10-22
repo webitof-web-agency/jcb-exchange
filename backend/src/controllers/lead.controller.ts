@@ -979,7 +979,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
         PushNotificationService.sendToUser(superAdmin.id, {
           title: 'Lead routed to partner',
           body: `${customer.name || 'A customer'} initiated a ${enquiryType} enquiry for ${listing.title || 'a listing'}.`,
-          data: { path: '/superadmin/enquiries' },
+          data: { path: '/admin/enquiries' },
         }).catch((err) => console.error('Superadmin lead copy FCM error:', err));
       }
     } catch (err) {

@@ -1,4 +1,4 @@
-import RolesPage from '../../../superadmin/users/roles/page';
+import RolesPage from '../../../admin/users/roles/page';
 
 export default function EmployeeRolesPage() {
   return <RolesPage />;

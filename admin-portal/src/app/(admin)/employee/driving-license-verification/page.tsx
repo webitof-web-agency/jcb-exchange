@@ -1,1 +1,1 @@
-export { default } from '@/app/(admin)/superadmin/driving-license-verification/page';
+export { default } from '@/app/(admin)/admin/driving-license-verification/page';

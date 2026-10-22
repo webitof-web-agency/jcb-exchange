@@ -1,1 +1,1 @@
-export { default, metadata } from '@/app/(admin)/superadmin/recruitment/candidates/layout';
+export { default, metadata } from '@/app/(admin)/admin/recruitment/candidates/layout';

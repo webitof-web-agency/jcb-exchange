@@ -1,1 +1,1 @@
-export { default } from '@/app/(admin)/superadmin/gst-verification/page';
+export { default } from '@/app/(admin)/admin/gst-verification/page';

@@ -1,4 +1,4 @@
-import SuperAdminTranslationsPage from '../../superadmin/translations/page';
+import SuperAdminTranslationsPage from '../../admin/translations/page';
 
 export default function EmployeeTranslationsPage() {
   return <SuperAdminTranslationsPage />;

@@ -42,7 +42,7 @@ export default function AccountsInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const sellAccountsPath = pathname.startsWith('/employee') ? '/employee/accounts/sell-accounts' : pathname.startsWith('/admin') ? '/admin/accounts/sell-accounts' : '/superadmin/accounts/sell-accounts';
+  const sellAccountsPath = pathname.startsWith('/employee') ? '/employee/accounts/sell-accounts' : '/admin/accounts/sell-accounts';
 
   const loadRecords = useCallback(async () => {
     try {

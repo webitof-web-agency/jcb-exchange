@@ -412,7 +412,7 @@ export default function LeadInboxPage() {
                 <tbody className="divide-y divide-gray-100">
                   {paginatedLeads.map((lead) => {
                     const detailHref = isSuperAdmin
-                      ? generateAdminLeadDetailPath('/superadmin/enquiries', {
+                      ? generateAdminLeadDetailPath('/admin/enquiries', {
                           id: lead.id,
                           customerName: lead.customer.name,
                           listingTitle: lead.listing.title,

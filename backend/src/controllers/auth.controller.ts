@@ -443,16 +443,14 @@ export const buildAuthUserPayload = async (user: any) => {
   const resolvedRole = resolveEffectiveUserRole(user);
   const portalHomeRoute =
     resolvedRole === 'SUPER_ADMIN'
-      ? '/superadmin/dashboard'
-      : resolvedRole === 'ADMIN'
-        ? '/admin/dashboard'
-        : resolvedRole === 'EMPLOYEE'
-          ? '/employee/dashboard'
-          : resolvedRole === 'PARTNER'
-            ? '/partner/dashboard'
-            : resolvedRole === 'CUSTOMER'
-              ? '/profile'
-              : null;
+      ? '/admin/dashboard'
+      : resolvedRole === 'ADMIN' || resolvedRole === 'EMPLOYEE'
+        ? '/employee/dashboard'
+        : resolvedRole === 'PARTNER'
+          ? '/partner/dashboard'
+          : resolvedRole === 'CUSTOMER'
+            ? '/profile'
+            : null;
   let primeAccessPayload = null;
   if (resolvedRole === 'CUSTOMER') {
     try {

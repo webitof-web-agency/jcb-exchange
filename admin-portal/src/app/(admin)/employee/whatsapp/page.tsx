@@ -1,1 +1,1 @@
-export { default } from '../../superadmin/whatsapp/page';
+export { default } from '../../admin/whatsapp/page';

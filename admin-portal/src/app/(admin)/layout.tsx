@@ -47,40 +47,28 @@ import { UserAvatar } from '@/components/profile/AvatarUpload';
 import { getPublicSiteTarget } from '@/lib/publicSite.mjs';
 
 const navItems = [
-  { href: '/superadmin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
-  { href: '/superadmin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
-  { href: '/superadmin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
-  { href: '/superadmin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
-  { href: '/superadmin/crm', labelKey: 'admin.crm', defaultLabel: 'CRM & Follow-ups', icon: MessagesSquare },
-  { href: '/superadmin/listings', labelKey: 'admin.listings', icon: Truck },
-  { href: '/superadmin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
-  { href: '/superadmin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
-  { href: '/superadmin/partners', labelKey: 'admin.partners', icon: List },
-  { href: '/superadmin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
-  { href: '/superadmin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
-  { href: '/superadmin/sms', labelKey: 'admin.smsNotifications', icon: Smartphone },
-  { href: '/superadmin/categories', labelKey: 'admin.categories', icon: Tags },
-  { href: '/superadmin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
-  { href: '/superadmin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
-  { href: '/superadmin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
-  { href: '/superadmin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
-  { href: '/superadmin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
-  { href: '/superadmin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
-  { href: '/superadmin/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText },
-  { href: '/superadmin/blogs', labelKey: 'admin.blog', icon: BookOpen },
-  { href: '/superadmin/translations', labelKey: 'admin.translationManager', icon: Languages },
-];
-
-const adminNavItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
-  { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
-  { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
-  { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/admin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
+  { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
+  { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
   { href: '/admin/crm', labelKey: 'admin.crm', defaultLabel: 'CRM & Follow-ups', icon: MessagesSquare },
-  { href: '/admin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
-  { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
+  { href: '/admin/listings', labelKey: 'admin.listings', icon: Truck },
   { href: '/admin/invoices', labelKey: 'admin.invoices', defaultLabel: 'Invoices', icon: ReceiptText },
   { href: '/admin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
+  { href: '/admin/partners', labelKey: 'admin.partners', icon: List },
+  { href: '/admin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
+  { href: '/admin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
+  { href: '/admin/sms', labelKey: 'admin.smsNotifications', icon: Smartphone },
+  { href: '/admin/categories', labelKey: 'admin.categories', icon: Tags },
+  { href: '/admin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
+  { href: '/admin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
+  { href: '/admin/analytics', labelKey: 'admin.analytics', icon: BarChart3 },
+  { href: '/admin/finance/workspace', labelKey: 'admin.financeWorkspace', defaultLabel: 'Financial Reports & CA Workspace', icon: BookOpen },
+  { href: '/admin/finance/expenses', labelKey: 'admin.expenses', icon: WalletCards },
+  { href: '/admin/footer', labelKey: 'admin.footerContent', icon: PanelsTopLeft },
+  { href: '/admin/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText },
+  { href: '/admin/blogs', labelKey: 'admin.blog', icon: BookOpen },
+  { href: '/admin/translations', labelKey: 'admin.translationManager', icon: Languages },
 ];
 
 const employeeModuleNavItems = [
@@ -121,22 +109,22 @@ const recruitmentNavItems = [
 ];
 
 const getRequiredPermissionsForPath = (pathname: string) => {
-  if (pathname === '/employee/users/roles' || pathname === '/superadmin/users/roles') {
+  if (pathname === '/employee/users/roles' || pathname === '/admin/users/roles') {
     return employeeRolesPermissions;
   }
 
-  if (pathname === '/employee/users' || pathname === '/superadmin/users') {
+  if (pathname === '/employee/users' || pathname === '/admin/users') {
     return employeeUsersPermissions;
   }
 
-  if (pathname === '/employee/brands' || pathname === '/superadmin/brands') {
+  if (pathname === '/employee/brands' || pathname === '/admin/brands') {
     return employeeBrandsPermissions;
   }
 
   const directVerificationRoutes = [
-    { paths: ['/admin/pan-verification', '/employee/pan-verification', '/superadmin/pan-verification'], permissions: PAN_VIEW_PERMISSIONS },
-    { paths: ['/admin/gst-verification', '/employee/gst-verification', '/superadmin/gst-verification'], permissions: GST_VIEW_PERMISSIONS },
-    { paths: ['/admin/driving-license-verification', '/employee/driving-license-verification', '/superadmin/driving-license-verification'], permissions: DRIVING_LICENSE_VIEW_PERMISSIONS },
+    { paths: ['/admin/pan-verification', '/employee/pan-verification'], permissions: PAN_VIEW_PERMISSIONS },
+    { paths: ['/admin/gst-verification', '/employee/gst-verification'], permissions: GST_VIEW_PERMISSIONS },
+    { paths: ['/admin/driving-license-verification', '/employee/driving-license-verification'], permissions: DRIVING_LICENSE_VIEW_PERMISSIONS },
   ];
   const matchedDirectVerificationRoute = directVerificationRoutes.find((route) =>
     route.paths.some((path) => pathname === path || pathname.startsWith(`${path}/`)),
@@ -148,20 +136,15 @@ const getRequiredPermissionsForPath = (pathname: string) => {
   const matchedAccount = accountsNavItems.find((item) =>
     pathname === `/employee/accounts/${item.key}` ||
     pathname.startsWith(`/employee/accounts/${item.key}/`) ||
-    pathname === `/superadmin/accounts/${item.key}` ||
-    pathname.startsWith(`/superadmin/accounts/${item.key}/`)
+    pathname === `/admin/accounts/${item.key}` ||
+    pathname.startsWith(`/admin/accounts/${item.key}/`)
   );
   if (matchedAccount) {
     return matchedAccount.permissions;
   }
 
   const matchedModule = employeeModuleNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  if (matchedModule) {
-    return matchedModule.permissions;
-  }
-
-  const matchedAdminModule = adminNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  return matchedAdminModule?.permissions || null;
+  return matchedModule?.permissions || null;
 };
 
 const formatPortalLabel = (value?: string | null) =>
@@ -244,7 +227,9 @@ export default function AdminLayout({
   });
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
-  const isEmployee = user?.role === 'EMPLOYEE';
+  // /admin is the super admin panel. The legacy ADMIN role works like an employee:
+  // the /employee portal, limited to its permissions.
+  const isEmployee = user?.role === 'EMPLOYEE' || user?.role === 'ADMIN';
   const totalPendingNotifications =
     (badges.enquiries || 0) +
     (badges.verifications || 0) +
@@ -281,7 +266,7 @@ export default function AdminLayout({
       : recruitmentNavItems.filter((item) => hasAnyPermission(userPermissions, item.permissions))),
     [isSuperAdmin, userPermissions]
   );
-  const isRecruitmentSectionActive = pathname.startsWith('/superadmin/recruitment') || pathname.startsWith('/employee/recruitment');
+  const isRecruitmentSectionActive = pathname.startsWith('/admin/recruitment') || pathname.startsWith('/employee/recruitment');
   const [recruitmentMenuExpansion, setRecruitmentMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
     value: null,
@@ -299,9 +284,9 @@ export default function AdminLayout({
   );
 
   const isPartnersSectionActive =
-    pathname.startsWith('/superadmin/partners') ||
+    pathname.startsWith('/admin/partners') ||
     pathname.startsWith('/employee/partners') ||
-    pathname.startsWith('/superadmin/partner-agreements') ||
+    pathname.startsWith('/admin/partner-agreements') ||
     pathname.startsWith('/employee/partner-agreements');
   const [partnersMenuExpansion, setPartnersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
@@ -346,7 +331,7 @@ export default function AdminLayout({
     }
 
     if (isEmployee) {
-      const employeeRedirect = pathname.startsWith('/superadmin')
+      const employeeRedirect = pathname.startsWith('/admin')
         ? resolveEmployeeRouteRedirect(pathname, userPermissions)
         : null;
 
@@ -383,33 +368,6 @@ export default function AdminLayout({
         router.replace(employeeHomeHref);
       }
       return;
-    }
-
-    if (isAdmin && pathname.startsWith('/superadmin')) {
-      router.replace('/admin/dashboard');
-      return;
-    }
-
-    if (isAdmin && !isEmployee) {
-      const requiredPermissions = getRequiredPermissionsForPath(pathname);
-      if (requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
-        router.replace('/admin/dashboard');
-        return;
-      }
-    }
-
-    if (isAdmin && !isEmployee && pathname === '/employee/dashboard') {
-      router.replace('/admin/dashboard');
-      return;
-    }
-
-    if (isAdmin && !isEmployee && pathname.startsWith('/employee')) {
-      router.replace('/admin/dashboard');
-      return;
-    }
-
-    if (isSuperAdmin && pathname === '/admin/dashboard') {
-      router.replace('/superadmin/dashboard');
     }
   }, [employeeCanSeeRoles, employeeCanSeeUsers, employeeHasAnyVisibleRoute, employeeHomeHref, hasHydrated, isAccessInactive, isAccessRevoked, isAdmin, isAuthenticated, isEmployee, isSuperAdmin, pathname, router, user, userPermissionKey, userPermissions, logout]);
 
@@ -490,19 +448,19 @@ export default function AdminLayout({
     // Mark current page as "seen" immediately when we navigate to it
     const markCurrentPageSeen = () => {
       const now = new Date().toISOString();
-      if (/^\/(superadmin|admin|employee)\/crm/.test(pathname)) {
+      if (/^\/(admin|employee)\/crm/.test(pathname)) {
         setModuleSeenAt('enquiries', now);
       }
-      if (pathname.startsWith('/superadmin/visitors') || pathname.startsWith('/employee/visitors')) {
+      if (pathname.startsWith('/admin/visitors') || pathname.startsWith('/employee/visitors')) {
         setModuleSeenAt('visitors', now);
       }
-      if (pathname.startsWith('/superadmin/recurrence') || pathname.startsWith('/employee/recurrence')) {
+      if (pathname.startsWith('/admin/recurrence') || pathname.startsWith('/employee/recurrence')) {
         setModuleSeenAt('recurrence', now);
       }
-      if (pathname.startsWith('/superadmin/recruitment/applications') || pathname.startsWith('/employee/recruitment/applications')) {
+      if (pathname.startsWith('/admin/recruitment/applications') || pathname.startsWith('/employee/recruitment/applications')) {
         setModuleSeenAt('recruitmentApplications', now);
       }
-      if (pathname.startsWith('/superadmin/recruitment/interviews') || pathname.startsWith('/employee/recruitment/interviews')) {
+      if (pathname.startsWith('/admin/recruitment/interviews') || pathname.startsWith('/employee/recruitment/interviews')) {
         setModuleSeenAt('recruitmentInterviews', now);
       }
     };
@@ -589,11 +547,7 @@ export default function AdminLayout({
     );
   }
 
-  const baseVisibleNavItems = isSuperAdmin
-    ? navItems
-    : isEmployee
-      ? employeeNavItems
-      : adminNavItems.filter((item) => !item.permissions || hasAnyPermission(userPermissions, item.permissions));
+  const baseVisibleNavItems = isSuperAdmin ? navItems : employeeNavItems;
   const uniqueBaseVisibleNavItems = baseVisibleNavItems.filter(
     (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
   );
@@ -608,14 +562,8 @@ export default function AdminLayout({
           ? t('common.employee')
           : formatPortalLabel(user?.role) || t('common.notAvailable');
   const pageTitleMap: Record<string, string> = {
-    '/superadmin/dashboard': t('admin.superAdminDashboard'),
-    '/superadmin/analytics': t('admin.analytics'),
-    '/superadmin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
-    '/superadmin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
-    '/superadmin/invoices': t('admin.invoices', 'Invoices'),
-    '/superadmin/tasks': t('admin.tasks', 'Tasks'),
-    '/superadmin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
-    '/superadmin/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
+    '/admin/dashboard': t('admin.superAdminDashboard'),
+    '/admin/analytics': t('admin.analytics'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
     '/admin/invoices': t('admin.invoices', 'Invoices'),
@@ -628,49 +576,41 @@ export default function AdminLayout({
     '/employee/tasks': t('admin.tasks', 'Tasks'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/employee/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
-    '/superadmin/verifications': t('admin.partnerVerifications'),
-    '/superadmin/identity-hub': t('admin.identityHub', 'Identity Hub'),
-    '/superadmin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
-    '/superadmin/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
-    '/superadmin/partners': t('admin.partnerDirectory'),
-    '/superadmin/leads': t('admin.visitors'),
-    '/superadmin/enquiries': t('admin.enquiryManagement'),
-    '/superadmin/crm': t('admin.crmDashboard', 'CRM Dashboard'),
-    '/admin/crm': t('admin.crmDashboard', 'CRM Dashboard'),
-    '/employee/crm': t('admin.crmDashboard', 'CRM Dashboard'),
-    '/superadmin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
-    '/superadmin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
-    '/superadmin/visitors': t('admin.visitors'),
-    '/superadmin/recurrence': t('admin.recurrence'),
-    '/superadmin/categories': t('admin.categoryManagement'),
-    '/superadmin/brands': t('admin.brandManagement'),
-    '/superadmin/users': t('admin.userManagement'),
-    '/superadmin/users/roles': t('common.usersRole'),
-    '/superadmin/listings': t('admin.platformListings'),
-    '/superadmin/profile': t('admin.myProfilePage'),
-        '/superadmin/notifications': 'Notification Center',
-    '/admin/notifications': 'Notification Center',
-    '/employee/notifications': 'Notification Center',
-    '/superadmin/settings': t('admin.platformSettings'),
-    '/superadmin/translations': t('admin.translationManager'),
-    '/superadmin/footer': t('admin.footerContent'),
-    '/superadmin/partner-agreements': t('admin.partnerAgreements', 'Partner Agreements'),
-    '/superadmin/blogs': t('admin.blog', 'Blog'),
-    '/superadmin/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
-    '/superadmin/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
-    '/superadmin/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
-    '/superadmin/recruitment/candidates': t('admin.recruitmentCandidates', 'Candidates'),
-    '/superadmin/recruitment/departments': t('admin.recruitmentDepartments', 'Departments'),
-    '/superadmin/recruitment/interviews': t('admin.recruitmentInterviews', 'Interviews'),
-    '/superadmin/recruitment/offers': t('admin.recruitmentOffers', 'Offers'),
-    '/superadmin/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
-    '/superadmin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
-    '/admin/dashboard': isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard'),
-    '/admin/analytics': t('admin.analytics'),
+    '/admin/verifications': t('admin.partnerVerifications'),
     '/admin/identity-hub': t('admin.identityHub', 'Identity Hub'),
     '/admin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
     '/admin/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
+    '/admin/partners': t('admin.partnerDirectory'),
+    '/admin/leads': t('admin.visitors'),
+    '/admin/enquiries': t('admin.enquiryManagement'),
+    '/admin/crm': t('admin.crmDashboard', 'CRM Dashboard'),
+    '/employee/crm': t('admin.crmDashboard', 'CRM Dashboard'),
+    '/admin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
+    '/admin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
+    '/admin/visitors': t('admin.visitors'),
+    '/admin/recurrence': t('admin.recurrence'),
+    '/admin/categories': t('admin.categoryManagement'),
+    '/admin/brands': t('admin.brandManagement'),
+    '/admin/users': t('admin.userManagement'),
+    '/admin/users/roles': t('common.usersRole'),
+    '/admin/listings': t('admin.platformListings'),
     '/admin/profile': t('admin.myProfilePage'),
+    '/admin/notifications': 'Notification Center',
+    '/employee/notifications': 'Notification Center',
+    '/admin/settings': t('admin.platformSettings'),
+    '/admin/translations': t('admin.translationManager'),
+    '/admin/footer': t('admin.footerContent'),
+    '/admin/partner-agreements': t('admin.partnerAgreements', 'Partner Agreements'),
+    '/admin/blogs': t('admin.blog', 'Blog'),
+    '/admin/recruitment/dashboard': t('admin.recruitmentDashboard', 'Recruitment Dashboard'),
+    '/admin/recruitment/jobs': t('admin.recruitmentJobs', 'Jobs'),
+    '/admin/recruitment/applications': t('admin.recruitmentApplications', 'Applications'),
+    '/admin/recruitment/candidates': t('admin.recruitmentCandidates', 'Candidates'),
+    '/admin/recruitment/departments': t('admin.recruitmentDepartments', 'Departments'),
+    '/admin/recruitment/interviews': t('admin.recruitmentInterviews', 'Interviews'),
+    '/admin/recruitment/offers': t('admin.recruitmentOffers', 'Offers'),
+    '/admin/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
+    '/admin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
     '/employee/dashboard': t('admin.employeeDashboard'),
     '/employee/analytics': t('admin.analytics'),
     '/employee/enquiries': t('admin.enquiryManagement'),
@@ -708,42 +648,42 @@ export default function AdminLayout({
     if (pathname.includes('/accounts/sell-accounts/')) return t('admin.soldVehicle', 'Sold Vehicle');
     if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWork', 'RTO Work');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
-    if (pathname.startsWith('/superadmin/analytics/') || pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
+    if (pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');
     }
-    if (pathname.startsWith('/superadmin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
-    const crmPage = /^\/(superadmin|admin|employee)\/crm\/(leads|pipeline|follow-ups|contacts|reports|campaigns|import)$/.exec(pathname)?.[2];
+    if (pathname.startsWith('/admin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
+    const crmPage = /^\/(admin|employee)\/crm\/(leads|pipeline|follow-ups|contacts|reports|campaigns|import)$/.exec(pathname)?.[2];
     if (crmPage) {
       const crmTitles: Record<string, string> = { leads: 'Leads', pipeline: 'Pipeline', 'follow-ups': 'Follow-ups', contacts: 'Contacts', reports: 'CRM Reports', campaigns: 'Campaigns', import: 'Import Leads' };
       return t(`admin.crmPage.${crmPage}`, crmTitles[crmPage] ?? 'CRM');
     }
-    if (/^\/(superadmin|admin|employee)\/crm\/leads\//.test(pathname)) return t('admin.crmLead', 'Lead');
-    if (/^\/(superadmin|admin|employee)\/crm\/contacts\//.test(pathname)) return t('admin.crmContact', 'Contact');
-    if (pathname.startsWith('/superadmin/partners/') || pathname.startsWith('/employee/partners/')) {
+    if (/^\/(admin|employee)\/crm\/leads\//.test(pathname)) return t('admin.crmLead', 'Lead');
+    if (/^\/(admin|employee)\/crm\/contacts\//.test(pathname)) return t('admin.crmContact', 'Contact');
+    if (pathname.startsWith('/admin/partners/') || pathname.startsWith('/employee/partners/')) {
       if (pathname.endsWith('/edit')) return t('admin.editPartnerProfile');
       if (pathname.endsWith('/deposit')) return t('admin.partnerDeposit');
       return t('admin.partnerDetails');
     }
-    if (pathname.startsWith('/superadmin/verifications/') || pathname.startsWith('/employee/verifications/')) return t('admin.verificationDetails');
-    if (pathname.startsWith('/superadmin/recruitment/applications/') || pathname.startsWith('/employee/recruitment/applications/')) {
+    if (pathname.startsWith('/admin/verifications/') || pathname.startsWith('/employee/verifications/')) return t('admin.verificationDetails');
+    if (pathname.startsWith('/admin/recruitment/applications/') || pathname.startsWith('/employee/recruitment/applications/')) {
       return t('admin.recruitmentApplicationDetails', 'Application Details');
     }
-    if (pathname.startsWith('/superadmin/recruitment/jobs/') || pathname.startsWith('/employee/recruitment/jobs/')) {
+    if (pathname.startsWith('/admin/recruitment/jobs/') || pathname.startsWith('/employee/recruitment/jobs/')) {
       return t('admin.recruitmentJobDetails', 'Job Details');
     }
     return isSuperAdmin ? t('admin.superAdminDashboard') : isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard');
   };
   const pageTitle = getPageTitle();
-  const profileHref = isSuperAdmin ? '/superadmin/profile' : isEmployee ? '/employee/profile' : '/admin/profile';
-  const settingsHref = isSuperAdmin ? '/superadmin/settings' : isEmployee ? '/employee/settings' : '/admin/profile';
-  const isUsersSectionActive = pathname.startsWith('/superadmin/users') || pathname.startsWith('/employee/users');
+  const profileHref = isEmployee ? '/employee/profile' : '/admin/profile';
+  const settingsHref = isEmployee ? '/employee/settings' : '/admin/settings';
+  const isUsersSectionActive = pathname.startsWith('/admin/users') || pathname.startsWith('/employee/users');
   const isUsersMenuExpanded = usersMenuExpansion.pathname === pathname
     ? usersMenuExpansion.value
     : null;
   const isUsersDropdownExpanded = isUsersMenuExpanded ?? isUsersSectionActive;
-  const usersListHref = isEmployee ? '/employee/users' : '/superadmin/users';
-  const rolesListHref = isEmployee ? '/employee/users/roles' : '/superadmin/users/roles';
-  const routePrefix = isSuperAdmin ? '/superadmin' : isEmployee ? '/employee' : '/admin';
+  const usersListHref = isEmployee ? '/employee/users' : '/admin/users';
+  const rolesListHref = isEmployee ? '/employee/users/roles' : '/admin/users/roles';
+  const routePrefix = isEmployee ? '/employee' : '/admin';
   const getVisibleNavItem = (suffix: string) => visibleNavItems.find((item) => item.href.endsWith(suffix));
   const dashboardNavItem = getVisibleNavItem('/dashboard');
   const partnersNavItem = getVisibleNavItem('/partners');
@@ -994,7 +934,7 @@ export default function AdminLayout({
         <div className="px-4 py-3 border-b border-slate-800/80 relative flex items-center justify-between overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-8 bg-amber-400/10 blur-xl pointer-events-none rounded-full" />
           <div className="flex-1 min-w-0">
-            <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[58px]" />
+            <PortalBrand href={isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[58px]" />
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
@@ -1124,7 +1064,7 @@ export default function AdminLayout({
               {renderCollapsibleSectionBody('recruitment', (
                 <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">
                   {visibleRecruitmentNavItems.map((item) => {
-                    const prefix = isEmployee ? '/employee' : '/superadmin';
+                    const prefix = isEmployee ? '/employee' : '/admin';
                     const href = `${prefix}/recruitment/${item.key}`;
                     const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
@@ -1397,7 +1337,7 @@ export default function AdminLayout({
                     <div className="p-1.5 space-y-0.5 text-xs">
                       {badges.verifications > 0 && (
                         <Link
-                          href="/superadmin/verifications"
+                          href="/admin/verifications"
                           onClick={() => setIsNotificationOpen(false)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-orange-50 text-slate-700 hover:text-orange-950 transition-colors"
                         >
@@ -1412,7 +1352,7 @@ export default function AdminLayout({
                       )}
                       {badges.listingsPendingApproval > 0 && (
                         <Link
-                          href="/superadmin/listings"
+                          href="/admin/listings"
                           onClick={() => setIsNotificationOpen(false)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 text-slate-700 hover:text-blue-950 transition-colors"
                         >
@@ -1427,7 +1367,7 @@ export default function AdminLayout({
                       )}
                       {badges.enquiries > 0 && (
                         <Link
-                          href="/superadmin/crm/leads"
+                          href="/admin/crm/leads"
                           onClick={() => setIsNotificationOpen(false)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-purple-50 text-slate-700 hover:text-purple-950 transition-colors"
                         >
@@ -1448,7 +1388,7 @@ export default function AdminLayout({
                     </div>
                     <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
                       <Link
-                        href={isSuperAdmin ? '/superadmin/notifications' : isEmployee ? '/employee/notifications' : '/admin/notifications'}
+                        href={isEmployee ? '/employee/notifications' : '/admin/notifications'}
                         onClick={() => setIsNotificationOpen(false)}
                         className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-700 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                       >

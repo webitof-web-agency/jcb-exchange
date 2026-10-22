@@ -1,4 +1,4 @@
-import SuperAdminUsersPage from '../../superadmin/users/page';
+import SuperAdminUsersPage from '../../admin/users/page';
 
 export default function EmployeeUsersPage() {
   return <SuperAdminUsersPage />;

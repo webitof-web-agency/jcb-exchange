@@ -1,5 +1,5 @@
 import AccountsTasksPage from '@/components/admin/AccountsTasksPage';
 
-export default function AdminTasksPage() {
+export default function SuperadminTasksPage() {
   return <AccountsTasksPage />;
 }

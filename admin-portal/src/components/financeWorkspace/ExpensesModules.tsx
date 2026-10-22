@@ -32,7 +32,7 @@ type Register = { from: string; to: string; total: number; page: number; pageSiz
 /** Every expense in the books (manual, bills, automatic, depreciation) with totals by ledger. */
 export function ExpenseRegisterModule() {
   const pathname = usePathname();
-  const prefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const prefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const { options } = useAccountOptions(expenseFilter);
   const [filters, setFilters] = useState({ from: fyStart(), to: todayIso(), accountId: '', q: '' });
   const [applied, setApplied] = useState(filters);

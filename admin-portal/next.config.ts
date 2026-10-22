@@ -134,6 +134,14 @@ const nextConfig: NextConfig = {
       ...(driveMediaProxyPattern ? [driveMediaProxyPattern] : []),
     ],
   },
+  // The super admin panel moved from /superadmin to /admin. Old bookmarks and
+  // notification links keep working.
+  async redirects() {
+    return [
+      { source: '/superadmin', destination: '/admin', permanent: true },
+      { source: '/superadmin/:path*', destination: '/admin/:path*', permanent: true },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);

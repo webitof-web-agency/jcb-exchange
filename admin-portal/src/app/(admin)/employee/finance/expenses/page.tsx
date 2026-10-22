@@ -1,1 +1,1 @@
-export { default } from '../../../superadmin/finance/expenses/page';
+export { default } from '../../../admin/finance/expenses/page';

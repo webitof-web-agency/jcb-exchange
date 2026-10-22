@@ -12,7 +12,7 @@ type Tab = 'vehicle' | 'manual' | 'other';
 /** Vehicle invoices from Sold Vehicles plus links to the existing listing and Prime invoice screens. */
 export default function SalesInvoicesModule() {
   const pathname = usePathname();
-  const prefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const prefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const [tab, setTab] = useState<Tab>('vehicle');
   return (
     <div className="space-y-4">
@@ -26,7 +26,7 @@ export default function SalesInvoicesModule() {
           <EmptyState
             title="Open the existing screens"
             description="Listing bills (non-tax / tax invoice) live with listing payment verification; Customer Prime invoices live in Recurrence. Manual service invoices are on the “Other invoices” tab."
-            action={<div className="flex flex-wrap justify-center gap-3 text-sm font-semibold"><Link href={`${prefix}/invoices`} className="text-blue-700 hover:underline">Invoices →</Link>{prefix !== '/admin' ? <Link href={`${prefix}/recurrence`} className="text-blue-700 hover:underline">Recurrence (Prime) →</Link> : null}{prefix !== '/admin' ? <Link href={`${prefix}/listings`} className="text-blue-700 hover:underline">Listings &amp; bills →</Link> : null}</div>}
+            action={<div className="flex flex-wrap justify-center gap-3 text-sm font-semibold"><Link href={`${prefix}/invoices`} className="text-blue-700 hover:underline">Invoices →</Link><Link href={`${prefix}/recurrence`} className="text-blue-700 hover:underline">Recurrence (Prime) →</Link><Link href={`${prefix}/listings`} className="text-blue-700 hover:underline">Listings &amp; bills →</Link></div>}
           />
         </Panel>
       )}

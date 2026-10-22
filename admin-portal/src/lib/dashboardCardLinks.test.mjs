@@ -9,11 +9,11 @@ test('returns clickable super admin dashboard cards for related management pages
   assert.deepEqual(
     cards.map((card) => ({ key: card.key, href: card.href, isClickable: card.isClickable })),
     [
-      { key: 'totalPartners', href: '/superadmin/partners', isClickable: true },
-      { key: 'approvedPartners', href: '/superadmin/partners', isClickable: true },
-      { key: 'pendingKyc', href: '/superadmin/verifications', isClickable: true },
-      { key: 'activeListings', href: '/superadmin/listings', isClickable: true },
-      { key: 'totalEnquiries', href: '/superadmin/enquiries', isClickable: true },
+      { key: 'totalPartners', href: '/admin/partners', isClickable: true },
+      { key: 'approvedPartners', href: '/admin/partners', isClickable: true },
+      { key: 'pendingKyc', href: '/admin/verifications', isClickable: true },
+      { key: 'activeListings', href: '/admin/listings', isClickable: true },
+      { key: 'totalEnquiries', href: '/admin/enquiries', isClickable: true },
     ]
   );
 });

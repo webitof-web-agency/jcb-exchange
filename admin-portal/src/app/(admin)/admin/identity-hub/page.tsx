@@ -1,5 +1,5 @@
 import IdentityHubPage from '@/components/identityHub/IdentityHubPage';
 
-export default function AdminIdentityHubPage() {
+export default function SuperAdminIdentityHubPage() {
   return <IdentityHubPage />;
 }

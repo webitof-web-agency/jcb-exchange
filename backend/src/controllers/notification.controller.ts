@@ -22,7 +22,7 @@ export const getNotifications = async (req: Request, res: Response, next: NextFu
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10)));
     const skip = (page - 1) * limit;
 
-    const where = buildNotificationWhereClause(userId, { scope, status, search });
+    const where = buildNotificationWhereClause(userId, { scope, status, ...(search ? { search } : {}) });
 
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({

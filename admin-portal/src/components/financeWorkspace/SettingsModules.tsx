@@ -17,7 +17,7 @@ import { useResource } from './useResource';
 
 const usePrefix = () => {
   const pathname = usePathname();
-  return pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  return pathname.startsWith('/admin') ? '/admin' : '/employee';
 };
 
 type Integrations = {

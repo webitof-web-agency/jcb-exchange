@@ -1,4 +1,4 @@
-import SuperAdminVerificationsPage from '../../superadmin/verifications/page';
+import SuperAdminVerificationsPage from '../../admin/verifications/page';
 
 export default function EmployeeVerificationsPage() {
   return <SuperAdminVerificationsPage />;

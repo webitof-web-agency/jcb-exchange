@@ -341,8 +341,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const { user, updateUser } = useAuthStore();
   const requestedPartnerId = partnerId || (typeof params?.id === 'string' ? params.id : undefined);
   const isAdminMode = Boolean(requestedPartnerId);
-  const partnerPortalBasePath = pathname.startsWith('/employee') ? '/employee/partners' : '/superadmin/partners';
-  const editorReturnPath = pathname.startsWith('/employee') ? '/employee/verifications' : '/superadmin/verifications';
+  const partnerPortalBasePath = pathname.startsWith('/employee') ? '/employee/partners' : '/admin/partners';
+  const editorReturnPath = pathname.startsWith('/employee') ? '/employee/verifications' : '/admin/verifications';
   const [loadedUser, setLoadedUser] = useState<Parameters<typeof updateUser>[0] | null>(null);
   const currentUser = isAdminMode ? loadedUser : user;
   const [resolvedPartnerId, setResolvedPartnerId] = useState<string | null>(requestedPartnerId || null);

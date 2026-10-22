@@ -1,4 +1,4 @@
-import SuperAdminBrandsPage from '../../superadmin/brands/page';
+import SuperAdminBrandsPage from '../../admin/brands/page';
 
 export default function EmployeeBrandsPage() {
   return <SuperAdminBrandsPage />;

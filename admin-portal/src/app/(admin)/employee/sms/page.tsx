@@ -1,1 +1,1 @@
-export { default } from '../../superadmin/sms/page';
+export { default } from '../../admin/sms/page';

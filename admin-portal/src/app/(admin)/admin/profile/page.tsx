@@ -1,5 +1,5 @@
 import AdminProfileView from '@/components/admin/AdminProfileView';
 
-export default function AdminProfilePage() {
+export default function SuperAdminProfilePage() {
   return <AdminProfileView />;
 }

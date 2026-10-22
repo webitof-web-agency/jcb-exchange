@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { resolveLoginRedirect } from './loginRedirect.ts';
 
 test('sends a super admin to the dashboard even when no next route is provided', () => {
-  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }), '/superadmin/dashboard');
+  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }), '/admin/dashboard');
 });
 
 test('rejects an external next route and keeps the portal redirect same-origin', () => {
-  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }, 'https://example.com'), '/superadmin/dashboard');
+  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }, 'https://example.com'), '/admin/dashboard');
 });
 
 test('keeps an invalid public-site fallback from producing a portal 404', () => {
-  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }, '/profile'), '/superadmin/dashboard');
+  assert.equal(resolveLoginRedirect({ role: 'SUPER_ADMIN' }, '/profile'), '/admin/dashboard');
 });
 
 test('sends an employee to the employee portal dashboard', () => {
@@ -26,7 +26,7 @@ test('keeps an employee handoff inside the employee portal', () => {
 });
 
 test('does not allow an employee handoff to target an admin route', () => {
-  assert.equal(resolveLoginRedirect({ role: 'EMPLOYEE' }, '/superadmin/listings'), '/employee/dashboard');
+  assert.equal(resolveLoginRedirect({ role: 'EMPLOYEE' }, '/admin/listings'), '/employee/dashboard');
 });
 
 test('sends an employee without dashboard permission to the first accessible page', () => {
@@ -34,4 +34,8 @@ test('sends an employee without dashboard permission to the first accessible pag
     resolveLoginRedirect({ role: 'EMPLOYEE', permissions: ['partners.read'] }, '/employee/dashboard'),
     '/employee/partners',
   );
+});
+
+test('sends the legacy ADMIN role to the employee portal, not the super admin panel', () => {
+  assert.equal(resolveLoginRedirect({ role: 'ADMIN', permissions: ['dashboard.view'] }, '/admin/settings'), '/employee/dashboard');
 });
