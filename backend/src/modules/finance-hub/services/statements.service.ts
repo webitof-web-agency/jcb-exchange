@@ -41,19 +41,22 @@ export const statementAccounts = async (): Promise<StatementAccount[]> => {
   });
 };
 
-const figures = async (dates: Prisma.DateTimeFilter): Promise<Figures> => {
-  const rows = await prisma.finVoucherLine.groupBy({ by: ['accountId'], where: { voucher: { status: { in: LEDGER_STATUSES }, date: dates } }, _sum: { debit: true, credit: true } });
+/** Year-close vouchers move profit to reserves; profit & loss views leave them out. */
+const NOT_YEAR_CLOSE: Prisma.FinVoucherWhereInput = { OR: [{ sourceType: null }, { sourceType: { not: 'YEAR_CLOSE' } }] };
+
+const figures = async (dates: Prisma.DateTimeFilter, options: { profitAndLoss?: boolean } = {}): Promise<Figures> => {
+  const rows = await prisma.finVoucherLine.groupBy({ by: ['accountId'], where: { voucher: { status: { in: LEDGER_STATUSES }, date: dates, ...(options.profitAndLoss ? NOT_YEAR_CLOSE : {}) } }, _sum: { debit: true, credit: true } });
   return new Map(rows.map((row) => [row.accountId, round(num(row._sum.debit) - num(row._sum.credit))]));
 };
 
 export const getProfitAndLoss = async (query: Record<string, unknown>) => {
   const { from, to } = readRange(query);
   const accounts = await statementAccounts();
-  const current = buildProfitAndLoss(accounts, await figures({ gte: from, lte: to }));
+  const current = buildProfitAndLoss(accounts, await figures({ gte: from, lte: to }, { profitAndLoss: true }));
   let previous = null;
   if (query.compare === 'previous-year') {
     const shift = (date: Date) => new Date(Date.UTC(date.getUTCFullYear() - 1, date.getUTCMonth(), date.getUTCDate()));
-    previous = { from: dateOnly(shift(from)), to: dateOnly(shift(to)), ...buildProfitAndLoss(accounts, await figures({ gte: shift(from), lte: shift(to) })) };
+    previous = { from: dateOnly(shift(from)), to: dateOnly(shift(to)), ...buildProfitAndLoss(accounts, await figures({ gte: shift(from), lte: shift(to) }, { profitAndLoss: true })) };
   }
   return { from: dateOnly(from), to: dateOnly(to), ...current, previous };
 };
@@ -88,7 +91,7 @@ export const monthlyTrend = async (from: Date, to: Date) => {
   const lines = await prisma.$queryRaw<Array<{ month: string; accountId: string; net: Prisma.Decimal }>>`
     SELECT to_char(v."date", 'YYYY-MM') AS month, l."accountId" AS "accountId", SUM(l.debit - l.credit) AS net
     FROM "FinVoucherLine" l JOIN "FinVoucher" v ON v.id = l."voucherId"
-    WHERE v.status IN ('POSTED', 'REVERSED') AND v."date" >= ${from} AND v."date" <= ${to}
+    WHERE v.status IN ('POSTED', 'REVERSED') AND v."date" >= ${from} AND v."date" <= ${to} AND (v."sourceType" IS NULL OR v."sourceType" <> 'YEAR_CLOSE')
     GROUP BY 1, 2`;
   const months = new Map<string, { month: string; revenue: number; otherIncome: number; cogs: number; expenses: number; profit: number; cashIn: number; cashOut: number }>();
   for (let cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)); cursor <= to; cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))) {
@@ -129,7 +132,7 @@ export const getPivot = async (query: Record<string, unknown>) => {
   const natureIds = accounts.filter((account) => (measure === 'PURCHASE' ? true : account.nature === measure)).map((account) => account.id);
   const rows = await prisma.finVoucherLine.findMany({
     where: {
-      ...(measure === 'PURCHASE' ? { voucher: { type: 'PURCHASE', status: { in: LEDGER_STATUSES }, date: { gte: from, lte: to } }, account: { requiresParty: true } } : { accountId: { in: natureIds }, voucher: { status: { in: LEDGER_STATUSES }, date: { gte: from, lte: to } } }),
+      ...(measure === 'PURCHASE' ? { voucher: { type: 'PURCHASE', status: { in: LEDGER_STATUSES }, date: { gte: from, lte: to } }, account: { requiresParty: true } } : { accountId: { in: natureIds }, voucher: { status: { in: LEDGER_STATUSES }, date: { gte: from, lte: to }, ...NOT_YEAR_CLOSE } }),
     },
     select: { accountId: true, partyId: true, sellAccountId: true, debit: true, credit: true, voucher: { select: { date: true, partyId: true } } },
   });
@@ -240,7 +243,7 @@ export const getOverview = async () => {
   const ids = (pick: (account: StatementAccount) => boolean) => accounts.filter(pick).map((account) => account.id);
   const recentFrom = new Date(today.getTime() - 30 * DAY_MS);
   const [pl, cash, receivable, payable, gstOutput, gstInput, trend] = await Promise.all([
-    figures({ gte: fy.startDate, lte: today }).then((movement) => buildProfitAndLoss(accounts, movement)),
+    figures({ gte: fy.startDate, lte: today }, { profitAndLoss: true }).then((movement) => buildProfitAndLoss(accounts, movement)),
     balanceOf(ids(isCashEquivalent), today),
     balanceOf(ids((account) => (RECEIVABLE_KEYS as readonly string[]).includes(account.systemKey ?? '')), today),
     balanceOf(ids((account) => (PAYABLE_KEYS as readonly string[]).includes(account.systemKey ?? '')), today),

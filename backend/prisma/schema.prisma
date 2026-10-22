@@ -3876,3 +3876,114 @@ model FinFullFinal {
 
   @@index([partyId])
 }
+
+// ---------------------------------------------------------------------------
+// Finance Hub P11: CA & audit workspace, imports / exports
+// ---------------------------------------------------------------------------
+
+/// A document kept for the books / audit (stored through the secure upload or as a link).
+model FinVaultDocument {
+  id           String    @id @default(uuid())
+  title        String
+  category     String    @db.VarChar(60)
+  financialYear String?  @db.VarChar(20)
+  period       String?   @db.VarChar(7)
+  fileUrl      String
+  fileName     String?
+  mimeType     String?   @db.VarChar(120)
+  size         Int?
+  version      Int       @default(1)
+  previousId   String?
+  entityType   String?   @db.VarChar(40)
+  entityId     String?   @db.VarChar(60)
+  expiresAt    DateTime? @db.Date
+  tags         String[]  @default([])
+  notes        String?   @db.Text
+  isArchived   Boolean   @default(false)
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+
+  @@index([category, financialYear])
+  @@index([entityType, entityId])
+}
+
+/// Month-end close checklist and sign-off for a period. `items` = [{ key, label, done, doneById, doneAt, note }].
+model FinCloseChecklist {
+  id            String    @id @default(uuid())
+  periodId      String    @unique
+  items         Json
+  signedOffById String?
+  signedOffAt   DateTime?
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+/// Year-end close: profit transferred to retained earnings by `voucherId`.
+model FinYearClose {
+  id          String    @id @default(uuid())
+  yearId      String    @unique
+  voucherId   String    @unique
+  profit      Decimal   @db.Decimal(14, 2)
+  closedById  String?
+  closedAt    DateTime  @default(now())
+  reopenedAt  DateTime?
+  reopenedById String?
+}
+
+enum FinQueryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+/// Question from the CA / auditor with replies and evidence. `responses` = [{ byId, byName, at, text, fileUrl }].
+model FinCaQuery {
+  id            String         @id @default(uuid())
+  title         String
+  description   String         @db.Text
+  category      String?        @db.VarChar(60)
+  priority      String         @default("NORMAL") @db.VarChar(10)
+  status        FinQueryStatus @default(OPEN)
+  financialYear String?        @db.VarChar(20)
+  entityType    String?        @db.VarChar(40)
+  entityId      String?        @db.VarChar(60)
+  dueDate       DateTime?      @db.Date
+  raisedById    String?
+  assignedToId  String?
+  responses     Json           @default("[]")
+  closedById    String?
+  closedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status, dueDate])
+}
+
+/// CA / reviewer sign-off (or flag) on a posted voucher.
+model FinVoucherReview {
+  id           String   @id @default(uuid())
+  voucherId    String   @unique
+  status       String   @db.VarChar(12)
+  note         String?  @db.Text
+  queryId      String?
+  reviewedById String?
+  reviewedAt   DateTime @default(now())
+}
+
+/// A bulk import (vouchers, opening balances…) with its outcome.
+model FinImportBatch {
+  id          String   @id @default(uuid())
+  kind        String   @db.VarChar(30)
+  fileName    String?
+  dryRun      Boolean  @default(false)
+  totalRows   Int
+  created     Int      @default(0)
+  failed      Int      @default(0)
+  errors      Json     @default("[]")
+  results     Json     @default("[]")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind, createdAt])
+}

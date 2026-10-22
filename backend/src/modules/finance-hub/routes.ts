@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAdminOrEmployeePermissions, requireAuth } from '../../middlewares/auth.middleware';
 import { getFinanceHubHealth, getFinanceHubSettings, updateFinanceHubSettings } from './controllers/foundation.controller';
 import * as banking from './controllers/banking.controller';
+import * as ca from './controllers/ca.controller';
 import * as documents from './controllers/documents.controller';
 import * as expenses from './controllers/expenses.controller';
 import * as ledger from './controllers/ledger.controller';
@@ -236,5 +237,29 @@ router.get('/statements/bank-cash', allow([P.reportsRead, P.bankingRead, P.books
 router.get('/statements/tax', allow([P.reportsRead, P.taxRead, P.caRead]), statements.taxReport);
 router.get('/dashboard/overview', allow([P.dashboardRead, P.reportsRead, P.caRead]), statements.overview);
 router.get('/dashboard/alerts', allow([P.dashboardRead, P.approve, P.booksRead, P.caRead]), statements.alerts);
+
+// CA & audit workspace, imports / exports (P11)
+const caReaders = allow([P.caRead, P.caManage, P.caQuery, P.booksRead, P.reportsRead, P.periodLock]);
+const caWriters = allow([P.caManage, P.caQuery, P.booksManage, P.periodLock]);
+router.get('/ca/dashboard', caReaders, ca.dashboard);
+router.get('/ca/vault', caReaders, ca.vault);
+router.post('/ca/vault', allow([P.caManage, P.booksManage, P.settingsManage, P.taxManage, P.payrollManage]), ca.newVaultDocument);
+router.post('/ca/vault/:id/archive', allow([P.caManage, P.settingsManage]), ca.toggleArchive);
+router.get('/ca/monthly-close/:id', caReaders, ca.monthlyClose);
+router.put('/ca/monthly-close/:id', allow([P.periodLock, P.caManage]), ca.saveMonthlyClose);
+router.get('/ca/year-close/:id', caReaders, ca.yearClose);
+router.post('/ca/year-close/:id', allow([P.periodLock]), ca.runYearClose);
+router.post('/ca/year-close/:id/reopen', allow([P.periodLock]), ca.runYearReopen);
+router.get('/ca/queries', caReaders, ca.queries);
+router.post('/ca/queries', caWriters, ca.newQuery);
+router.post('/ca/queries/:id/reply', caWriters, ca.replyQuery);
+router.post('/ca/queries/:id/close', allow([P.caManage, P.caQuery]), ca.finishQuery);
+router.get('/ca/review', caReaders, ca.reviewQueue);
+router.post('/ca/review/:id', allow([P.caManage, P.caQuery]), ca.review);
+router.post('/data/import/vouchers', allow([P.importManage]), ca.importVoucherRows);
+router.post('/data/import/opening-balances', allow([P.importManage]), ca.importOpening);
+router.get('/data/export/tally', allow([P.export, P.reportsExport, P.caManage]), ca.tallyExport);
+router.get('/data/export/:kind', allow([P.export, P.reportsExport, P.caManage]), ca.csvExport);
+router.get('/data/history', allow([P.importManage, P.export, P.caRead, P.caManage]), ca.history);
 
 export default router;
