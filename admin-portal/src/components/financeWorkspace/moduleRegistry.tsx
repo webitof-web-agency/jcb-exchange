@@ -23,7 +23,6 @@ const GeneralLedgerModule = dynamic(() => import('./GeneralLedgerModule'), { loa
 const TrialBalanceModule = dynamic(() => import('./TrialBalanceModule'), { loading });
 const SuspenseModule = dynamic(() => import('./SuspenseModule'), { loading });
 const AuditTrailModule = dynamic(() => import('./AuditTrailModule'), { loading });
-const AutomationSettingsModule = dynamic(() => import('./AutomationSettingsModule'), { loading });
 const VehicleRegisterModule = dynamic(() => import('./VehicleRegisterModule'), { loading });
 const VehicleLedgerModule = dynamic(() => import('./VehicleLedgerModule'), { loading });
 const LedgerBalancesModule = dynamic(() => import('./LedgerBalancesModule'), { loading });
@@ -88,6 +87,10 @@ const ImportOpeningBalancesModule = dynamic(() => import('./CaModules').then((mo
 const DownloadReportsModule = dynamic(() => import('./CaModules').then((module) => module.DownloadReportsModule), { loading });
 const ImportExportHubModule = dynamic(() => import('./CaModules').then((module) => module.ImportExportHubModule), { loading });
 const UploadHistoryModule = dynamic(() => import('./CaModules').then((module) => module.UploadHistoryModule), { loading });
+const IntegrationsModule = dynamic(() => import('./SettingsModules').then((module) => module.IntegrationsModule), { loading });
+const AutomationRulesModule = dynamic(() => import('./SettingsModules').then((module) => module.AutomationRulesModule), { loading });
+const TaxConfigurationsModule = dynamic(() => import('./SettingsModules').then((module) => module.TaxConfigurationsModule), { loading });
+const RolesPermissionsModule = dynamic(() => import('./SettingsModules').then((module) => module.RolesPermissionsModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -147,7 +150,7 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'trial-balance': TrialBalanceModule,
   'suspense-account': SuspenseModule,
   'audit-trail': AuditTrailModule,
-  'automation-approval-rules': AutomationSettingsModule,
+  'automation-approval-rules': AutomationRulesModule,
   'all-purchases': AllPurchases,
   'vehicle-purchase-list': VehiclePurchases,
   'additional-purchase-costs': AdditionalCosts,
@@ -229,4 +232,7 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'tally-accounting-export': TallyExport,
   'download-reports': DownloadReportsModule,
   'bulk-upload-history': UploadHistoryModule,
+  'integrations-notifications': IntegrationsModule,
+  'tax-configurations': TaxConfigurationsModule,
+  'roles-permissions': RolesPermissionsModule,
 };

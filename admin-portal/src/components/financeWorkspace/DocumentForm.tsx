@@ -11,7 +11,8 @@ import { isCashBank, optionalChoices, toPaise, todayIso, type LedgerLookups } fr
 import { Button, Field, inputClass, Modal, ModalFooter, Toggle } from './ui';
 import { useResource } from './useResource';
 
-const GST_RATES = [0, 0.25, 3, 5, 12, 18, 28];
+// GST 2.0 (Sept 2025) slabs 5 / 18 / 40; 12 and 28 kept for older documents.
+const GST_RATES = [0, 0.25, 3, 5, 12, 18, 28, 40];
 
 type Row = { key: string; description: string; accountId: string; hsnSac: string; quantity: string; rate: string; discount: string; gstRate: string; itcEligible: boolean; sellAccountId: string; costCentreId: string };
 
