@@ -60,6 +60,13 @@ const EInvoiceModule = dynamic(() => import('./TaxModules').then((module) => mod
 const WithholdingModule = dynamic(() => import('./TaxModules').then((module) => module.WithholdingModule), { loading });
 const ChallansModule = dynamic(() => import('./TaxModules').then((module) => module.ChallansModule), { loading });
 const IncomeTaxModule = dynamic(() => import('./TaxModules').then((module) => module.IncomeTaxModule), { loading });
+const EmployeeSalaryModule = dynamic(() => import('./PayrollModules').then((module) => module.EmployeeSalaryModule), { loading });
+const SalaryStructureModule = dynamic(() => import('./PayrollModules').then((module) => module.SalaryStructureModule), { loading });
+const PayrollProcessingModule = dynamic(() => import('./PayrollModules').then((module) => module.PayrollProcessingModule), { loading });
+const AdvancesDeductionsModule = dynamic(() => import('./PayrollModules').then((module) => module.AdvancesDeductionsModule), { loading });
+const PayslipsModule = dynamic(() => import('./PayrollModules').then((module) => module.PayslipsModule), { loading });
+const StatutoryContributionsModule = dynamic(() => import('./PayrollModules').then((module) => module.StatutoryContributionsModule), { loading });
+const FullFinalModule = dynamic(() => import('./PayrollModules').then((module) => module.FullFinalModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -168,4 +175,11 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'tcs-management': TcsModule,
   'tax-payments-challans': ChallansModule,
   'income-tax-provisions': IncomeTaxModule,
+  'employee-salary': EmployeeSalaryModule,
+  'salary-structure': SalaryStructureModule,
+  'payroll-processing': PayrollProcessingModule,
+  'advances-deductions': AdvancesDeductionsModule,
+  payslips: PayslipsModule,
+  'statutory-contributions': StatutoryContributionsModule,
+  'full-final-settlement': FullFinalModule,
 };
