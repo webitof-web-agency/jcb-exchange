@@ -41,6 +41,11 @@ const AdvancesModule = dynamic(() => import('./ReceivablesModules').then((module
 const SchedulesModule = dynamic(() => import('./ReceivablesModules').then((module) => module.SchedulesModule), { loading });
 const FollowUpsModule = dynamic(() => import('./ReceivablesModules').then((module) => module.FollowUpsModule), { loading });
 const WriteOffsModule = dynamic(() => import('./ReceivablesModules').then((module) => module.WriteOffsModule), { loading });
+const BankReconModule = dynamic(() => import('./BankingModules').then((module) => module.BankReconModule), { loading });
+const UnmatchedModule = dynamic(() => import('./BankingModules').then((module) => module.UnmatchedModule), { loading });
+const StatementImportsModule = dynamic(() => import('./BankingModules').then((module) => module.StatementImportsModule), { loading });
+const CashBookModule = dynamic(() => import('./BankingModules').then((module) => module.CashBookModule), { loading });
+const GatewayModule = dynamic(() => import('./BankingModules').then((module) => module.GatewayModule), { loading });
 
 const CustomerParties = () => <PartyMasterModule types={['CUSTOMER']} title="Customers" />;
 const PartnerParties = () => <PartyMasterModule types={['PARTNER']} title="Partners" />;
@@ -64,6 +69,8 @@ const ExchangeTransactions = () => <VehicleRegisterModule view="exchange" />;
 const PurchaseBills = () => <DocumentsModule title="Purchase bills & invoices" description="Supplier bills for expenses, services and assets (vehicle purchases come from Sold Vehicles). GST input credit, reverse charge and TDS are booked on posting." types={['PURCHASE_BILL']} createTypes={['PURCHASE_BILL']} />;
 const PurchaseReturns = () => <DocumentsModule title="Purchase returns" description="Debit notes for goods returned to a supplier; they reduce what we owe and reverse the input GST." types={['DEBIT_NOTE']} createTypes={['DEBIT_NOTE']} reason="RETURN" />;
 const SalesReturns = () => <DocumentsModule title="Sales returns & refunds" description="Credit notes for returns; they reduce what the customer owes and the output GST. Pay any refund with a payment voucher." types={['CREDIT_NOTE']} createTypes={['CREDIT_NOTE']} reason="RETURN" />;
+const VirtualBankLedger = () => <BankReconModule types={['VIRTUAL']} title="HDFC virtual bank ledger" description="Virtual accounts (VAN) and their parent current account: credits from the statement, matched to receipts in the books. Live e-Collect / API feed needs bank credentials (off)." />;
+const BankTransfers = () => <VouchersModule title="Bank transfers" description="Transfers between own bank, cash, wallet and gateway accounts (contra vouchers), including petty cash top-ups and cash deposits." types={['CONTRA']} createTypes={['CONTRA']} />;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;
@@ -120,4 +127,11 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'payment-schedules': SchedulesModule,
   'follow-up-reminders': FollowUpsModule,
   'settlements-write-offs': WriteOffsModule,
+  'bank-reconciliation': BankReconModule,
+  'unmatched-transactions': UnmatchedModule,
+  'hdfc-virtual-bank-ledger': VirtualBankLedger,
+  'bank-statement-upload': StatementImportsModule,
+  'bank-transfers': BankTransfers,
+  'cash-book-petty-cash': CashBookModule,
+  'upi-gateway-settlement': GatewayModule,
 };

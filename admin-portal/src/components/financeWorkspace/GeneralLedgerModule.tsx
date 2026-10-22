@@ -25,8 +25,10 @@ const fyStartIso = () => {
 };
 
 /** Account ledger. `fixedSystemKey` pins it to one system ledger (used by the Suspense screen). */
-export default function GeneralLedgerModule({ fixedSystemKey, title = 'General ledger', description, actions }: {
+export default function GeneralLedgerModule({ fixedSystemKey, accountKinds, title = 'General ledger', description, actions }: {
   fixedSystemKey?: string;
+  /** Limit the ledger picker to these account kinds (e.g. cash book). */
+  accountKinds?: string[];
   title?: string;
   description?: string;
   actions?: (account: LedgerResponse['account'] | null, reload: () => void) => React.ReactNode;
@@ -44,7 +46,7 @@ export default function GeneralLedgerModule({ fixedSystemKey, title = 'General l
     async () => (accountId ? ((await api.get('/finance-hub/reports/general-ledger', { params: { accountId, partyId: applied.partyId || undefined, from: applied.from || undefined, to: applied.to || undefined } })).data as LedgerResponse) : null),
     `gl-${accountId}-${applied.partyId}-${applied.from}-${applied.to}-${version}`,
   );
-  const accountOptions = useMemo(() => lookups.accounts.map(lookups.accountOption), [lookups]);
+  const accountOptions = useMemo(() => lookups.accounts.filter((account) => !accountKinds || accountKinds.includes(account.kind)).map(lookups.accountOption), [accountKinds, lookups]);
 
   const apply = (event: FormEvent) => { event.preventDefault(); setApplied(form); };
   const data = ledger.data;
