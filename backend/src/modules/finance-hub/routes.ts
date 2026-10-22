@@ -9,6 +9,7 @@ import * as masters from './controllers/masters.controller';
 import * as payroll from './controllers/payroll.controller';
 import * as posting from './controllers/posting.controller';
 import * as receivables from './controllers/receivables.controller';
+import * as statements from './controllers/statements.controller';
 import * as tax from './controllers/tax.controller';
 import * as vehicleFinance from './controllers/vehicleFinance.controller';
 import { FH_ANY_PERMISSIONS, FH_PERMISSIONS as P } from './permissions';
@@ -223,5 +224,17 @@ router.get('/payroll/full-final', payrollReaders, payroll.fullFinal);
 router.post('/payroll/full-final', payrollManagers, payroll.newFullFinal);
 router.post('/payroll/full-final/:id/post', allow([P.approve]), payroll.postFnf);
 router.post('/payroll/full-final/:id/pay', allow([P.booksPost]), payroll.payFnf);
+
+// Financial reports & dashboards (P10)
+const reportReaders = allow([P.reportsRead, P.reportsExport, P.booksRead, P.caRead, P.dashboardRead]);
+router.get('/statements/profit-loss', reportReaders, statements.profitAndLoss);
+router.get('/statements/balance-sheet', reportReaders, statements.balanceSheet);
+router.get('/statements/cash-flow', reportReaders, statements.cashFlow);
+router.get('/statements/trend', reportReaders, statements.trend);
+router.get('/statements/pivot', reportReaders, statements.pivot);
+router.get('/statements/bank-cash', allow([P.reportsRead, P.bankingRead, P.booksRead, P.caRead]), statements.bankCash);
+router.get('/statements/tax', allow([P.reportsRead, P.taxRead, P.caRead]), statements.taxReport);
+router.get('/dashboard/overview', allow([P.dashboardRead, P.reportsRead, P.caRead]), statements.overview);
+router.get('/dashboard/alerts', allow([P.dashboardRead, P.approve, P.booksRead, P.caRead]), statements.alerts);
 
 export default router;
