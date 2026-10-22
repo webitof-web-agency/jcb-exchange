@@ -1272,7 +1272,7 @@ export default function AdminLayout({
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-4 lg:px-5 py-1.5 sm:py-2 flex justify-between items-center shrink-0 z-30 sticky top-0 transition-all">
+        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-4 lg:px-5 h-14 flex justify-between items-center shrink-0 z-30 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -1284,7 +1284,7 @@ export default function AdminLayout({
             {customHeader || (
               <div className="flex items-center gap-2 min-w-0">
                 <h1 className="font-bold text-sm sm:text-base text-slate-900 truncate tracking-tight">{pageTitle}</h1>
-                <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200 shrink-0">
+                <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-emerald-50/90 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200/80 shrink-0 leading-none">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live
                 </span>
@@ -1298,7 +1298,7 @@ export default function AdminLayout({
               target="_blank"
               rel="noopener noreferrer"
               title="View Public Marketplace Frontend"
-              className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors shrink-0"
+              className="hidden xl:inline-flex h-8.5 items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl shadow-2xs transition-all shrink-0"
             >
               <ExternalLink className="w-3 h-3 text-slate-500" />
               <span>Public Site</span>
@@ -1309,16 +1309,16 @@ export default function AdminLayout({
               <button
                 type="button"
                 onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                className={`relative p-1.5 rounded-lg border transition-all ${
+                className={`relative h-8.5 w-8.5 inline-flex items-center justify-center rounded-xl border transition-all shadow-2xs ${
                   isNotificationOpen
-                    ? "bg-amber-50 text-amber-900 border-amber-300"
-                    : "text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                    ? "bg-amber-50 text-amber-900 border-amber-300 ring-2 ring-amber-400/20"
+                    : "text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border-slate-200/90"
                 }`}
                 title="Pending Tasks & Action Items"
               >
                 <Bell className="w-4 h-4 text-slate-600" />
                 {totalPendingNotifications > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-slate-950 ring-2 ring-white">
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-slate-950 ring-2 ring-white">
                     {totalPendingNotifications > 99 ? "99+" : totalPendingNotifications}
                   </span>
                 )}
@@ -1401,22 +1401,22 @@ export default function AdminLayout({
               )}
             </div>
 
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="h-5 w-px bg-slate-200 hidden sm:block" />
 
             <ApiWalletHeader {...billing} />
             <LanguageSwitcher />
 
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="h-5 w-px bg-slate-200 hidden sm:block" />
 
             {/* Profile Dropdown Container */}
             <div className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={`group flex items-center gap-2 sm:gap-2.5 rounded-xl border px-2 sm:px-2.5 py-1 sm:py-1.5 transition-all duration-150 focus:outline-none select-none ${
+                className={`group flex h-8.5 sm:h-9 items-center gap-2 sm:gap-2.5 rounded-xl border border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/80 px-2 sm:px-2.5 shadow-2xs transition-all duration-150 focus:outline-none select-none ${
                   isDropdownOpen
                     ? 'border-amber-400 bg-amber-50/50 shadow-xs ring-2 ring-amber-400/20'
-                    : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-2xs'
+                    : ''
                 }`}
                 aria-expanded={isDropdownOpen}
                 aria-haspopup="true"
@@ -1428,7 +1428,7 @@ export default function AdminLayout({
                     {displayName}
                   </span>
                   <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center rounded-sm bg-amber-100/90 px-1.5 py-0.25 text-[8.5px] font-black uppercase tracking-wider text-amber-950 border border-amber-200/80 leading-none">
+                    <span className="inline-flex items-center rounded-sm bg-amber-100/90 px-1.5 py-0.25 text-[9.5px] font-bold uppercase tracking-wider text-amber-950 border border-amber-200/80 leading-none">
                       {translatedRoleLabel}
                     </span>
                   </div>
