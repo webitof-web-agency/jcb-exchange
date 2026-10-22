@@ -90,12 +90,12 @@ export function GstDashboardModule() {
             </div>
             <div className="rounded-xl border border-slate-200 p-4">
               <p className="mb-2 text-sm font-semibold">Ledger balances at month end</p>
-              <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase text-slate-500"><tr><th className="py-1 text-left" /><th className="py-1 text-right">IGST</th><th className="py-1 text-right">CGST</th><th className="py-1 text-right">SGST</th></tr></thead>
+              <table className="w-full text-xs">
+                <thead className="text-[11px] uppercase text-slate-500"><tr><th className="py-1 text-left" /><th className="py-1 pl-3 text-right">IGST</th><th className="py-1 pl-3 text-right">CGST</th><th className="py-1 pl-3 text-right">SGST</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  <tr><td className="py-1.5">Output tax (liability)</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.output.igst)}</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.output.cgst)}</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.output.sgst)}</td></tr>
-                  <tr><td className="py-1.5">Input credit</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.input.igst)}</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.input.cgst)}</td><td className="py-1.5 text-right">{formatInr(data.ledger.closing.input.sgst)}</td></tr>
-                  <tr className="font-semibold"><td className="py-1.5">Cash payable after set-off</td><td className="py-1.5 text-right">{formatInr(data.setOffPreview.cashPayable.igst)}</td><td className="py-1.5 text-right">{formatInr(data.setOffPreview.cashPayable.cgst)}</td><td className="py-1.5 text-right">{formatInr(data.setOffPreview.cashPayable.sgst)}</td></tr>
+                  <tr><td className="py-1.5">Output tax (liability)</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.output.igst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.output.cgst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.output.sgst)}</td></tr>
+                  <tr><td className="py-1.5">Input credit</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.input.igst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.input.cgst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.ledger.closing.input.sgst)}</td></tr>
+                  <tr className="font-semibold"><td className="py-1.5">Cash payable after set-off</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.setOffPreview.cashPayable.igst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.setOffPreview.cashPayable.cgst)}</td><td className="whitespace-nowrap py-1.5 pl-3 text-right">{formatInr(data.setOffPreview.cashPayable.sgst)}</td></tr>
                 </tbody>
               </table>
               {data.setOffPreview.uses.length ? <p className="mt-2 text-xs text-slate-500">Set-off: {data.setOffPreview.uses.map((use) => `${use.from.toUpperCase()}→${use.to.toUpperCase()} ${formatInr(use.amount)}`).join(' · ')}</p> : null}
