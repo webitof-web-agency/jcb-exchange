@@ -50,6 +50,7 @@ router.get('/meta', handle((req) => meta.getMeta(crmAccessOf(req))));
 router.get('/dashboard', handle((req) => reports.getDashboard(crmAccessOf(req))));
 router.get('/reports', handle((req) => reports.getReports(crmAccessOf(req), q(req))));
 router.get('/templates', handle((req) => meta.listSendableTemplates(crmAccessOf(req))));
+router.get('/inventory', handle((req) => leads.searchInventory(crmAccessOf(req), q(req))));
 
 router.get('/leads', handle((req) => leads.listLeads(crmAccessOf(req), q(req))));
 router.get('/leads/board', handle((req) => leads.boardLeads(crmAccessOf(req), q(req))));

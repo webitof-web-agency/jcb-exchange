@@ -10,7 +10,7 @@ type LanguageSwitcherProps = {
   className?: string;
   tone?: 'dark' | 'light';
   direction?: 'down' | 'up';
-  size?: 'sm' | 'default';
+  size?: 'sm' | 'default' | 'compact';
 };
 
 export default function LanguageSwitcher({
@@ -66,15 +66,23 @@ export default function LanguageSwitcher({
         aria-expanded={isOpen}
         aria-label={t('common.language')}
         className={`inline-flex items-center font-semibold transition-all duration-150 focus:outline-none ${
-          size === 'sm' ? 'gap-1.5 rounded-lg px-2.5 py-1 text-[11px]' : 'gap-2 rounded-xl px-3 py-1.5 sm:py-2 text-xs'
+          size === 'sm'
+            ? 'gap-1.5 rounded-lg px-2.5 py-1 text-[11px]'
+            : size === 'compact'
+              ? 'h-10 gap-1.5 rounded-lg px-2.5 text-xs'
+              : 'gap-2 rounded-xl px-3 py-1.5 sm:py-2 text-xs'
         } ${
-          isDark
+          size === 'compact'
+            ? isDark
+              ? 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+            : isDark
             ? 'border border-white/20 bg-neutral-900/90 text-white hover:bg-neutral-800 hover:border-white/30 active:bg-neutral-800'
             : 'border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100'
         }`}
       >
-        <Globe className={`h-3.5 w-3.5 ${isDark ? 'text-[#FFC107]' : 'text-gray-600'}`} />
-        <span className="font-medium">{currentLabel}</span>
+        <Globe className={`${size === 'compact' ? 'h-[18px] w-[18px]' : 'h-3.5 w-3.5'} ${isDark ? 'text-[#FFC107]' : 'text-gray-600'}`} />
+        <span className="font-medium">{size === 'compact' ? locale.toUpperCase() : currentLabel}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform duration-200 ${
             isOpen ? (isUp ? '' : 'rotate-180') : (isUp ? 'rotate-180' : '')

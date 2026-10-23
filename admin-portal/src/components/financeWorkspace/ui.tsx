@@ -23,7 +23,8 @@ export function Field({ label, children, wide = false, hint }: { label: string; 
   );
 }
 
-export function Modal({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle?: string;
+  className?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 sm:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className={`my-auto w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'} overflow-hidden rounded-2xl bg-white shadow-2xl`} role="dialog" aria-modal="true" aria-label={title}>
@@ -55,6 +56,7 @@ type ButtonProps = {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   icon?: ReactNode;
   title?: string;
+  className?: string;
 };
 
 const buttonVariants = {
@@ -64,9 +66,9 @@ const buttonVariants = {
   ghost: 'text-slate-600 hover:bg-slate-100 font-semibold',
 } as const;
 
-export function Button({ children, onClick, type = 'button', disabled, busy, variant = 'secondary', icon, title }: ButtonProps) {
+export function Button({ children, onClick, type = 'button', disabled, busy, variant = 'secondary', icon, title, className = '' }: ButtonProps) {
   return (
-    <button type={type} onClick={onClick} disabled={disabled || busy} title={title} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${buttonVariants[variant]}`}>
+    <button type={type} onClick={onClick} disabled={disabled || busy} title={title} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${buttonVariants[variant]} ${className}`}>
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       {children}
     </button>

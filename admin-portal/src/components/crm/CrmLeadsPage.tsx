@@ -28,6 +28,7 @@ import {
   CrmErrorBanner,
   crmError,
   CrmPageFrame,
+  EnquiryChannelBadge,
   fmtDate,
   fmtDateTime,
   fmtInr,
@@ -49,7 +50,7 @@ import {
   type LeadRow,
 } from './crmShared';
 
-type LeadList = { page: number; pageSize: number; total: number; items: LeadRow[]; statusCounts: Record<string, number> };
+type LeadList = { page: number; pageSize: number; total: number; items: LeadRow[]; statusCounts: Record<string, number>; viewCounts?: Record<string, number> };
 
 const FILTER_KEYS = ['view', 'status', 'leadType', 'source', 'ownerId', 'temperature', 'priority', 'followUp', 'sla', 'recipient', 'tag', 'sort', 'q'] as const;
 type Filters = Record<(typeof FILTER_KEYS)[number], string>;
@@ -66,6 +67,8 @@ const VIEWS: Array<{ key: string; label: string; filters: Partial<Filters>; need
   { key: 'none', label: 'No Next Step', filters: { followUp: 'none' } },
   { key: 'unassigned', label: 'Unassigned', filters: { view: 'open', ownerId: 'none' }, needs: 'assign' },
   { key: 'sla', label: 'SLA Breached', filters: { sla: 'breached' } },
+  { key: 'won', label: 'Won', filters: { view: 'won' } },
+  { key: 'lost', label: 'Lost', filters: { view: 'lost' } },
   { key: 'closed', label: 'Closed Deals', filters: { view: 'closed' } },
   { key: 'all', label: 'All Records', filters: {} },
 ];
@@ -139,46 +142,96 @@ function Leads() {
 
   return (
     <>
-      <PageHeader
-        title="Leads & Inquiries Management"
-        badgeText={`${total} Total Inquiries`}
-        description="Unified buyer & seller inquiries from marketplace listings, Prime, dealer callbacks, walk-ins, phone inquiries, and CSV imports."
-        actions={
-          <>
+      <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
+        {/* 1. SAVED VIEWS TABS + ICON ACTIONS */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-3 pt-2.5 sm:px-4">
+          {/* Scrollable Tabs */}
+          <div className="flex flex-1 items-center gap-1.5 overflow-x-auto custom-scrollbar pr-2">
+            {VIEWS.filter((v) => v.needs !== 'assign' || access?.canAssign).map((v) => {
+              const on = activeView === v.key;
+              const count = leads.data?.viewCounts?.[v.key] ?? (
+                v.key === 'won' ? leads.data?.statusCounts?.WON :
+                v.key === 'lost' ? leads.data?.statusCounts?.LOST :
+                undefined
+              );
+
+              return (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => apply({ ...emptyFilters(), sort: filters.sort, q: filters.q, ...v.filters })}
+                  className={`shrink-0 inline-flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition-all duration-150 ${
+                    on
+                      ? 'border-amber-500 text-slate-900 shadow-2xs'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                  }`}
+                >
+                  <span>{v.label}</span>
+                  {count !== undefined ? (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-black transition-colors ${
+                        on
+                          ? v.key === 'won'
+                            ? 'bg-emerald-600 text-white'
+                            : v.key === 'lost'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-slate-900 text-white'
+                          : v.key === 'won'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : v.key === 'lost'
+                          ? 'bg-rose-100 text-rose-800'
+                          : v.key === 'hot'
+                          ? 'bg-amber-100 text-amber-900'
+                          : v.key === 'overdue' || v.key === 'sla'
+                          ? count > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-500'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right Icon Actions: Export CSV + Create New Lead */}
+          <div className="flex shrink-0 items-center gap-1.5 pb-2 pl-2">
+            {hasExtraFilters || filters.q ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  apply({ ...emptyFilters(), view: 'open' });
+                }}
+                title="Reset filters"
+                className="inline-flex items-center gap-1 rounded-xl bg-amber-100/80 hover:bg-amber-200 text-amber-900 px-2 py-1 text-xs font-bold transition shadow-2xs mr-0.5"
+              >
+                <X className="h-3 w-3" />
+                <span>Reset</span>
+              </button>
+            ) : null}
             {access?.canExport ? (
-              <Button icon={<Download className="h-4 w-4" />} onClick={exportCsv}>
-                Export CSV
-              </Button>
+              <button
+                type="button"
+                onClick={exportCsv}
+                title="Export CSV"
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition shadow-2xs"
+              >
+                <Download className="h-4 w-4" />
+              </button>
             ) : null}
             {access?.canManage ? (
-              <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
-                Create New Lead
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
-        {/* 1. SAVED VIEWS TABS */}
-        <div className="flex gap-1.5 overflow-x-auto border-b border-slate-100 px-4 pt-3 custom-scrollbar">
-          {VIEWS.filter((v) => v.needs !== 'assign' || access?.canAssign).map((v) => {
-            const on = activeView === v.key;
-            return (
               <button
-                key={v.key}
                 type="button"
-                onClick={() => apply({ ...emptyFilters(), sort: filters.sort, q: filters.q, ...v.filters })}
-                className={`shrink-0 border-b-2 px-3 pb-2.5 text-xs font-bold transition-all duration-150 ${
-                  on
-                    ? 'border-amber-500 text-slate-900 shadow-2xs'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                }`}
+                onClick={() => setCreating(true)}
+                title="Create New Lead"
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-400 text-slate-950 hover:bg-amber-300 transition shadow-2xs font-extrabold"
               >
-                {v.label}
+                <Plus className="h-4 w-4 stroke-[2.5]" />
               </button>
-            );
-          })}
+            ) : null}
+          </div>
         </div>
 
         {/* 2. COMPACT FILTER TOOLBAR */}
@@ -195,9 +248,22 @@ function Leads() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, mobile, machine, city, notes…"
-              className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-1.5 pl-9 pr-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-1.5 pl-9 pr-8 text-xs font-semibold text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
               aria-label="Search leads"
             />
+            {search ? (
+              <button
+                type="button"
+                title="Clear search"
+                onClick={() => {
+                  setSearch('');
+                  set('q', '');
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </form>
 
           <select
@@ -285,29 +351,10 @@ function Leads() {
           </select>
         </div>
 
-        {/* 3. TOOLBAR METRICS & BULK ACTION BAR */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800">
-              {total} {total === 1 ? 'Lead' : 'Leads'}
-            </span>
-            {hasExtraFilters || filters.q ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch('');
-                  apply({ ...emptyFilters(), view: 'open' });
-                }}
-                className="inline-flex items-center gap-1 rounded-md bg-amber-100/70 text-amber-900 px-2 py-0.5 font-bold hover:bg-amber-200 transition-colors"
-              >
-                <X className="h-3 w-3" />
-                Reset Filters
-              </button>
-            ) : null}
-          </div>
-
-          {selected.length ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 border border-amber-200/80 px-3 py-1">
+        {/* 3. BULK ACTION BAR (Only shown when items are selected) */}
+        {selected.length ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-amber-900">{selected.length} Selected</span>
               {access?.canAssign ? (
                 <button
@@ -330,13 +377,13 @@ function Leads() {
               <button
                 type="button"
                 onClick={() => setSelected([])}
-                className="text-[11px] font-bold text-slate-500 hover:text-slate-800"
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-800 ml-1"
               >
                 Clear
               </button>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {/* 4. HIGH-DENSITY LEADS TABLE */}
         {leads.loading && !leads.data ? (
@@ -349,7 +396,7 @@ function Leads() {
             description="Try choosing another filter tab or create a new lead to start tracking."
           />
         ) : (
-          <div className="overflow-x-auto border-t border-slate-100">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[1060px] text-left text-xs">
               <thead className={tableHeadClass}>
                 <tr>
@@ -368,7 +415,7 @@ function Leads() {
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Intent & Heat</th>
                   {!access?.isPartner ? <th className="px-3.5 py-2.5 font-bold text-slate-700">Executive</th> : null}
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Next Follow-up</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Source</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Source & Channel</th>
                   <th className="px-3.5 py-2.5 font-bold text-slate-700 text-right">Quick Contact</th>
                 </tr>
               </thead>
@@ -407,9 +454,16 @@ function Leads() {
                       </td>
 
                       <td className={cellClass}>
-                        <p className="font-bold text-slate-800 text-xs">
-                          {LEAD_TYPE_LABELS[lead.leadType] || label(lead.leadType)}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-slate-800 text-xs">
+                            {LEAD_TYPE_LABELS[lead.leadType] || label(lead.leadType)}
+                          </p>
+                          {lead.listingPriceSnapshot || lead.expectedValue ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                              {fmtInr(lead.listingPriceSnapshot || lead.expectedValue)}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="max-w-[280px] truncate text-[11px] text-slate-500 font-medium">
                           {requirementSummary(lead)}
                         </p>
@@ -467,12 +521,25 @@ function Leads() {
                       </td>
 
                       <td className={cellClass}>
-                        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
-                          {label(lead.source)}
-                        </span>
-                        {lead.dealer.role === 'PARTNER' && !access?.isPartner ? (
-                          <p className="text-[10px] text-slate-400 mt-0.5">via {lead.dealer.name}</p>
-                        ) : null}
+                        <div className="flex flex-col items-start gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <EnquiryChannelBadge enquiryType={lead.enquiryType} tags={lead.tags} />
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                              {label(lead.source)}
+                            </span>
+                            {lead.tags?.includes('Machine Sold') && lead.status !== 'WON' && lead.status !== 'LOST' ? (
+                              <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title="The enquired machine was sold to another customer">
+                                Machine sold
+                              </span>
+                            ) : null}
+                          </div>
+                          {lead.dealer.role === 'PARTNER' && !access?.isPartner ? (
+                            <p className="text-[10px] text-slate-400">via {lead.dealer.name}</p>
+                          ) : null}
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {relative(lead.createdAt, now)}
+                          </p>
+                        </div>
                       </td>
 
                       <td className={`${cellClass} text-right`} onClick={(e) => e.stopPropagation()}>

@@ -365,7 +365,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const [pendingFeature, setPendingFeature] = useState<CustomerPrimeFeature | null>(null);
   const [isBuyNowOpen, setIsBuyNowOpen] = useState(false);
   const [supportContact, setSupportContact] = useState<PublicSupportContact>({});
-  const { user, setAuthModalOpen } = useAuthStore();
+  const { user, isAuthModalOpen, setAuthModalOpen } = useAuthStore();
   const showToast = useToastStore((state) => state.showToast);
   const thumbnailStripRef = useRef<HTMLDivElement>(null);
   const isOwnListing = Boolean(user?.id && listing.partner?.ownerUserId === user.id);
@@ -541,6 +541,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
 
   const handleProtectedAction = (feature: CustomerPrimeFeature) => {
     if (!user) {
+      setPendingFeature(feature);
       setAuthModalOpen(true);
       return;
     }
@@ -554,11 +555,23 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
         window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
       }
 
+      void createPublicContactEnquiry({
+        listingId: listing.id,
+        enquiryType: feature === 'WHATSAPP' ? 'WHATSAPP' : 'CALL',
+      }).catch((err) => console.error('Enquiry tracking error:', err));
+
       return;
     }
 
     setPendingFeature(feature);
   };
+
+  // Resume pending action once user authenticates
+  useEffect(() => {
+    if (user && pendingFeature && !isAuthModalOpen) {
+      void executeProtectedAction(pendingFeature);
+    }
+  }, [user, isAuthModalOpen]);
 
   const executeProtectedAction = async (feature: CustomerPrimeFeature) => {
     try {

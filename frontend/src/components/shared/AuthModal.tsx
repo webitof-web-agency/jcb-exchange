@@ -9,6 +9,7 @@ import { X, Mail, Lock, User, Eye, EyeOff, Smartphone } from 'lucide-react';
 import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getAuthDisplayName } from '@/lib/authDisplayName';
+import { sanitizeEmail, isValidEmail, sanitizeMobile, sanitizeName, sanitizePassword } from '@/lib/authSanitization';
 
 declare global {
   interface Window {
@@ -334,32 +335,51 @@ export default function AuthModal() {
 
     try {
       if (isLogin) {
-        const response = await api.post('/auth/login', { email, password });
-        const { token, user } = response.data as { token: string; user: AuthResponseUser };
-        completeAuth(token, user, true);
-      } else {
-        if (password.length < 8) {
-          setError(t('auth.passwordLength'));
-          setIsSubmitting(false);
-          return;
-        }
+        const cleanEmail = sanitizeEmail(email);
+        const cleanPassword = sanitizePassword(password);
 
-        if (!email.includes('@')) {
+        if (!cleanEmail || !isValidEmail(cleanEmail)) {
           setError(t('auth.validEmail'));
           setIsSubmitting(false);
           return;
         }
 
-        if (mobile.replace(/\D/g, '').length !== 10) {
+        const response = await api.post('/auth/login', { email: cleanEmail, password: cleanPassword });
+        const { token, user } = response.data as { token: string; user: AuthResponseUser };
+        completeAuth(token, user, true);
+      } else {
+        const cleanName = sanitizeName(name);
+        const cleanEmail = sanitizeEmail(email);
+        const cleanPassword = sanitizePassword(password);
+        const cleanMobile = sanitizeMobile(mobile);
+
+        if (!cleanName) {
+          setError(t('auth.fullNameRequired', 'Please enter your full name.'));
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (cleanPassword.length < 8) {
+          setError(t('auth.passwordLength'));
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!isValidEmail(cleanEmail)) {
+          setError(t('auth.validEmail'));
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (cleanMobile.length !== 10) {
           setError(t('auth.validMobile'));
           setIsSubmitting(false);
           return;
         }
 
-        const cleanMobile = mobile.replace(/\D/g, '').slice(-10);
         const cleanWhatsappNumber = whatsappSameAsMobile
           ? cleanMobile
-          : whatsappNumber.replace(/\D/g, '').slice(-10);
+          : sanitizeMobile(whatsappNumber);
         if (cleanWhatsappNumber.length !== 10) {
           setError(t('auth.validWhatsappNumber', 'Please enter a valid 10-digit WhatsApp number.'));
           setIsSubmitting(false);
@@ -367,9 +387,9 @@ export default function AuthModal() {
         }
 
         const response = await api.post('/auth/register', {
-          email,
-          password,
-          name,
+          email: cleanEmail,
+          password: cleanPassword,
+          name: cleanName,
           mobile: cleanMobile,
           whatsappSameAsMobile,
           whatsappNumber: cleanWhatsappNumber,
@@ -769,7 +789,8 @@ export default function AuthModal() {
       />
       <div className="flex min-h-full md:min-h-0 w-full flex-col md:flex-row md:items-center md:justify-center">
         <div className="w-full flex-1 md:flex-none md:max-w-md min-h-full md:min-h-0 md:max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-y-auto bg-white rounded-none md:rounded-xl shadow-none md:shadow-2xl animate-in fade-in md:zoom-in duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <div className="relative flex min-h-[52px] sm:min-h-[56px] shrink-0 items-center justify-center bg-[#1A1A1A] px-4 sm:px-6 py-2.5 sm:py-3">
+          <div className="relative flex min-h-[52px] sm:min-h-[56px] shrink-0 items-center justify-center bg-[#00000d] px-4 sm:px-6 py-2.5 sm:py-3 border-b border-zinc-800">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600" />
             <div className="flex items-center justify-center w-full">
               <Image src="/frontloginlogo.png" alt="JCB Exchange" width={260} height={70} priority className="h-9 sm:h-10 w-auto max-w-[185px] sm:max-w-[215px] object-contain" />
             </div>
@@ -787,6 +808,30 @@ export default function AuthModal() {
 
           <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 md:p-6 my-auto">
             <div className="mb-4 -mt-2 md:mt-0 text-center">
+              {!isPasswordReset ? (
+                <div className="flex rounded-xl bg-zinc-100 p-1 border border-zinc-200 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthModalOpen(true, 'login');
+                      setError('');
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${isLogin ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                  >
+                    {t('auth.logIn')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthModalOpen(true, 'signup');
+                      setError('');
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${!isLogin ? 'bg-amber-400 text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                  >
+                    {t('auth.signUp')}
+                  </button>
+                </div>
+              ) : null}
               <h4 className="text-2xl font-bold text-gray-900">
                 {isPasswordReset ? 'Reset your password' : isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}
               </h4>

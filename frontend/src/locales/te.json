@@ -17,6 +17,7 @@
                },
     "navbar":  {
                    "home":  "హోమ్",
+                   "buyVehicle": "మిషన్ కొనండి",
                    "machines":  "మిషన్లు",
                    "sellVehicle":  "మిషన్ అమ్మండి",
                    "careers":  "కెరీర్లు"

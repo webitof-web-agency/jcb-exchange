@@ -196,6 +196,33 @@ const removeLocalRecord = (id: string) => {
   }
 };
 
+type CrmLeadForSoldVehicle = {
+  customer?: { name?: string | null; mobile?: string | null; city?: string | null; state?: string | null } | null;
+  wonAmount?: number | string | null;
+  activities?: Array<{ type: string; metadata?: Record<string, unknown> | null }>;
+};
+
+/** Customer, deal value and (for outside-inventory deals) the machine from a WON CRM lead. */
+const fetchLeadPrefill = async (leadId: string): Promise<Partial<SellAccountFormState>> => {
+  try {
+    const response = await api.get<{ lead?: CrmLeadForSoldVehicle }>(`/crm/leads/${encodeURIComponent(leadId)}`);
+    const lead = response.data?.lead;
+    if (!lead) return {};
+    const deal = lead.activities?.find((activity) => activity.type === 'STATUS_CHANGE' && activity.metadata?.to === 'WON' && activity.metadata?.soldVehicleMode)?.metadata;
+    return {
+      purchaserName: lead.customer?.name || '',
+      purchaserNumber: String(lead.customer?.mobile || '').replace(/\D/g, '').slice(-10),
+      purchaserCity: lead.customer?.city || '',
+      purchaserState: lead.customer?.state || '',
+      ...(Number(lead.wonAmount) > 0 ? { sellAmount: Number(lead.wonAmount) } : {}),
+      ...(deal?.soldVehicleMode === 'OFF_INVENTORY' && deal.soldListingTitle ? { listingTitle: String(deal.soldListingTitle) } : {}),
+    };
+  } catch {
+    // The CRM lead is only a convenience prefill; the form still works without it.
+    return {};
+  }
+};
+
 const initialPaymentDraft = (side: SellAccountPayment['side'] = 'PURCHASER_RECEIPT') => ({
   side,
   amount: '',
@@ -214,6 +241,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const listPath = `${portal}/accounts/sell-accounts`;
   const rtoBasePath = `${portal}/accounts/rto-work-status`;
   const listingIdParam = searchParams.get('listingId')?.trim() || '';
+  // Set when a CRM deal closed as WON sends the user here; the new record links back to that lead.
+  const leadIdParam = searchParams.get('leadId')?.trim() || '';
 
   const currentUser = useAuthStore((state) => state.user);
   const permissions = currentUser?.permissions || [];
@@ -347,6 +376,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           if (!listing) throw new Error('Listing not found.');
           const prefill = getListingAccountPrefill(listing);
           const parties = getListingDealParties(listing);
+          const leadFill = leadIdParam ? await fetchLeadPrefill(leadIdParam) : {};
           if (cancelled) return;
           setListedPrice(parties.listedPrice);
           setForm({
@@ -367,12 +397,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             sellerState: parties.sellerState,
             brokerName: parties.brokerName,
             brokerNumber: parties.brokerNumber,
+            ...leadFill,
           });
           return;
         }
 
+        const leadFill = leadIdParam ? await fetchLeadPrefill(leadIdParam) : {};
         if (!cancelled) {
-          setForm({ ...createInitialSellAccountForm(), brokerName: JCB_EXCHANGE_BROKER.name, brokerNumber: JCB_EXCHANGE_BROKER.number });
+          setForm({ ...createInitialSellAccountForm(), brokerName: JCB_EXCHANGE_BROKER.name, brokerNumber: JCB_EXCHANGE_BROKER.number, ...leadFill });
         }
       } catch (error) {
         if (!cancelled) setLoadError(apiErrorMessage(error, error instanceof Error ? error.message : 'Unable to load this Sold Vehicle record.'));
@@ -382,7 +414,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     };
     void load();
     return () => { cancelled = true; };
-  }, [applyRecord, listPath, listingIdParam, recordId, router]);
+  }, [applyRecord, leadIdParam, listPath, listingIdParam, recordId, router]);
 
   useEffect(() => {
     if (loading || restoredVerificationPreviews.current) return;
@@ -761,6 +793,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     return {
       ...form,
       isDraft,
+      ...(leadIdParam ? { crmLeadId: leadIdParam } : {}),
       sellDate: form.purchaserDate || form.sellDate,
       sourceType: form.sourceType || null,
       expenses: expenseTotal,
@@ -938,6 +971,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             <p className="truncate text-xs font-medium text-gray-500">
               {vehicleName ? <span className="font-semibold text-amber-700">{vehicleName}</span> : 'Vehicle details'}
               {form.listingId ? <span> · linked to listing</span> : null}
+              {leadIdParam && !existingRecord ? <span> · from a CRM deal (customer and deal value filled in)</span> : null}
             </p>
             {form.listingId ? (
               <div className="mt-1">
