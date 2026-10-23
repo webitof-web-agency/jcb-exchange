@@ -1,4 +1,4 @@
-import SuperAdminPartnersPage from '../../superadmin/partners/page';
+import SuperAdminPartnersPage from '../../admin/partners/page';
 
 export default function EmployeePartnersPage() {
   return <SuperAdminPartnersPage />;

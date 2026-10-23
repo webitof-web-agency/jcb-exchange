@@ -72,7 +72,7 @@ export default function SignupPage() {
       setAuth(token, user);
 
       if (user.role === 'SUPER_ADMIN') {
-        router.push('/superadmin/dashboard');
+        router.push('/admin/dashboard');
       } else {
         router.push('/partner/kyc');
       }

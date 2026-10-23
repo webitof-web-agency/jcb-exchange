@@ -165,7 +165,7 @@ type ListingPaymentVerificationTableProps = {
 export default function ListingPaymentVerificationTable({ onPendingCountChange, basePath }: ListingPaymentVerificationTableProps) {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const effectiveBasePath = basePath || (user?.role === 'SUPER_ADMIN' ? '/superadmin/listings' : '/employee/listings');
+  const effectiveBasePath = basePath || (user?.role === 'SUPER_ADMIN' ? '/admin/listings' : '/employee/listings');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payments, setPayments] = useState<ListingPaymentRecord[]>([]);

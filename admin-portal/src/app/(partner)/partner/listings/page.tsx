@@ -716,7 +716,7 @@ function AvailabilityFilterDropdown({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full sm:w-auto h-10 flex items-center justify-between sm:justify-start gap-2 rounded-full border border-gray-300 bg-white px-4 text-xs font-bold text-gray-700 outline-none transition hover:border-gray-400 hover:bg-gray-100/70 shadow-xs cursor-pointer"
+        className="w-full sm:w-auto h-9 flex items-center justify-between sm:justify-start gap-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 text-xs font-bold text-slate-700 outline-none transition shadow-2xs cursor-pointer"
       >
         <span className="truncate">{selectedOption?.label || 'All Availability'}</span>
         <ChevronDown size={14} className={`text-gray-500 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
@@ -1799,31 +1799,65 @@ export default function PartnerListingsPage() {
   const registrationButtonState = getVehicleVerificationButtonState('RC_FULL', verificationLoadingSource, vehicleVerificationSource);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-center justify-end gap-4">
-        <div className="flex flex-col gap-3 w-full sm:flex-row sm:items-center sm:justify-end">
+    <div className="space-y-4 max-w-7xl mx-auto pb-12">
+      {/* Executive Command Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+            <Truck className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                Machinery & Vehicle Fleet
+              </h1>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
+                {listings.length} Units
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              Manage machinery pricing, approval status, and customer availability.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={openModal}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FFC107] hover:bg-[#E5AD06] px-4 py-2 text-xs font-bold text-slate-950 shadow-xs transition-all shrink-0 cursor-pointer"
+        >
+          <Plus size={16} />
+          <span>Add Vehicle</span>
+        </button>
+      </div>
+
+      {/* Toolbar: Search & Availability Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by title, brand, model or location..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-8 text-xs text-slate-900 shadow-2xs placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
           <AvailabilityFilterDropdown
             value={availabilityFilter}
             onChange={setAvailabilityFilter}
             options={dynamicAvailabilityOptions}
           />
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search listings by title, model or brand..."
-              className="w-full rounded-full border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-            />
-          </div>
-          <button
-            onClick={openModal}
-            className="flex items-center justify-center gap-2 rounded-full bg-[#FFC107] px-5 py-2.5 text-sm font-semibold text-black shadow-sm transition hover:bg-[#E5AD06]"
-          >
-            <Plus size={18} />
-            Add Vehicle
-          </button>
         </div>
       </div>
 

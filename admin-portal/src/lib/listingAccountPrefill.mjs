@@ -40,11 +40,7 @@ const normalizeListingState = (value) => {
 export const isInternalAccountLinkRole = (role) => ['SUPER_ADMIN', 'EMPLOYEE'].includes(role);
 
 export const buildAccountModuleUrl = (pathname, module, listingId) => {
-  const portal = pathname.startsWith('/employee')
-    ? 'employee'
-    : pathname.startsWith('/admin')
-      ? 'admin'
-      : 'superadmin';
+  const portal = pathname.startsWith('/employee') ? 'employee' : 'admin';
   const params = new URLSearchParams();
   if (listingId) params.set('listingId', listingId);
   // A listing link opens the create page, which redirects to the linked record if one exists.

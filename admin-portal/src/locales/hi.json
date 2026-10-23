@@ -26,7 +26,8 @@
     "rejected": "अस्वीकृत",
     "changesRequested": "परिवर्तन अनुरोधित",
     "adminEmailFallback": "admin@jcbexchange.com",
-    "partnerEmailFallback": "partner@jcbexchange.com"
+    "partnerEmailFallback": "partner@jcbexchange.com",
+    "viewAllNotifications": "सभी सूचनाएं देखें"
   },
   "admin": {
     "portalTitle": "एडमिन पोर्टल",

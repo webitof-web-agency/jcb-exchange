@@ -1,4 +1,4 @@
-import SuperAdminSettingsPage from '../../superadmin/settings/page';
+import SuperAdminSettingsPage from '../../admin/settings/page';
 
 export default function EmployeeSettingsPage() {
   return <SuperAdminSettingsPage />;

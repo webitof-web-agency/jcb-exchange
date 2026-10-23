@@ -9,15 +9,16 @@ export const PORTAL_ROLES = ['PARTNER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'];
 
 const PORTAL_HOME_ROUTES: Record<string, string> = {
   PARTNER: '/partner/dashboard',
-  SUPER_ADMIN: '/superadmin/dashboard',
-  ADMIN: '/admin/dashboard',
+  SUPER_ADMIN: '/admin/dashboard',
+  // The legacy ADMIN role uses the employee portal.
+  ADMIN: '/employee/dashboard',
   EMPLOYEE: '/employee/dashboard',
 };
 
 const PORTAL_ROUTE_PREFIXES: Record<string, string> = {
   PARTNER: '/partner',
-  SUPER_ADMIN: '/superadmin',
-  ADMIN: '/admin',
+  SUPER_ADMIN: '/admin',
+  ADMIN: '/employee',
   EMPLOYEE: '/employee',
 };
 

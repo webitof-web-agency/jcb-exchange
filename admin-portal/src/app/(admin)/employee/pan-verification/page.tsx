@@ -1,1 +1,1 @@
-export { default } from '@/app/(admin)/superadmin/pan-verification/page';
+export { default } from '@/app/(admin)/admin/pan-verification/page';

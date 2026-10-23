@@ -71,8 +71,8 @@ const moduleGroup = (
 
 export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
   moduleGroup('dashboard', 'Dashboard', 'Daily financial control centre.', [
-    ['financial-overview', 'Financial Overview', 'Opening balance, income, expenses, profit, receivables and payables.', '/superadmin/dashboard'],
-    ['cash-flow-overview', 'Cash Flow Overview', 'Cash and bank movement with inflow, outflow and closing balance.', '/superadmin/finance/expenses'],
+    ['financial-overview', 'Financial Overview', 'Opening balance, income, expenses, profit, receivables and payables.', '/admin/dashboard'],
+    ['cash-flow-overview', 'Cash Flow Overview', 'Cash and bank movement with inflow, outflow and closing balance.', '/admin/finance/expenses'],
     ['alerts-pending-approvals', 'Alerts & Pending Approvals', 'Unmatched entries, overdue dues, missing documents and pending approvals.'],
   ]),
   moduleGroup('purchases', 'Purchases', 'Purchase lifecycle from sourcing to settlement.', [
@@ -85,7 +85,7 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
   ]),
   moduleGroup('sales-revenue', 'Sales & Revenue', 'Sales, receipts, returns and other income.', [
     ['all-sales', 'All Sales', 'Sales register with customer, vehicle, invoice and collection status.'],
-    ['sales-invoices', 'Sales Invoices', 'Invoice creation, numbering, tax, PDF download and cancellation control.', '/superadmin/invoices'],
+    ['sales-invoices', 'Sales Invoices', 'Invoice creation, numbering, tax, PDF download and cancellation control.', '/admin/invoices'],
     ['customer-receipts', 'Customer Receipts', 'Receipt vouchers, payment allocation and outstanding balance.'],
     ['credit-debit-notes', 'Credit / Debit Notes', 'Adjustment notes linked to invoices and ledgers.'],
     ['sales-returns-refunds', 'Sales Returns & Refunds', 'Return approvals, refund schedule and accounting reversal.'],
@@ -94,7 +94,7 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
   moduleGroup('vehicle-finance', 'Vehicle Finance', 'Vehicle profitability and deal-level finance.', [
     ['vehicle-wise-ledger', 'Vehicle-wise Ledger', 'Complete debit-credit ledger for one vehicle or deal.'],
     ['vehicle-cost-sheet', 'Vehicle Cost Sheet', 'Purchase price plus every directly attributable cost.'],
-    ['vehicle-profit-margin', 'Vehicle Profit & Margin', 'Revenue, cost, GST/margin scheme and net profit.', '/superadmin/accounts/sell-accounts'],
+    ['vehicle-profit-margin', 'Vehicle Profit & Margin', 'Revenue, cost, GST/margin scheme and net profit.', '/admin/accounts/sell-accounts'],
     ['stock-valuation', 'Stock Valuation', 'Vehicle inventory valuation by cost, age and valuation method.'],
     ['exchange-transactions', 'Exchange Transactions', 'Exchange-in, exchange-out, valuation difference and linked sale.'],
     ['consignment-deals', 'Consignment Deals', 'Consignor terms, sale proceeds, commission and settlement.'],
@@ -119,7 +119,7 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
   moduleGroup('banking-cash', 'Banking & Cash', 'Bank, cash and reconciliation controls.', [
     ['bank-accounts', 'Bank Accounts', 'Bank account masters, balances, limits and document vault.'],
     ['hdfc-virtual-bank-ledger', 'HDFC Virtual Bank Ledger', 'Dedicated virtual account ledger and settlement mapping.'],
-    ['bank-statement-upload', 'Bank Statement Upload', 'CSV/XLS statement import with preview and duplicate detection.', '/superadmin/finance/expenses'],
+    ['bank-statement-upload', 'Bank Statement Upload', 'CSV/XLS statement import with preview and duplicate detection.', '/admin/finance/expenses'],
     ['bank-reconciliation', 'Bank Reconciliation', 'Match book entries to statement rows with difference tracking.'],
     ['unmatched-transactions', 'Unmatched Transactions', 'Queue of unmatched or suspicious bank movements.'],
     ['bank-transfers', 'Bank Transfers', 'Transfer between bank/cash accounts with contra linkage.'],
@@ -139,10 +139,10 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
     ['opening-balances', 'Opening Balances', 'Financial-year opening balances with import and approval.'],
   ]),
   moduleGroup('expenses-assets', 'Expenses & Assets', 'Operating costs, assets and amortisation.', [
-    ['expense-register', 'Expense Register', 'Existing expense/transaction register with filters and export.', '/superadmin/finance/expenses'],
-    ['add-expense', 'Add Expense', 'Existing manual debit entry flow with validation.', '/superadmin/finance/expenses'],
+    ['expense-register', 'Expense Register', 'Existing expense/transaction register with filters and export.', '/admin/finance/expenses'],
+    ['add-expense', 'Add Expense', 'Existing manual debit entry flow with validation.', '/admin/finance/expenses'],
     ['vendor-bills', 'Vendor Bills', 'Vendor bill capture, due date, approval and payment linkage.'],
-    ['recurring-expenses', 'Recurring Expenses', 'Repeat expense schedule, generation and exception handling.', '/superadmin/recurrence'],
+    ['recurring-expenses', 'Recurring Expenses', 'Repeat expense schedule, generation and exception handling.', '/admin/recurrence'],
     ['employee-reimbursements', 'Employee Reimbursements', 'Claims, receipts, approval and payout.'],
     ['fixed-assets', 'Fixed Assets', 'Asset register, capitalisation, location and disposal.'],
     ['depreciation', 'Depreciation', 'Method, useful life, period charge and asset-wise schedule.'],
@@ -188,7 +188,7 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
     ['ca-queries-checklist', 'CA Queries & Checklist', 'Queries, evidence, owner, due date and resolution.'],
     ['accounting-review', 'Accounting Review', 'Review queue for journals, ledgers and exceptions.'],
     ['import-export', 'Import / Export', 'Controlled data exchange with templates and validation.'],
-    ['import-bank-statements', 'Import Bank Statements', 'Bank statement import and batch history.', '/superadmin/finance/expenses'],
+    ['import-bank-statements', 'Import Bank Statements', 'Bank statement import and batch history.', '/admin/finance/expenses'],
     ['import-opening-balances', 'Import Opening Balances', 'Opening balance template, preview and approval.'],
     ['import-transactions', 'Import Transactions', 'Transaction template, duplicate handling and error report.'],
     ['tally-accounting-export', 'Tally / Accounting Export', 'Mapped export with period and account validation.'],

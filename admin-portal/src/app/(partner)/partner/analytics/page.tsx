@@ -1,9 +1,43 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CircleGauge, MessagesSquare, Trophy, Truck } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  CircleDollarSign,
+  CircleGauge,
+  Clock,
+  ExternalLink,
+  Flame,
+  Layers,
+  MessagesSquare,
+  RotateCw,
+  TrendingUp,
+  Trophy,
+  Truck,
+  Users,
+} from 'lucide-react';
 import api from '@/lib/api';
-import { formatPortalCurrency, formatPortalDate, formatPortalLabel } from '@/lib/partnerPortal';
+import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
+import { formatPortalCurrency } from '@/lib/partnerPortal';
+import { formatDateTime } from '@/lib/i18n/formatters';
+import { getAbsoluteFileUrl } from '@/lib/fileUpload';
+import { useTranslation } from '@/hooks/useTranslation';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 type AnalyticsResponse = {
   summary: {
@@ -76,248 +110,426 @@ const emptyAnalytics: AnalyticsResponse = {
   recentLeads: [],
 };
 
-const barPalette = ['bg-[#F7B500]', 'bg-blue-500', 'bg-green-500', 'bg-violet-500', 'bg-amber-500', 'bg-red-500'];
+const PIPELINE_COLORS: Record<string, string> = {
+  NEW: '#3B82F6',
+  CONTACTED: '#F59E0B',
+  QUALIFIED: '#8B5CF6',
+  INTERESTED: '#06B6D4',
+  INSPECTION_SCHEDULED: '#EC4899',
+  NEGOTIATION: '#EAB308',
+  WON: '#10B981',
+  LOST: '#EF4444',
+  ON_HOLD: '#64748B',
+};
 
 export default function PartnerAnalyticsPage() {
+  const { t, locale } = useTranslation();
   const [data, setData] = useState<AnalyticsResponse>(emptyAnalytics);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadAnalytics = async (isManual = false) => {
+    if (isManual) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const response = await api.get<AnalyticsResponse>('/analytics/partner-overview');
+      setData(response.data);
+    } catch (error) {
+      console.error('Failed to load partner analytics:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadAnalytics = async () => {
-      try {
-        const response = await api.get<AnalyticsResponse>('/analytics/partner-overview');
-        if (!cancelled) {
-          setData(response.data);
-        }
-      } catch (error) {
-        console.error('Failed to load partner analytics:', error);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
     void loadAnalytics();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  const listingMax = useMemo(
-    () => Math.max(1, ...data.listingStatusBreakdown.map((item) => item.count)),
-    [data.listingStatusBreakdown]
-  );
-  const leadMax = useMemo(
-    () => Math.max(1, ...data.leadStatusBreakdown.map((item) => item.count)),
+  const totalListingCount = data.summary.totalListings || 1;
+  const totalPipelineCount = useMemo(
+    () => data.leadStatusBreakdown.reduce((sum, item) => sum + item.count, 0) || 1,
     [data.leadStatusBreakdown]
-  );
-  const trendMax = useMemo(
-    () => Math.max(1, ...data.monthlyLeadTrend.map((item) => item.count)),
-    [data.monthlyLeadTrend]
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Performance analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Inventory, enquiry pipeline, aur top-performing listings ka live business snapshot.
+    <div className="space-y-4 max-w-7xl mx-auto pb-10">
+      {/* 1. Executive Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+            <BarChart3 className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Performance & Business Analytics
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live intelligence on equipment valuation, demand velocity, and conversion funnel.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => loadAnalytics(true)}
+            disabled={loading || refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-2xs disabled:opacity-50"
+            title="Refresh metrics"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-600' : ''}`} />
+            <span className="hidden sm:inline">Refresh Data</span>
+          </button>
+
+          <Link
+            href="/partner/listings"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-2xs"
+          >
+            <Truck className="w-3.5 h-3.5 text-slate-500" />
+            <span>Inventory</span>
+          </Link>
+
+          <Link
+            href="/partner/leads"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-[#FFC107] hover:bg-[#E5AD06] rounded-xl transition-all shadow-xs"
+          >
+            <MessagesSquare className="w-4 h-4" />
+            <span>Buyer Pipeline</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* 2. KPI Cards Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Metric 1 */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Live Inventory</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+              <Truck className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {loading ? '...' : data.summary.liveListings}
+            </span>
+            <span className="text-xs font-semibold text-slate-500">units</span>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            {data.summary.totalListings} total created · {data.summary.pendingListings} in review
+          </p>
+        </div>
+
+        {/* Metric 2 */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fleet Valuation</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+              <CircleDollarSign className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              {loading ? '...' : formatPortalCurrency(data.summary.liveInventoryValue)}
+            </span>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Active market valuation of live equipment
+          </p>
+        </div>
+
+        {/* Metric 3 */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Enquiries</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600">
+              <MessagesSquare className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {loading ? '...' : data.summary.totalLeads}
+            </span>
+            <span className="text-xs font-semibold text-slate-500">leads</span>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Avg {data.summary.averageLeadsPerListing} inquiries per active machine
+          </p>
+        </div>
+
+        {/* Metric 4 */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Deal Conversion</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600">
+              <Trophy className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {loading ? '...' : `${data.summary.conversionRate}%`}
+            </span>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            {data.summary.wonLeads} deals won · {data.summary.soldListings} sold vehicles
           </p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Live Inventory</p>
-            <Truck className="h-4 w-4 text-gray-400" />
-          </div>
-          <p className="mt-3 text-3xl font-bold text-gray-900">{loading ? '...' : data.summary.liveListings}</p>
-          <p className="mt-2 text-sm text-gray-500">{loading ? 'Loading...' : `${data.summary.totalListings} total listings created`}</p>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Inventory Value</p>
-            <CircleGauge className="h-4 w-4 text-[#B77900]" />
-          </div>
-          <p className="mt-3 text-3xl font-bold text-gray-900">
-            {loading ? '...' : formatPortalCurrency(data.summary.liveInventoryValue)}
-          </p>
-          <p className="mt-2 text-sm text-gray-500">Live and reserve-ready stock valuation.</p>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Lead Throughput</p>
-            <MessagesSquare className="h-4 w-4 text-blue-500" />
-          </div>
-          <p className="mt-3 text-3xl font-bold text-blue-700">{loading ? '...' : data.summary.totalLeads}</p>
-          <p className="mt-2 text-sm text-gray-500">
-            {loading ? 'Loading...' : `${data.summary.averageLeadsPerListing} avg leads per listing`}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Conversion</p>
-            <Trophy className="h-4 w-4 text-green-500" />
-          </div>
-          <p className="mt-3 text-3xl font-bold text-green-700">{loading ? '...' : `${data.summary.conversionRate}%`}</p>
-          <p className="mt-2 text-sm text-gray-500">{loading ? 'Loading...' : `${data.summary.wonLeads} won leads recorded`}</p>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
+      {/* 3. Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Left 2 Cols: 6-Month Lead Trend */}
+        <div className="lg:col-span-2 rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">Lead trend</h2>
-              <p className="mt-1 text-sm text-gray-500">Last 6 months ka enquiry movement.</p>
+              <h3 className="text-sm font-bold text-slate-900">Enquiry Trajectory</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monthly buyer inquiry volume across the last 6 months.
+              </p>
             </div>
-            <BarChart3 className="h-5 w-5 text-gray-400" />
+            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+              6-Month Trend
+            </span>
+          </div>
+
+          <div className="h-64 w-full mt-3">
+            {loading ? (
+              <div className="flex h-full items-center justify-center text-xs text-slate-400">
+                Loading trend data...
+              </div>
+            ) : data.monthlyLeadTrend.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-xs text-slate-400">
+                No monthly data recorded yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.monthlyLeadTrend} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="analyticsTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }}
+                    dy={5}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#64748B' }}
+                    allowDecimals={false}
+                  />
+                  <RechartsTooltip
+                    contentStyle={{
+                      backgroundColor: '#0F172A',
+                      borderRadius: '10px',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: '12px',
+                      padding: '8px 12px',
+                    }}
+                    labelStyle={{ color: '#FCD34D', fontWeight: 'bold' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    name="Leads"
+                    stroke="#D97706"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#analyticsTrendGrad)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Right 1 Col: Listing Inventory Distribution */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-slate-900">Inventory Status Mix</h3>
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                {data.summary.totalListings} machines
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Status distribution of your equipment on the platform.
+            </p>
+
+            <div className="space-y-3.5">
+              {data.listingStatusBreakdown.map((item) => {
+                const percentage = Math.round((item.count / totalListingCount) * 100);
+                const isPublished = item.status === 'PUBLISHED' || item.status === 'ACTIVE';
+                const isPending = item.status.includes('PENDING');
+
+                return (
+                  <div key={item.status}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            isPublished ? 'bg-emerald-500' : isPending ? 'bg-amber-500' : 'bg-slate-400'
+                          }`}
+                        />
+                        {item.label}
+                      </span>
+                      <span className="font-bold text-slate-900">
+                        {item.count} <span className="text-slate-400 font-normal">({percentage}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isPublished ? 'bg-emerald-500' : isPending ? 'bg-amber-500' : 'bg-slate-400'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600">
+            <span className="font-bold text-slate-800">Note: </span>
+            Keep pending machines updated with chassis documents to speed up admin verification.
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Buyer Pipeline Stage Breakdown & Top Equipment Velocity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Pipeline Stage Funnel */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">CRM Deal Pipeline Stages</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Active buyer inquiries by deal progress.</p>
+            </div>
+            <Link
+              href="/partner/leads"
+              className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+            >
+              Open CRM <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
           {loading ? (
-            <div className="mt-8 text-sm text-gray-500">Loading trend graph...</div>
-          ) : data.monthlyLeadTrend.length === 0 ? (
-            <div className="mt-8 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-10 text-sm text-gray-500">
-              Trend data tab dikhega jab leads aani start hongi.
-            </div>
+            <div className="py-8 text-center text-xs text-slate-400">Loading pipeline...</div>
+          ) : data.leadStatusBreakdown.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">No leads in pipeline yet.</div>
           ) : (
-            <div className="mt-8 flex h-64 items-end gap-3">
-              {data.monthlyLeadTrend.map((item, index) => (
-                <div key={item.key} className="flex flex-1 flex-col items-center gap-3">
-                  <div className="flex h-48 w-full items-end">
-                    <div
-                      className={`w-full rounded-t-xl ${barPalette[index % barPalette.length]} transition-all`}
-                      style={{ height: `${Math.max(12, (item.count / trendMax) * 100)}%` }}
-                    />
+            <div className="space-y-3 pt-2">
+              {data.leadStatusBreakdown.map((item) => {
+                const color = PIPELINE_COLORS[item.status.toUpperCase()] || '#64748B';
+                const percentage = Math.round((item.count / totalPipelineCount) * 100);
+
+                return (
+                  <div key={item.status} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-100">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="font-bold text-slate-800 flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                        {item.label}
+                      </span>
+                      <span className="font-black text-slate-900">
+                        {item.count} deals <span className="text-slate-400 font-normal">({percentage}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-200/70 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${percentage}%`, backgroundColor: color }}
+                      />
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-gray-900">{item.count}</p>
-                    <p className="text-xs text-gray-500">{item.label}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">Listing status mix</h2>
-            <div className="mt-5 space-y-4">
+        {/* Highest Lead Velocity Equipment */}
+        <div className="rounded-2xl bg-white p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Top Performing Machinery</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Vehicles generating the highest buyer interest.</p>
+              </div>
+              <Link
+                href="/partner/listings"
+                className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+              >
+                All Listings <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto custom-scrollbar">
               {loading ? (
-                <p className="text-sm text-gray-500">Loading listing mix...</p>
-              ) : data.listingStatusBreakdown.length === 0 ? (
-                <p className="text-sm text-gray-500">No listings available yet.</p>
+                <div className="py-8 text-center text-xs text-slate-400">Loading listings...</div>
+              ) : data.topListings.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">No active equipment generating leads.</div>
               ) : (
-                data.listingStatusBreakdown.map((item, index) => (
-                  <div key={item.status}>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-medium text-gray-700">{item.label}</span>
-                      <span className="text-gray-500">{item.count}</span>
+                data.topListings.map((listing, idx) => (
+                  <div key={listing.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-600">
+                        #{idx + 1}
+                      </span>
+                      <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
+                        {listing.featuredImage ? (
+                          <SafeRemoteImage
+                            src={getAbsoluteFileUrl(listing.featuredImage)}
+                            alt={listing.title}
+                            className="h-full w-full object-cover"
+                            fallback={
+                              <div className="flex h-full w-full items-center justify-center text-slate-400">
+                                <Truck className="h-4 w-4" />
+                              </div>
+                            }
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-slate-400">
+                            <Truck className="h-4 w-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate" title={listing.title}>
+                          {listing.title}
+                        </p>
+                        <p className="text-[11px] font-semibold text-amber-600">
+                          {formatPortalCurrency(listing.price)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="h-2 rounded-full bg-gray-100">
-                      <div
-                        className={`h-2 rounded-full ${barPalette[index % barPalette.length]}`}
-                        style={{ width: `${(item.count / listingMax) * 100}%` }}
-                      />
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
+                        <MessagesSquare className="w-3 h-3 text-blue-600" />
+                        {listing.leadCount}
+                      </span>
+                      {listing.wonLeadCount > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {listing.wonLeadCount} Won
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">Lead stage mix</h2>
-            <div className="mt-5 space-y-4">
-              {loading ? (
-                <p className="text-sm text-gray-500">Loading lead mix...</p>
-              ) : data.leadStatusBreakdown.length === 0 ? (
-                <p className="text-sm text-gray-500">No leads available yet.</p>
-              ) : (
-                data.leadStatusBreakdown.map((item, index) => (
-                  <div key={item.status}>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-medium text-gray-700">{item.label}</span>
-                      <span className="text-gray-500">{item.count}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-gray-100">
-                      <div
-                        className={`h-2 rounded-full ${barPalette[(index + 1) % barPalette.length]}`}
-                        style={{ width: `${(item.count / leadMax) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">Top performing listings</h2>
-        <p className="mt-1 text-sm text-gray-500">Jo inventory sabse zyada enquiry pull kar rahi hai.</p>
-
-        {loading ? (
-          <div className="mt-6 text-sm text-gray-500">Loading listing performance...</div>
-        ) : data.topListings.length === 0 ? (
-          <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-10 text-sm text-gray-500">
-            Listing performance yahan show hogi jab inventory save ho jayegi.
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {data.topListings.map((listing) => (
-              <div key={listing.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-gray-900">{listing.title}</p>
-                    <p className="mt-1 text-sm text-gray-500">{listing.location || 'Location pending'}</p>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm">
-                    {formatPortalLabel(listing.status)}
-                  </span>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
-                  <span className="rounded-full bg-white px-3 py-1">{listing.manufacturingYear}</span>
-                  <span className="rounded-full bg-white px-3 py-1">{listing.leadCount} leads</span>
-                  <span className="rounded-full bg-white px-3 py-1">{listing.wonLeadCount} won</span>
-                </div>
-                <p className="mt-4 text-lg font-bold text-gray-900">{formatPortalCurrency(listing.price)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">Recent enquiry activity</h2>
-        <div className="mt-5 space-y-3">
-          {loading ? (
-            <p className="text-sm text-gray-500">Loading activity feed...</p>
-          ) : data.recentLeads.length === 0 ? (
-            <p className="text-sm text-gray-500">Recent enquiry activity abhi available nahi hai.</p>
-          ) : (
-            data.recentLeads.map((lead) => (
-              <div key={lead.id} className="flex flex-col gap-2 rounded-xl border border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{lead.customerName}</p>
-                  <p className="text-sm text-gray-500">{lead.listingTitle}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                  <span className="rounded-full bg-gray-100 px-3 py-1 font-semibold text-gray-700">{formatPortalLabel(lead.status)}</span>
-                  <span>{formatPortalLabel(lead.enquiryType)}</span>
-                  <span>{formatPortalDate(lead.createdAt)}</span>
-                </div>
-              </div>
-            ))
-          )}
         </div>
       </div>
     </div>

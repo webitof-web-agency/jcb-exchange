@@ -3,7 +3,23 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, Database, Flame, Snowflake, Sun } from 'lucide-react';
+import {
+  AlertTriangle,
+  BarChart3,
+  CalendarCheck,
+  CheckCircle2,
+  Database,
+  FileUp,
+  Flame,
+  Inbox,
+  Kanban,
+  LayoutDashboard,
+  Megaphone,
+  PhoneCall,
+  Snowflake,
+  Sun,
+  Users,
+} from 'lucide-react';
 import api from '@/lib/api';
 import { Badge, LoadingState } from '@/components/financeWorkspace/ui';
 
@@ -109,30 +125,61 @@ export const OUTCOME_LABELS: Record<string, string> = {
   INTERESTED: 'Interested', NOT_INTERESTED: 'Not interested', WRONG_NUMBER: 'Wrong number', VISITED: 'Visited', NO_SHOW: 'No show', MESSAGE_SENT: 'Message sent', OTHER: 'Other',
 };
 
-const STATUS_TONES: Record<string, 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'violet'> = {
-  NEW: 'blue', CONTACTED: 'slate', QUALIFIED: 'violet', INTERESTED: 'violet', INSPECTION_SCHEDULED: 'amber', NEGOTIATION: 'amber', ON_HOLD: 'slate', WON: 'green', LOST: 'red',
+const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  NEW: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200/90', dot: 'bg-blue-500' },
+  CONTACTED: { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200/90', dot: 'bg-slate-500' },
+  QUALIFIED: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200/90', dot: 'bg-purple-500' },
+  INTERESTED: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200/90', dot: 'bg-indigo-500' },
+  INSPECTION_SCHEDULED: { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200/90', dot: 'bg-amber-500' },
+  NEGOTIATION: { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200/90', dot: 'bg-orange-500' },
+  ON_HOLD: { bg: 'bg-zinc-50', text: 'text-zinc-700', border: 'border-zinc-200/90', dot: 'bg-zinc-400' },
+  WON: { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200/90', dot: 'bg-emerald-500' },
+  LOST: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200/90', dot: 'bg-rose-500' },
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge tone={STATUS_TONES[status] || 'slate'}>{label(status)}</Badge>;
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.CONTACTED;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-tight border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      <span>{label(status)}</span>
+    </span>
+  );
 }
 
 export function TemperatureBadge({ temperature, score }: { temperature: string; score?: number }) {
-  const meta = temperature === 'HOT'
-    ? { icon: <Flame className="h-3 w-3" />, cls: 'bg-red-50 text-red-700' }
-    : temperature === 'COLD'
-      ? { icon: <Snowflake className="h-3 w-3" />, cls: 'bg-sky-50 text-sky-700' }
-      : { icon: <Sun className="h-3 w-3" />, cls: 'bg-amber-50 text-amber-700' };
+  const meta =
+    temperature === 'HOT'
+      ? { icon: <Flame className="h-3 w-3 text-rose-500 fill-rose-500/20" />, cls: 'bg-rose-50 text-rose-700 border-rose-200/80' }
+      : temperature === 'COLD'
+      ? { icon: <Snowflake className="h-3 w-3 text-sky-500" />, cls: 'bg-sky-50 text-sky-700 border-sky-200/80' }
+      : { icon: <Sun className="h-3 w-3 text-amber-500" />, cls: 'bg-amber-50 text-amber-800 border-amber-200/80' };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${meta.cls}`} title={score !== undefined ? `Score ${score}/100` : undefined}>
-      {meta.icon}{label(temperature)}{score !== undefined ? ` · ${score}` : ''}
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${meta.cls}`}
+      title={score !== undefined ? `Score ${score}/100` : undefined}
+    >
+      {meta.icon}
+      <span>{label(temperature)}</span>
+      {score !== undefined ? <span className="opacity-70 font-semibold">· {score}</span> : null}
     </span>
   );
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
-  const tone = priority === 'URGENT' ? 'red' : priority === 'HIGH' ? 'amber' : priority === 'LOW' ? 'slate' : 'blue';
-  return <Badge tone={tone}>{label(priority)}</Badge>;
+  const toneCls =
+    priority === 'URGENT'
+      ? 'bg-red-50 text-red-700 border-red-200'
+      : priority === 'HIGH'
+      ? 'bg-amber-50 text-amber-800 border-amber-200'
+      : priority === 'LOW'
+      ? 'bg-slate-50 text-slate-600 border-slate-200'
+      : 'bg-blue-50 text-blue-700 border-blue-200';
+  return (
+    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${toneCls}`}>
+      {label(priority)}
+    </span>
+  );
 }
 
 // ───────────── Dates (shown in IST) ─────────────
@@ -189,7 +236,11 @@ export const phoneLinks = (mobile: string | null | undefined, whatsapp?: string 
 export const useCrmBase = () => {
   const pathname = usePathname() || '';
   if (pathname.startsWith('/partner')) return { base: '/partner', isPartnerPortal: true };
-  const prefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const prefix = pathname.startsWith('/superadmin')
+    ? '/superadmin'
+    : pathname.startsWith('/admin')
+      ? '/admin'
+      : '/employee';
   return { base: `${prefix}/crm`, isPartnerPortal: false };
 };
 
@@ -222,19 +273,19 @@ export const getJson = async <T,>(url: string, params?: Record<string, unknown>)
 export function CrmErrorBanner({ message, schemaMissing }: { message: string; schemaMissing?: boolean }) {
   if (schemaMissing) {
     return (
-      <div className="m-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        <Database className="mt-0.5 h-5 w-5 shrink-0" />
+      <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-2xs">
+        <Database className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
         <div>
-          <p className="font-semibold">CRM database is not installed yet</p>
-          <p className="mt-1 text-xs leading-5">The CRM migration has not been applied to this database. Enquiries keep arriving and are stored; CRM screens open once the migration is deployed.</p>
+          <p className="font-bold">CRM database is not installed yet</p>
+          <p className="mt-1 text-xs leading-5 text-amber-700">The CRM migration has not been applied to this database. Enquiries keep arriving and are stored; CRM screens open once the migration is deployed.</p>
         </div>
       </div>
     );
   }
   return (
-    <div className="m-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-      <p>{message}</p>
+    <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-2xs">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+      <p className="font-semibold">{message}</p>
     </div>
   );
 }
@@ -252,58 +303,143 @@ export const useCrmMeta = () => useContext(MetaContext);
 export const staffName = (meta: CrmMeta | undefined, id: string | null | undefined) =>
   !id ? 'Unassigned' : meta?.staff.find((s) => s.id === id)?.name || (id === meta?.me ? 'Me' : 'Staff');
 
-export const selectClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-amber-400 focus:bg-white';
+export const selectClass =
+  'w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20';
 /** Same look without w-full, for toolbar filters that set their own width. */
-export const compactSelectClass = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-400 focus:bg-white';
+export const compactSelectClass =
+  'rounded-xl border border-slate-200/90 bg-slate-50/70 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20';
 export const chipClass = (active: boolean) =>
-  `shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`;
+  `shrink-0 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-150 ${
+    active ? 'border-slate-900 bg-slate-900 text-white shadow-2xs' : 'border-slate-200/90 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+  }`;
 
-// ───────────── Page frame ─────────────
+// ───────────── Page frame & Quick Nav ─────────────
 
 function MetaGate({ children }: { children: ReactNode }) {
   const { meta } = useCrmMeta();
-  if (!meta) return <LoadingState label="Loading CRM…" />;
+  if (!meta) return <LoadingState label="Loading CRM workspace…" />;
   return <>{children}</>;
 }
 
-/** Every CRM page: meta provider + full-width canvas (pages fill wide screens, stack on phones). */
+export function CrmNavBar() {
+  const { base, isPartnerPortal } = useCrmBase();
+  const pathname = usePathname() || '';
+
+  const links = [
+    { href: base, label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { href: `${base}/leads`, label: 'Leads', icon: Inbox },
+    { href: `${base}/pipeline`, label: 'Pipeline', icon: Kanban },
+    { href: `${base}/follow-ups`, label: 'Follow-ups', icon: PhoneCall },
+    ...(!isPartnerPortal
+      ? [
+          { href: `${base}/contacts`, label: 'Contacts', icon: Users },
+          { href: `${base}/reports`, label: 'Reports', icon: BarChart3 },
+          { href: `${base}/campaigns`, label: 'Campaigns', icon: Megaphone },
+          { href: `${base}/import`, label: 'Import', icon: FileUp },
+        ]
+      : []),
+  ];
+
+  return (
+    <nav className="flex items-center gap-1 overflow-x-auto rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-2xs custom-scrollbar">
+      {links.map((link) => {
+        const isActive = link.exact
+          ? pathname === link.href
+          : pathname === link.href || pathname.startsWith(`${link.href}/`);
+        const Icon = link.icon;
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`inline-flex items-center gap-1.5 shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all duration-150 ${
+              isActive
+                ? 'bg-slate-950 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
+            <span>{link.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Every CRM page: meta provider + full-width canvas. */
 export function CrmPageFrame({ children }: { children: ReactNode }) {
   return (
     <CrmMetaProvider>
-      <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-[1800px] space-y-5">
-          <MetaGate>{children}</MetaGate>
-        </div>
+      <div className="w-full max-w-7xl mx-auto space-y-4 pb-12">
+        <CrmNavBar />
+        <MetaGate>{children}</MetaGate>
       </div>
     </CrmMetaProvider>
   );
 }
 
-/** Page title block: eyebrow, 24px title, one-line description, actions on the right. */
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+/** Page title block: executive command banner with actions. */
+export function PageHeader({
+  title,
+  description,
+  actions,
+  badgeText,
+}: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  badgeText?: string;
+}) {
   return (
-    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
       <div className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-600">CRM</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{description}</p> : null}
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-md bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+            Enterprise CRM
+          </span>
+          {badgeText ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+              {badgeText}
+            </span>
+          ) : null}
+        </div>
+        <h1 className="mt-1 text-base sm:text-lg font-bold text-slate-900 tracking-tight">{title}</h1>
+        {description ? <p className="mt-0.5 text-xs text-slate-500 max-w-3xl truncate sm:whitespace-normal">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div> : null}
     </header>
   );
 }
 
-/** Compact KPI tile used on the dashboard and reports. */
-export function StatTile({ label: text, value, hint, tone = 'text-slate-900', href, icon }: { label: string; value: ReactNode; hint?: string; tone?: string; href?: string; icon?: ReactNode }) {
+/** Compact KPI tile used on dashboard, reports and overview strips. */
+export function StatTile({
+  label: text,
+  value,
+  hint,
+  tone = 'text-slate-900',
+  href,
+  icon,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  tone?: string;
+  href?: string;
+  icon?: ReactNode;
+}) {
   const body = (
-    <div className="flex h-full flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-amber-300">
+    <div className="group relative flex h-full flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{text}</p>
-        {icon ? <span className="text-slate-400">{icon}</span> : null}
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{text}</p>
+        {icon ? (
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50 text-slate-600 border border-slate-100 group-hover:bg-amber-50 group-hover:text-amber-700 group-hover:border-amber-200/60 transition-colors">
+            {icon}
+          </span>
+        ) : null}
       </div>
-      <div>
-        <p className={`text-[28px] font-bold leading-none ${tone}`}>{value}</p>
-        {hint ? <p className="mt-1.5 text-xs text-slate-500">{hint}</p> : null}
+      <div className="mt-2">
+        <p className={`text-xl sm:text-2xl font-bold tracking-tight leading-none ${tone}`}>{value}</p>
+        {hint ? <p className="mt-1 text-[11px] font-medium text-slate-500 truncate">{hint}</p> : null}
       </div>
     </div>
   );
@@ -311,15 +447,20 @@ export function StatTile({ label: text, value, hint, tone = 'text-slate-900', hr
 }
 
 /** CRM page URLs under the role prefix (`base` = /superadmin/crm …). */
-export const crmPath = (base: string, page: '' | 'leads' | 'pipeline' | 'follow-ups' | 'contacts' | 'reports' | 'campaigns' | 'import', query?: string) =>
-  `${base}${page ? `/${page}` : ''}${query ? `?${query}` : ''}`;
+export const crmPath = (
+  base: string,
+  page: '' | 'leads' | 'pipeline' | 'follow-ups' | 'contacts' | 'reports' | 'campaigns' | 'import',
+  query?: string,
+) => `${base}${page ? `/${page}` : ''}${query ? `?${query}` : ''}`;
 
 export const settingsPath = (base: string) => `${base.replace(/\/crm$/, '')}/settings?tab=crm`;
 
 export const CONTACT_TYPES = ['BUYER', 'SELLER', 'DEALER', 'BROKER', 'FINANCIER', 'TRANSPORTER', 'CONTRACTOR', 'OTHER'];
 
-export const requirementSummary = (lead: Pick<LeadRow, 'listingTitleSnapshot' | 'budgetMax' | 'budgetMin' | 'requirementCity' | 'message'>) =>
-  lead.listingTitleSnapshot
-  || [lead.budgetMax ? `Budget ${fmtInr(lead.budgetMax)}` : null, lead.requirementCity].filter(Boolean).join(' · ')
-  || lead.message?.slice(0, 70)
-  || '—';
+export const requirementSummary = (
+  lead: Pick<LeadRow, 'listingTitleSnapshot' | 'budgetMax' | 'budgetMin' | 'requirementCity' | 'message'>,
+) =>
+  lead.listingTitleSnapshot ||
+  [lead.budgetMax ? `Budget ${fmtInr(lead.budgetMax)}` : null, lead.requirementCity].filter(Boolean).join(' · ') ||
+  lead.message?.slice(0, 70) ||
+  '—';

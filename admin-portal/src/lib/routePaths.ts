@@ -47,7 +47,7 @@ const joinDetailPath = (basePath: string, slugValue: string) => `${basePath}/${s
 const normalizeBasePath = (basePath: string) => basePath.replace(/\/$/, '');
 
 export const getRecruitmentPortalBasePath = (pathname: string): string =>
-  pathname.startsWith('/employee/') ? '/employee/recruitment' : '/superadmin/recruitment';
+  pathname.startsWith('/employee/') ? '/employee/recruitment' : '/admin/recruitment';
 
 export const generateRecruitmentJobDetailPath = (
   basePath: string,

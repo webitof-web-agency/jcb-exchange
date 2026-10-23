@@ -325,7 +325,7 @@ type Batch = { id: string; fileName: string; bankName: string | null; accountNam
 /** Statement uploads stay on the Expenses page; this shows each batch and the bank account it feeds. */
 export function StatementImportsModule() {
   const pathname = usePathname();
-  const prefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const prefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const batches = useResource(async () => (await api.get('/finance-hub/banking/imports')).data.batches as Batch[], 'statement-imports');
   return (
     <Panel

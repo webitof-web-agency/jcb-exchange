@@ -69,14 +69,14 @@ export default function LanguageSwitcher({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-label={t('common.language')}
-        className={`inline-flex items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-2.5 py-0.5 sm:py-1 text-xs font-semibold transition-all duration-150 focus:outline-none ${
+        className={`inline-flex h-8.5 items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all duration-150 focus:outline-none ${
           isDark
             ? 'border border-white/20 bg-neutral-900 text-white hover:bg-neutral-800 hover:border-white/30 active:bg-neutral-800'
-            : 'border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100'
+            : 'border border-slate-200/90 bg-white text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300'
         }`}
       >
-        <Globe className={`h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0 ${isDark ? 'text-[#FFC107]' : 'text-gray-600'}`} />
-        <span className="font-medium hidden sm:inline">{currentLabel}</span>
+        <Globe className={`h-3.5 w-3.5 shrink-0 ${isDark ? 'text-[#FFC107]' : 'text-slate-500'}`} />
+        <span className="font-semibold text-xs text-slate-700 hidden sm:inline">{currentLabel}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 hidden sm:inline transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''

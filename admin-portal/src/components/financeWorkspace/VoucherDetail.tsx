@@ -35,7 +35,7 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
 }) {
   const access = useFinanceWorkspaceAccess();
   const pathname = usePathname();
-  const rolePrefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const rolePrefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const detail = useResource(async () => (await api.get(`/finance-hub/vouchers/${voucherId}`)).data as Detail, `voucher-${voucherId}`);
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState<null | 'reject' | 'reverse' | 'delete'>(null);

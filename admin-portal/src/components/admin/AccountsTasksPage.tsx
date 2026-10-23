@@ -222,13 +222,13 @@ export default function AccountsTasksPage() {
     ? '/employee/accounts/rto-work-status'
     : pathname.startsWith('/admin')
     ? '/admin/accounts/rto-work-status'
-    : '/superadmin/accounts/rto-work-status';
+    : '/admin/accounts/rto-work-status';
 
   const sellPath = pathname.startsWith('/employee')
     ? '/employee/accounts/sell-accounts'
     : pathname.startsWith('/admin')
     ? '/admin/accounts/sell-accounts'
-    : '/superadmin/accounts/sell-accounts';
+    : '/admin/accounts/sell-accounts';
 
   // State
   const [tasks, setTasks] = useState<TaskRecord[]>([]);

@@ -199,7 +199,7 @@ const getSourceMeta = (visitor: VisitorRecord) => {
 };
 
 export default function VisitorDirectoryPage({
-  detailBaseHref = '/superadmin/visitors',
+  detailBaseHref = '/admin/visitors',
 }: {
   detailBaseHref?: string;
 }) {

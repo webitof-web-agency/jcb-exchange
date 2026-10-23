@@ -1,1 +1,1 @@
-export { default } from '@/app/(admin)/superadmin/finance/workspace/page';
+export { default } from '@/app/(admin)/admin/finance/workspace/page';

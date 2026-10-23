@@ -41,9 +41,14 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     manifest: "/manifest.webmanifest",
     icons: {
-      icon: [{ url: faviconUrl, type: iconType }],
-      apple: [{ url: faviconUrl, type: iconType }],
-      shortcut: [{ url: faviconUrl, type: iconType }],
+      icon: [
+        { url: faviconUrl, type: iconType },
+        { url: '/favicon.ico', type: 'image/x-icon' },
+        { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
+        { url: '/Favicon.png', type: 'image/png', sizes: '512x512' },
+      ],
+      shortcut: [{ url: '/favicon.ico', type: 'image/x-icon' }],
+      apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
     },
   };
 }

@@ -275,9 +275,9 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
 
   const isSuperAdmin = currentUserRole === 'SUPER_ADMIN';
   const isEmployee = currentUserRole === 'EMPLOYEE';
-  const backHref = isSuperAdmin ? '/superadmin/enquiries' : isEmployee ? '/employee/enquiries' : '/partner/leads';
+  const backHref = isSuperAdmin ? '/admin/enquiries' : isEmployee ? '/employee/enquiries' : '/partner/leads';
   const paymentVerificationHref = isSuperAdmin
-    ? '/superadmin/listings?view=payments'
+    ? '/admin/listings?view=payments'
     : isEmployee
       ? '/employee/listings?view=payments'
       : '/partner/listings';
@@ -317,7 +317,7 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
       return;
     }
 
-    const detailBaseHref = isSuperAdmin ? '/superadmin/enquiries' : isEmployee ? '/employee/enquiries' : '/partner/leads';
+    const detailBaseHref = isSuperAdmin ? '/admin/enquiries' : isEmployee ? '/employee/enquiries' : '/partner/leads';
     const canonicalPath = generateAdminLeadDetailPath(detailBaseHref, {
       id: lead.id,
       customerName: lead.customer?.name,
@@ -1023,7 +1023,7 @@ export default function LeadDetailPage({ leadId }: { leadId: string }) {
 
               {isSuperAdmin ? (
                 <Link
-                  href={generateAdminListingPaymentDetailPath('/superadmin/listings', {
+                  href={generateAdminListingPaymentDetailPath('/admin/listings', {
                     id: latestListingPayment.id,
                     listingTitle: latestListingPayment.listing?.title || lead.listing.title,
                     method: latestListingPayment.method,

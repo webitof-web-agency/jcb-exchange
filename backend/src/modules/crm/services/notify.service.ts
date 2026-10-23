@@ -22,7 +22,8 @@ export type CrmEvent =
   | 'CRM_MATCHING_LISTING'
   | 'CRM_REENGAGEMENT';
 
-const rolePrefix = (role: string) => (role === 'SUPER_ADMIN' ? '/superadmin' : role === 'ADMIN' ? '/admin' : '/employee');
+// Portal URL prefix: /admin is the super admin panel; ADMIN and EMPLOYEE use /employee.
+const rolePrefix = (role: string) => (role === 'SUPER_ADMIN' ? '/admin' : '/employee');
 
 /** Portal link for a user's role; partners land on their own lead pages. */
 export const crmLinkFor = (role: string, target: { leadId?: string | null; tab?: string }) => {

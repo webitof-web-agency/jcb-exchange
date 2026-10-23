@@ -2491,6 +2491,10 @@ export const getPendingVerifications = async (req: Request, res: Response, next:
         partnerType: partner.partnerProfile?.partnerType || 'SHOWROOM',
         appliedOn: partner.createdAt,
         status: partner.partnerProfile?.kycStatus || 'NOT_STARTED',
+        mobile: partner.mobile || partner.partnerProfile?.primaryContact || null,
+        ownerName: partner.partnerProfile?.ownerName || partner.name || null,
+        city: partner.partnerProfile?.city || partner.city || null,
+        state: partner.partnerProfile?.state || partner.state || null,
       })),
     });
   } catch (error) {

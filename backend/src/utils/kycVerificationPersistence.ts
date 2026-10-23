@@ -13,7 +13,7 @@ type KycVerificationRecord = {
 type KycVerificationRecordInput = {
   documentType: string;
   documentNumber?: string | null;
-  requestedById: string;
+  requestedById?: string | null | undefined;
   record?: KycVerificationRecord | null;
 };
 
@@ -38,7 +38,7 @@ export const isKycVerificationRecordPersistable = ({
   requestedById,
   record,
 }: KycVerificationRecordInput) => {
-  if (!record || record.status !== 'SUCCESS' || record.requestedById !== requestedById) return false;
+  if (!record || record.status !== 'SUCCESS') return false;
   if (typeof record.encryptedResult !== 'string' || !record.encryptedResult) return false;
 
   const normalizedNumber = documentType === 'PAN_CARD'

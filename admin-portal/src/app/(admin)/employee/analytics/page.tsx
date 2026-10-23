@@ -1,2 +1,2 @@
-export { default } from '@/app/(admin)/superadmin/analytics/page';
+export { default } from '@/app/(admin)/admin/analytics/page';
 

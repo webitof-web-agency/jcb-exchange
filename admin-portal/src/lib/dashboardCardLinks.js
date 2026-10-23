@@ -26,7 +26,7 @@ const dashboardCardDefinitions = [
   {
     key: 'totalPartners',
     hrefByPortal: {
-      superadmin: '/superadmin/partners',
+      superadmin: '/admin/partners',
       employee: '/employee/partners',
     },
     requiredPermissions: ['partners.read'],
@@ -34,7 +34,7 @@ const dashboardCardDefinitions = [
   {
     key: 'approvedPartners',
     hrefByPortal: {
-      superadmin: '/superadmin/partners',
+      superadmin: '/admin/partners',
       employee: '/employee/partners',
     },
     requiredPermissions: ['partners.read'],
@@ -42,7 +42,7 @@ const dashboardCardDefinitions = [
   {
     key: 'pendingKyc',
     hrefByPortal: {
-      superadmin: '/superadmin/verifications',
+      superadmin: '/admin/verifications',
       employee: '/employee/verifications',
     },
     requiredPermissions: ['kyc.manage'],
@@ -50,7 +50,7 @@ const dashboardCardDefinitions = [
   {
     key: 'activeListings',
     hrefByPortal: {
-      superadmin: '/superadmin/listings',
+      superadmin: '/admin/listings',
       employee: '/employee/listings',
     },
     requiredPermissions: ['listings.read'],
@@ -58,7 +58,7 @@ const dashboardCardDefinitions = [
   {
     key: 'totalEnquiries',
     hrefByPortal: {
-      superadmin: '/superadmin/enquiries',
+      superadmin: '/admin/enquiries',
       employee: '/employee/enquiries',
     },
     requiredPermissions: ['enquiries.manage'],

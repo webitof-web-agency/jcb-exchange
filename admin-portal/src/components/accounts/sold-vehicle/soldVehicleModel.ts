@@ -347,5 +347,5 @@ export const createInitialSellAccountForm = (): SellAccountFormState => ({
 });
 
 export const accountsPortalBase = (pathname: string) => (
-  pathname.startsWith('/employee') ? '/employee' : pathname.startsWith('/admin') ? '/admin' : '/superadmin'
+  pathname.startsWith('/employee') ? '/employee' : '/admin'
 );

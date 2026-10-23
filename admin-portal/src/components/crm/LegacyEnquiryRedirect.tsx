@@ -10,7 +10,7 @@ export default function LegacyEnquiryRedirect({ param }: { param?: string }) {
   const router = useRouter();
   const pathname = usePathname() || '';
   useEffect(() => {
-    const prefix = pathname.startsWith('/employee') ? '/employee' : pathname.startsWith('/admin') ? '/admin' : '/superadmin';
+    const prefix = pathname.startsWith('/employee') ? '/employee' : '/admin';
     if (!param) {
       router.replace(`${prefix}/crm/leads`);
       return;

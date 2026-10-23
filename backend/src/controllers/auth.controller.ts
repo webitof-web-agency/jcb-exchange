@@ -367,7 +367,11 @@ const validateVerificationMetadata = async <T extends ReturnType<typeof normaliz
     ? await model.findUnique({ where: { id: document.verificationRecordId }, select })
     : requestFingerprint
       ? await model.findFirst({
-        where: { requestedById, status: 'SUCCESS', requestFingerprint },
+        where: {
+          requestFingerprint,
+          status: 'SUCCESS',
+          encryptedResult: { not: null },
+        },
         orderBy: { completedAt: 'desc' },
         select,
       })
@@ -451,16 +455,14 @@ export const buildAuthUserPayload = async (user: any) => {
   const resolvedRole = resolveEffectiveUserRole(user);
   const portalHomeRoute =
     resolvedRole === 'SUPER_ADMIN'
-      ? '/superadmin/dashboard'
-      : resolvedRole === 'ADMIN'
-        ? '/admin/dashboard'
-        : resolvedRole === 'EMPLOYEE'
-          ? '/employee/dashboard'
-          : resolvedRole === 'PARTNER'
-            ? '/partner/dashboard'
-            : resolvedRole === 'CUSTOMER'
-              ? '/profile'
-              : null;
+      ? '/admin/dashboard'
+      : resolvedRole === 'ADMIN' || resolvedRole === 'EMPLOYEE'
+        ? '/employee/dashboard'
+        : resolvedRole === 'PARTNER'
+          ? '/partner/dashboard'
+          : resolvedRole === 'CUSTOMER'
+            ? '/profile'
+            : null;
   let primeAccessPayload = null;
   if (resolvedRole === 'CUSTOMER') {
     try {
@@ -809,14 +811,36 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
       verificationMessage: document.verificationMessage || '',
     };
 
-    if (!document.verificationRecordId || !['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
+    let verificationRecordId = document.verificationRecordId || '';
+    if (!verificationRecordId && document.documentNumber && ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
+      const namespace = document.documentType === 'PAN_CARD' ? 'PAN_COMPREHENSIVE_V2' : 'GST_VERIFY';
+      const normalizedNumber = document.documentNumber.trim().toUpperCase();
+      const requestFingerprint = createVerificationFingerprint(namespace, { id_number: normalizedNumber });
+      const model = document.documentType === 'PAN_CARD'
+        ? prismaAny.panVerificationRecord
+        : prismaAny.gstVerificationRecord;
+      const existingRecord = await model.findFirst({
+        where: {
+          requestFingerprint,
+          status: 'SUCCESS',
+          encryptedResult: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+        select: { id: true },
+      });
+      if (existingRecord) {
+        verificationRecordId = existingRecord.id;
+      }
+    }
+
+    if (!verificationRecordId || !['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
       return base;
     }
 
     try {
       const detail = document.documentType === 'PAN_CARD'
-        ? await panVerificationService.getHistoryDetail(document.verificationRecordId, partnerUser.id, 'PARTNER')
-        : await gstVerificationService.getHistoryDetail(document.verificationRecordId);
+        ? await panVerificationService.getHistoryDetail(verificationRecordId, partnerUser.id, 'PARTNER')
+        : await gstVerificationService.getHistoryDetail(verificationRecordId);
       if (detail.record?.status !== 'SUCCESS' || !detail.result) {
         return {
           ...base,
@@ -828,8 +852,20 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
         };
       }
 
+      if (!document.verificationRecordId && verificationRecordId && document.id) {
+        void prismaAny.kycDocument.update({
+          where: { id: document.id },
+          data: {
+            verificationRecordId,
+            verificationStatus: 'VERIFIED',
+            verificationCompletedAt: detail.record?.completedAt ? new Date(detail.record.completedAt) : new Date(),
+          },
+        }).catch(() => {});
+      }
+
       return {
         ...base,
+        verificationRecordId,
         verificationStatus: 'VERIFIED',
         verificationResult: detail.result as Record<string, unknown>,
         verificationMessage: '',

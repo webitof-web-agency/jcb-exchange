@@ -1,1 +1,5 @@
-export { default } from '@/app/(admin)/superadmin/pan-verification/page';
+import PanVerificationPage from '@/components/panVerification/PanVerificationPage';
+
+export default function SuperAdminPanVerificationPage() {
+  return <PanVerificationPage />;
+}

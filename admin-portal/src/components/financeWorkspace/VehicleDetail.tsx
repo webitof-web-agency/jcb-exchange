@@ -39,7 +39,7 @@ type Tab = 'cost' | 'ledger' | 'payments' | 'terms';
 /** Everything about one vehicle: cost sheet, books vs Sold Vehicles, payments and its ledger. */
 export default function VehicleDetail({ vehicleId, includeDrafts, initialTab = 'cost' }: { vehicleId: string; includeDrafts: boolean; initialTab?: Tab }) {
   const pathname = usePathname();
-  const prefix = pathname.startsWith('/superadmin') ? '/superadmin' : pathname.startsWith('/admin') ? '/admin' : '/employee';
+  const prefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const detail = useResource(async () => (await api.get(`/finance-hub/vehicle-finance/${vehicleId}`, { params: { includeDrafts: includeDrafts ? 'true' : undefined } })).data as VehicleDetailData, `vehicle-${vehicleId}-${includeDrafts}`);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [openVoucher, setOpenVoucher] = useState<string | null>(null);
