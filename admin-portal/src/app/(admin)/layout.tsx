@@ -318,6 +318,19 @@ export default function AdminLayout({
     }
   }, [hasHydrated, hydrateAuth]);
 
+  // ─── Prevent document/window scroll so sidebar, header & layout stay 100% viewport-locked ───
+  useEffect(() => {
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   // ─── Idle auto-logout (configurable via NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES) ───
   const idleTimeoutMs = (Number(process.env.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES) || 15) * 60 * 1000;
   useIdleAutoLogout({
@@ -967,7 +980,7 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
+    <div className="fixed inset-0 flex h-full w-full min-h-0 overflow-hidden bg-gray-100">
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div
@@ -976,7 +989,7 @@ export default function AdminLayout({
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-screen overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-full min-h-0 overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-[10px] border-b border-white/10">
           <div>
             <PortalBrand href={isSuperAdmin ? '/superadmin/dashboard' : isEmployee ? employeeHomeHref : '/admin/dashboard'} maxHeightClassName="max-h-[70px]" />
@@ -1279,7 +1292,7 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
         <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-4 lg:px-5 py-1.5 sm:py-2 flex justify-between items-center shrink-0 z-30 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button
@@ -1529,7 +1542,7 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="p-3 sm:p-4 lg:p-4.5 overflow-y-auto flex-1 custom-scrollbar bg-gray-100 overscroll-contain pb-10 sm:pb-12">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain p-3 sm:p-4 lg:p-4.5 pb-8">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

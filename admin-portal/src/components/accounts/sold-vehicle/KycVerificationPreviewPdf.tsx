@@ -1,5 +1,7 @@
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { KycVerificationPreview } from './SellAccountDocumentWidgets';
+import { GstCertificatePdfDocument } from '@/components/gstVerification/GstCertificatePdfDocument';
+import { mapGstVerificationToCertificate } from '@/lib/gstCertificateMapper';
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
@@ -157,6 +159,11 @@ export function KycVerificationPreviewPdf({ preview, panCardImage, aadhaarCardIm
         </Page>
       </Document>
     );
+  }
+
+  if (preview.kind === 'gst') {
+    const certData = mapGstVerificationToCertificate(preview as unknown as Record<string, unknown>, preview.number);
+    return <GstCertificatePdfDocument data={certData} />;
   }
 
   return (

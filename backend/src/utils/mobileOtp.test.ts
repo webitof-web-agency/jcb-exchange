@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   defaultMobileOtpSettings,
+  MOBILE_OTP_PURPOSE_PASSWORD_RESET,
   matchesMobileOtpChallengeMobile,
   normalizeLoginMobileNumber,
   normalizeMobileOtpSettings,
@@ -50,4 +51,8 @@ test('matches a stored OTP challenge even when its mobile uses a legacy Indian f
   assert.equal(matchesMobileOtpChallengeMobile('+91 98765 43210', '9876543210'), true);
   assert.equal(matchesMobileOtpChallengeMobile('09876543210', '9876543210'), true);
   assert.equal(matchesMobileOtpChallengeMobile('9876543211', '9876543210'), false);
+});
+
+test('keeps password reset OTPs isolated from login OTPs', () => {
+  assert.equal(MOBILE_OTP_PURPOSE_PASSWORD_RESET, 'PASSWORD_RESET');
 });

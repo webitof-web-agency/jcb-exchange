@@ -31,17 +31,42 @@ export const isAuthenticationFailure = (error) => {
   return status === 401 || (status === 403 && (code === 'ACCOUNT_REVOKED' || code === 'ACCOUNT_INACTIVE'));
 };
 
-export const hasAuthorizationHeader = (headers) => {
+const getAuthorizationHeader = (headers) => {
   if (!headers) {
-    return false;
+    return null;
   }
 
   if (typeof headers.get === 'function') {
-    return Boolean(headers.get('Authorization') || headers.get('authorization'));
+    return headers.get('Authorization') || headers.get('authorization') || null;
   }
 
-  return Boolean(headers.Authorization || headers.authorization);
+  return headers.Authorization || headers.authorization || null;
 };
+
+export const getAuthorizationToken = (headers) => {
+  const authorization = getAuthorizationHeader(headers);
+  if (typeof authorization !== 'string') {
+    return null;
+  }
+
+  const value = authorization.trim();
+  if (!value) {
+    return null;
+  }
+
+  return value.replace(/^Bearer\s+/i, '').trim() || null;
+};
+
+export const hasAuthorizationHeader = (headers) => {
+  return Boolean(getAuthorizationHeader(headers));
+};
+
+export const isCurrentAuthToken = (requestToken, currentToken) =>
+  typeof requestToken === 'string' &&
+  Boolean(requestToken) &&
+  typeof currentToken === 'string' &&
+  Boolean(currentToken) &&
+  requestToken === currentToken;
 
 export const getStoredAuthToken = (headers, storedToken) =>
   hasAuthorizationHeader(headers) ? null : storedToken;

@@ -16,6 +16,14 @@ import {
   X,
   Truck,
   ArrowUpDown,
+  Calendar,
+  Gauge,
+  Camera,
+  ArrowRight,
+  ShieldCheck,
+  Tag,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import DualRangeSlider from '@/components/ui/DualRangeSlider';
 import { generateMachineSlugPath, parseMachineRouteParam, slugify } from '@/lib/seoUtils';
@@ -79,18 +87,49 @@ const getMediaUrl = (url: string | null) => {
 const getUniqueValues = (items: MachineListing[], selector: (item: MachineListing) => string) =>
   Array.from(new Set(items.map(selector).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
+const formatBrandDisplay = (rawName: string): { main: string; subtitle?: string } => {
+  if (!rawName) return { main: 'Unknown' };
+
+  const upper = rawName.toUpperCase();
+  if (upper.includes('CASE NEW HOLLAND') || upper.includes('CNH')) {
+    return { main: 'Case New Holland', subtitle: 'CNH Equipment' };
+  }
+  if (upper.includes('JCB INDIA LIMITED') || upper.includes('JCB INDIA LTD') || upper === 'JCB') {
+    return { main: 'JCB India', subtitle: upper.includes('LTD') ? 'Ltd' : upper.includes('LIMITED') ? 'Limited' : undefined };
+  }
+  if (upper.includes('TATA HITACHI')) {
+    return { main: 'Tata Hitachi', subtitle: 'Construction' };
+  }
+
+  if (rawName === rawName.toUpperCase() && rawName.length > 10) {
+    const titleCased = rawName
+      .toLowerCase()
+      .split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return { main: titleCased };
+  }
+
+  return { main: rawName };
+};
+
 const getAvailabilityBadge = (
   status: string,
   labels: { sold: string; reserved: string; available: string }
 ) => {
   const upperStatus = (status || '').toUpperCase();
   if (upperStatus === 'SOLD') {
-    return <span className="bg-red-600 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.sold}</span>;
+    return <span className="bg-red-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm">{labels.sold}</span>;
   }
   if (upperStatus === 'RESERVED') {
-    return <span className="bg-amber-500 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.reserved}</span>;
+    return <span className="bg-amber-500 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm">{labels.reserved}</span>;
   }
-  return <span className="bg-green-600 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded shadow-sm">{labels.available}</span>;
+  return (
+    <span className="bg-emerald-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm flex items-center gap-1">
+      <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+      {labels.available}
+    </span>
+  );
 };
 
 export default function MachinesPageClient() {
@@ -133,6 +172,7 @@ function MachinesPageContent({
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [locationQuery, setLocationQuery] = useState(initialLocation);
+  const [brandQuery, setBrandQuery] = useState('');
 
   const maxAvailablePrice = useMemo(() => {
     if (machines.length === 0) return 10000000;
@@ -302,6 +342,12 @@ function MachinesPageContent({
     return locations.filter((location) => location.name.toLowerCase().includes(query));
   }, [locationQuery, locations]);
 
+  const visibleBrands = useMemo(() => {
+    const query = brandQuery.trim().toLowerCase();
+    if (query === '') return brands;
+    return brands.filter((brand) => brand.name.toLowerCase().includes(query));
+  }, [brandQuery, brands]);
+
   const filteredMachines = useMemo(() => {
     const nextItems = machines.filter((machine) => {
       const locationLabel = [machine.locationCity, machine.locationState].filter(Boolean).join(', ');
@@ -401,6 +447,7 @@ function MachinesPageContent({
     setSelectedLocations([]);
     setSelectedConditions([]);
     setLocationQuery('');
+    setBrandQuery('');
     setParsedMinPrice(0);
     setParsedMaxPrice(maxAvailablePrice);
     setSearchQuery('');
@@ -420,9 +467,10 @@ function MachinesPageContent({
   }, [isMobileFiltersOpen]);
 
   const renderFiltersContent = () => (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* 1. Price Range */}
       <FilterAccordion title={t('machines.price')} defaultOpen>
-        <div className="mt-6 mb-2 px-2">
+        <div className="mt-4 mb-2 px-1">
           <DualRangeSlider
             key={maxAvailablePrice}
             min={0}
@@ -437,79 +485,198 @@ function MachinesPageContent({
         </div>
       </FilterAccordion>
 
-      <FilterAccordion title={t('machines.brand')} defaultOpen>
-        <div className="space-y-3 mt-3">
-          {brands.map((brand) => (
-            <label key={brand.name} className="flex items-center gap-3 cursor-pointer group">
+      {/* 2. Brand Section */}
+      <FilterAccordion
+        title={t('machines.brand')}
+        count={selectedBrands.length}
+        defaultOpen
+      >
+        <div className="space-y-2 mt-2">
+          {brands.length > 5 && (
+            <div className="relative mb-2">
               <input
-                type="checkbox"
-                checked={selectedBrands.includes(brand.name)}
-                onChange={() => toggleFilter(selectedBrands, setSelectedBrands, brand.name)}
-                className="w-4 h-4 rounded border border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                type="text"
+                placeholder="Search brands..."
+                value={brandQuery}
+                onChange={(e) => setBrandQuery(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/60 pl-8 pr-3 py-1.5 text-xs text-gray-700 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400"
               />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors flex-1">{brand.name}</span>
-              <span className="text-sm text-gray-400">({brand.count})</span>
-            </label>
-          ))}
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+            </div>
+          )}
+
+          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1.5 custom-scrollbar">
+            {visibleBrands.map((brand) => {
+              const brandInfo = formatBrandDisplay(brand.name);
+              const isChecked = selectedBrands.includes(brand.name);
+              return (
+                <label
+                  key={brand.name}
+                  className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 cursor-pointer transition-all border ${
+                    isChecked
+                      ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-semibold shadow-2xs'
+                      : 'border-transparent hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleFilter(selectedBrands, setSelectedBrands, brand.name)}
+                    className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400 focus:ring-offset-0 accent-[#FFC107] cursor-pointer shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs truncate font-medium">
+                      {brandInfo.main}
+                    </div>
+                    {brandInfo.subtitle && (
+                      <div className="text-[10px] text-gray-400 truncate leading-tight">
+                        {brandInfo.subtitle}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                      isChecked
+                        ? 'bg-amber-200 text-amber-950'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {brand.count}
+                  </span>
+                </label>
+              );
+            })}
+            {visibleBrands.length === 0 && (
+              <p className="text-xs text-gray-400 py-2 text-center">No matching brands</p>
+            )}
+          </div>
         </div>
       </FilterAccordion>
 
-      <FilterAccordion title={t('machines.equipmentType')} defaultOpen={Boolean(initialCategoryId)}>
-        <div className="space-y-3 mt-3">
-          {categories.map((cat) => (
-            <label key={cat.id} className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={selectedCategories.includes(cat.id)}
-                onChange={() => toggleFilter(selectedCategories, setSelectedCategories, cat.id)}
-                className="w-4 h-4 rounded border border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors flex-1">{cat.name}</span>
-              <span className="text-sm text-gray-400">({cat.count})</span>
-            </label>
-          ))}
+      {/* 3. Equipment Type */}
+      <FilterAccordion
+        title={t('machines.equipmentType')}
+        count={selectedCategories.length}
+        defaultOpen={Boolean(initialCategoryId)}
+      >
+        <div className="space-y-1.5 mt-2 max-h-56 overflow-y-auto pr-1.5 custom-scrollbar">
+          {categories.map((cat) => {
+            const isChecked = selectedCategories.includes(cat.id);
+            return (
+              <label
+                key={cat.id}
+                className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 cursor-pointer transition-all border ${
+                  isChecked
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-semibold shadow-2xs'
+                    : 'border-transparent hover:bg-gray-50 text-gray-700'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleFilter(selectedCategories, setSelectedCategories, cat.id)}
+                  className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400 focus:ring-offset-0 accent-[#FFC107] cursor-pointer shrink-0"
+                />
+                <span className="text-xs truncate flex-1 font-medium">{cat.name}</span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                    isChecked ? 'bg-amber-200 text-amber-950' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {cat.count}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </FilterAccordion>
 
-      <FilterAccordion title={t('machines.location')}>
-        <div className="mt-3 space-y-3">
-          <input
-            type="text"
-            placeholder={t('machines.locationPlaceholder')}
-            value={locationQuery}
-            onChange={(e) => setLocationQuery(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-jcb-yellow focus:ring-1 focus:ring-jcb-yellow"
-          />
-          {visibleLocations.map((loc) => (
-            <label key={loc.name} className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={selectedLocations.includes(loc.name)}
-                onChange={() => toggleFilter(selectedLocations, setSelectedLocations, loc.name)}
-                className="w-4 h-4 rounded border border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors flex-1 line-clamp-1">{loc.name}</span>
-              <span className="text-sm text-gray-400">({loc.count})</span>
-            </label>
-          ))}
-          {visibleLocations.length === 0 && <p className="text-sm text-gray-500">{t('machines.noMatchingLocations')}</p>}
+      {/* 4. Location */}
+      <FilterAccordion
+        title={t('machines.location')}
+        count={selectedLocations.length}
+      >
+        <div className="mt-2 space-y-2">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder={t('machines.locationPlaceholder')}
+              value={locationQuery}
+              onChange={(e) => setLocationQuery(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/60 pl-8 pr-3 py-1.5 text-xs text-gray-700 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400"
+            />
+            <MapPin className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+          </div>
+          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1.5 custom-scrollbar">
+            {visibleLocations.map((loc) => {
+              const isChecked = selectedLocations.includes(loc.name);
+              return (
+                <label
+                  key={loc.name}
+                  className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 cursor-pointer transition-all border ${
+                    isChecked
+                      ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-semibold shadow-2xs'
+                      : 'border-transparent hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleFilter(selectedLocations, setSelectedLocations, loc.name)}
+                    className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400 focus:ring-offset-0 accent-[#FFC107] cursor-pointer shrink-0"
+                  />
+                  <span className="text-xs truncate flex-1 font-medium">{loc.name}</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                      isChecked ? 'bg-amber-200 text-amber-950' : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {loc.count}
+                  </span>
+                </label>
+              );
+            })}
+            {visibleLocations.length === 0 && (
+              <p className="text-xs text-gray-400 py-2 text-center">{t('machines.noMatchingLocations')}</p>
+            )}
+          </div>
         </div>
       </FilterAccordion>
 
-      <FilterAccordion title={t('machines.condition')}>
-        <div className="space-y-3 mt-3">
-          {conditions.map((condition) => (
-            <label key={condition.name} className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={selectedConditions.includes(condition.name)}
-                onChange={() => toggleFilter(selectedConditions, setSelectedConditions, condition.name)}
-                className="w-4 h-4 rounded border border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors flex-1">{condition.name}</span>
-              <span className="text-sm text-gray-400">({condition.count})</span>
-            </label>
-          ))}
+      {/* 5. Condition */}
+      <FilterAccordion
+        title={t('machines.condition')}
+        count={selectedConditions.length}
+      >
+        <div className="space-y-1.5 mt-2">
+          {conditions.map((condition) => {
+            const isChecked = selectedConditions.includes(condition.name);
+            return (
+              <label
+                key={condition.name}
+                className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 cursor-pointer transition-all border ${
+                  isChecked
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-semibold shadow-2xs'
+                    : 'border-transparent hover:bg-gray-50 text-gray-700'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleFilter(selectedConditions, setSelectedConditions, condition.name)}
+                  className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400 focus:ring-offset-0 accent-[#FFC107] cursor-pointer shrink-0"
+                />
+                <span className="text-xs truncate flex-1 font-medium">{condition.name}</span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                    isChecked ? 'bg-amber-200 text-amber-950' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {condition.count}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </FilterAccordion>
     </div>
@@ -586,7 +753,17 @@ function MachinesPageContent({
             
             <div className={`relative ml-auto flex h-full w-full max-w-xs flex-col bg-white shadow-2xl transition-transform duration-300 ease-out transform ${isMobileFiltersOpen ? 'translate-x-0' : 'translate-x-full'}`}>
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
-                <h2 className="text-base font-bold text-gray-900">{t('machines.filters')}</h2>
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-amber-100/80 border border-amber-200 flex items-center justify-center text-amber-800">
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </div>
+                  <h2 className="text-sm font-bold text-gray-900 tracking-wide uppercase">{t('machines.filters')}</h2>
+                  {(activeFilterCount > 0 || parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice) && (
+                    <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-jcb-yellow text-gray-900 text-[10px] font-extrabold shadow-2xs">
+                      {activeFilterCount + (parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice ? 1 : 0)}
+                    </span>
+                  )}
+                </div>
                 <button 
                   onClick={() => setIsMobileFiltersOpen(false)}
                   className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
@@ -595,14 +772,15 @@ function MachinesPageContent({
                 </button>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-5 no-scrollbar">
+              <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
                 <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
                   <span className="text-xs text-gray-500 font-semibold">
                     {t('machines.activeFilters', { count: activeFilterCount })}
                   </span>
                   {(selectedBrands.length > 0 || (!initialCategoryId && selectedCategories.length > 0) || (initialCategoryId && selectedCategories.length > 1) || selectedLocations.length > 0 || parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice || selectedConditions.length > 0) && (
-                    <button onClick={clearAllFilters} className="text-xs font-bold text-red-600 hover:underline">
-                      {t('machines.clearAll')}
+                    <button onClick={clearAllFilters} className="inline-flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 transition">
+                      <RotateCcw className="h-3 w-3" />
+                      <span>{t('machines.clearAll')}</span>
                     </button>
                   )}
                 </div>
@@ -629,13 +807,30 @@ function MachinesPageContent({
             </div>
           </div>
 
-          <aside className="hidden lg:block w-full lg:w-64 flex-shrink-0">
-            <div className="bg-white p-5 shadow-sm rounded-xl border border-gray-200 sticky top-4">
-              <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">{t('machines.filters')}</h2>
+          <aside className="hidden lg:block w-full lg:w-72 xl:w-80 flex-shrink-0">
+            <div className="bg-white p-5 shadow-sm rounded-2xl border border-gray-200/90 sticky top-4">
+              <div className="flex items-center justify-between mb-5 border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800">
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                  </div>
+                  <h2 className="text-sm font-bold text-gray-900 tracking-wide uppercase">
+                    {t('machines.filters')}
+                  </h2>
+                  {(activeFilterCount > 0 || parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice) && (
+                    <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-jcb-yellow text-gray-900 text-[10px] font-extrabold shadow-2xs">
+                      {activeFilterCount + (parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice ? 1 : 0)}
+                    </span>
+                  )}
+                </div>
                 {(selectedBrands.length > 0 || (!initialCategoryId && selectedCategories.length > 0) || (initialCategoryId && selectedCategories.length > 1) || selectedLocations.length > 0 || parsedMinPrice > 0 || parsedMaxPrice < maxAvailablePrice || selectedConditions.length > 0) && (
-                  <button onClick={clearAllFilters} className="text-xs text-gray-500 hover:text-jcb-yellow underline transition-colors">
-                    {t('machines.clearAll')}
+                  <button
+                    onClick={clearAllFilters}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-amber-800 transition-colors"
+                    title={t('machines.clearAll')}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>{t('machines.clearAll')}</span>
                   </button>
                 )}
               </div>
@@ -645,14 +840,16 @@ function MachinesPageContent({
 
           <div className="flex-1 min-w-0">
             {loading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-                    <div className="h-44 animate-pulse bg-gray-100 lg:h-56" />
-                    <div className="space-y-3 p-4 lg:p-5">
-                      <div className="h-4 w-3/4 animate-pulse rounded-md bg-gray-100 lg:h-5" />
-                      <div className="h-5 w-1/2 animate-pulse rounded-md bg-gray-100 lg:h-6" />
-                      <div className="h-3 w-2/3 animate-pulse rounded-md bg-gray-100 lg:h-4" />
+                  <div key={index} className="h-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xs">
+                    <div className="aspect-[16/9.5] w-full animate-pulse bg-gray-100" />
+                    <div className="space-y-2 p-3 sm:p-3.5 lg:p-4">
+                      <div className="h-3 w-1/3 animate-pulse rounded bg-gray-100" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-gray-100" />
+                      <div className="h-5 w-1/2 animate-pulse rounded bg-gray-100" />
+                      <div className="h-9 w-full animate-pulse rounded-xl bg-gray-100" />
+                      <div className="h-3.5 w-2/3 animate-pulse rounded bg-gray-100" />
                     </div>
                   </div>
                 ))}
@@ -670,41 +867,147 @@ function MachinesPageContent({
               </div>
             ) : (
               <>
-                <div className="grid w-full min-w-0 grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
+                <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
                   {paginatedMachines.map((machine) => {
                     const imageUrl = getMediaUrl(machine.featuredImage);
                     const locationLabel = formatListingLocation(machine, {
                       includeAddress: true,
                       fallback: t('machines.locationNotSpecified'),
                     });
+                    const brandDisplay = formatBrandDisplay(machine.brand?.name || '');
 
                     return (
-                      <Link key={machine.id} href={generateMachineSlugPath(machine)} className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl sm:rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-gray-200 hover:shadow-md">
-                        <div className="relative h-32 sm:h-44 shrink-0 overflow-hidden bg-gray-50 lg:h-56">
-                          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">{getAvailabilityBadge(machine.status, availabilityLabels)}</div>
+                      <Link
+                        key={machine.id}
+                        href={generateMachineSlugPath(machine)}
+                        className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-lg"
+                      >
+                        {/* 1. Image Container with Badges */}
+                        <div className="relative aspect-[16/9.5] w-full shrink-0 overflow-hidden bg-gray-100">
+                          {/* Availability badge */}
+                          <div className="absolute top-2 right-2 z-10">
+                            {getAvailabilityBadge(machine.status, availabilityLabels)}
+                          </div>
+
+                          {/* Category pill */}
+                          {machine.category?.name && (
+                            <div className="absolute top-2 left-2 z-10 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/10 shadow-xs">
+                              {machine.category.name}
+                            </div>
+                          )}
+
+                          {/* Year model badge */}
+                          {machine.manufacturingYear ? (
+                            <div className="absolute bottom-2 right-2 z-10 rounded-md bg-gray-950/85 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold text-amber-400 backdrop-blur-md border border-amber-500/25 shadow-xs">
+                              {machine.manufacturingYear} Model
+                            </div>
+                          ) : null}
+
+                          {/* Photos count */}
+                          {machine.mediaCount > 1 && (
+                            <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-medium text-white backdrop-blur-md border border-white/10 shadow-xs">
+                              <Camera size={10} className="text-amber-400" />
+                              <span>{machine.mediaCount} Photos</span>
+                            </div>
+                          )}
+
                           {imageUrl ? (
                             <Image
                               src={imageUrl}
                               alt={`${machine.title} machine listing${locationLabel ? ` in ${locationLabel}` : ''}`}
                               fill
-                              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 33vw"
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 50vw, 33vw"
                               className="object-cover transition-transform duration-500 group-hover:scale-105"
                             />
                           ) : (
-                            <div className="flex h-full flex-col items-center justify-center bg-gray-100 text-gray-400 gap-2">
-                              <Truck className="h-8 w-8 opacity-30" />
+                            <div className="flex h-full flex-col items-center justify-center bg-gray-100 text-gray-400 gap-1.5">
+                              <Truck className="h-8 w-8 opacity-30 text-gray-500" />
                               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t('machines.noImageAvailable')}</span>
                             </div>
                           )}
                         </div>
 
-                        <div className="flex flex-1 flex-col p-2.5 sm:p-4 lg:p-5">
-                          <h3 className="line-clamp-2 break-words text-xs sm:text-[13px] lg:text-[13.5px] font-bold leading-tight sm:leading-snug text-gray-900 transition-colors group-hover:text-yellow-600">{machine.title}</h3>
-                          <p className="mt-1 sm:mt-1.5 text-xs sm:text-[13px] lg:text-sm font-bold text-[#b48900] tracking-tight">{formatPrice(machine.price)}</p>
+                        {/* 2. Card Content Body */}
+                        <div className="flex flex-1 flex-col p-3 sm:p-3.5 lg:p-4">
+                          {/* Brand & Model subtitle */}
+                          <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] font-semibold text-gray-500 mb-1 min-w-0">
+                            <span className="text-amber-700 font-bold uppercase tracking-wider truncate max-w-[60%] shrink-0">
+                              {brandDisplay.main !== 'Unknown' ? brandDisplay.main : 'Heavy Equipment'}
+                            </span>
+                            {machine.model?.name && (
+                              <>
+                                <span className="text-gray-300 shrink-0">•</span>
+                                <span className="text-gray-600 truncate font-medium">{machine.model.name}</span>
+                              </>
+                            )}
+                          </div>
 
-                          <div className="mt-auto flex items-center gap-1 sm:gap-1.5 border-t border-gray-100 pt-2 sm:pt-3 text-[10px] sm:text-xs text-gray-500 lg:pt-4">
-                            <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-gray-400" />
-                            <span className="truncate">{locationLabel}</span>
+                          {/* Machine Title */}
+                          <h3
+                            className="line-clamp-1 sm:line-clamp-2 text-sm sm:text-[14.5px] font-bold text-gray-900 leading-snug transition-colors group-hover:text-amber-600"
+                            title={machine.title}
+                          >
+                            {machine.title}
+                          </h3>
+
+                          {/* Price & Negotiable Badge */}
+                          <div className="mt-1.5 sm:mt-2 flex items-baseline justify-between gap-2 flex-wrap">
+                            <div className="text-base sm:text-lg lg:text-xl font-black text-gray-950 tracking-tight">
+                              {formatPrice(machine.price)}
+                            </div>
+                            {machine.isNegotiable && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold text-emerald-700 border border-emerald-200 shrink-0">
+                                Negotiable
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 3. Dynamic Key Specifications Grid */}
+                          <div className="mt-2.5 sm:mt-3 grid grid-cols-3 gap-1 rounded-xl border border-gray-100/90 bg-gray-50/70 p-1.5 sm:p-2">
+                            {/* Manufacturing Year */}
+                            <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0">
+                              <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                                <Calendar size={10} className="text-amber-500 shrink-0" />
+                                <span className="truncate">Year</span>
+                              </div>
+                              <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-gray-900 truncate w-full">
+                                {machine.manufacturingYear || 'N/A'}
+                              </span>
+                            </div>
+
+                            {/* Operating Hours */}
+                            <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0 border-x border-gray-200/60">
+                              <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                                <Gauge size={10} className="text-amber-500 shrink-0" />
+                                <span className="truncate">Hours</span>
+                              </div>
+                              <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-gray-900 truncate w-full">
+                                {machine.operatingHours ? `${machine.operatingHours.toLocaleString('en-IN')}h` : 'N/A'}
+                              </span>
+                            </div>
+
+                            {/* Condition / Verification */}
+                            <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0">
+                              <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                                <ShieldCheck size={10} className="text-amber-500 shrink-0" />
+                                <span className="truncate">Condition</span>
+                              </div>
+                              <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-gray-900 truncate capitalize w-full">
+                                {machine.condition?.toLowerCase() || 'Verified'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 4. Footer: Location & View Action CTA */}
+                          <div className="mt-2.5 sm:mt-3 pt-2 sm:pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] sm:text-xs text-gray-500">
+                            <div className="flex items-center gap-1.5 min-w-0 truncate">
+                              <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                              <span className="truncate font-medium">{locationLabel}</span>
+                            </div>
+                            <span className="inline-flex items-center gap-1 shrink-0 font-bold text-amber-600 group-hover:text-amber-700 transition-colors">
+                              <span>View</span>
+                              <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+                            </span>
                           </div>
                         </div>
                       </Link>
@@ -853,16 +1156,41 @@ function SortDropdown({
   );
 }
 
-function FilterAccordion({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+function FilterAccordion({
+  title,
+  count,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-b border-gray-100 py-3 last:border-0 last:pb-0">
-      <button onClick={() => setIsOpen(!isOpen)} className="flex w-full items-center justify-between text-left focus:outline-none">
-        <span className="text-sm font-semibold text-gray-900">{title}</span>
-        {isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+    <div className="border-b border-gray-100 py-3.5 last:border-0 last:pb-0">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between text-left focus:outline-none group select-none"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-800 group-hover:text-amber-600 transition-colors">
+            {title}
+          </span>
+          {count && count > 0 ? (
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1.5 text-[9px] font-black text-gray-950">
+              {count}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors group-hover:bg-gray-100 group-hover:text-gray-700">
+          {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </div>
       </button>
-      {isOpen && <div className="animate-in fade-in slide-in-from-top-1 duration-200">{children}</div>}
+      {isOpen && <div className="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-200">{children}</div>}
     </div>
   );
 }

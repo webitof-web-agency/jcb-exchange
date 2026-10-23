@@ -109,7 +109,7 @@ export default function AvatarUpload({ user, onUploaded, size = 'profile' }: Ava
   const busy = uploading || removing;
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="relative inline-flex flex-col items-center">
       <div
         className={`relative group ${!busy ? 'cursor-pointer' : ''}`}
         onClick={() => !busy && inputRef.current?.click()}
@@ -126,41 +126,41 @@ export default function AvatarUpload({ user, onUploaded, size = 'profile' }: Ava
             <LoaderCircle className="h-6 w-6 animate-spin text-[#FFC107]" aria-label={removing ? 'Removing avatar' : 'Uploading avatar'} />
           </div>
         ) : null}
-      </div>
 
-      {/* Action buttons: Only logos/icons for upload and delete */}
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          title="Upload / Change photo (JPG, PNG, WEBP · max 2 MB)"
-          aria-label="Upload photo"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-[#FFC107] hover:bg-[#FFC107] hover:text-black focus:outline-none focus:ring-2 focus:ring-[#FFC107] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {uploading ? (
-            <LoaderCircle className="h-4 w-4 animate-spin text-gray-800" />
-          ) : (
-            <Camera className="h-4 w-4" />
-          )}
-        </button>
-
-        {user?.avatarUrl ? (
+        {/* Action buttons: Compact overlay badge at bottom-right of avatar */}
+        <div className="absolute -bottom-1 -right-1 flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={handleRemove}
+            onClick={() => inputRef.current?.click()}
             disabled={busy}
-            title="Remove photo"
-            aria-label="Remove photo"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Upload / Change photo (JPG, PNG, WEBP · max 2 MB)"
+            aria-label="Upload photo"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-md transition hover:border-[#FFC107] hover:bg-[#FFC107] hover:text-black focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {removing ? (
-              <LoaderCircle className="h-4 w-4 animate-spin text-red-600" />
+            {uploading ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin text-gray-800" />
             ) : (
-              <Trash2 className="h-4 w-4" />
+              <Camera className="h-3.5 w-3.5" />
             )}
           </button>
-        ) : null}
+
+          {user?.avatarUrl ? (
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={busy}
+              title="Remove photo"
+              aria-label="Remove photo"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 shadow-md transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {removing ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin text-red-600" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <input

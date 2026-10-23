@@ -956,32 +956,6 @@ export default function IdentityHubPage() {
             </div>
           )}
 
-          {canMobileToPanView && (
-            <div
-              onClick={() => setActiveTab('mobileToPan')}
-              className="group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md sm:rounded-2xl sm:p-5"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950 sm:h-10 sm:w-10 sm:rounded-xl">
-                    <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </div>
-                  <span className="inline-flex max-w-[95px] items-center gap-1 truncate rounded-full border border-emerald-200/60 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-800 sm:max-w-none sm:px-2.5 sm:text-xs">
-                    <CheckCircle2 className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" /> Contact Lookup
-                  </span>
-                </div>
-                <div className="mt-3 sm:mt-4">
-                  <h2 className="line-clamp-2 text-xs font-bold leading-snug text-slate-950 transition-colors group-hover:text-amber-600 sm:text-base">
-                    Mobile To PAN
-                  </h2>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-                <ApiServicePrice summary={billing.summary} serviceKey="MOBILE_TO_PAN" />
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-hover:translate-x-1 group-hover:text-amber-600 sm:h-4 sm:w-4" />
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );

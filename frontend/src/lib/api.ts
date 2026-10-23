@@ -3,7 +3,13 @@ import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
-import { getStoredAuthToken, hasAuthorizationHeader, isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
+import {
+  getAuthorizationToken,
+  getStoredAuthToken,
+  isAuthenticationFailure,
+  isCurrentAuthToken,
+  isUsableAuthToken,
+} from '@/lib/authSession.mjs';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -101,10 +107,17 @@ api.interceptors.response.use(
   (error) => {
     const requestUrl = String(error?.config?.url || '');
     const requestHeaders = error?.config?.headers;
-    const sentAuthHeader = hasAuthorizationHeader(requestHeaders);
+    const sentAuthToken = getAuthorizationToken(requestHeaders);
 
-    if (axios.isAxiosError(error) && isAuthenticationFailure(error) && sentAuthHeader) {
+    if (axios.isAxiosError(error) && isAuthenticationFailure(error)) {
       const authStore = useAuthStore.getState();
+      // A credential-changing request rotates authVersion and returns a fresh token.
+      // Requests already in flight still carry the old token and can finish with 401.
+      // Only the token that is current in the store may invalidate the active session.
+      if (!isCurrentAuthToken(sentAuthToken, authStore.token)) {
+        return Promise.reject(error);
+      }
+
       authStore.logout();
 
       if (!requestUrl.includes('/auth/login') && !requestUrl.includes('/auth/register')) {

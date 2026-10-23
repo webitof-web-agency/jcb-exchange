@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export interface User {
   id: string;
   email: string;
+  hasPassword?: boolean;
   name: string;
   avatarUrl?: string | null;
   role: string;

@@ -5,21 +5,37 @@ import {
   MOBILE_OTP_MAX_RESENDS,
   MOBILE_OTP_MAX_VERIFY_ATTEMPTS,
   MOBILE_OTP_RESEND_WINDOW_SECONDS,
+  MOBILE_OTP_PURPOSE_LOGIN,
+  type MobileOtpPurpose,
 } from '../utils/mobileOtp';
 
 const prismaAny = prisma as any;
 
-export const getLatestMobileOtpChallenge = async (mobile: string) =>
+export const getLatestMobileOtpChallenge = async (
+  mobile: string,
+  purpose: MobileOtpPurpose = MOBILE_OTP_PURPOSE_LOGIN,
+) =>
   prismaAny.mobileOtpChallenge.findFirst({
-    where: { mobile: { in: getLoginMobileCandidates(mobile) } },
+    where: {
+      mobile: { in: getLoginMobileCandidates(mobile) },
+      purpose,
+    },
     orderBy: { createdAt: 'desc' },
   });
 
-export const getMobileOtpChallenge = async (id: string) =>
-  prismaAny.mobileOtpChallenge.findUnique({ where: { id } });
+export const getMobileOtpChallenge = async (id: string, purpose?: MobileOtpPurpose) =>
+  prismaAny.mobileOtpChallenge.findFirst({
+    where: {
+      id,
+      ...(purpose ? { purpose } : {}),
+    },
+  });
 
-export const getMobileOtpCooldownSeconds = async (mobile: string) => {
-  const challenge = await getLatestMobileOtpChallenge(mobile);
+export const getMobileOtpCooldownSeconds = async (
+  mobile: string,
+  purpose: MobileOtpPurpose = MOBILE_OTP_PURPOSE_LOGIN,
+) => {
+  const challenge = await getLatestMobileOtpChallenge(mobile, purpose);
   if (!challenge) {
     return 0;
   }
@@ -33,15 +49,17 @@ export const createMobileOtpChallenge = async ({
   mobile,
   userId,
   expiresInSeconds,
+  purpose = MOBILE_OTP_PURPOSE_LOGIN,
 }: {
   mobile: string;
   userId?: string | null;
   expiresInSeconds: number;
+  purpose?: MobileOtpPurpose;
 }) => {
   const now = new Date();
 
   await prismaAny.mobileOtpChallenge.updateMany({
-    where: { mobile, status: 'PENDING' },
+    where: { mobile, purpose, status: 'PENDING' },
     data: { status: 'EXPIRED' },
   });
 
@@ -49,6 +67,7 @@ export const createMobileOtpChallenge = async ({
     data: {
       mobile,
       ...(userId ? { userId } : {}),
+      purpose,
       createdAt: now,
       lastSentAt: now,
       expiresAt: new Date(now.getTime() + expiresInSeconds * 1000),

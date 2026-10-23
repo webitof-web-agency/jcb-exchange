@@ -46,12 +46,29 @@ type MobileOtpConfigResponse = {
 };
 
 type EmailOtpConfigResponse = MobileOtpConfigResponse;
+type PasswordResetStep = 'mobile' | 'otp' | 'password';
 
 export default function AuthModal() {
   const { t } = useTranslation();
   const { isAuthModalOpen, authMode, setAuthModalOpen, setAuth } = useAuthStore();
   const showToast = useToastStore((state) => state.showToast);
   const isLogin = authMode === 'login';
+  const [isPasswordReset, setIsPasswordReset] = useState(false);
+  const [passwordResetStep, setPasswordResetStep] = useState<PasswordResetStep>('mobile');
+  const [passwordResetMobile, setPasswordResetMobile] = useState('');
+  const [passwordResetRequestMessage, setPasswordResetRequestMessage] = useState('');
+  const [passwordResetOtp, setPasswordResetOtp] = useState('');
+  const [passwordResetChallengeId, setPasswordResetChallengeId] = useState('');
+  const [passwordResetMaskedMobile, setPasswordResetMaskedMobile] = useState('');
+  const [passwordResetOtpExpiresAt, setPasswordResetOtpExpiresAt] = useState(0);
+  const [passwordResetResendAvailableAt, setPasswordResetResendAvailableAt] = useState(0);
+  const [passwordResetToken, setPasswordResetToken] = useState('');
+  const [passwordResetNewPassword, setPasswordResetNewPassword] = useState('');
+  const [passwordResetConfirmPassword, setPasswordResetConfirmPassword] = useState('');
+  const [isPasswordResetSending, setIsPasswordResetSending] = useState(false);
+  const [isPasswordResetVerifying, setIsPasswordResetVerifying] = useState(false);
+  const [isPasswordResetResending, setIsPasswordResetResending] = useState(false);
+  const [isPasswordResetSaving, setIsPasswordResetSaving] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -106,6 +123,12 @@ export default function AuthModal() {
   const emailOtpSecondsRemaining = emailOtpExpiresAt
     ? Math.max(0, Math.ceil((emailOtpExpiresAt - otpResendNow) / 1000))
     : emailOtpExpirySeconds;
+  const passwordResetOtpSecondsRemaining = passwordResetOtpExpiresAt
+    ? Math.max(0, Math.ceil((passwordResetOtpExpiresAt - otpResendNow) / 1000))
+    : otpExpirySeconds;
+  const passwordResetResendSecondsRemaining = passwordResetResendAvailableAt
+    ? Math.max(0, Math.ceil((passwordResetResendAvailableAt - otpResendNow) / 1000))
+    : 0;
 
   const isGoogleConfigured =
     !!googleClientId && !googleClientId.startsWith('YOUR_');
@@ -139,6 +162,21 @@ export default function AuthModal() {
     setEmailOtpExpiresAt(0);
     setEmailOtpResendAvailableAt(0);
     setLoginMethod('password');
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
+    setIsPasswordReset(false);
+    setPasswordResetStep('mobile');
+    setPasswordResetMobile('');
+    setPasswordResetRequestMessage('');
+    setPasswordResetOtp('');
+    setPasswordResetChallengeId('');
+    setPasswordResetMaskedMobile('');
+    setPasswordResetOtpExpiresAt(0);
+    setPasswordResetResendAvailableAt(0);
+    setPasswordResetToken('');
+    setPasswordResetNewPassword('');
+    setPasswordResetConfirmPassword('');
   }, []);
 
   const completeAuth = useCallback((token: string, user: AuthResponseUser, shouldNotify = true) => {
@@ -229,13 +267,13 @@ export default function AuthModal() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthModalOpen || (!otpChallengeId && !emailOtpChallengeId)) {
+    if (!isAuthModalOpen || (!otpChallengeId && !emailOtpChallengeId && !passwordResetChallengeId)) {
       return;
     }
 
     const timer = window.setInterval(() => setOtpResendNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [emailOtpChallengeId, isAuthModalOpen, otpChallengeId]);
+  }, [emailOtpChallengeId, isAuthModalOpen, otpChallengeId, passwordResetChallengeId]);
 
   useEffect(() => {
     if (!isAuthModalOpen) {
@@ -348,6 +386,170 @@ export default function AuthModal() {
       setError(errorMessage);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSendPasswordResetOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setPasswordResetRequestMessage('');
+    setIsPasswordResetSending(true);
+
+    try {
+      const normalizedMobile = passwordResetMobile.replace(/\D/g, '');
+      if (normalizedMobile.length !== 10) {
+        setError(t('auth.validMobile'));
+        return;
+      }
+
+      const response = await api.post('/auth/password-reset/mobile-otp/send', {
+        mobile: normalizedMobile,
+      });
+      const challengeId = response.data.challengeId || '';
+      const expiresInSeconds = Number(response.data.expiresInSeconds) || otpExpirySeconds;
+      const resendCooldownSeconds = Math.max(
+        1,
+        Number(response.data.resendCooldownSeconds) || otpResendCooldownSeconds,
+      );
+
+      setPasswordResetMobile(normalizedMobile);
+      setPasswordResetChallengeId(challengeId);
+      setPasswordResetMaskedMobile(response.data.maskedMobile || '');
+      setPasswordResetOtp('');
+      setPasswordResetOtpExpiresAt(challengeId ? Date.now() + expiresInSeconds * 1000 : 0);
+      setPasswordResetResendAvailableAt(challengeId ? Date.now() + resendCooldownSeconds * 1000 : 0);
+      if (challengeId) {
+        setPasswordResetRequestMessage('');
+        setPasswordResetStep('otp');
+      } else {
+        setPasswordResetRequestMessage(
+          response.data.message || 'If this number is registered, an OTP will be sent by SMS.',
+        );
+      }
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.sendOtpFailed')
+          : t('auth.sendOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsPasswordResetSending(false);
+    }
+  };
+
+  const handleResendPasswordResetOtp = async () => {
+    setError('');
+    setIsPasswordResetResending(true);
+
+    try {
+      const response = await api.post('/auth/password-reset/mobile-otp/resend', {
+        challengeId: passwordResetChallengeId,
+        mobile: passwordResetMobile,
+      });
+      const expiresInSeconds = Number(response.data.expiresInSeconds) || otpExpirySeconds;
+      const resendCooldownSeconds = Math.max(
+        1,
+        Number(response.data.resendCooldownSeconds) || otpResendCooldownSeconds,
+      );
+
+      setPasswordResetChallengeId(response.data.challengeId || passwordResetChallengeId);
+      setPasswordResetMaskedMobile(response.data.maskedMobile || passwordResetMaskedMobile);
+      setPasswordResetOtp('');
+      setPasswordResetOtpExpiresAt(Date.now() + expiresInSeconds * 1000);
+      setPasswordResetResendAvailableAt(Date.now() + resendCooldownSeconds * 1000);
+    } catch (err: unknown) {
+      const responseData = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; code?: string } } }).response?.data
+        : undefined;
+      setError(responseData?.error || t('auth.resendOtpFailed'));
+      if (responseData?.code === 'PASSWORD_RESET_CHALLENGE_NOT_FOUND') {
+        setPasswordResetStep('mobile');
+        setPasswordResetChallengeId('');
+        setPasswordResetRequestMessage(responseData?.error || 'Please request a new OTP.');
+        setPasswordResetOtp('');
+        setPasswordResetOtpExpiresAt(0);
+        setPasswordResetResendAvailableAt(0);
+        setError('');
+      }
+    } finally {
+      setIsPasswordResetResending(false);
+    }
+  };
+
+  const handleVerifyPasswordResetOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsPasswordResetVerifying(true);
+
+    try {
+      const response = await api.post('/auth/password-reset/mobile-otp/verify', {
+        challengeId: passwordResetChallengeId,
+        mobile: passwordResetMobile,
+        otp: passwordResetOtp,
+      });
+      const resetToken = response.data.resetToken || '';
+      if (!resetToken) {
+        throw new Error('Password reset session was not issued.');
+      }
+
+      setPasswordResetToken(resetToken);
+      setPasswordResetStep('password');
+      setPasswordResetOtp('');
+      setShowPassword(false);
+      setPasswordResetOtpExpiresAt(0);
+      setPasswordResetResendAvailableAt(0);
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            t('auth.verifyOtpFailed')
+          : t('auth.verifyOtpFailed');
+      setError(errorMessage);
+    } finally {
+      setIsPasswordResetVerifying(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (passwordResetNewPassword.length < 8) {
+      setError(t('auth.passwordLength'));
+      return;
+    }
+
+    if (passwordResetNewPassword !== passwordResetConfirmPassword) {
+      setError('New password and confirm password must match.');
+      return;
+    }
+
+    setIsPasswordResetSaving(true);
+
+    try {
+      await api.post('/auth/password-reset/reset', {
+        resetToken: passwordResetToken,
+        newPassword: passwordResetNewPassword,
+        confirmPassword: passwordResetConfirmPassword,
+      });
+
+      resetOtpState();
+      setError('');
+      showToast({
+        title: 'Password reset successfully.',
+        description: 'Log in with your new password.',
+        variant: 'success',
+      });
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+            'Unable to reset password.'
+          : 'Unable to reset password.';
+      setError(errorMessage);
+    } finally {
+      setIsPasswordResetSaving(false);
     }
   };
 
@@ -586,7 +788,7 @@ export default function AuthModal() {
           <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 md:p-6 my-auto">
             <div className="mb-4 -mt-2 md:mt-0 text-center">
               <h4 className="text-2xl font-bold text-gray-900">
-                {isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}
+                {isPasswordReset ? 'Reset your password' : isLogin ? t('auth.welcomeBack') : t('auth.createAccount')}
               </h4>
             </div>
 
@@ -598,7 +800,13 @@ export default function AuthModal() {
 
           <form
             onSubmit={
-              isLogin && activeLoginMethod === 'mobileOtp'
+              isPasswordReset
+                ? passwordResetStep === 'mobile'
+                  ? handleSendPasswordResetOtp
+                  : passwordResetStep === 'otp'
+                    ? handleVerifyPasswordResetOtp
+                    : handleResetPassword
+                : isLogin && activeLoginMethod === 'mobileOtp'
                 ? (otpChallengeId ? handleVerifyOtp : handleSendOtp)
                 : isLogin && activeLoginMethod === 'emailOtp'
                   ? (emailOtpChallengeId ? handleVerifyEmailOtp : handleSendEmailOtp)
@@ -606,7 +814,9 @@ export default function AuthModal() {
             }
             className="space-y-3"
           >
-            {!isLogin ? (
+            {!isPasswordReset ? (
+              <>
+              {!isLogin ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">{t('auth.fullName')}</label>
                 <div className="relative">
@@ -703,6 +913,7 @@ export default function AuthModal() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      autoComplete={isLogin ? 'username' : 'email'}
                       className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                       placeholder="you@example.com"
                       required
@@ -802,6 +1013,7 @@ export default function AuthModal() {
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        autoComplete={isLogin ? 'current-password' : 'new-password'}
                         className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 pr-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                         placeholder="********"
                         required
@@ -815,7 +1027,149 @@ export default function AuthModal() {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+                    {isLogin && activeLoginMethod === 'password' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPasswordReset(true);
+                          setPasswordResetStep('mobile');
+                          setPasswordResetMobile('');
+                          setPasswordResetRequestMessage('');
+                          setPasswordResetOtp('');
+                          setPasswordResetChallengeId('');
+                          setPasswordResetMaskedMobile('');
+                          setPasswordResetOtpExpiresAt(0);
+                          setPasswordResetResendAvailableAt(0);
+                          setPasswordResetToken('');
+                          setPasswordResetNewPassword('');
+                          setPasswordResetConfirmPassword('');
+                          setPassword('');
+                          setShowPassword(false);
+                          setError('');
+                          setLoginMethod('password');
+                        }}
+                        className="mt-2 text-xs font-semibold text-jcb-dark hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    ) : null}
                   </div>
+                )}
+              </>
+              )}
+              </>
+            ) : (
+              <>
+                {passwordResetStep === 'mobile' ? (
+                  <>
+                    <p className="mb-1 text-center text-sm text-gray-500">
+                      Enter your registered mobile number to receive an SMS OTP.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Mobile number</label>
+                      <div className="relative">
+                        <input
+                          type="tel"
+                          value={passwordResetMobile}
+                          onChange={(e) => {
+                            setPasswordResetMobile(e.target.value.replace(/\D/g, '').slice(0, 10));
+                            setPasswordResetRequestMessage('');
+                            setError('');
+                          }}
+                          inputMode="numeric"
+                          autoComplete="tel"
+                          className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                          placeholder="10-digit mobile number"
+                          required
+                        />
+                        <Smartphone className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                      </div>
+                    </div>
+                    <p className="rounded-md border border-blue-100 bg-blue-50 p-3 text-center text-xs font-medium text-blue-700">
+                      {passwordResetRequestMessage || 'If this number is registered, an OTP will be sent by SMS.'}
+                    </p>
+                  </>
+                ) : passwordResetStep === 'otp' ? (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">SMS OTP</label>
+                      <input
+                        type="text"
+                        value={passwordResetOtp}
+                        onChange={(e) => setPasswordResetOtp(e.target.value.replace(/\D/g, '').slice(0, otpLength))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={otpLength}
+                        className="block w-full rounded-md border border-gray-300 px-4 py-2 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                        placeholder={`${otpLength}-digit OTP`}
+                        required
+                      />
+                      <p className="mt-2 text-xs text-gray-500">
+                        OTP sent to {passwordResetMaskedMobile || 'your registered mobile number'}.
+                      </p>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                        <span className="text-gray-500">
+                          {t('auth.otpExpiresIn', { seconds: passwordResetOtpSecondsRemaining })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleResendPasswordResetOtp()}
+                          disabled={isPasswordResetResending || passwordResetResendSecondsRemaining > 0}
+                          className="font-semibold text-jcb-dark hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                        >
+                          {isPasswordResetResending
+                            ? t('auth.resendingOtp')
+                            : passwordResetResendSecondsRemaining > 0
+                              ? t('auth.resendOtpIn', { seconds: passwordResetResendSecondsRemaining })
+                              : t('auth.resendOtp')}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-1 text-center text-sm text-gray-500">
+                      Set a new password for your account.
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">New password</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={passwordResetNewPassword}
+                          onChange={(e) => setPasswordResetNewPassword(e.target.value)}
+                          autoComplete="new-password"
+                          className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 pr-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                          placeholder="Minimum 8 characters"
+                          required
+                        />
+                        <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 focus:outline-none"
+                          aria-label={showPassword ? 'Hide new password' : 'Show new password'}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Confirm new password</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={passwordResetConfirmPassword}
+                          onChange={(e) => setPasswordResetConfirmPassword(e.target.value)}
+                          autoComplete="new-password"
+                          className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
+                          placeholder="Re-enter new password"
+                          required
+                        />
+                        <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                      </div>
+                    </div>
+                  </>
                 )}
               </>
             )}
@@ -825,10 +1179,22 @@ export default function AuthModal() {
             <div className="pt-2 space-y-3">
               <button
                 type="submit"
-                disabled={isSubmitting || isOtpSending || isOtpVerifying || isOtpResending || isEmailOtpSending || isEmailOtpVerifying || isEmailOtpResending}
+                disabled={isSubmitting || isOtpSending || isOtpVerifying || isOtpResending || isEmailOtpSending || isEmailOtpVerifying || isEmailOtpResending || isPasswordResetSending || isPasswordResetVerifying || isPasswordResetResending || isPasswordResetSaving}
                 className="flex w-full justify-center rounded-md border border-transparent bg-jcb-yellow px-4 py-2.5 text-sm font-bold text-jcb-dark shadow-sm transition-colors hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-jcb-yellow focus:ring-offset-2 disabled:opacity-50"
               >
-                {isLogin && activeLoginMethod === 'mobileOtp'
+                {isPasswordReset
+                  ? passwordResetStep === 'mobile'
+                    ? isPasswordResetSending
+                      ? 'Sending OTP...'
+                      : 'Send OTP'
+                    : passwordResetStep === 'otp'
+                      ? isPasswordResetVerifying
+                        ? 'Verifying OTP...'
+                        : 'Verify OTP'
+                      : isPasswordResetSaving
+                        ? 'Updating password...'
+                        : 'Update password'
+                  : isLogin && activeLoginMethod === 'mobileOtp'
                   ? otpChallengeId
                     ? isOtpVerifying
                       ? `${t('auth.verifyOtpAndLogin')}...`
@@ -851,7 +1217,24 @@ export default function AuthModal() {
                       : t('auth.createAccount')}
               </button>
 
-              {isLogin && activeLoginMethod === 'mobileOtp' && otpChallengeId ? (
+              {isPasswordReset && passwordResetStep === 'otp' && passwordResetChallengeId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordResetStep('mobile');
+                    setPasswordResetChallengeId('');
+                    setPasswordResetOtp('');
+                    setPasswordResetOtpExpiresAt(0);
+                    setPasswordResetResendAvailableAt(0);
+                    setError('');
+                  }}
+                  className="w-full text-sm font-semibold text-jcb-dark hover:underline"
+                >
+                  Change mobile number
+                </button>
+              ) : null}
+
+              {!isPasswordReset && isLogin && activeLoginMethod === 'mobileOtp' && otpChallengeId ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -869,7 +1252,7 @@ export default function AuthModal() {
                 </button>
               ) : null}
 
-              {isLogin && activeLoginMethod === 'emailOtp' && emailOtpChallengeId ? (
+              {!isPasswordReset && isLogin && activeLoginMethod === 'emailOtp' && emailOtpChallengeId ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -886,7 +1269,7 @@ export default function AuthModal() {
                 </button>
               ) : null}
 
-              {isLogin && isMobileOtpEnabled ? (
+              {!isPasswordReset && isLogin && isMobileOtpEnabled ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -909,7 +1292,7 @@ export default function AuthModal() {
                 </button>
               ) : null}
 
-              {isLogin && isEmailOtpEnabled ? (
+              {!isPasswordReset && isLogin && isEmailOtpEnabled ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -933,7 +1316,7 @@ export default function AuthModal() {
             </div>
           </form>
 
-          {canRenderGoogleLogin ? (
+          {!isPasswordReset && canRenderGoogleLogin ? (
             <>
               <div className="relative my-4">
                 <div className="absolute inset-0 flex items-center">
@@ -956,14 +1339,32 @@ export default function AuthModal() {
           ) : null}
 
           <div className="mt-4 text-center text-sm text-gray-600">
-            {isLogin ? `${t('auth.dontHaveAccount')} ` : `${t('auth.alreadyHaveAccount')} `}
-            <button
-              type="button"
-              onClick={() => setAuthModalOpen(true, isLogin ? 'signup' : 'login')}
-              className="font-bold text-jcb-dark hover:underline focus:outline-none"
-            >
-              {isLogin ? t('auth.signUp') : t('auth.logIn')}
-            </button>
+            {isPasswordReset ? (
+              <>
+                Remembered your password?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetOtpState();
+                    setError('');
+                  }}
+                  className="font-bold text-jcb-dark hover:underline focus:outline-none"
+                >
+                  Back to login
+                </button>
+              </>
+            ) : (
+              <>
+                {isLogin ? `${t('auth.dontHaveAccount')} ` : `${t('auth.alreadyHaveAccount')} `}
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(true, isLogin ? 'signup' : 'login')}
+                  className="font-bold text-jcb-dark hover:underline focus:outline-none"
+                >
+                  {isLogin ? t('auth.signUp') : t('auth.logIn')}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

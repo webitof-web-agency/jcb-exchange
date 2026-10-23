@@ -1256,7 +1256,7 @@ export default function SuperAdminSettingsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-6 lg:gap-8 md:flex-row min-w-0 w-full">
-        <aside className="w-full flex-shrink-0 md:w-52 lg:w-60">
+        <aside className="w-full flex-shrink-0 md:w-52 lg:w-60 md:sticky md:top-2 self-start">
           <nav className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
             {!crmSettingsOnly ? (
               <>

@@ -10,8 +10,6 @@ import {
   CheckCircle2,
   FileWarning,
   ScanSearch,
-  Phone,
-  ListChecks,
 } from 'lucide-react';
 import DrivingLicenseVerificationPage from '@/components/drivingLicenseVerification/DrivingLicenseVerificationPage';
 import RcOwnerHistoryPage from '@/components/rcOwnerHistory/RcOwnerHistoryPage';
@@ -291,36 +289,6 @@ export default function VehicleTransportPage() {
         </div>
         )}
 
-        {/* Card 2: RC Owner History */}
-        {canAccessRcOwnerHistory && (
-        <div
-          onClick={() => setService('rc-owner-history')}
-          className="group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md flex flex-col justify-between"
-        >
-          <div>
-            <div className="flex items-center justify-between gap-1">
-              <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-indigo-500/10 text-indigo-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950">
-                <CarFront className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5 text-[9px] sm:text-xs font-semibold text-indigo-800 border border-indigo-200/60 truncate max-w-[95px] sm:max-w-none">
-                <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> RC Verification
-              </span>
-            </div>
-
-            <div className="mt-3 sm:mt-4">
-              <h2 className="text-xs sm:text-base font-bold text-slate-950 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug">
-                RC Owner History
-              </h2>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-            <ApiServicePrice summary={billing.summary} serviceKey="RC_OWNER_HISTORY" />
-            <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-1 shrink-0" />
-          </div>
-        </div>
-        )}
-
         {/* Card 3: RC Full */}
         {canAccessRcFull && (
         <div
@@ -411,95 +379,6 @@ export default function VehicleTransportPage() {
         </div>
         )}
 
-        {/* Card 5: RC to Mobile Verification */}
-        {canAccessRcToMobile && (
-        <div
-          onClick={() => setService('rc-to-mobile')}
-          className="group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md flex flex-col justify-between"
-        >
-          <div>
-            <div className="flex items-center justify-between gap-1">
-              <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950">
-                <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/60 bg-emerald-50 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5 text-[9px] sm:text-xs font-semibold text-emerald-800 truncate max-w-[95px] sm:max-w-none">
-                <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> Contact Lookup
-              </span>
-            </div>
-
-            <div className="mt-3 sm:mt-4">
-              <h2 className="text-xs sm:text-base font-bold text-slate-950 transition-colors group-hover:text-amber-600 line-clamp-2 leading-snug">
-                RC to Mobile
-              </h2>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-            <ApiServicePrice summary={billing.summary} serviceKey="RC_TO_MOBILE" />
-            <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-1 shrink-0" />
-          </div>
-        </div>
-        )}
-
-        {/* Card 6: Mobile To RC */}
-        {canAccessMobileToRc && (
-        <div
-          onClick={() => setService('mobile-to-rc')}
-          className="group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md flex flex-col justify-between"
-        >
-          <div>
-            <div className="flex items-center justify-between gap-1">
-              <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-violet-500/10 text-violet-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950">
-                <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-violet-200/60 bg-violet-50 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5 text-[9px] sm:text-xs font-semibold text-violet-800 truncate max-w-[95px] sm:max-w-none">
-                <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> RC Lookup
-              </span>
-            </div>
-
-            <div className="mt-3 sm:mt-4">
-              <h2 className="text-xs sm:text-base font-bold text-slate-950 transition-colors group-hover:text-amber-600 line-clamp-2 leading-snug">
-                Mobile To RC
-              </h2>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-            <ApiServicePrice summary={billing.summary} serviceKey="MOBILE_TO_RC" />
-            <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-1 shrink-0" />
-          </div>
-        </div>
-        )}
-
-        {/* Card 7: RC Mobile Number Check */}
-        {canAccessRcMobileNumberCheck && (
-        <div
-          onClick={() => setService('rc-mobile-number-check')}
-          className="group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md flex flex-col justify-between"
-        >
-          <div>
-            <div className="flex items-center justify-between gap-1">
-              <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-orange-500/10 text-orange-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950">
-                <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-orange-200/60 bg-orange-50 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5 text-[9px] sm:text-xs font-semibold text-orange-800 truncate max-w-[95px] sm:max-w-none">
-                <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> Mobile Match
-              </span>
-            </div>
-
-            <div className="mt-3 sm:mt-4">
-              <h2 className="text-xs sm:text-base font-bold text-slate-950 transition-colors group-hover:text-amber-600 line-clamp-2 leading-snug">
-                RC Mobile Number Check
-              </h2>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-            <ApiServicePrice summary={billing.summary} serviceKey="RC_MOBILE_NUMBER_CHECK" />
-            <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-1 shrink-0" />
-          </div>
-        </div>
-        )}
       </div>
 
       {/* Empty State */}

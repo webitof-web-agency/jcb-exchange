@@ -4,6 +4,7 @@ import { isUsableAuthToken } from '@/lib/authSession.mjs';
 export interface AuthUser {
   id: string;
   email?: string | null;
+  hasPassword?: boolean;
   name?: string | null;
   role?: string;
   rawRole?: string;

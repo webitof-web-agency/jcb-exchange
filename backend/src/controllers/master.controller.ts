@@ -35,6 +35,7 @@ type PublicListingFormDetails = {
   registrationNo: string | null;
   chassisOrSerialNo: string | null;
   engineNumber: string | null;
+  ownerName: string | null;
   previousOwners: string | null;
   fuelType: string | null;
   transmission: string | null;
@@ -50,6 +51,7 @@ const parsePublicListingFormDetails = (description?: string | null): PublicListi
     registrationNo: null,
     chassisOrSerialNo: null,
     engineNumber: null,
+    ownerName: null,
     previousOwners: null,
     fuelType: null,
     transmission: null,
@@ -74,6 +76,12 @@ const parsePublicListingFormDetails = (description?: string | null): PublicListi
       case 'variant': details.variant = value; break;
       case 'registration year': details.registrationYear = value; break;
       case 'registration no': details.registrationNo = value; break;
+      case 'owner name':
+      case 'owner':
+      case 'rc owner':
+      case 'rc owner name':
+      case 'registered owner':
+      case 'owner_name': details.ownerName = value; break;
       case 'chassis/serial':
       case 'chassis / serial':
       case 'chassis or serial': details.chassisOrSerialNo = value; break;
@@ -978,13 +986,19 @@ export const getSiteLogo = async (req: Request, res: Response, next: NextFunctio
 
 export const getFooterSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const settings = await getAppSettings();
+      const [settings, defaultSuperAdminContact] = await Promise.all([
+        getAppSettings(),
+        getDefaultSuperAdminContact(),
+      ]);
 
     res.status(200).json({
       success: true,
       data: {
         socialLinks: settings.footer.socialLinks,
-        contact: settings.footer.contact,
+          contact: {
+            ...settings.footer.contact,
+            supportWhatsappNumber: defaultSuperAdminContact.adminWhatsappNumber,
+          },
         legalPages: settings.footer.legalPages,
       },
     });
@@ -1516,6 +1530,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       registrationNo: formDetails.registrationNo,
       chassisOrSerialNo: formDetails.chassisOrSerialNo,
       engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || formDetails.engineNumber,
+      ownerName: (listing as any).ownerName || formDetails.ownerName || null,
       previousOwners: formDetails.previousOwners,
       fuelType: formDetails.fuelType,
       transmission: formDetails.transmission,

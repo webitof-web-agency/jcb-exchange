@@ -291,3 +291,39 @@ test('normalizes provider failures without treating them as successful responses
     (error: unknown) => error instanceof SurepassProviderError && error.statusCode === 422 && error.messageCode === 'invalid_format',
   );
 });
+
+test('uses the documented eSign and eStamp endpoints without exposing the bearer token', async () => {
+  const requests: Array<{ url: string; init: RequestInit }> = [];
+  const client = new SurepassClient({
+    baseUrl: 'https://kyc-api.surepass.io',
+    token: 'server-only-token',
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init: init ?? {} });
+      return response({ success: true, status_code: 200, data: { client_id: 'esign-1', url: 'https://sign.example/session' } });
+    },
+  });
+
+  await client.getEstampArticles('CT');
+  await client.initializeStampedEsign({
+    pdf_pre_uploaded: false,
+    send_email: false,
+    config: {
+      auth_mode: '1',
+      reason: 'Vehicle sale deed',
+      positions: { '1': [{ x: 10, y: 20 }] },
+      stamp_paper_amount: 100,
+      stamp_paper_state: 'Chhattisgarh',
+      stamp_data: { deed_side: 'SALE' },
+    },
+    prefill_options: { full_name: 'Test Customer', mobile_number: '9999999999' },
+    sign_type: 'aadhaar',
+  });
+
+  assert.equal(requests[0]?.url, 'https://kyc-api.surepass.io/api/v1/stamper-v2/list-articles?state=CT');
+  assert.equal(requests[0]?.init.method, 'GET');
+  assert.equal((requests[0]?.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
+  assert.equal(requests[1]?.url, 'https://kyc-api.surepass.io/api/v1/esign/initialize');
+  assert.equal(requests[1]?.init.method, 'POST');
+  assert.equal((requests[1]?.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
+  assert.equal(JSON.parse(String(requests[1]?.init.body)).config.stamp_paper_amount, 100);
+});

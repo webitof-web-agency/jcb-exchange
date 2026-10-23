@@ -220,7 +220,8 @@
     "transmissionLabel": "Transmission",
     "districtLabel": "District",
     "addressLabel": "Address",
-    "nearbyLandmarkLabel": "Nearby Landmark"
+    "nearbyLandmarkLabel": "Nearby Landmark",
+    "ownerNameLabel": "RC Owner Name"
   },
   "primeModal": {
     "loadFailed": "Unable to load Prime payment details.",

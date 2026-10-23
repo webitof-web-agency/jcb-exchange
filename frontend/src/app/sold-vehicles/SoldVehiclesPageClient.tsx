@@ -18,6 +18,7 @@ import {
   Tag,
   CheckCircle2,
   Store,
+  Camera,
 } from 'lucide-react';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -79,6 +80,32 @@ const getMediaUrl = (url: string | null) => {
   return `${API_ORIGIN}${url.startsWith('/') ? url : `/${url}`}`;
 };
 
+const formatBrandDisplay = (rawName: string): { main: string; subtitle?: string } => {
+  if (!rawName) return { main: 'Unknown' };
+
+  const upper = rawName.toUpperCase();
+  if (upper.includes('CASE NEW HOLLAND') || upper.includes('CNH')) {
+    return { main: 'Case New Holland', subtitle: 'CNH Equipment' };
+  }
+  if (upper.includes('JCB INDIA LIMITED') || upper.includes('JCB INDIA LTD') || upper === 'JCB') {
+    return { main: 'JCB India', subtitle: upper.includes('LTD') ? 'Ltd' : upper.includes('LIMITED') ? 'Limited' : undefined };
+  }
+  if (upper.includes('TATA HITACHI')) {
+    return { main: 'Tata Hitachi', subtitle: 'Construction' };
+  }
+
+  if (rawName === rawName.toUpperCase() && rawName.length > 10) {
+    const titleCased = rawName
+      .toLowerCase()
+      .split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return { main: titleCased };
+  }
+
+  return { main: rawName };
+};
+
 interface CustomSelectOption {
   value: string;
   label: string;
@@ -124,7 +151,7 @@ function CustomSelect({ value, onChange, options, icon, className = '', dropdown
       </button>
 
       {isOpen && (
-        <div className={`absolute ${dropdownClassName} z-50 mt-1.5 w-max min-w-[100%] max-w-[85vw] max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl`}>
+        <div className={`absolute ${dropdownClassName} z-50 mt-1.5 w-max min-w-[100%] max-w-[85vw] max-h-60 overflow-y-auto custom-scrollbar rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl`}>
           {options.map((opt) => {
             const isSelected = opt.value === value;
             return (
@@ -137,7 +164,7 @@ function CustomSelect({ value, onChange, options, icon, className = '', dropdown
                 }}
                 className={`w-full text-left rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
                   isSelected
-                    ? 'bg-slate-100 text-slate-950 font-extrabold'
+                    ? 'bg-amber-50 text-amber-950 font-extrabold'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
@@ -186,7 +213,7 @@ function SortIconButton({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1.5 w-48 sm:w-52 max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-48 sm:w-52 max-h-60 overflow-y-auto custom-scrollbar rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
           <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
             Sort Listings
           </div>
@@ -202,7 +229,7 @@ function SortIconButton({
                 }}
                 className={`w-full text-left rounded-xl px-3 py-2 text-xs font-bold transition cursor-pointer ${
                   isSelected
-                    ? 'bg-slate-100 text-slate-950 font-extrabold'
+                    ? 'bg-amber-50 text-amber-950 font-extrabold'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
@@ -312,7 +339,10 @@ export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogo
     const list = Array.from(map.values()).sort((left, right) => left.name.localeCompare(right.name));
     return [
       { value: 'ALL', label: t('soldVehicles.allBrands', { count: list.length }) },
-      ...list.map((b) => ({ value: b.id, label: `${b.name} (${b.count})` })),
+      ...list.map((b) => {
+        const brandInfo = formatBrandDisplay(b.name);
+        return { value: b.id, label: `${brandInfo.main} (${b.count})` };
+      }),
     ];
   }, [listings, t]);
 
@@ -598,98 +628,146 @@ export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogo
         ) : (
           /* Grid of Sold Machine Cards */
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
               {paginatedListings.map((item) => {
                 const locationLabel = formatListingLocation(item, {
                   includeAddress: true,
                   fallback: 'India',
                 });
                 const imageUrl = getMediaUrl(item.featuredImage);
-                // "gadi ka name likha ho": We will use item.title directly instead of brand/model logic
-                const finalTitle = item.title || 'Equipment';
-                const formattedDate = new Date(item.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+                const brandDisplay = formatBrandDisplay(item.brand?.name || '');
 
                 return (
                   <Link
                     key={item.id}
                     href={generateMachineSlugPath(item)}
-                    className="group flex flex-row sm:flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-slate-300"
+                    className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-lg"
                   >
-                    {/* Featured Image */}
-                    <div className="relative aspect-[4/3] sm:aspect-[16/10] w-[120px] sm:w-full shrink-0 overflow-hidden bg-slate-100">
-                      {imageUrl ? (
-                        <Image
-                          src={imageUrl}
-                          alt={`${finalTitle} sold machine${locationLabel ? ` in ${locationLabel}` : ''}`}
-                          fill
-                          sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
-                          className="object-cover transition-transform duration-700 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">
-                          <Truck size={48} strokeWidth={1} />
-                        </div>
-                      )}
-
+                    {/* 1. Image Container with Badges */}
+                    <div className="relative aspect-[16/9.5] w-full shrink-0 overflow-hidden bg-gray-100">
                       {/* Top Overlay Badge: Red SOLD */}
-                      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 rounded-sm bg-[#ff3b40] px-2 py-1 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-sm">
-                        <CheckCircle2 size={11} strokeWidth={3} className="text-white" />
+                      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
+                        <CheckCircle2 size={11} strokeWidth={2.5} className="text-white" />
                         <span>Sold</span>
                       </div>
 
-                      {/* Pill */}
+                      {/* Category pill */}
+                      {item.category?.name && (
+                        <div className="absolute top-2 left-2 z-10 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/10 shadow-xs">
+                          {item.category.name}
+                        </div>
+                      )}
+
+                      {/* Year model badge */}
                       {item.manufacturingYear ? (
-                        <div className="absolute bottom-1 right-1 sm:bottom-3 sm:right-3 z-10 bg-slate-900/80 px-1.5 py-0.5 sm:px-2.5 sm:py-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/20 rounded-[4px]">
+                        <div className="absolute bottom-2 right-2 z-10 rounded-md bg-gray-950/85 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold text-amber-400 backdrop-blur-md border border-amber-500/25 shadow-xs">
                           {item.manufacturingYear} Model
                         </div>
                       ) : null}
+
+                      {/* Photos count */}
+                      {item.mediaCount > 1 && (
+                        <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-medium text-white backdrop-blur-md border border-white/10 shadow-xs">
+                          <Camera size={10} className="text-amber-400" />
+                          <span>{item.mediaCount} Photos</span>
+                        </div>
+                      )}
+
+                      {imageUrl ? (
+                        <Image
+                          src={imageUrl}
+                          alt={`${item.title} sold machine${locationLabel ? ` in ${locationLabel}` : ''}`}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center bg-gray-100 text-gray-400 gap-1.5">
+                          <Truck className="h-8 w-8 opacity-30 text-gray-500" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sold Equipment</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Details Container */}
-                    <div className="flex flex-1 flex-col p-2.5 sm:p-5 min-w-0">
-                      {/* Title */}
-                      <h3 className="line-clamp-2 text-xs sm:text-[13px] lg:text-[13.5px] font-bold text-slate-900 leading-tight sm:leading-snug transition-colors group-hover:text-yellow-600">
-                        {finalTitle}
+                    {/* 2. Card Content Body */}
+                    <div className="flex flex-1 flex-col p-3 sm:p-3.5 lg:p-4">
+                      {/* Brand & Model subtitle */}
+                      <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] font-semibold text-gray-500 mb-1 min-w-0">
+                        <span className="text-amber-700 font-bold uppercase tracking-wider truncate max-w-[60%] shrink-0">
+                          {brandDisplay.main !== 'Unknown' ? brandDisplay.main : 'Heavy Equipment'}
+                        </span>
+                        {item.model?.name && (
+                          <>
+                            <span className="text-gray-300 shrink-0">•</span>
+                            <span className="text-gray-600 truncate font-medium">{item.model.name}</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Machine Title */}
+                      <h3
+                        className="line-clamp-1 sm:line-clamp-2 text-sm sm:text-[14.5px] font-bold text-gray-900 leading-snug transition-colors group-hover:text-amber-600"
+                        title={item.title}
+                      >
+                        {item.title}
                       </h3>
 
-                      {/* Location */}
-                      <div className="mt-1.5 mb-4 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                        <MapPin size={14} className="shrink-0" />
-                        <span className="truncate">{locationLabel}</span>
+                      {/* Price & Sold Status Tag */}
+                      <div className="mt-1.5 sm:mt-2 flex items-baseline justify-between gap-2 flex-wrap">
+                        <div className="text-base sm:text-lg lg:text-xl font-black text-gray-950 tracking-tight">
+                          {formatPrice(item.price)}
+                        </div>
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold text-red-700 border border-red-200 shrink-0">
+                          Sold
+                        </span>
                       </div>
 
-                      {/* Specs Box */}
-                      <div className="mb-3 sm:mb-5 grid grid-cols-2 bg-slate-50 border border-slate-200 rounded-[6px]">
-                        <div className="py-1.5 sm:py-2.5 px-2 sm:px-3 border-r border-slate-200 flex flex-col justify-center">
-                          <div className="mb-0.5 flex items-center gap-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                            <CalendarRange size={11} className="text-amber-500" />
-                            <span>Year</span>
+                      {/* 3. Specifications Grid */}
+                      <div className="mt-2.5 sm:mt-3 grid grid-cols-3 gap-1 rounded-xl border border-gray-100/90 bg-gray-50/70 p-1.5 sm:p-2">
+                        {/* Manufacturing Year */}
+                        <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0">
+                          <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                            <CalendarRange size={10} className="text-amber-500 shrink-0" />
+                            <span className="truncate">Year</span>
                           </div>
-                          <div className="text-[12px] sm:text-[15px] font-extrabold text-slate-900">{item.manufacturingYear || 'N/A'}</div>
+                          <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-gray-900 truncate w-full">
+                            {item.manufacturingYear || 'N/A'}
+                          </span>
                         </div>
-                        <div className="py-1.5 sm:py-2.5 px-2 sm:px-3 flex flex-col justify-center">
-                          <div className="mb-0.5 flex items-center gap-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                            <Gauge size={11} className="text-amber-500" />
-                            <span>Hours</span>
+
+                        {/* Operating Hours */}
+                        <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0 border-x border-gray-200/60">
+                          <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                            <Gauge size={10} className="text-amber-500 shrink-0" />
+                            <span className="truncate">Hours</span>
                           </div>
-                          <div className="text-[12px] sm:text-[15px] font-extrabold text-slate-900">{item.operatingHours ? `${item.operatingHours.toLocaleString('en-US')} hrs` : 'N/A'}</div>
+                          <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-gray-900 truncate w-full">
+                            {item.operatingHours ? `${item.operatingHours.toLocaleString('en-IN')}h` : 'N/A'}
+                          </span>
+                        </div>
+
+                        {/* Status */}
+                        <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0">
+                          <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
+                            <CheckCircle2 size={10} className="text-red-500 shrink-0" />
+                            <span className="truncate">Status</span>
+                          </div>
+                          <span className="mt-0.5 text-[11px] sm:text-xs font-bold text-red-600 truncate uppercase w-full">
+                            Sold
+                          </span>
                         </div>
                       </div>
 
-                      {/* Footer Details */}
-                      <div className="mt-auto flex items-end justify-between gap-1">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">Sold Price</div>
-                          <div className="text-xs sm:text-[13px] lg:text-sm font-bold text-slate-900 tracking-tight truncate">{formatPrice(item.price)}</div>
+                      {/* 4. Footer: Location & View Action CTA */}
+                      <div className="mt-2.5 sm:mt-3 pt-2 sm:pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] sm:text-xs text-gray-500">
+                        <div className="flex items-center gap-1.5 min-w-0 truncate">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          <span className="truncate font-medium">{locationLabel}</span>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">
-                            {item.partner?.type ? `${item.partner.type.toLowerCase()}` : 'Sold By'}
-                          </div>
-                          <div className="text-[11px] sm:text-sm font-bold text-slate-800 truncate max-w-[80px] sm:max-w-[130px]">
-                            {item.partner?.name || formattedDate}
-                          </div>
-                        </div>
+                        <span className="inline-flex items-center gap-1 shrink-0 font-bold text-amber-600 group-hover:text-amber-700 transition-colors">
+                          <span>View Details</span>
+                          <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                        </span>
                       </div>
                     </div>
                   </Link>

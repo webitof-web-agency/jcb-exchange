@@ -676,6 +676,7 @@ export default function PartnerProfileView() {
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">New password</span>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={passwordForm.newPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -687,6 +688,7 @@ export default function PartnerProfileView() {
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">Confirm new password</span>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={passwordForm.confirmPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"

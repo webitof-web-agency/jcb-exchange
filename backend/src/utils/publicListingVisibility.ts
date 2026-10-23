@@ -17,6 +17,14 @@ export const getPublicSellerWhere = () => ({
       status: 'ACTIVE',
     },
     {
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+    },
+    {
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    },
+    {
       partnerProfile: getApprovedPartnerProfileWhere(),
     },
   ],
@@ -46,7 +54,7 @@ export const isPublicMarketplaceListingVisible = (listing: {
     return false;
   }
 
-  if (listing.partner?.role === 'CUSTOMER' && listing.partner?.status === 'ACTIVE') {
+  if (['CUSTOMER', 'SUPER_ADMIN', 'ADMIN'].includes(String(listing.partner?.role || '')) && listing.partner?.status === 'ACTIVE') {
     return true;
   }
 

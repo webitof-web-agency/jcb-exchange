@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
+import {
+  getAuthorizationToken,
+  isCurrentAuthToken,
+  isDefinitiveSessionFailure,
+} from './sessionAccessPolicy.mjs';
 
 test('does not invalidate a session for transient network or server failures', () => {
   assert.equal(isDefinitiveSessionFailure({}), false);
@@ -27,4 +31,12 @@ test('invalidates a session only for confirmed authentication or account failure
     isDefinitiveSessionFailure({ response: { status: 403, data: { error: 'Permission revoked' } } }),
     false,
   );
+});
+
+test('recognizes the token used by a failed request and ignores stale-token failures', () => {
+  assert.equal(getAuthorizationToken({ Authorization: 'Bearer current-token' }), 'current-token');
+  assert.equal(getAuthorizationToken({ authorization: 'Bearer lower-case-token' }), 'lower-case-token');
+  assert.equal(getAuthorizationToken({}), null);
+  assert.equal(isCurrentAuthToken('current-token', 'current-token'), true);
+  assert.equal(isCurrentAuthToken('old-token', 'current-token'), false);
 });

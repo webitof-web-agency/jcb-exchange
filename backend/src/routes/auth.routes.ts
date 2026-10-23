@@ -20,6 +20,10 @@ import {
   sendLoginOtp,
   verifyLoginOtp,
   resendLoginOtp,
+  sendPasswordResetOtp,
+  resendPasswordResetOtp,
+  verifyPasswordResetOtp,
+  resetPasswordWithToken,
   sendEmailLoginOtp,
   verifyEmailLoginOtp,
   resendEmailLoginOtp,
@@ -41,6 +45,10 @@ router.post('/login', login);
 router.post('/login/mobile-otp/send', sendLoginOtp);
 router.post('/login/mobile-otp/verify', verifyLoginOtp);
 router.post('/login/mobile-otp/resend', resendLoginOtp);
+router.post('/password-reset/mobile-otp/send', sendPasswordResetOtp);
+router.post('/password-reset/mobile-otp/resend', resendPasswordResetOtp);
+router.post('/password-reset/mobile-otp/verify', verifyPasswordResetOtp);
+router.post('/password-reset/reset', resetPasswordWithToken);
 router.post('/login/email-otp/send', sendEmailLoginOtp);
 router.post('/login/email-otp/verify', verifyEmailLoginOtp);
 router.post('/login/email-otp/resend', resendEmailLoginOtp);

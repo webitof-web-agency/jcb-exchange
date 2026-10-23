@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import { deleteFileFromDrive } from '../services/googleDrive.service';
 import { ensureBootstrapSuperAdmin } from '../utils/bootstrapSuperAdmin';
+import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
 import {
   ACCOUNT_INACTIVE_CODE,
   ACCOUNT_INACTIVE_MESSAGE,
@@ -23,6 +24,7 @@ import {
   getLoginMobileCandidates,
   MOBILE_OTP_COOLDOWN_SECONDS,
   MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
+  MOBILE_OTP_PURPOSE_PASSWORD_RESET,
   matchesMobileOtpChallengeMobile,
   normalizeLoginMobileNumber,
   maskMobileNumber,
@@ -40,6 +42,15 @@ import {
   recordMobileOtpAttempt,
   updateMobileOtpChallengeAfterResend,
 } from '../services/mobileOtpChallenge.service';
+import {
+  createPasswordResetToken,
+  PASSWORD_RESET_TOKEN_TTL_SECONDS,
+} from '../utils/passwordReset';
+import {
+  completePasswordReset,
+  createPasswordResetTokenRecord,
+  PasswordResetServiceError,
+} from '../services/passwordReset.service';
 import {
   FlowitofOtpError,
   resendFlowitofOtp,
@@ -92,6 +103,10 @@ import { hasKycDocumentChanges, type KycDocumentSnapshot } from '../utils/kycEdi
 import { isKycVerificationRecordPersistable } from '../utils/kycVerificationPersistence';
 import { createVerificationFingerprint } from '../services/verificationCache';
 import { hasAuthCredentialChange } from '../utils/authCredentialChange';
+import {
+  normalizeProfileEmail,
+  validatePasswordChangeInput,
+} from '../utils/profileSecurity';
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
 import { publicUploadDir } from '../utils/documentUpload';
@@ -131,9 +146,6 @@ const mobileOtpAccountRepository = {
     return user as MobileOtpAccountUser | null;
   },
 };
-
-const isPrismaUniqueConstraintError = (error: unknown) =>
-  !!error && typeof error === 'object' && 'code' in error && error.code === 'P2002';
 
 const businessPartnerTypes = new Set(['SHOWROOM']);
 
@@ -465,6 +477,7 @@ export const buildAuthUserPayload = async (user: any) => {
   const baseUser = {
     id: user.id,
     email: user.email,
+    hasPassword: typeof user.password === 'string' && user.password.length > 0,
     name: user.name,
     avatarUrl: user.avatarUrl ?? null,
     role: resolvedRole,
@@ -1238,15 +1251,18 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedName = name.trim();
-    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      select: { id: true },
+    });
     if (existingUser) {
-      return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+      return res.status(409).json({ error: 'Email address is already registered.' });
     }
 
     if (normalizedMobile) {
       const existingMobileUser = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
       if (existingMobileUser) {
-        return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+        return res.status(409).json({ error: 'Mobile number is already registered.' });
       }
     }
 
@@ -1299,8 +1315,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       user: authUser,
     });
   } catch (error) {
-    if (isPrismaUniqueConstraintError(error)) {
-      return res.status(400).json({ error: 'A user with this email or mobile already exists.' });
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'register');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
     }
 
     next(error);
@@ -2004,6 +2021,268 @@ export const resendLoginOtp = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const sendPasswordResetOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
+      return res.status(400).json({ error: 'Password reset by SMS is currently unavailable.' });
+    }
+
+    const normalizedMobile = normalizeLoginMobileNumber(req.body?.mobile);
+    if (!normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+    const currentUser = account ? await fetchAuthenticatedUserById(account.id) : null;
+    if (!account || !currentUser || getAccountAccessState(currentUser) !== 'active') {
+      return res.json({ message: MOBILE_OTP_GENERIC_LOGIN_MESSAGE });
+    }
+
+    const cooldownSeconds = await getMobileOtpCooldownSeconds(
+      normalizedMobile,
+      MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+    );
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+        retryAfterSeconds: cooldownSeconds,
+      });
+    }
+
+    await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+    const challenge = await createMobileOtpChallenge({
+      mobile: normalizedMobile,
+      userId: account.id,
+      purpose: MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
+    });
+
+    return res.json({
+      message: MOBILE_OTP_GENERIC_LOGIN_MESSAGE,
+      challengeId: challenge.id,
+      expiresInSeconds: settings.mobileOtp.otpExpiry * 60,
+      otpLength: settings.mobileOtp.otpLength,
+      resendCooldownSeconds: MOBILE_OTP_COOLDOWN_SECONDS,
+      maskedMobile: maskMobileNumber(normalizedMobile),
+    });
+  } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const resendPasswordResetOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
+      return res.status(400).json({ error: 'Password reset by SMS is currently unavailable.' });
+    }
+
+    const normalizedMobile = normalizeLoginMobileNumber(req.body?.mobile);
+    if (!normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+    const currentUser = account ? await fetchAuthenticatedUserById(account.id) : null;
+    if (!account || !currentUser || getAccountAccessState(currentUser) !== 'active') {
+      return res.status(404).json({
+        error: 'OTP session expired or is no longer available. Please request a new OTP.',
+        code: 'PASSWORD_RESET_CHALLENGE_NOT_FOUND',
+      });
+    }
+
+    const cooldownSeconds = await getMobileOtpCooldownSeconds(
+      normalizedMobile,
+      MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+    );
+    if (cooldownSeconds > 0) {
+      return res.status(429).json({
+        error: `Please wait ${cooldownSeconds} seconds before requesting another OTP.`,
+        retryAfterSeconds: cooldownSeconds,
+      });
+    }
+
+    const requestedChallengeId = typeof req.body?.challengeId === 'string'
+      ? req.body.challengeId.trim()
+      : '';
+    let challenge = requestedChallengeId
+      ? await getMobileOtpChallenge(requestedChallengeId, MOBILE_OTP_PURPOSE_PASSWORD_RESET)
+      : await getLatestMobileOtpChallenge(normalizedMobile, MOBILE_OTP_PURPOSE_PASSWORD_RESET);
+
+    if (!challenge || !matchesMobileOtpChallengeMobile(challenge.mobile, normalizedMobile)) {
+      challenge = await getLatestMobileOtpChallenge(normalizedMobile, MOBILE_OTP_PURPOSE_PASSWORD_RESET);
+    }
+
+    const expiresInSeconds = settings.mobileOtp.otpExpiry * 60;
+    let responseChallenge = challenge;
+    if (getMobileOtpResendAction(challenge) === 'SEND') {
+      await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+      responseChallenge = await createMobileOtpChallenge({
+        mobile: normalizedMobile,
+        userId: account.id,
+        purpose: MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+        expiresInSeconds,
+      });
+    } else {
+      try {
+        await resendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+        responseChallenge = await updateMobileOtpChallengeAfterResend(challenge.id, expiresInSeconds);
+      } catch (error) {
+        if (!(error instanceof FlowitofOtpError) || error.status !== 404) {
+          throw error;
+        }
+
+        await sendFlowitofOtp(normalizedMobile, settings.mobileOtp);
+        responseChallenge = await createMobileOtpChallenge({
+          mobile: normalizedMobile,
+          userId: account.id,
+          purpose: MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+          expiresInSeconds,
+        });
+      }
+    }
+
+    return res.json({
+      message: 'OTP resent successfully.',
+      challengeId: responseChallenge.id,
+      expiresInSeconds,
+      otpLength: settings.mobileOtp.otpLength,
+      resendCooldownSeconds: MOBILE_OTP_COOLDOWN_SECONDS,
+      maskedMobile: maskMobileNumber(normalizedMobile),
+    });
+  } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const verifyPasswordResetOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await getAppSettings();
+
+    if (!settings.mobileOtp.enabled || !settings.mobileOtp.apiKey || !settings.mobileOtp.otpId) {
+      return res.status(400).json({ error: 'Password reset by SMS is currently unavailable.' });
+    }
+
+    const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : '';
+    const normalizedMobile = normalizeLoginMobileNumber(req.body?.mobile);
+    const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+    const otpPattern = new RegExp(`^\\d{${settings.mobileOtp.otpLength}}$`);
+
+    if (!challengeId || !normalizedMobile || !otpPattern.test(otp)) {
+      return res.status(400).json({ error: 'Challenge, mobile number, and OTP are required.' });
+    }
+
+    const challenge = await getMobileOtpChallenge(
+      challengeId,
+      MOBILE_OTP_PURPOSE_PASSWORD_RESET,
+    );
+    if (
+      !challenge ||
+      !challenge.userId ||
+      !matchesMobileOtpChallengeMobile(challenge.mobile, normalizedMobile)
+    ) {
+      return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
+    }
+
+    if (!canVerifyMobileOtpChallenge(challenge)) {
+      await expireMobileOtpChallenge(challenge.id);
+      return res.status(400).json({ error: 'OTP expired or is no longer valid. Please request a new OTP.' });
+    }
+
+    try {
+      await verifyFlowitofOtp(normalizedMobile, otp, settings.mobileOtp);
+    } catch (error) {
+      if (error instanceof FlowitofOtpError && error.status === 400) {
+        const updatedChallenge = await recordMobileOtpAttempt(challenge.id);
+        if (!canVerifyMobileOtpChallenge(updatedChallenge)) {
+          await expireMobileOtpChallenge(challenge.id);
+        }
+
+        return res.status(401).json({ error: 'Invalid OTP. Please try again.' });
+      }
+
+      if (error instanceof FlowitofOtpError && error.status === 404) {
+        await expireMobileOtpChallenge(challenge.id);
+        return res.status(400).json({ error: 'OTP expired or is no longer valid. Please request a new OTP.' });
+      }
+
+      throw error;
+    }
+
+    const account = await findMobileOtpAccount(normalizedMobile, mobileOtpAccountRepository);
+    const currentUser = account ? await fetchAuthenticatedUserById(account.id) : null;
+    if (
+      !account ||
+      account.id !== challenge.userId ||
+      !currentUser ||
+      getAccountAccessState(currentUser) !== 'active'
+    ) {
+      await expireMobileOtpChallenge(challenge.id);
+      return res.status(400).json({ error: 'OTP session is invalid. Please request a new OTP.' });
+    }
+
+    await markMobileOtpChallengeVerified(challenge.id, account.id);
+    const resetToken = createPasswordResetToken();
+    await createPasswordResetTokenRecord({
+      userId: account.id,
+      challengeId: challenge.id,
+      tokenHash: resetToken.tokenHash,
+      expiresAt: resetToken.expiresAt,
+    });
+
+    return res.json({
+      message: 'OTP verified successfully.',
+      resetToken: resetToken.rawToken,
+      expiresInSeconds: PASSWORD_RESET_TOKEN_TTL_SECONDS,
+    });
+  } catch (error) {
+    if (error instanceof FlowitofOtpError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
+export const resetPasswordWithToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const resetToken = typeof req.body?.resetToken === 'string' ? req.body.resetToken.trim() : '';
+    const newPassword = req.body?.newPassword;
+    const confirmPassword = req.body?.confirmPassword;
+
+    if (!resetToken || resetToken.length > 128) {
+      return res.status(400).json({ error: 'Password reset session is invalid. Please request a new OTP.' });
+    }
+
+    const validationError = validatePasswordChangeInput({ newPassword, confirmPassword });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    const hashedPassword = await bcrypt.hash(String(newPassword), 12);
+    await completePasswordReset({ rawToken: resetToken, passwordHash: hashedPassword });
+
+    return res.json({ message: 'Password reset successfully. Please log in with your new password.' });
+  } catch (error) {
+    if (error instanceof PasswordResetServiceError) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    next(error);
+  }
+};
+
 export const getCustomerPrimeHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id) {
@@ -2157,8 +2436,13 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       serviceAreas?: string;
     };
 
-    const normalizedName = name?.trim();
-    const normalizedEmail = email?.trim().toLowerCase() || null;
+    const normalizedName = typeof name === 'string' ? name.trim() : undefined;
+    let normalizedEmail: string | null = null;
+    try {
+      normalizedEmail = normalizeProfileEmail(email);
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
+    }
     if (mobile !== undefined && typeof mobile !== 'string') {
       return res.status(400).json({ error: 'Mobile number must be a string.' });
     }
@@ -2302,7 +2586,8 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       return nextUser;
     });
 
-    const authUser = await buildAuthUserPayload(updatedUser);
+    const refreshedUser = await fetchAuthenticatedUserById(userId);
+    const authUser = await buildAuthUserPayload(refreshedUser);
     const refreshedToken = signAuthToken(authUser);
 
     return res.json({
@@ -2311,6 +2596,11 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       user: authUser,
     });
   } catch (error) {
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'profile');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
+    }
+
     next(error);
   }
 };
@@ -2321,36 +2611,30 @@ export const updatePassword = async (req: Request, res: Response, next: NextFunc
       return res.status(401).json({ error: 'Authentication required.' });
     }
 
-    const { newPassword, confirmPassword } = req.body as {
-      newPassword?: string;
-      confirmPassword?: string;
+    const { newPassword, confirmPassword } = (req.body || {}) as {
+      newPassword?: unknown;
+      confirmPassword?: unknown;
     };
-
-    if (!newPassword || !confirmPassword) {
-      return res.status(400).json({ error: 'New password and confirm password are required.' });
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
-    }
-
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({ error: 'New password and confirm password must match.' });
-    }
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
         id: true,
-        password: true,
       },
     });
 
-    if (!user || !user.password) {
-      return res.status(404).json({ error: 'Password record not found for this user.' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const validationError = validatePasswordChangeInput(
+      { newPassword, confirmPassword },
+    );
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    const hashedPassword = await bcrypt.hash(String(newPassword), 12);
 
     await prisma.user.update({
       where: { id: req.user.id },

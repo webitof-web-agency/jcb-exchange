@@ -65,6 +65,7 @@ export type MachineListingDetail = {
   chassisOrSerialNo?: string | null;
   engineNumber?: string | null;
   previousOwners?: string | null;
+  ownerName?: string | null;
   pinCode?: string | null;
   nearbyLandmark?: string | null;
   insuranceExpiry?: string | null;

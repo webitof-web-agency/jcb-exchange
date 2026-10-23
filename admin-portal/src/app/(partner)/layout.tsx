@@ -211,6 +211,19 @@ export default function PartnerLayout({
     }
   }, [pathname, isAuthenticated, user?.id, badges.enquiries, clearedBadges.enquiries, notifications]);
 
+  // Prevent document/window scroll so layout remains 100% viewport locked
+  useEffect(() => {
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   const markAsRead = async (id: string, link?: string) => {
     try {
       await api.put(`/notifications/${id}/read`);
@@ -384,7 +397,7 @@ export default function PartnerLayout({
   const profileHref = '/partner/profile';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
+    <div className="fixed inset-0 flex h-full w-full min-h-0 overflow-hidden bg-gray-100">
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -431,7 +444,7 @@ export default function PartnerLayout({
         </div>
       ) : null}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#1A1A1A] text-white flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 h-full min-h-0 overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-5 sm:p-6 border-b border-white/10 relative">
           <div>
             <PortalBrand href="/partner/dashboard" subtitle={t('partner.partnerPortal')} />
@@ -513,7 +526,7 @@ export default function PartnerLayout({
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
         <header className="bg-white border-b border-gray-200 p-3 sm:p-4 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button 
@@ -690,7 +703,7 @@ export default function PartnerLayout({
             </div>
           </div>
         </header>
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain pb-12 sm:pb-16">{children}</div>
+        <div className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain pb-8">{children}</div>
       </main>
       <PushNotificationManager />
     </div>

@@ -175,39 +175,38 @@ export default function AdminProfileView() {
   return (
     <div className="profile-print-target w-full mx-auto max-w-6xl space-y-6">
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="relative overflow-hidden bg-gray-900 px-6 py-8 sm:px-8">
+        <div className="relative overflow-hidden bg-gray-900 px-5 py-5 sm:px-8 sm:py-6">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-[#FFC107]/20" />
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex items-center gap-5">
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4 sm:gap-5">
               <AvatarUpload user={user} onUploaded={updateUser} size="profile" />
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Admin Identity</p>
-                <h2 className="mt-1 text-3xl font-bold tracking-tight text-white">{user?.name || 'Portal User'}</h2>
-                <p className="mt-1 text-sm font-medium text-gray-300">{user?.email || 'No email available'}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#FFC107]">
+                  {user?.role === 'EMPLOYEE' ? 'Employee Profile' : `${formatLabel(user?.role)} Profile`}
+                </p>
+                <h2 className="mt-0.5 text-2xl sm:text-3xl font-bold tracking-tight text-white">{user?.name || 'Portal User'}</h2>
+                <p className="mt-0.5 text-sm font-medium text-gray-300">{user?.email || 'No email available'}</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 profile-no-print">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs sm:text-sm font-medium text-white backdrop-blur">
                 <Shield className="h-4 w-4 text-[#FFC107]" />
                 {formatLabel(user?.role)}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white backdrop-blur">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs sm:text-sm font-medium text-white backdrop-blur">
                 <BadgeCheck className="h-4 w-4 text-emerald-400" />
                 {user?.isRootAdmin ? 'Root access' : 'Managed access'}
               </span>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-3.5 py-1.5 text-xs sm:text-sm font-bold text-black shadow-sm transition hover:bg-[#E5AD06]"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download PDF
+              </button>
             </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-2 profile-no-print">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#E5AD06]"
-            >
-              <Download className="h-4 w-4" />
-              Download PDF
-            </button>
           </div>
         </div>
       </section>
@@ -254,7 +253,9 @@ export default function AdminProfileView() {
             <div className="mb-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Personal Information</p>
-                <h3 className="mt-1 text-xl font-bold text-gray-900">Update admin identity</h3>
+                <h3 className="mt-1 text-xl font-bold text-gray-900">
+                  Update {user?.role === 'EMPLOYEE' ? 'employee' : 'profile'} details
+                </h3>
                 <p className="mt-1 text-sm text-gray-500">Keep only the essential contact fields editable for secure day-to-day operations.</p>
               </div>
             </div>
@@ -343,6 +344,7 @@ export default function AdminProfileView() {
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">New password</span>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={passwordForm.newPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -354,6 +356,7 @@ export default function AdminProfileView() {
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">Confirm new password</span>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={passwordForm.confirmPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"

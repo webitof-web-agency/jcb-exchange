@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className="h-full antialiased"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+      <body className="h-full min-h-full flex flex-col" suppressHydrationWarning>
         {(branding.darkLogoUrl || branding.logoUrl) && (
           <link rel="preload" as="image" href={branding.darkLogoUrl || branding.logoUrl || undefined} />
         )}

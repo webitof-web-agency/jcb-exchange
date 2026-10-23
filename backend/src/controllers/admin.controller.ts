@@ -53,6 +53,9 @@ import type { VehicleListingVerificationSettings } from '../utils/listingVerific
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
 import { buildKycReviewDocument } from '../utils/kycReviewPresentation';
+import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
+import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
+import { normalizeProfileEmail } from '../utils/profileSecurity';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -1921,8 +1924,17 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
     }
 
     const normalizedName = name?.trim();
-    const normalizedEmail = email?.trim().toLowerCase();
-    const normalizedMobile = mobile?.trim() || null;
+    let normalizedEmail = '';
+    try {
+      normalizedEmail = normalizeProfileEmail(email) || '';
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
+    }
+    const rawMobile = typeof mobile === 'string' ? mobile.trim() : '';
+    if (mobile !== undefined && typeof mobile !== 'string') {
+      return res.status(400).json({ error: 'Mobile number must be a string.' });
+    }
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
     const normalizedCity = city?.trim() || null;
     const normalizedState = state?.trim() || null;
 
@@ -1930,19 +1942,34 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
       return res.status(400).json({ error: 'Name and email are required.' });
     }
 
-    const duplicateUser = await prisma.user.findFirst({
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const duplicateEmailUser = await prisma.user.findFirst({
       where: {
         id: { not: id },
-        OR: [
-          { email: normalizedEmail },
-          ...(normalizedMobile ? [{ mobile: normalizedMobile }] : []),
-        ],
+        email: { equals: normalizedEmail, mode: 'insensitive' },
       },
       select: { id: true },
     });
 
-    if (duplicateUser) {
-      return res.status(400).json({ error: 'Another user with the same email or mobile already exists.' });
+    if (duplicateEmailUser) {
+      return res.status(409).json({ error: 'Email address is already in use.' });
+    }
+
+    if (normalizedMobile) {
+      const duplicateMobileUser = await prisma.user.findFirst({
+        where: {
+          id: { not: id },
+          mobile: { in: getProfileMobileCandidates(normalizedMobile) },
+        },
+        select: { id: true },
+      });
+
+      if (duplicateMobileUser) {
+        return res.status(409).json({ error: 'Mobile number is already in use.' });
+      }
     }
 
     const credentialsChanged =
@@ -2037,6 +2064,11 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
       user: mapManagedUser(refreshedUser),
     });
   } catch (error) {
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'admin');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
+    }
+
     next(error);
   }
 };
@@ -2223,17 +2255,41 @@ export const createManagedUser = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
     }
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email },
-          ...(mobile ? [{ mobile }] : []),
-        ],
-      },
+    let normalizedEmail: string;
+    try {
+      normalizedEmail = normalizeProfileEmail(email) || '';
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
+    }
+
+    const rawMobile = typeof mobile === 'string' ? mobile.trim() : '';
+    if (mobile !== undefined && typeof mobile !== 'string') {
+      return res.status(400).json({ error: 'Mobile number must be a string.' });
+    }
+
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const duplicateEmailUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      select: { id: true },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ error: 'A user with the same email or mobile already exists.' });
+    if (duplicateEmailUser) {
+      return res.status(409).json({ error: 'Email address is already in use.' });
+    }
+
+    if (normalizedMobile) {
+      const duplicateMobileUser = await prisma.user.findFirst({
+        where: { mobile: { in: getProfileMobileCandidates(normalizedMobile) } },
+        select: { id: true },
+      });
+
+      if (duplicateMobileUser) {
+        return res.status(409).json({ error: 'Mobile number is already in use.' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -2258,9 +2314,9 @@ export const createManagedUser = async (req: Request, res: Response, next: NextF
 
     const createdUser = await prisma.user.create({
       data: {
-        name,
-        email,
-        mobile: mobile || undefined,
+        name: name.trim(),
+        email: normalizedEmail,
+        mobile: normalizedMobile || undefined,
         password: hashedPassword,
         role,
         customRoleId: role === 'EMPLOYEE' ? normalizedCustomRoleId : null,
@@ -2287,6 +2343,11 @@ export const createManagedUser = async (req: Request, res: Response, next: NextF
       user: mapManagedUser(createdUser),
     });
   } catch (error) {
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'admin');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
+    }
+
     next(error);
   }
 };
@@ -2317,23 +2378,45 @@ export const createPartnerUser = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
     }
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: email.trim().toLowerCase() },
-          ...(mobile ? [{ mobile: mobile.trim() }] : []),
-        ],
-      },
+    let normalizedEmail: string;
+    try {
+      normalizedEmail = normalizeProfileEmail(email) || '';
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
+    }
+
+    const rawMobile = typeof mobile === 'string' ? mobile.trim() : '';
+    if (mobile !== undefined && typeof mobile !== 'string') {
+      return res.status(400).json({ error: 'Mobile number must be a string.' });
+    }
+
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const duplicateEmailUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      select: { id: true },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ error: 'A user with the same email or mobile already exists.' });
+    if (duplicateEmailUser) {
+      return res.status(409).json({ error: 'Email address is already in use.' });
+    }
+
+    if (normalizedMobile) {
+      const duplicateMobileUser = await prisma.user.findFirst({
+        where: { mobile: { in: getProfileMobileCandidates(normalizedMobile) } },
+        select: { id: true },
+      });
+
+      if (duplicateMobileUser) {
+        return res.status(409).json({ error: 'Mobile number is already in use.' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const normalizedName = name.trim();
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedMobile = mobile?.trim() || null;
     const normalizedBusinessName = businessName?.trim() || normalizedName;
 
     const createdUser = await prisma.user.create({
@@ -2375,6 +2458,11 @@ export const createPartnerUser = async (req: Request, res: Response, next: NextF
       user: mapManagedUser(refreshedUser),
     });
   } catch (error) {
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'admin');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
+    }
+
     next(error);
   }
 };
@@ -2952,8 +3040,17 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
       (targetUser as any).partnerProfile || (await ensurePartnerProfileForUser(targetUser as any));
 
     const normalizedName = name?.trim();
-    const normalizedEmail = email?.trim().toLowerCase();
-    const normalizedMobile = mobile?.trim();
+    let normalizedEmail = '';
+    try {
+      normalizedEmail = normalizeProfileEmail(email) || '';
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
+    }
+    const rawMobile = typeof mobile === 'string' ? mobile.trim() : '';
+    if (mobile !== undefined && typeof mobile !== 'string') {
+      return res.status(400).json({ error: 'Mobile number must be a string.' });
+    }
+    const normalizedMobile = normalizeProfileMobile(rawMobile);
     const normalizedBusinessName = businessName?.trim();
     const normalizedPartnerType =
       partnerType && allowedPartnerTypes.has(partnerType) ? partnerType : null;
@@ -2962,19 +3059,34 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'Name and email are required.' });
     }
 
-    const duplicateUser = await prisma.user.findFirst({
+    if (rawMobile && !normalizedMobile) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    const duplicateEmailUser = await prisma.user.findFirst({
       where: {
         id: { not: id },
-        OR: [
-          { email: normalizedEmail },
-          ...(normalizedMobile ? [{ mobile: normalizedMobile }] : []),
-        ],
+        email: { equals: normalizedEmail, mode: 'insensitive' },
       },
       select: { id: true },
     });
 
-    if (duplicateUser) {
-      return res.status(400).json({ error: 'Another user with the same email or mobile already exists.' });
+    if (duplicateEmailUser) {
+      return res.status(409).json({ error: 'Email address is already in use.' });
+    }
+
+    if (normalizedMobile) {
+      const duplicateMobileUser = await prisma.user.findFirst({
+        where: {
+          id: { not: id },
+          mobile: { in: getProfileMobileCandidates(normalizedMobile) },
+        },
+        select: { id: true },
+      });
+
+      if (duplicateMobileUser) {
+        return res.status(409).json({ error: 'Mobile number is already in use.' });
+      }
     }
 
     await prisma.user.update({
@@ -3005,6 +3117,11 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
       user: mapManagedUser(refreshedUser),
     });
   } catch (error) {
+    const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'admin');
+    if (uniqueConstraintMessage) {
+      return res.status(409).json({ error: uniqueConstraintMessage });
+    }
+
     next(error);
   }
 };

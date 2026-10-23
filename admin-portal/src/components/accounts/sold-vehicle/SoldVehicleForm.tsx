@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ArrowRight, Bookmark, Car, CheckCircle2, ClipboardCheck, Copy, ExternalLink, FileText, Handshake, IndianRupee,
+  ArrowLeft, ArrowRight, Bookmark, Car, CheckCircle2, ClipboardCheck, FileText, Handshake, IndianRupee,
   Loader2, MessageCircle, MessageSquareText, Plus, Repeat, ShoppingCart, Trash2, Truck, Wallet, X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -78,13 +78,13 @@ import {
   type StoredSellAccountRecord,
 } from './soldVehicleModel';
 import { DeedDocumentPreview, KycVerificationPreviewModal, PanVerificationField, SellAccountKycFields, SellAccountPdfField, type KycVerificationPreview } from './SellAccountDocumentWidgets';
+import SellAccountDeedWorkflowCard from './SellAccountDeedWorkflowCard';
 import CitySelect, { type LocationOption } from '../CitySelect';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 
 type NamedOption = { id: string; name: string };
 
 const LOCAL_RECORDS_KEY = 'jcb_sell_accounts_records';
-const ESIGN_PLATFORM_URL = 'https://esign.surepass.app/';
 
 const inputClass = 'h-[34px] w-full rounded-lg border bg-white px-2.5 text-[13px] font-medium text-gray-900 placeholder:font-normal placeholder:text-gray-400 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 disabled:bg-gray-50 disabled:text-gray-500';
 const inputBorder = (hasError?: boolean) => (hasError ? 'border-rose-400' : 'border-gray-200');
@@ -206,15 +206,6 @@ const initialPaymentDraft = (side: SellAccountPayment['side'] = 'PURCHASER_RECEI
 });
 
 export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
-  const copyEsignPlatformLink = async () => {
-    try {
-      await navigator.clipboard.writeText(ESIGN_PLATFORM_URL);
-      toast.success('E-sign platform link copied.');
-    } catch {
-      toast.error('Unable to copy the E-sign platform link.');
-    }
-  };
-
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -240,7 +231,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | 'payment' | 'payment-sms' | 'payment-whatsapp' | null>(null);
+  const [busyAction, setBusyAction] = useState<'draft' | 'save' | 'rto' | 'payment' | null>(null);
+  const [sendingReceiptKey, setSendingReceiptKey] = useState<string | null>(null);
   const [startRtoRequested, setStartRtoRequested] = useState(false);
   const [listedPrice, setListedPrice] = useState(0);
   const [categories, setCategories] = useState<NamedOption[]>([]);
@@ -719,8 +711,9 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       return;
     }
     if (isCustomerReceipt && isPersisted && existingRecord?.id && payment.id) {
-      if (busyAction) return;
-      setBusyAction(channel === 'SMS' ? 'payment-sms' : 'payment-whatsapp');
+      const key = `${payment.id}-${channel}`;
+      if (sendingReceiptKey) return;
+      setSendingReceiptKey(key);
       void api.post<{ delivery?: { channels?: Array<{ channel?: string; sent?: boolean }> } }>(
         `/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord.id)}/payments/${encodeURIComponent(payment.id)}/receipt/resend`,
         { channel },
@@ -734,7 +727,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           }
         })
         .catch((error) => toast.error(apiErrorMessage(error, 'Unable to send this money receipt.')))
-        .finally(() => setBusyAction(null));
+        .finally(() => setSendingReceiptKey(null));
       return;
     }
     if (!isCustomerReceipt) {
@@ -1259,11 +1252,11 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                         <span className="inline-flex items-center gap-1">
                           {payment.side === 'PURCHASER_RECEIPT' ? (
                             <>
-                              <button type="button" disabled={busy} onClick={() => sendPaymentReceipt(payment, 'SMS')} className="rounded-md p-1 text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by SMS" aria-label="Send customer money receipt by SMS">
-                                {busyAction === 'payment-sms' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquareText className="h-3.5 w-3.5" />}
+                              <button type="button" disabled={busy || sendingReceiptKey === `${payment.id}-SMS`} onClick={() => sendPaymentReceipt(payment, 'SMS')} className="rounded-md p-1 text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by SMS" aria-label="Send customer money receipt by SMS">
+                                {sendingReceiptKey === `${payment.id}-SMS` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquareText className="h-3.5 w-3.5" />}
                               </button>
-                              <button type="button" disabled={busy} onClick={() => sendPaymentReceipt(payment, 'WHATSAPP')} className="rounded-md p-1 text-[#25D366] hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by WhatsApp" aria-label="Send customer money receipt by WhatsApp">
-                                {busyAction === 'payment-whatsapp' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                              <button type="button" disabled={busy || sendingReceiptKey === `${payment.id}-WHATSAPP`} onClick={() => sendPaymentReceipt(payment, 'WHATSAPP')} className="rounded-md p-1 text-[#25D366] hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by WhatsApp" aria-label="Send customer money receipt by WhatsApp">
+                                {sendingReceiptKey === `${payment.id}-WHATSAPP` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
                               </button>
                             </>
                           ) : null}
@@ -1313,28 +1306,6 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       <Section
         icon={<FileText className="h-3.5 w-3.5" />}
         title="6. Deeds, Documents & KYC"
-        aside={(
-          <div className="flex items-center gap-1.5">
-            <a
-              href={ESIGN_PLATFORM_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#3B61D9] transition hover:border-indigo-300 hover:bg-indigo-100"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open E-sign platform
-            </a>
-            <button
-              type="button"
-              onClick={() => void copyEsignPlatformLink()}
-              title="Copy E-sign platform link"
-              aria-label="Copy E-sign platform link"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-[#3B61D9]"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {([
@@ -1368,6 +1339,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                 previewAvailable={Boolean(verificationPreviews[`${group.side}-gst`])}
                 aadhaarPreviewAvailable={Boolean(verificationPreviews[`${group.side}-aadhaar`])}
                 onPreview={(kind) => openVerificationPreview(group.side, kind)}
+              />
+              <SellAccountDeedWorkflowCard
+                recordId={existingRecord?.id}
+                side={group.side === 'purchase' ? 'PURCHASE' : 'SALE'}
+                document={documents[group.deedKey]}
+                defaultSignerName={group.side === 'purchase' ? form.sellerName : form.purchaserName}
+                defaultMobile={group.side === 'purchase' ? form.sellerNumber : form.purchaserNumber}
+                disabled={busy || Boolean(existingRecord?.isLocked)}
               />
               <DeedDocumentPreview label={`${group.title} PAN verification`} document={documents[group.panKey]} onRemove={() => replaceDocument(group.panKey, null)} />
               <DeedDocumentPreview label={`${group.title} Aadhaar verification`} document={documents[group.aadhaarKey]} onRemove={() => replaceDocument(group.aadhaarKey, null)} />

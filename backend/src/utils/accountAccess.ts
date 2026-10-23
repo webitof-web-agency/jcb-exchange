@@ -24,6 +24,7 @@ const approvedPartnerStatuses = {
 export const authenticatedUserSelect = {
   id: true,
   email: true,
+  password: true,
   name: true,
   avatarUrl: true,
   role: true,

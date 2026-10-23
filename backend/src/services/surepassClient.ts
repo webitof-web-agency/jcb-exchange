@@ -1,5 +1,31 @@
 type SurepassPayload = Record<string, unknown>;
 
+export type SurepassStampedEsignPayload = {
+  file_id?: string;
+  send_email: boolean;
+  pdf_pre_uploaded?: boolean;
+  callback_url?: string;
+  redirect_url?: string;
+  previous_client_id?: string;
+  testing_mode?: boolean;
+  expiry_minutes?: number;
+  sign_type: string;
+  state?: string;
+  config: {
+    auth_mode: '1' | '2' | '3' | '4';
+    reason: string;
+    positions: Record<string, Array<{ x: number; y: number }>>;
+    stamp_paper_amount: number;
+    stamp_paper_state: string;
+    stamp_data: Record<string, unknown>;
+  };
+  prefill_options?: {
+    full_name?: string;
+    mobile_number?: string;
+    user_email?: string;
+  };
+};
+
 type SurepassResponse = {
   data?: unknown;
   status_code?: number;
@@ -87,7 +113,7 @@ export class SurepassClient {
     this.fetchImpl = options.fetchImpl ?? (globalThis.fetch as SurepassFetch);
   }
 
-  private async post(path: string, payload: SurepassPayload) {
+  private async request(method: 'GET' | 'POST', path: string, payload?: SurepassPayload) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -100,9 +126,9 @@ export class SurepassClient {
       if (this.customerId) headers['X-Customer-Id'] = this.customerId;
 
       const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        method: 'POST',
+        method,
         headers,
-        body: JSON.stringify(payload),
+        ...(method === 'POST' ? { body: JSON.stringify(payload || {}) } : {}),
         signal: controller.signal,
       });
 
@@ -160,6 +186,14 @@ export class SurepassClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private post(path: string, payload: SurepassPayload) {
+    return this.request('POST', path, payload);
+  }
+
+  private get(path: string) {
+    return this.request('GET', path);
   }
 
   verifyPan(payload: { id_number: string; full_name: string; dob: string }) {
@@ -224,6 +258,54 @@ export class SurepassClient {
       ...payload,
       masked_aadhaar_variant: 'v1, v2, empty',
     });
+  }
+
+  getEstampStates() {
+    return this.get('/api/v1/estamp/get-state-list');
+  }
+
+  getEstampArticles(state: string) {
+    return this.get(`/api/v1/stamper-v2/list-articles?state=${encodeURIComponent(state)}`);
+  }
+
+  orderEstamp(payload: {
+    first_party: string;
+    second_party: string;
+    state: string;
+    article_id: number;
+    amount: number;
+    consideration_amount: number;
+    first_party_address?: string;
+    courier_address?: string;
+    first_party_father_name?: string;
+    description?: string;
+    webhook_url?: string;
+  }) {
+    return this.post('/api/v1/stamper-v2/order-stamp', payload);
+  }
+
+  getEstampOrderStatus(clientId: string) {
+    return this.get(`/api/v1/stamper-v2/order-status?client_id=${encodeURIComponent(clientId)}`);
+  }
+
+  initializeStampedEsign(payload: SurepassStampedEsignPayload) {
+    return this.post('/api/v1/esign/initialize', payload as unknown as SurepassPayload);
+  }
+
+  uploadEsignPdfViaLink(payload: { client_id: string; link: string }) {
+    return this.post('/api/v1/esign/upload-pdf', payload);
+  }
+
+  getEsignStatus(clientId: string) {
+    return this.get(`/api/v1/esign/status/${encodeURIComponent(clientId)}`);
+  }
+
+  getSignedEsignDocument(clientId: string) {
+    return this.get(`/api/v1/esign/get-signed-document/${encodeURIComponent(clientId)}`);
+  }
+
+  getEsignAuditTrail(clientId: string) {
+    return this.get(`/api/v1/esign/audit-trail/${encodeURIComponent(clientId)}`);
   }
 }
 

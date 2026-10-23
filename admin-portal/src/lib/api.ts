@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizeApiBaseUrl } from './apiBaseUrl.mjs';
-import { isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
+import { getAuthorizationToken, isCurrentAuthToken, isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -24,10 +24,16 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const requestHeaders = error?.config?.headers;
-    const sentAuthHeader = Boolean(requestHeaders?.Authorization || requestHeaders?.authorization);
+    const sentAuthToken = getAuthorizationToken(requestHeaders);
 
-    if (axios.isAxiosError(error) && isDefinitiveSessionFailure(error) && sentAuthHeader) {
-      useAuthStore.getState().logout();
+    if (axios.isAxiosError(error) && isDefinitiveSessionFailure(error)) {
+      const authStore = useAuthStore.getState();
+      // Profile/password changes rotate authVersion and return a fresh token.
+      // An older request may finish with 401 after that handoff; it must not
+      // invalidate the already refreshed admin session.
+      if (isCurrentAuthToken(sentAuthToken, authStore.token)) {
+        authStore.logout();
+      }
     }
 
     return Promise.reject(error);

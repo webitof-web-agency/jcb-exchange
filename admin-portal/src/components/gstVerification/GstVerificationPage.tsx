@@ -2,7 +2,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, Building2, CalendarDays, Eye, FileCheck2, History, Loader2, Search, ShieldAlert, XCircle } from 'lucide-react';
+import { BadgeCheck, Building2, CalendarDays, Download, Eye, FileCheck2, History, Loader2, Search, ShieldAlert, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
@@ -91,13 +91,49 @@ function StatusBadge({ status }: { status: unknown }) {
 }
 
 function ResultPanel({ response }: { response: GstResultResponse }) {
+  const [downloading, setDownloading] = useState(false);
   const result = response.result || {};
   const isActive = typeof result.gstinStatus === 'string' && result.gstinStatus.toUpperCase() === 'ACTIVE';
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { GstCertificatePdfDocument } = await import('@/components/gstVerification/GstCertificatePdfDocument');
+      const { mapGstVerificationToCertificate } = await import('@/lib/gstCertificateMapper');
+      const certData = mapGstVerificationToCertificate(response as unknown as Record<string, unknown>);
+      const blob = await pdf(<GstCertificatePdfDocument data={certData} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `GST-${certData.gstin}-verification.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error('Failed to download GST certificate:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="mt-5 space-y-5" role="status" aria-live="polite">
       <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><BadgeCheck className="h-5 w-5" />Surepass lookup completed</div>
-        <div className="text-xs text-emerald-800">Provider response: {response.record.status}</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-xs text-emerald-800">Provider response: {response.record.status}</div>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {downloading ? 'Preparing PDF…' : 'Download Certificate (PDF)'}
+          </button>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">

@@ -19,7 +19,7 @@ import type { SellAccountDocument, SellAccountDocumentKey, SellAccountKycKind, S
 import { buildPanCardData as buildVerifiedPanCardData } from './panCardVerification.mjs';
 import { buildPanCardExportSvg } from './panCardExport.mjs';
 import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
-import { getGstPreviewFields } from '@/lib/gstVerificationPreview';
+import { getGstPreviewFields, getUnmaskedGstPreviewResult, removeMaskedGstFields } from '@/lib/gstVerificationPreview';
 
 export type KycVerificationPreview = {
   side: 'purchase' | 'sell';
@@ -340,7 +340,11 @@ export function KycVerificationPreviewModal({
   onSaveToKyc?: KycGeneratedDocumentUpload;
 }) {
   const record = isObject(preview.response.record) ? preview.response.record : {};
-  const result = isObject(preview.response.result) ? preview.response.result : {};
+  const rawResult = isObject(preview.response.result) ? preview.response.result : {};
+  const result = preview.kind === 'gst' ? getUnmaskedGstPreviewResult(rawResult, preview.number) : rawResult;
+  const displayResponse = preview.kind === 'gst'
+    ? removeMaskedGstFields(preview.response) as Record<string, unknown>
+    : preview.response;
   const [showRawResponse, setShowRawResponse] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploadingKyc, setUploadingKyc] = useState(false);
@@ -591,7 +595,7 @@ export function KycVerificationPreviewModal({
               </span>
               <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showRawResponse ? 'rotate-180' : ''}`} />
             </button>
-            {showRawResponse ? <pre className="max-h-64 overflow-auto border-t border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">{JSON.stringify(preview.response, null, 2)}</pre> : null}
+            {showRawResponse ? <pre className="max-h-64 overflow-auto border-t border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">{JSON.stringify(displayResponse, null, 2)}</pre> : null}
           </section>
         </div>
 

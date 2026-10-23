@@ -306,6 +306,11 @@ enum MobileOtpChallengeStatus {
   EXPIRED
 }
 
+enum MobileOtpChallengePurpose {
+  LOGIN
+  PASSWORD_RESET
+}
+
 enum EmailOtpChallengeStatus {
   PENDING
   VERIFIED
@@ -490,6 +495,7 @@ model User {
   createdOffers                      Offer[]                            @relation("OfferCreator")
   recruitmentActivityLogs            RecruitmentActivityLog[]           @relation("RecruitmentActivityActor")
   mobileOtpChallenges                MobileOtpChallenge[]
+  passwordResetTokens                PasswordResetToken[]
   emailOtpChallenges                 EmailOtpChallenge[]
   panVerificationRecords             PanVerificationRecord[]            @relation("PanVerificationRequester")
   apiBillingUsageRecords             ApiUsageRecord[]                   @relation("ApiBillingUsageRequester")
@@ -510,6 +516,7 @@ model MobileOtpChallenge {
   id           String                   @id @default(uuid())
   mobile       String
   userId       String?
+  purpose      MobileOtpChallengePurpose @default(LOGIN)
   status       MobileOtpChallengeStatus @default(PENDING)
   attemptCount Int                      @default(0)
   resendCount  Int                      @default(0)
@@ -519,9 +526,26 @@ model MobileOtpChallenge {
   verifiedAt   DateTime?
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  resetToken PasswordResetToken?
 
-  @@index([mobile, status, createdAt])
+  @@index([mobile, purpose, status, createdAt])
   @@index([userId, status, createdAt])
+}
+
+model PasswordResetToken {
+  id          String              @id @default(uuid())
+  userId      String
+  challengeId String              @unique
+  tokenHash   String              @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime            @default(now())
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge MobileOtpChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, consumedAt])
 }
 
 model EmailOtpIntegrationSettings {
@@ -1233,6 +1257,19 @@ enum SellAccountSaleType {
   EXCHANGE
 }
 
+enum SellAccountDeedSide {
+  PURCHASE
+  SALE
+}
+
+enum SellAccountDeedWorkflowStatus {
+  INITIALIZING
+  PENDING_SIGNATURE
+  SIGNED
+  FAILED
+  RECONCILIATION_REQUIRED
+}
+
 enum RtoTransferTaskStatus {
   PENDING
   DOCUMENT_EXPIRED
@@ -1313,12 +1350,53 @@ model SellAccount {
   rtoRecord             VehicleRtoRecord?
   payments              SellAccountPayment[]
   statusHistory         SellAccountStatusHistory[]
+  deedWorkflows         SellAccountDeedWorkflow[]
 
   @@index([dealStatus, updatedAt])
   @@index([isDraft, updatedAt])
   @@index([isLocked])
   @@index([vehicleNumber])
   @@index([deletedAt])
+}
+
+model SellAccountDeedWorkflow {
+  id                       String                         @id @default(uuid())
+  sellAccountId            String
+  side                     SellAccountDeedSide
+  status                   SellAccountDeedWorkflowStatus  @default(INITIALIZING)
+  sourceDocument           Json
+  sourceLinkTokenHash      String?                        @unique
+  sourceLinkExpiresAt      DateTime?
+  executionStateCode       String                         @db.VarChar(2)
+  executionStateName       String
+  articleId                Int
+  stampDuty                Int
+  considerationAmount      Int
+  signerName               String
+  signerMobile             String
+  signerEmail              String?
+  signature                Json
+  providerEnvironment      SurepassEnvironment
+  esignClientId            String?                        @unique
+  providerStatus           String?
+  signingUrlCiphertext     String?
+  signedDocument           Json?
+  auditTrail               Json?
+  providerChargeStatus     String                         @default("PENDING_RECONCILIATION")
+  providerChargedAmountPaise Int?
+  providerChargeReference  String?                        @unique
+  lastErrorCode            String?
+  lastErrorMessage         String?
+  requestedById            String?
+  signedAt                 DateTime?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+
+  sellAccount              SellAccount                    @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([sellAccountId, side])
+  @@index([sellAccountId, updatedAt])
+  @@index([status, updatedAt])
 }
 
 model SellAccountPayment {

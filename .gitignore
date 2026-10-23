@@ -12,6 +12,12 @@ node_modules/
 /billsample.pdf
 /billsample.PDF
 
+# Local GST verification samples and certificates (do not commit)
+/gstverifiction.pdf
+/gstverification.pdf
+/gst-verification.pdf
+/admin-portal/public/templates/gst-verification/*.pdf
+
 # Environment Variables & Secrets
 .env
 .env.*

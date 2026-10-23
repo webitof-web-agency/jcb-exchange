@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getGstPreviewFields } from './gstVerificationPreview';
+import { getGstPreviewFields, getUnmaskedGstPreviewResult, removeMaskedGstFields } from './gstVerificationPreview';
 
 test('builds advanced GST preview fields from normalized provider data without dummy values', () => {
   assert.deepEqual(
@@ -27,4 +27,33 @@ test('builds advanced GST preview fields from normalized provider data without d
       ['Promoters', ['Director One']],
     ],
   );
+});
+
+test('keeps every GST response field while removing only masked keys from preview data', () => {
+  const result = getUnmaskedGstPreviewResult(
+    {
+      maskedGstin: '22AA********1ZR',
+      legalName: 'JCB EXCHANGE (OPC) PRIVATE LIMITED',
+      providerData: {
+        gstin: '22AAHCJ5752E1ZR',
+        masked_gstin: '22AA********1ZR',
+        filingStatus: [{ returnType: 'GSTR3B', status: 'Filed' }],
+      },
+      nested: { maskedValue: 'hidden', retainedValue: 'visible' },
+    },
+    '22AAHCJ5752E1ZR',
+  );
+
+  assert.deepEqual(result, {
+    gstin: '22AAHCJ5752E1ZR',
+    legalName: 'JCB EXCHANGE (OPC) PRIVATE LIMITED',
+    providerData: {
+      gstin: '22AAHCJ5752E1ZR',
+      filingStatus: [{ returnType: 'GSTR3B', status: 'Filed' }],
+    },
+    nested: { retainedValue: 'visible' },
+  });
+  assert.deepEqual(removeMaskedGstFields({ maskedGstin: '22AA********1ZR', gstin: '22AAHCJ5752E1ZR' }), {
+    gstin: '22AAHCJ5752E1ZR',
+  });
 });

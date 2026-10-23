@@ -19,6 +19,12 @@ export const MOBILE_OTP_RESEND_WINDOW_SECONDS = 10 * 60;
 export const MOBILE_OTP_MAX_RESENDS = 5;
 export const MOBILE_OTP_MAX_VERIFY_ATTEMPTS = 5;
 export const MOBILE_OTP_GENERIC_LOGIN_MESSAGE = 'If this number is registered, an OTP has been sent.';
+export const MOBILE_OTP_PURPOSE_LOGIN = 'LOGIN' as const;
+export const MOBILE_OTP_PURPOSE_PASSWORD_RESET = 'PASSWORD_RESET' as const;
+
+export type MobileOtpPurpose =
+  | typeof MOBILE_OTP_PURPOSE_LOGIN
+  | typeof MOBILE_OTP_PURPOSE_PASSWORD_RESET;
 
 export const defaultMobileOtpSettings: MobileOtpSettings = {
   enabled: false,

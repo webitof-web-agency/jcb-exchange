@@ -212,13 +212,13 @@ export default function PanCardTemplate({
         <div
           className="absolute z-10 select-none overflow-hidden"
           style={{
-            top: '86.5%',
+            top: '90.2%',
             left: '5.6%',
             width: '42%',
           }}
         >
           <p
-            className="font-mono text-[11.5px] font-black text-[#08152a] tracking-wider leading-tight"
+            className="font-mono text-[11px] font-black text-[#08152a] tracking-wider leading-none"
             style={{ textShadow: '0 0.5px 0.5px rgba(255,255,255,0.6)' }}
           >
             {dob}

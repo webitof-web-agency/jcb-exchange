@@ -2,6 +2,29 @@ type GstPreviewRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is GstPreviewRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
+const isMaskedKey = (key: string) => key.toLowerCase().includes('masked') && !key.toLowerCase().startsWith('unmasked');
+
+/**
+ * Removes masking metadata from the GST preview without dropping any other
+ * provider field. This is presentation-only; the API response remains intact.
+ */
+export const removeMaskedGstFields = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map((item) => removeMaskedGstFields(item));
+  if (!isRecord(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isMaskedKey(key))
+      .map(([key, entryValue]) => [key, removeMaskedGstFields(entryValue)]),
+  );
+};
+
+export const getUnmaskedGstPreviewResult = (result: GstPreviewRecord, fallbackGstin = ''): GstPreviewRecord => {
+  const unmaskedResult = removeMaskedGstFields(result) as GstPreviewRecord;
+  if (hasValue(unmaskedResult.gstin) || !fallbackGstin) return unmaskedResult;
+  return { gstin: fallbackGstin, ...unmaskedResult };
+};
+
 const hasValue = (value: unknown) => {
   if (value === undefined || value === null || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;

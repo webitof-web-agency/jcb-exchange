@@ -107,6 +107,7 @@ type ParsedListingDetails = {
   registrationUpto: string;
   registrationYear: string;
   registrationNo: string;
+  ownerName: string;
   chassisOrSerialNo: string;
   previousOwners: string;
   fuelType: string;
@@ -125,6 +126,7 @@ const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   registrationUpto: '',
   registrationYear: '',
   registrationNo: '',
+  ownerName: '',
   chassisOrSerialNo: '',
   previousOwners: '',
   fuelType: '',
@@ -174,6 +176,14 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
         break;
       case 'registration no':
         parsed.registrationNo = value;
+        break;
+      case 'owner name':
+      case 'owner':
+      case 'rc owner':
+      case 'rc owner name':
+      case 'registered owner':
+      case 'owner_name':
+        parsed.ownerName = value;
         break;
       case 'chassis/serial':
       case 'chassis / serial':

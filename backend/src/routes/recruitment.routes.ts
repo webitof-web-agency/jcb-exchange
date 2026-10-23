@@ -81,6 +81,12 @@ import {
   resendSellAccountInvoice,
   resendSellAccountPaymentReceipt,
   downloadSellAccountInvoice,
+  getSellAccountDeedWorkflowRecord,
+  downloadSellAccountDeedArtifact,
+  getSellAccountEstampArticles,
+  refreshSellAccountDeedEsign,
+  startSellAccountDeedEsign,
+  streamSellAccountEsignSource,
 } from '../controllers/sellAccount.controller';
 
 const router = Router();
@@ -149,6 +155,7 @@ const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['re
 router.get('/public/jobs', getPublicJobs);
 router.get('/public/jobs/:slug', getPublicJobBySlug);
 router.post('/public/jobs/:slug/apply', resumeUpload.single('resume'), applyForJob);
+router.get('/public/esign-source/:token', streamSellAccountEsignSource);
 
 // Applicant protected endpoints
 router.get('/my-applications', requireAuth, getMyApplications);
@@ -196,6 +203,11 @@ router.get('/admin/sell-accounts', canViewSell, listSellAccountRecords);
 router.post('/admin/sell-accounts', canCreateSell, createSellAccountRecord);
 router.post('/admin/sell-accounts/save-and-start-rto', canCreateSell, canCreateRto, saveAndStartSellAccountRtoRecord);
 router.get('/admin/sell-accounts/:id', canViewSell, getSellAccountRecord);
+router.get('/admin/sell-accounts/:id/deeds/estamp/articles', canViewSell, getSellAccountEstampArticles);
+router.get('/admin/sell-accounts/:id/deeds/:side', canViewSell, getSellAccountDeedWorkflowRecord);
+router.get('/admin/sell-accounts/:id/deeds/:side/artifacts/:artifact', canViewSell, downloadSellAccountDeedArtifact);
+router.post('/admin/sell-accounts/:id/deeds/:side/start', canUpdateSell, startSellAccountDeedEsign);
+router.post('/admin/sell-accounts/:id/deeds/:side/refresh', canUpdateSell, refreshSellAccountDeedEsign);
 router.put('/admin/sell-accounts/:id', canUpdateSell, updateSellAccountRecord);
 router.post('/admin/sell-accounts/:id/lock', canUpdateSell, lockSellAccountRecord);
 router.post('/admin/sell-accounts/:id/save-and-start-rto', canUpdateSell, canCreateRto, updateAndStartSellAccountRtoRecord);
