@@ -312,14 +312,14 @@ export default function Navbar() {
       <header
         className={`fixed top-0 left-0 right-0 z-40 w-full bg-[#1A1A1A] text-white shadow-sm lg:sticky lg:left-auto lg:right-auto ${hasBlockingModalOpen
             ? 'translate-y-0'
-            : `transition-transform duration-300 ease-out will-change-transform ${shouldShowNavbar ? 'translate-y-0' : 'translate-y-0 xl:-translate-y-full'}`
+            : `transition-transform duration-300 ease-out will-change-transform ${shouldShowNavbar ? 'translate-y-0' : 'translate-y-0 lg:-translate-y-full'}`
           }`}
       >
         <div className="flex flex-col">
           <div className="flex w-full items-center justify-between border-b border-white/10 px-3 sm:px-4 md:px-6 py-3 md:py-4 relative">
-            <div className="flex items-center flex-1 xl:flex-none">
+            <div className="flex items-center shrink-0">
               <button
-                className="mr-2 sm:mr-3 xl:hidden text-gray-300 hover:text-white transition-colors"
+                className="mr-2 sm:mr-3 lg:hidden text-gray-300 hover:text-white transition-colors"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Toggle mobile menu"
               >
@@ -335,39 +335,39 @@ export default function Navbar() {
               <SiteBrand align="center" />
             </div>
 
-            <nav className="hidden lg:flex flex-1 justify-center items-center gap-5 xl:gap-7 text-[13px] font-semibold text-gray-300 px-4">
-              <Link href="/" className="transition-colors hover:text-white">
+            <nav className="hidden lg:flex flex-1 justify-center items-center gap-3 lg:gap-3.5 xl:gap-6 text-xs lg:text-[13px] font-semibold text-gray-300 px-2 lg:px-4">
+              <Link href="/" className="whitespace-nowrap transition-colors hover:text-white">
                 {t('navbar.home')}
               </Link>
-              <Link href="/machines" className="transition-colors hover:text-white">
+              <Link href="/machines" className="whitespace-nowrap transition-colors hover:text-white">
                 {t('navbar.machines')}
               </Link>
               <button
                 onClick={handleOpenSellVehicle}
-                className="cursor-pointer outline-none transition-colors hover:text-white"
+                className="whitespace-nowrap cursor-pointer outline-none transition-colors hover:text-white"
               >
                 {t('navbar.sellVehicle')}
               </button>
-              <Link href="/sold-vehicles" className="transition-colors hover:text-white">
+              <Link href="/sold-vehicles" className="whitespace-nowrap transition-colors hover:text-white">
                 {t('navbar.soldVehicles')}
               </Link>
 
               <Link
                 href="/jobs"
-                className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                className={`whitespace-nowrap rounded-lg px-2 lg:px-2.5 xl:px-3.5 py-1.5 text-xs lg:text-[13px] font-semibold transition-colors ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
                   }`}
               >
                 {t('navbar.careers', 'Careers')}
               </Link>
               <Link
                 href="/blog"
-                className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${pathname === '/blog' || pathname.startsWith('/blog/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+                className={`whitespace-nowrap rounded-lg px-2 lg:px-2.5 xl:px-3.5 py-1.5 text-xs lg:text-[13px] font-semibold transition-colors ${pathname === '/blog' || pathname.startsWith('/blog/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
               >
                 {t('navbar.blog', 'Blog')}
               </Link>
             </nav>
 
-            <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+            <div className="flex items-center gap-2 sm:gap-3 lg:gap-3.5 xl:gap-5 shrink-0">
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={handleToggleDropdown}
@@ -523,7 +523,7 @@ export default function Navbar() {
 
               </div>
 
-              <Link href="/dealers" className="hidden md:flex rounded-[4px] bg-jcb-yellow px-6 py-2 text-sm font-bold text-black transition-colors hover:bg-yellow-400">
+              <Link href="/dealers" className="hidden md:flex rounded-[4px] bg-jcb-yellow px-3.5 py-1.5 lg:px-4 lg:py-2 text-xs lg:text-sm font-bold text-black transition-colors hover:bg-yellow-400 whitespace-nowrap">
                 {t('common.findDealer')}
               </Link>
 
@@ -586,13 +586,13 @@ export default function Navbar() {
               ) : (
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  className="ml-1 md:ml-2 flex items-center justify-center gap-2 md:rounded-[4px] md:border md:border-gray-600 md:px-4 p-1 md:py-2 text-sm font-semibold text-gray-300 md:text-white transition-colors hover:text-white md:hover:bg-white/10"
+                  className="ml-1 md:ml-2 flex items-center justify-center gap-1.5 md:gap-2 md:rounded-[4px] md:border md:border-gray-600 px-2.5 py-1.5 md:px-3.5 md:py-2 text-xs md:text-sm font-semibold text-gray-300 md:text-white transition-colors hover:text-white md:hover:bg-white/10 whitespace-nowrap"
                 >
                   <User className="h-[20px] w-[20px] md:h-4 md:w-4" strokeWidth={2.5} />
                   <span className="hidden md:inline">{t('common.loginSignup')}</span>
                 </button>
               )}
-              <div className="hidden md:block">
+              <div className="hidden md:block shrink-0">
                 <LanguageSwitcher />
               </div>
             </div>
@@ -604,14 +604,14 @@ export default function Navbar() {
       {/* Mobile Menu Backdrop Overlay */}
       {isMobileMenuOpen ? (
         <div
-          className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-xs transition-opacity duration-300 xl:hidden"
+          className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-xs transition-opacity duration-300 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       ) : null}
 
       {/* Mobile Slide-Over Navigation Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-[10010] flex w-[290px] max-w-[85vw] flex-col bg-[#161616] text-white shadow-2xl transition-transform duration-300 ease-out xl:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-[10010] flex w-[290px] max-w-[85vw] flex-col bg-[#161616] text-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
       >
         {/* Drawer Header */}

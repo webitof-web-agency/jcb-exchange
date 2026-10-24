@@ -7,6 +7,7 @@
   --color-background: #ffffff;
   --color-foreground: #171717;
   --font-sans: "Inter", var(--font-geist-sans);
+  --breakpoint-lg: 1000px;
 }
 
 :root {
