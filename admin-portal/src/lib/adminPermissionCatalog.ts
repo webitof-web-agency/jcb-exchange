@@ -31,6 +31,7 @@ export const CRM_PERMISSION_GROUPS: AdminPermissionGroupDefinition[] = [
       { id: 'crm.read', label: 'View CRM (own leads)' },
       { id: 'crm.manage', label: 'Work own leads & follow-ups' },
       { id: 'crm.manage_all', label: 'See & work every lead' },
+      { id: 'crm.pipeline.manage', label: 'Create & manage pipeline stages' },
       { id: 'crm.assign', label: 'Assign / reassign leads' },
     ],
   },
@@ -46,6 +47,7 @@ export const CRM_PERMISSION_GROUPS: AdminPermissionGroupDefinition[] = [
   },
 ];
 
+export const CRM_READ_PERMISSIONS = ['enquiries.manage', 'crm.read', 'crm.manage', 'crm.manage_all', 'crm.assign'];
 export const CRM_VIEW_PERMISSIONS = ['enquiries.manage', ...CRM_PERMISSION_GROUPS.flatMap((group) => group.permissions.map((permission) => permission.id))];
 
 // Financial Reports & CA Workspace. Mirrors backend/src/modules/finance-hub/permissions.ts.

@@ -3,31 +3,33 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { AlarmClock, CalendarPlus } from 'lucide-react';
-import { Button, EmptyState, LoadingState, Panel } from '@/components/financeWorkspace/ui';
-import { CompleteFollowUpModal, RescheduleModal, ScheduleFollowUpModal } from './CrmModals';
+import { Button, EmptyState, Panel } from '@/components/financeWorkspace/ui';
+import { CompleteFollowUpModal, EditFollowUpModal, RescheduleModal, ScheduleFollowUpModal } from './CrmModals';
 import { FollowUpRow } from './FollowUpRow';
-import { CrmMetaProvider, fmtDateTime, getJson, label, leadHref, relative, useCrmResource, type FollowUp } from './crmShared';
+import { CrmLoadingState, CrmMetaProvider, fmtDateTime, getJson, isTerminalStatus, label, leadHref, relative, useCrmMeta, useCrmResource, type FollowUp } from './crmShared';
 
 type LeadFollowUps = { lead: { id: string; status: string; leadType: string; priority: string; temperature: string; listingTitleSnapshot: string | null; customer: FollowUp['contact']; followUps: FollowUp[] } };
 
 function LeadPanel({ leadId }: { leadId: string }) {
+  const { meta } = useCrmMeta();
   const [now] = useState(() => Date.now());
   const data = useCrmResource(() => getJson<LeadFollowUps>(`/crm/leads/${leadId}`), `partner-lead-${leadId}`);
   const [scheduling, setScheduling] = useState(false);
   const [completing, setCompleting] = useState<FollowUp | null>(null);
+  const [editing, setEditing] = useState<FollowUp | null>(null);
   const [rescheduling, setRescheduling] = useState<FollowUp | null>(null);
-  const done = () => { setScheduling(false); setCompleting(null); setRescheduling(null); data.reload(); };
-  if (data.loading && !data.data) return <Panel title="Follow-ups"><LoadingState /></Panel>;
+  const done = () => { setScheduling(false); setCompleting(null); setEditing(null); setRescheduling(null); data.reload(); };
+  if (data.loading && !data.data) return <Panel title="Follow-ups"><CrmLoadingState /></Panel>;
   // The CRM is optional for partners: hide the panel if it is not available.
   if (data.error || !data.data) return null;
   const { lead } = data.data;
-  const open = lead.status !== 'WON' && lead.status !== 'LOST';
+  const open = !isTerminalStatus(lead.status, meta?.pipelineStages);
   const pending = lead.followUps.filter((f) => f.status === 'PENDING' || f.status === 'MISSED').sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   const doneList = lead.followUps.filter((f) => f.status === 'DONE').slice(0, 5);
   const withLead = (f: FollowUp): FollowUp => ({ ...f, contact: lead.customer, lead: { id: lead.id, status: lead.status, leadType: lead.leadType, priority: lead.priority, temperature: lead.temperature, listingTitleSnapshot: lead.listingTitleSnapshot } });
   return (
     <Panel title="Follow-ups" description="Plan the next call or visit; you get a reminder before it is due." actions={open ? <Button variant="primary" icon={<CalendarPlus className="h-4 w-4" />} onClick={() => setScheduling(true)}>Schedule</Button> : undefined}>
-      {pending.length ? <div className="divide-y divide-slate-100">{pending.map((f) => <FollowUpRow key={f.id} followUp={withLead(f)} now={now} onComplete={() => setCompleting(f)} onReschedule={() => setRescheduling(f)} />)}</div>
+      {pending.length ? <div className="divide-y divide-slate-100">{pending.map((f) => <FollowUpRow key={f.id} followUp={withLead(f)} now={now} onComplete={() => setCompleting(f)} onEdit={() => setEditing(f)} onReschedule={() => setRescheduling(f)} />)}</div>
         : open ? <EmptyState title="No follow-up planned" description="Schedule the next step so this customer is not forgotten." /> : null}
       {doneList.length ? (
         <div className="border-t border-slate-100 px-4 py-3">
@@ -38,6 +40,7 @@ function LeadPanel({ leadId }: { leadId: string }) {
       {scheduling ? <ScheduleFollowUpModal leadId={lead.id} onClose={() => setScheduling(false)} onDone={done} /> : null}
       {completing ? <CompleteFollowUpModal followUp={withLead(completing)} leadStatus={lead.status} onClose={() => setCompleting(null)} onDone={done} /> : null}
       {rescheduling ? <RescheduleModal followUp={rescheduling} onClose={() => setRescheduling(null)} onDone={done} /> : null}
+      {editing ? <EditFollowUpModal followUp={withLead(editing)} onClose={() => setEditing(null)} onDone={done} /> : null}
     </Panel>
   );
 }

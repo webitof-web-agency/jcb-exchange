@@ -20,6 +20,7 @@ import {
   resolveEffectiveUserRole,
 } from '../utils/accountAccess';
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
+import { sanitizeName, isValidEmail, sanitizePassword } from '../utils/authSanitization';
 import {
   getLoginMobileCandidates,
   MOBILE_OTP_COOLDOWN_SECONDS,
@@ -1286,7 +1287,17 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const { mobile: normalizedMobile, whatsappNumber: normalizedWhatsapp } = contactResult;
 
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedName = name.trim();
+    const normalizedName = sanitizeName(name);
+    const sanitizedPassword = sanitizePassword(password);
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    if (!sanitizedPassword || sanitizedPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    }
+    if (sanitizedPassword.length > 128) {
+      return res.status(400).json({ error: 'Password is too long (maximum 128 characters).' });
+    }
     const existingUser = await prisma.user.findFirst({
       where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       select: { id: true },
@@ -1302,7 +1313,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       }
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(sanitizedPassword, 10);
     const hasSuperAdmin = await ensureBootstrapSuperAdmin();
     const accountRole = hasSuperAdmin
       ? normalizedRegistrationType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER'

@@ -7,6 +7,8 @@ import { assertAssignableStaff, contactSelect, dateOrNull, logLeadActivity, page
 import { assertContactAccess } from './contacts.service';
 import { changeStatus, NEXT_FOLLOW_UP_REQUIRED } from './leads.service';
 import { getCrmConfig } from './settings.service';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
+import { normalizeFollowUpEdit } from '../followupEdit';
 
 const followUpInclude = {
   owner: { select: staffSelect },
@@ -94,11 +96,12 @@ export const createFollowUp = async (access: CrmAccess, body: Record<string, unk
   const leadId = textOrNull(body.leadId, 60);
   let contactUserId = textOrNull(body.contactUserId, 60);
   let ownerId = textOrNull(body.ownerId, 60);
+  const { terminal } = await listPipelineStageStatusSets();
   let lead: { id: string; customerId: string; ownerId: string | null; dealerId: string; status: string } | null = null;
   if (leadId) {
     lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true, customerId: true, ownerId: true, dealerId: true, status: true } });
     if (!lead || !canTouchLead(access, lead)) throw notFound('Lead not found.');
-    if (isClosedStatus(lead.status)) throw badRequest('Reopen the lead before scheduling a follow-up.');
+    if (terminal.includes(lead.status) || isClosedStatus(lead.status)) throw badRequest('Reopen the lead before scheduling a follow-up.');
     contactUserId = lead.customerId;
   } else if (contactUserId) {
     if (access.isPartner) throw forbidden('Partners schedule follow-ups on their leads.');
@@ -136,6 +139,91 @@ export const createFollowUp = async (access: CrmAccess, body: Record<string, unk
   return row;
 };
 
+/** Updates an open follow-up without changing its lead/contact relationship. */
+export const updateFollowUp = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {
+  if (!access.canManage) throw forbidden();
+  const followUp = await requireFollowUp(access, id);
+  if (followUp.status !== 'PENDING' && followUp.status !== 'MISSED') throw badRequest('Only open follow-ups can be edited.');
+
+  const dueAt = body.dueAt === undefined ? followUp.dueAt : dateOrNull(body.dueAt, 'follow-up date');
+  if (!dueAt) throw badRequest('Choose when to follow up.');
+  // The UI edits a datetime-local value at minute precision. Comparing at the same
+  // precision prevents a title/note-only edit from becoming an accidental reschedule
+  // when the stored row contains seconds or milliseconds.
+  const dueAtChanged = Math.floor(dueAt.getTime() / 60000) !== Math.floor(followUp.dueAt.getTime() / 60000);
+  if (dueAtChanged && dueAt.getTime() < Date.now() - 5 * 60 * 1000) throw badRequest('Pick a time in the future.');
+
+  const normalized = normalizeFollowUpEdit({ ...body, type: body.type ?? followUp.type });
+  const type = 'type' in body ? normalized.type : followUp.type;
+  const title = 'title' in body ? normalized.title : followUp.title;
+  const notes = 'notes' in body ? normalized.notes : followUp.notes;
+  let ownerId = followUp.ownerId;
+
+  if ('ownerId' in body) {
+    if (access.isPartner) ownerId = access.userId;
+    else {
+      ownerId = normalized.ownerId;
+      if (ownerId && ownerId !== access.userId) {
+        if (!access.canAssign) throw forbidden('Only managers can assign follow-ups to others.');
+        await assertAssignableStaff(prisma, ownerId);
+      }
+    }
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.crmFollowUp.update({
+      where: { id },
+      data: {
+        type,
+        dueAt,
+        title,
+        notes,
+        ownerId,
+        ...(dueAtChanged
+          ? {
+              previousDueAt: followUp.dueAt,
+              rescheduleCount: { increment: 1 },
+              lastRescheduleReason: 'Follow-up details edited',
+              remindedAt: null,
+              customerRemindedAt: null,
+              missedAt: null,
+              escalatedAt: null,
+              status: 'PENDING',
+            }
+          : {}),
+      },
+      include: followUpInclude,
+    });
+
+    const metadata = { followUpId: id, dueAt: dueAt.toISOString(), type, ownerId };
+    if (followUp.leadId) {
+      await syncNextFollowUp(tx, followUp.leadId);
+      await logLeadActivity(tx, {
+        leadId: followUp.leadId,
+        actorId: access.userId,
+        type: 'FOLLOW_UP',
+        title: 'Follow-up details updated',
+        content: notes,
+        metadata,
+      });
+    } else {
+      await tx.crmContactActivity.create({
+        data: {
+          contactUserId: followUp.contactUserId,
+          actorId: access.userId,
+          type: 'FOLLOW_UP',
+          title: 'Follow-up details updated',
+          content: notes,
+          metadata,
+        },
+      });
+    }
+    return result;
+  });
+
+  return updated;
+};
+
 /**
  * Closes a follow-up with an outcome. For an open lead the next step must be scheduled here,
  * or the lead closed (status WON/LOST) in the same call.
@@ -152,10 +240,11 @@ export const completeFollowUp = async (access: CrmAccess, id: string, body: Reco
   const nextDue = nextInput ? dateOrNull(nextInput.dueAt, 'next follow-up date') : null;
   if (nextDue && nextDue.getTime() < Date.now() - 5 * 60 * 1000) throw badRequest('The next follow-up must be in the future.');
   const leadStatus = textOrNull(body.leadStatus, 40)?.toUpperCase() ?? null;
-  const closingLead = Boolean(leadStatus && isClosedStatus(leadStatus));
+  const { terminal } = await listPipelineStageStatusSets();
+  const closingLead = Boolean(leadStatus && (terminal.includes(leadStatus) || isClosedStatus(leadStatus)));
   const lead = followUp.lead;
 
-  if (lead && !closingLead && !nextDue && needsNextFollowUp(leadStatus ?? lead.status, config.requireNextFollowUp)) {
+  if (lead && !closingLead && !nextDue && needsNextFollowUp(leadStatus ?? lead.status, config.requireNextFollowUp, terminal)) {
     const otherPending = await prisma.crmFollowUp.count({ where: { leadId: lead.id, status: 'PENDING', id: { not: id } } });
     if (!otherPending) throw badRequest('Schedule the next follow-up (or close the lead).', { code: NEXT_FOLLOW_UP_REQUIRED });
   }
@@ -259,10 +348,11 @@ export const cancelFollowUp = async (access: CrmAccess, id: string, body: Record
   if (followUp.status !== 'PENDING' && followUp.status !== 'MISSED') throw badRequest('This follow-up is already closed.');
   const reason = textOrNull(body.reason, 300);
   if (!reason) throw badRequest('Say why it is being cancelled.');
-  if (followUp.lead && !isClosedStatus(followUp.lead.status)) {
+  const { terminal } = await listPipelineStageStatusSets();
+  if (followUp.lead && !terminal.includes(followUp.lead.status) && !isClosedStatus(followUp.lead.status)) {
     const config = await getCrmConfig();
     const others = await prisma.crmFollowUp.count({ where: { leadId: followUp.lead.id, status: 'PENDING', id: { not: id } } });
-    if (!others && needsNextFollowUp(followUp.lead.status, config.requireNextFollowUp)) {
+    if (!others && needsNextFollowUp(followUp.lead.status, config.requireNextFollowUp, terminal)) {
       throw badRequest('This is the lead\'s only next step. Reschedule it, or close the lead instead.', { code: NEXT_FOLLOW_UP_REQUIRED });
     }
   }

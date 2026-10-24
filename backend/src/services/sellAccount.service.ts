@@ -28,6 +28,7 @@ import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linked
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
 import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
+import { linkSoldVehicleToWonLeads } from '../modules/crm/services/soldVehicleLink';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -480,6 +481,7 @@ export const createSellAccount = async (body: unknown, actorId?: string) => {
     if (!payload.isDraft) {
       await tx.sellAccountStatusHistory.create({ data: { sellAccountId: created.id, newStatus: SellAccountDealStatus.OPEN, changedById: actorId || null, reason: 'Sold Vehicle created.' } });
     }
+    await linkSoldVehicleToWonLeads(tx, created, (body as any)?.crmLeadId, actorId);
     return withPayments || created;
   });
   const synced = await syncStatus(prisma, record, actorId);
@@ -621,6 +623,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
         data: { ...payload, recordNumber, createdById: actorId || null, updatedById: actorId || null },
         include,
       });
+      await linkSoldVehicleToWonLeads(tx, record, (requestBody as any).crmLeadId, actorId);
     }
 
     if (Array.isArray((requestBody as any).payments)) {

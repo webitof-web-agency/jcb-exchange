@@ -2,12 +2,11 @@
 
 @theme {
   --color-jcb-yellow: #FFC107;
-  --color-jcb-dark: #1A1A1A;
+  --color-jcb-dark: #00000d;
   --color-jcb-cream: #FDFBF7;
   --color-background: #ffffff;
   --color-foreground: #171717;
   --font-sans: "Inter", var(--font-geist-sans);
-  --breakpoint-lg: 1000px;
 }
 
 :root {

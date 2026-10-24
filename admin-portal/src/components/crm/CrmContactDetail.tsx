@@ -6,13 +6,15 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import { ArrowLeft, CalendarPlus, Crown, Edit3, Eye, MessageCircle, MousePointerClick, Phone, Plus, Search, StickyNote } from 'lucide-react';
 import api from '@/lib/api';
-import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { LogActivityModal, ScheduleFollowUpModal } from './CrmModals';
+import { Badge, Button, EmptyState, Field, inputClass, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
+import { EditFollowUpModal, LogActivityModal, ScheduleFollowUpModal } from './CrmModals';
 import { FollowUpRow } from './FollowUpRow';
 import LeadForm from './LeadForm';
 import {
   CONTACT_TYPES,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   crmError,
   CrmMetaProvider,
   fmtDate,
@@ -23,7 +25,6 @@ import {
   LEAD_TYPE_LABELS,
   leadHref,
   phoneLinks,
-  selectClass,
   StatusBadge,
   TemperatureBadge,
   useCrmBase,
@@ -32,6 +33,8 @@ import {
   type ContactLite,
   type FollowUp,
 } from './crmShared';
+import { LocationFields } from './LeadForm';
+import { sanitizePhoneInput, validateContactPhones } from './contactFormState';
 
 type Profile = {
   companyName: string | null; alternatePhone: string | null; address: string | null; pinCode: string | null; gstNumber: string | null; source: string | null;
@@ -40,7 +43,8 @@ type Profile = {
 };
 type Contact360 = {
   contact: ContactLite & { createdAt: string; crmProfile: Profile | null };
-  leads: Array<{ id: string; status: string; leadType: string; source: string; temperature: string; score: number; createdAt: string; nextFollowUpAt: string | null; listingTitleSnapshot: string | null; expectedValue: number | null; wonAmount: number | null; mergedIntoId: string | null; owner: { name: string | null } | null }>;
+  pipelineStage: { code: string; name: string; color: string; isTerminal: boolean } | null;
+  leads: Array<{ id: string; status: string; leadType: string; source: string; temperature: string; score: number; createdAt: string; nextFollowUpAt: string | null; listingTitleSnapshot: string | null; expectedValue: number | null; wonAmount: number | null; mergedIntoId: string | null; pipelineStage: { code: string; name: string; color: string; isTerminal: boolean } | null; owner: { name: string | null } | null }>;
   followUps: FollowUp[];
   activities: Array<{ id: string; type: string; title: string; content: string | null; createdAt: string }>;
   prime: { active: boolean; history: Array<{ id: string; status: string; startedAt: string | null; expiresAt: string | null; paidAmount: number | null }> } | null;
@@ -58,7 +62,8 @@ function View({ contactId }: { contactId: string }) {
   const [now] = useState(() => Date.now());
   const data = useCrmResource(() => getJson<Contact360>(`/crm/contacts/${contactId}`), `crm-contact-${contactId}`);
   const [modal, setModal] = useState<null | 'edit' | 'lead' | 'followup' | 'log'>(null);
-  if (data.loading && !data.data) return <LoadingState label="Loading contact…" />;
+  const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
+  if (data.loading && !data.data) return <CrmLoadingState label="Loading contact…" />;
   if (data.error || !data.data) return <CrmErrorBanner message={data.error || 'Contact not found.'} schemaMissing={data.schemaMissing} />;
   const c = data.data;
   const profile = c.contact.crmProfile;
@@ -76,7 +81,8 @@ function View({ contactId }: { contactId: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{c.contact.name || 'Unnamed contact'}</h1>
               {c.prime?.active ? <Badge tone="amber"><Crown className="mr-1 h-3 w-3" />Prime</Badge> : null}
-              <Badge tone={profile?.lifecycle === 'CUSTOMER' ? 'green' : 'slate'}>{label(profile?.lifecycle || 'LEAD')}</Badge>
+              <Badge tone={profile?.lifecycle === 'CUSTOMER' ? 'green' : 'slate'}>Lifecycle: {label(profile?.lifecycle || 'LEAD')}</Badge>
+              {c.pipelineStage ? <Badge tone={c.pipelineStage.isTerminal ? 'green' : 'blue'}>{c.pipelineStage.name}</Badge> : null}
               {profile?.doNotContact ? <Badge tone="red">Do not contact</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-slate-600">{c.contact.mobile}{profile?.alternatePhone ? ` / ${profile.alternatePhone}` : ''}{c.contact.email ? ` · ${c.contact.email}` : ''}</p>
@@ -113,7 +119,7 @@ function View({ contactId }: { contactId: string }) {
                         <p className="truncate text-sm font-semibold text-slate-900">{LEAD_TYPE_LABELS[l.leadType] || l.leadType}{l.listingTitleSnapshot ? ` · ${l.listingTitleSnapshot}` : ''}</p>
                         <p className="text-xs text-slate-500">{label(l.source)} · {fmtDate(l.createdAt)} · {l.owner?.name || 'Unassigned'}{l.nextFollowUpAt ? ` · next ${fmtDateTime(l.nextFollowUpAt)}` : ''}{l.mergedIntoId ? ' · merged' : ''}</p>
                       </div>
-                      <div className="flex shrink-0 gap-1.5"><TemperatureBadge temperature={l.temperature} score={l.score} /><StatusBadge status={l.status} /></div>
+                      <div className="flex shrink-0 gap-1.5"><TemperatureBadge temperature={l.temperature} score={l.score} /><StatusBadge status={l.status} name={l.pipelineStage?.name} /></div>
                     </Link>
                   </li>
                 ))}
@@ -121,7 +127,7 @@ function View({ contactId }: { contactId: string }) {
             ) : <EmptyState title="No leads yet" />}
           </Panel>
           <Panel title="Follow-ups">
-            {c.followUps.length ? <div className="divide-y divide-slate-100">{c.followUps.map((f) => <FollowUpRow key={f.id} followUp={{ ...f, contact: c.contact }} now={now} showOwner />)}</div> : <EmptyState title="No follow-ups" />}
+            {c.followUps.length ? <div className="divide-y divide-slate-100">{c.followUps.map((f) => <FollowUpRow key={f.id} followUp={{ ...f, contact: c.contact }} now={now} showOwner onEdit={canManage ? () => setEditingFollowUp(f) : undefined} />)}</div> : <EmptyState title="No follow-ups" />}
           </Panel>
           {c.activities.length ? (
             <Panel title="Contact notes & activity">
@@ -180,25 +186,35 @@ function View({ contactId }: { contactId: string }) {
         </div>
       </div>
 
-      {modal === 'edit' ? <EditProfile contact={c.contact} onClose={() => setModal(null)} onDone={done} /> : null}
+      {modal === 'edit' ? <EditProfile contact={c.contact} pipelineStage={c.pipelineStage} onClose={() => setModal(null)} onDone={done} /> : null}
       {modal === 'lead' ? <LeadForm presetContact={c.contact} onClose={() => setModal(null)} onCreated={(id) => router.push(leadHref(base, id))} /> : null}
       {modal === 'followup' ? <ScheduleFollowUpModal contactUserId={c.contact.id} onClose={() => setModal(null)} onDone={done} /> : null}
       {modal === 'log' ? <LogActivityModal endpoint={`/crm/contacts/${c.contact.id}/activities`} initialType="NOTE" onClose={() => setModal(null)} onDone={done} /> : null}
+      {editingFollowUp ? <EditFollowUpModal followUp={{ ...editingFollowUp, contact: c.contact }} onClose={() => setEditingFollowUp(null)} onDone={() => { setEditingFollowUp(null); data.reload(); }} /> : null}
     </div>
   );
 }
 
-function EditProfile({ contact, onClose, onDone }: { contact: Contact360['contact']; onClose: () => void; onDone: () => void }) {
+function EditProfile({ contact, pipelineStage, onClose, onDone }: { contact: Contact360['contact']; pipelineStage: Contact360['pipelineStage']; onClose: () => void; onDone: () => void }) {
   const { meta } = useCrmMeta();
   const p = contact.crmProfile;
   const [form, setForm] = useState({
-    name: contact.name || '', city: contact.city || '', state: contact.state || '', whatsappNumber: contact.whatsappNumber || '',
+    name: contact.name || '', email: contact.email || '', city: contact.city || '', state: contact.state || '', whatsappNumber: contact.whatsappNumber || '',
     companyName: p?.companyName || '', alternatePhone: p?.alternatePhone || '', address: p?.address || '', pinCode: p?.pinCode || '', gstNumber: p?.gstNumber || '',
     lifecycle: p?.lifecycle || 'LEAD', contactTypes: p?.contactTypes || [], tags: p?.tags || [], notes: p?.notes || '', doNotContact: Boolean(p?.doNotContact),
     preferredLanguage: p?.preferredLanguage || '', ownerId: p?.ownerId || p?.owner?.id || '',
   });
   const [busy, setBusy] = useState(false);
   const save = async () => {
+    const phoneError = validateContactPhones({
+      mobile: sanitizePhoneInput(contact.mobile || ''),
+      whatsappNumber: sanitizePhoneInput(form.whatsappNumber),
+      alternatePhone: sanitizePhoneInput(form.alternatePhone),
+    });
+    if (phoneError) {
+      toast.error(phoneError);
+      return;
+    }
     setBusy(true);
     try {
       const { ownerId, ...rest } = form;
@@ -216,24 +232,26 @@ function EditProfile({ contact, onClose, onDone }: { contact: Contact360['contac
   return (
     <Modal title="Edit contact" onClose={onClose} wide>
       <div className="grid gap-3 p-5 sm:p-7 md:grid-cols-3">
-        <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} /></Field>
-        <Field label="Company"><input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className={inputClass} /></Field>
-        <Field label="Stage"><select value={form.lifecycle} onChange={(e) => setForm({ ...form, lifecycle: e.target.value })} className={selectClass}>{(meta?.enums.lifecycles || []).map((l) => <option key={l} value={l}>{label(l)}</option>)}</select></Field>
-        <Field label="WhatsApp"><input value={form.whatsappNumber} onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })} className={inputClass} /></Field>
-        <Field label="Alternate phone"><input value={form.alternatePhone} onChange={(e) => setForm({ ...form, alternatePhone: e.target.value })} className={inputClass} /></Field>
+        <Field label="Mobile Number"><input value={contact.mobile || ''} readOnly className={`${inputClass} bg-slate-50 text-slate-500`} /></Field>
+        <Field label="Full Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} /></Field>
+        <Field label="Company / Entity Name"><input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className={inputClass} /></Field>
+        <Field label="Email Address"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} /></Field>
+        <Field label="Contact lifecycle"><CrmSelect options={(meta?.enums.lifecycles || []).map((l) => ({ id: l, name: label(l) }))} value={form.lifecycle} onChange={(next) => setForm({ ...form, lifecycle: next })} className="w-full" /></Field>
+        {pipelineStage ? <Field label="Pipeline stage"><div className="flex h-9 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">{pipelineStage.name}</div></Field> : null}
+        <Field label="WhatsApp Number"><input value={form.whatsappNumber} onChange={(e) => setForm({ ...form, whatsappNumber: sanitizePhoneInput(e.target.value) })} className={inputClass} inputMode="tel" maxLength={10} pattern="[6-9][0-9]{9}" autoComplete="tel-national" /></Field>
+        <Field label="Alternate Phone"><input value={form.alternatePhone} onChange={(e) => setForm({ ...form, alternatePhone: sanitizePhoneInput(e.target.value) })} className={inputClass} inputMode="tel" maxLength={10} pattern="[6-9][0-9]{9}" autoComplete="tel-national" /></Field>
         <Field label="GSTIN"><input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} className={inputClass} /></Field>
-        <Field label="City"><input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className={inputClass} /></Field>
-        <Field label="State"><input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} className={inputClass} /></Field>
+        <div className="md:col-span-2"><LocationFields state={form.state} city={form.city} onStateChange={(next) => setForm((current) => ({ ...current, state: next, city: '' }))} onCityChange={(next) => setForm((current) => ({ ...current, city: next }))} /></div>
         <Field label="PIN code"><input value={form.pinCode} onChange={(e) => setForm({ ...form, pinCode: e.target.value })} className={inputClass} /></Field>
         <div className="md:col-span-3"><Field label="Address"><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={inputClass} /></Field></div>
-        <div className="md:col-span-3"><Field label="Contact type"><div className="flex flex-wrap gap-1.5">{CONTACT_TYPES.map((t) => <button key={t} type="button" onClick={() => toggle('contactTypes', t)} className={chip(form.contactTypes.includes(t))}>{label(t)}</button>)}</div></Field></div>
+        <div className="md:col-span-3"><Field label="Contact Classification"><div className="flex flex-wrap gap-1.5">{CONTACT_TYPES.map((t) => <button key={t} type="button" onClick={() => toggle('contactTypes', t)} className={chip(form.contactTypes.includes(t))}>{label(t)}</button>)}</div></Field></div>
         <div className="md:col-span-3"><Field label="Tags"><div className="flex flex-wrap gap-1.5">{[...new Set([...(meta?.config.tags || []), ...form.tags])].map((t) => <button key={t} type="button" onClick={() => toggle('tags', t)} className={chip(form.tags.includes(t))}>{t}</button>)}</div></Field></div>
         {meta?.access.canAssign ? (
-          <Field label="Account owner"><select value={form.ownerId} onChange={(e) => setForm({ ...form, ownerId: e.target.value })} className={selectClass}><option value="">None</option>{meta.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+          <Field label="Account owner"><CrmSelect options={[{ id: '', name: 'None' }, ...meta.staff.map((s) => ({ id: s.id, name: s.name }))]} value={form.ownerId} onChange={(next) => setForm({ ...form, ownerId: next })} searchable className="w-full" /></Field>
         ) : null}
         <Field label="Preferred language"><input value={form.preferredLanguage} onChange={(e) => setForm({ ...form, preferredLanguage: e.target.value })} className={inputClass} placeholder="Hindi / English…" /></Field>
         <div className="flex items-end pb-2"><Toggle checked={form.doNotContact} onChange={(v) => setForm({ ...form, doNotContact: v })} label="Do not contact (no automated messages)" /></div>
-        <div className="md:col-span-3"><Field label="Notes"><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputClass} /></Field></div>
+        <div className="md:col-span-3"><Field label="Notes"><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputClass} placeholder="Fleet size, machinery interests, financial requirements..." /></Field></div>
         <div className="md:col-span-3">
           <ModalFooter>
             <Button onClick={onClose}>Cancel</Button>

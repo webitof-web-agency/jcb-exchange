@@ -3,9 +3,11 @@ import prisma from '../../../lib/prisma';
 import { LEDGER_STATUSES } from '../../finance-hub/services/ledgerRules';
 import { PAYABLE_KEYS, RECEIVABLE_KEYS } from '../../finance-hub/services/receivablesRules';
 import { leadScopeWhere, type CrmAccess } from '../access';
-import { badRequest, forbidden, notFound } from '../http';
+import { badRequest, conflict, forbidden, notFound } from '../http';
 import { LIFECYCLES, mobileVariants, normalizeMobile, oneOf } from '../rules';
 import { contactSelect, pageArgs, stringList, textOrNull, toNumber, type Db } from './common';
+import { selectContactPipelineStage } from '../contactStage';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 export type ContactInput = {
   name?: unknown;
@@ -17,6 +19,13 @@ export type ContactInput = {
   source?: unknown;
 };
 
+const optionalContactPhone = (value: unknown, label: string) => {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const mobile = normalizeMobile(value);
+  if (!mobile) throw badRequest(`Enter a valid 10-digit Indian ${label}.`);
+  return mobile;
+};
+
 /** Finds a user by any stored phone format, or creates a CUSTOMER user. Never changes an existing role. */
 export const findOrCreateContact = async (db: Db, input: ContactInput, actorId: string | null) => {
   const mobile = normalizeMobile(input.mobile);
@@ -25,7 +34,7 @@ export const findOrCreateContact = async (db: Db, input: ContactInput, actorId: 
   const city = textOrNull(input.city, 80);
   const state = textOrNull(input.state, 80);
   const email = textOrNull(input.email, 160)?.toLowerCase() ?? null;
-  const whatsapp = normalizeMobile(input.whatsappNumber);
+  const whatsapp = optionalContactPhone(input.whatsappNumber, 'WhatsApp number');
 
   const existing = await db.user.findFirst({ where: { mobile: { in: mobileVariants(mobile) } }, select: { ...contactSelect, crmProfile: { select: { id: true } } } });
   let user;
@@ -87,6 +96,7 @@ export const assertContactAccess = async (access: CrmAccess, userId: string) => 
 
 export const listContacts = async (access: CrmAccess, query: Record<string, string>) => {
   const { page, pageSize, skip, take } = pageArgs(query.page, query.pageSize);
+  const { terminal } = await listPipelineStageStatusSets();
   const and: Prisma.UserWhereInput[] = [contactUniverse, contactScopeWhere(access)];
   const q = query.q?.trim();
   if (q) {
@@ -103,13 +113,17 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
   }
   const lifecycle = oneOf(LIFECYCLES, query.lifecycle);
   if (lifecycle) and.push({ crmProfile: { lifecycle } });
+  const pipelineStage = query.pipelineStage?.trim().toUpperCase();
+  if (pipelineStage) {
+    and.push({ leads: { some: { AND: [{ mergedIntoId: null }, { status: pipelineStage }, leadScopeWhere(access)] } } });
+  }
   if (query.contactType) and.push({ crmProfile: { contactTypes: { has: query.contactType } } });
   if (query.tag) and.push({ crmProfile: { tags: { has: query.tag } } });
   if (query.ownerId === 'me') and.push({ crmProfile: { ownerId: access.userId } });
   else if (query.ownerId === 'none') and.push({ OR: [{ crmProfile: null }, { crmProfile: { ownerId: null } }] });
   else if (query.ownerId) and.push({ crmProfile: { ownerId: query.ownerId } });
   if (query.state) and.push({ state: { equals: query.state, mode: 'insensitive' } });
-  if (query.openLeads === 'yes') and.push({ leads: { some: { status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null } } });
+  if (query.openLeads === 'yes') and.push({ leads: { some: { status: { notIn: [...terminal] }, mergedIntoId: null } } });
 
   const where: Prisma.UserWhereInput = { AND: and };
   const [total, users] = await Promise.all([
@@ -123,7 +137,7 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
         ...contactSelect,
         createdAt: true,
         crmProfile: { select: { companyName: true, lifecycle: true, contactTypes: true, tags: true, doNotContact: true, owner: { select: { id: true, name: true } } } },
-        leads: { where: { mergedIntoId: null }, select: { id: true, status: true, createdAt: true, nextFollowUpAt: true }, orderBy: { createdAt: 'desc' }, take: 20 },
+        leads: { where: { mergedIntoId: null }, select: { id: true, status: true, createdAt: true, nextFollowUpAt: true, pipelineStage: { select: { code: true, name: true, color: true, isTerminal: true } } }, orderBy: { createdAt: 'desc' }, take: 20 },
         customerPrimeSubscriptions: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 },
       },
     }),
@@ -136,9 +150,10 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
       ...user,
       isPrime: customerPrimeSubscriptions.length > 0,
       leadCount: leads.length,
-      openLeadCount: leads.filter((lead) => !['WON', 'LOST'].includes(lead.status)).length,
+      openLeadCount: leads.filter((lead) => !terminal.includes(lead.status)).length,
       lastLeadAt: leads[0]?.createdAt ?? null,
       nextFollowUpAt: leads.map((lead) => lead.nextFollowUpAt).filter((date): date is Date => Boolean(date)).sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
+      pipelineStage: selectContactPipelineStage(leads, terminal),
     })),
   };
 };
@@ -149,8 +164,9 @@ export const lookupByMobile = async (access: CrmAccess, mobileValue: string) => 
   if (!mobile) return { mobile: null, contact: null, openLeads: [] };
   const user = await prisma.user.findFirst({ where: { mobile: { in: mobileVariants(mobile) } }, select: { ...contactSelect } });
   if (!user) return { mobile, contact: null, openLeads: [] };
+  const { terminal } = await listPipelineStageStatusSets();
   const openLeads = await prisma.lead.findMany({
-    where: { AND: [{ customerId: user.id, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null }, leadScopeWhere(access)] },
+    where: { AND: [{ customerId: user.id, status: { notIn: [...terminal] }, mergedIntoId: null }, leadScopeWhere(access)] },
     select: { id: true, status: true, leadType: true, createdAt: true, listingTitleSnapshot: true, owner: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
     take: 10,
@@ -173,7 +189,7 @@ export const createContact = async (access: CrmAccess, body: Record<string, unkn
 const applyProfilePatch = async (db: Db, access: CrmAccess, userId: string, body: Record<string, unknown>) => {
   const data: Prisma.CrmContactProfileUncheckedUpdateInput = {};
   if ('companyName' in body) data.companyName = textOrNull(body.companyName, 160);
-  if ('alternatePhone' in body) data.alternatePhone = normalizeMobile(body.alternatePhone);
+  if ('alternatePhone' in body) data.alternatePhone = optionalContactPhone(body.alternatePhone, 'alternate phone number');
   if ('address' in body) data.address = textOrNull(body.address, 500);
   if ('pinCode' in body) data.pinCode = textOrNull(body.pinCode, 6);
   if ('gstNumber' in body) data.gstNumber = textOrNull(body.gstNumber, 15)?.toUpperCase() ?? null;
@@ -207,9 +223,17 @@ export const updateContact = async (access: CrmAccess, userId: string, body: Rec
   return prisma.$transaction(async (tx) => {
     const userData: Prisma.UserUpdateInput = {};
     if ('name' in body && textOrNull(body.name, 120)) userData.name = textOrNull(body.name, 120);
+    if ('email' in body) {
+      const email = textOrNull(body.email, 160)?.toLowerCase() ?? null;
+      if (email) {
+        const existing = await tx.user.findFirst({ where: { email, id: { not: userId } }, select: { id: true } });
+        if (existing) throw conflict('That email address is already in use.');
+      }
+      userData.email = email;
+    }
     if ('city' in body) userData.city = textOrNull(body.city, 80);
     if ('state' in body) userData.state = textOrNull(body.state, 80);
-    if ('whatsappNumber' in body) userData.whatsappNumber = normalizeMobile(body.whatsappNumber);
+    if ('whatsappNumber' in body) userData.whatsappNumber = optionalContactPhone(body.whatsappNumber, 'WhatsApp number');
     if (Object.keys(userData).length) await tx.user.update({ where: { id: userId }, data: userData });
     await applyProfilePatch(tx, access, userId, body);
     await tx.crmContactActivity.create({
@@ -277,6 +301,7 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
         id: true, status: true, leadType: true, source: true, priority: true, temperature: true, score: true, createdAt: true, closedAt: true,
         nextFollowUpAt: true, listingTitleSnapshot: true, expectedValue: true, wonAmount: true, mergedIntoId: true,
         owner: { select: { id: true, name: true } }, dealer: { select: { id: true, name: true, role: true } },
+        pipelineStage: { select: { code: true, name: true, color: true, isTerminal: true } },
       },
     }),
     prisma.crmFollowUp.findMany({
@@ -288,9 +313,14 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
     access.isPartner ? Promise.resolve([]) : prisma.crmContactActivity.findMany({ where: { contactUserId: userId }, orderBy: { createdAt: 'desc' }, take: 50 }),
   ]);
 
+  const pipelineStage = selectContactPipelineStage(
+    leads,
+    leads.filter((lead) => lead.pipelineStage?.isTerminal).map((lead) => lead.status),
+  );
+
   // Partners see their own leads and follow-ups only, not the platform's history with the customer.
   if (access.isPartner) {
-    return { contact: { ...user, crmProfile: null }, leads, followUps, activities: [], prime: null, payments: [], deals: [], rto: [], interest: null, finance: null };
+    return { contact: { ...user, crmProfile: null }, leads, pipelineStage, followUps, activities: [], prime: null, payments: [], deals: [], rto: [], interest: null, finance: null };
   }
 
   const mobile = normalizeMobile(user.mobile);
@@ -329,6 +359,7 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
   return {
     contact: user,
     leads,
+    pipelineStage,
     followUps,
     activities,
     prime: { active: prime.some((p) => p.status === 'ACTIVE'), history: prime.map((p) => ({ ...p, paidAmount: toNumber(p.paidAmount) })) },

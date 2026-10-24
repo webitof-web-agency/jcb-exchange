@@ -17,7 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
-import { CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
+import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -860,11 +860,12 @@ export default function AdminLayout({
     if (!crmItem) return null;
     const base = crmItem.href;
     // Mirrors backend/src/modules/crm/access.ts (enquiries.manage = every lead).
-    const crmCan = (keys: string[]) => !isEmployee || hasAnyPermission(userPermissions, keys);
+    const crmCan = (keys: string[]) => user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || hasAnyPermission(userPermissions, keys);
+    const crmRead = crmCan(CRM_READ_PERMISSIONS);
     const children = [
       { href: base, label: 'Dashboard', icon: LayoutDashboard, visible: true, exact: true, badge: 0 },
-      { href: `${base}/leads`, label: 'Leads', icon: ListChecks, visible: true, exact: false, badge: getNavBadgeCount(base) },
-      { href: `${base}/pipeline`, label: 'Pipeline', icon: Columns3, visible: true, exact: false, badge: 0 },
+      { href: `${base}/leads`, label: 'Leads', icon: ListChecks, visible: crmRead, exact: false, badge: getNavBadgeCount(base) },
+      { href: `${base}/pipeline`, label: 'Pipeline', icon: Columns3, visible: crmRead, exact: false, badge: 0 },
       { href: `${base}/follow-ups`, label: 'Follow-ups', icon: CalendarClock, visible: true, exact: false, badge: crmDueCount },
       { href: `${base}/contacts`, label: 'Contacts', icon: Contact, visible: true, exact: false, badge: 0 },
       { href: `${base}/reports`, label: 'Reports', icon: BarChart3, visible: crmCan(['crm.reports', 'crm.manage_all', 'enquiries.manage']), exact: false, badge: 0 },

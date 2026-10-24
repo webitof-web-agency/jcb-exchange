@@ -12,7 +12,7 @@ import {
   recruitmentAnyPermissions,
 } from './recruitmentPermissions';
 import { blogAnyPermissions } from './blogPermissions';
-import { CRM_VIEW_PERMISSIONS } from './adminPermissionCatalog';
+import { CRM_READ_PERMISSIONS } from './adminPermissionCatalog';
 import {
   IDENTITY_HUB_VIEW_PERMISSIONS,
   VEHICLE_TRANSPORT_VIEW_PERMISSIONS,
@@ -39,7 +39,7 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
   {
     superadminPath: '/admin/crm',
     employeePath: '/employee/crm',
-    permissions: CRM_VIEW_PERMISSIONS,
+    permissions: CRM_READ_PERMISSIONS,
   },
   {
     // Old enquiry links; the page redirects into the CRM.

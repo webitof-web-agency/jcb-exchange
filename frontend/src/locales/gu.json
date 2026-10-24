@@ -17,6 +17,7 @@
                },
     "navbar":  {
                    "home":  "હોમ",
+                   "buyVehicle": "મશીન ખરીદો",
                    "machines":  "મશીનો",
                    "sellVehicle":  "મશીન વેચો",
                    "careers":  "કરિયર"

@@ -13,6 +13,7 @@ export type CrmAccess = {
   permissions: string[];
   canRead: boolean;
   canManage: boolean;
+  canPipelineManage: boolean;
   /** Sees every lead, not only the ones they own. */
   canSeeAll: boolean;
   canAssign: boolean;
@@ -32,14 +33,16 @@ export const buildCrmAccess = (userId: string, role: string, permissions: string
   const legacyAll = has(granted, LEGACY_ENQUIRIES_PERMISSION);
   const canSeeAll = isFullAdmin || legacyAll || has(granted, P.manageAll);
   const canManage = isPartner || canSeeAll || has(granted, P.manage);
+  const canPipelineManage = !isPartner && (isFullAdmin || has(granted, P.pipelineManage));
   return {
     userId,
     role,
     isPartner,
     isFullAdmin,
     permissions: granted,
-    canRead: isPartner || canManage || has(granted, P.read) || has(granted, P.assign) || has(granted, P.reports),
+    canRead: isPartner || canManage || has(granted, P.read) || has(granted, P.assign),
     canManage,
+    canPipelineManage,
     canSeeAll: !isPartner && canSeeAll,
     canAssign: !isPartner && (canSeeAll || has(granted, P.assign)),
     canReports: !isPartner && (canSeeAll || has(granted, P.reports)),
@@ -84,7 +87,7 @@ export const crmAccessOf = (req: Request): CrmAccess => {
   return req.crmAccess;
 };
 
-type Capability = 'canManage' | 'canAssign' | 'canReports' | 'canExport' | 'canImport' | 'canCampaigns' | 'canSettings';
+type Capability = 'canRead' | 'canManage' | 'canPipelineManage' | 'canAssign' | 'canReports' | 'canExport' | 'canImport' | 'canCampaigns' | 'canSettings';
 
 export const requireCrmCapability = (capability: Capability) => (req: Request, res: Response, next: NextFunction) => {
   if (!req.crmAccess?.[capability]) return res.status(403).json({ error: 'You do not have permission for this CRM action.' });

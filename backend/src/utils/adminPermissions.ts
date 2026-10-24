@@ -71,6 +71,7 @@ export const allowedAdminPermissions = new Set([
   'crm.read',
   'crm.manage',
   'crm.manage_all',
+  'crm.pipeline.manage',
   'crm.assign',
   'crm.reports',
   'crm.export',

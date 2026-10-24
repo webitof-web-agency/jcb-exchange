@@ -8,7 +8,6 @@ import {
   FOLLOW_UP_TYPES,
   istDayStart,
   isClosedStatus,
-  LEAD_STATUSES,
   LEAD_TYPES,
   needsNextFollowUp,
   oneOf,
@@ -38,9 +37,26 @@ import { findMatchingListings } from './matching.service';
 import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
 import { rescoreLead } from './scoring.service';
 import { getCrmConfig, type CrmConfig } from './settings.service';
+import { getPipelineStage, listPipelineStages } from './pipelineStages.service';
 import { getListingFinalPrice, listingPricingSelect } from '../../../utils/listingPricing';
+import { boardShowsClosedStages, normalizeBoardQuery } from '../boardQuery';
 
 export const NEXT_FOLLOW_UP_REQUIRED = 'NEXT_FOLLOW_UP_REQUIRED';
+
+/** ENQUIRED: the lead's machine was sold. ALTERNATE: another listed machine. OFF_INVENTORY: a machine not listed with us. */
+const SOLD_VEHICLE_MODES = ['ENQUIRED', 'ALTERNATE', 'OFF_INVENTORY'] as const;
+/** Listings a deal can be closed on (besides re-saving the same WON deal). */
+const SELLABLE_LISTING_STATUSES: readonly string[] = ['PUBLISHED', 'RESERVED', 'PAUSED'];
+
+const soldListingSelect = {
+  id: true, title: true, status: true, soldAt: true, price: true, ownerName: true, partnerId: true, locationCity: true, locationState: true,
+  brand: { select: { name: true } },
+  model: { select: { name: true } },
+  category: { select: { name: true } },
+} satisfies Prisma.ListingSelect;
+
+/** Tag put on other open leads when the machine they enquired about is sold. */
+export const MACHINE_SOLD_TAG = 'Machine Sold';
 
 const listSelect = {
   id: true, status: true, leadType: true, source: true, priority: true, temperature: true, score: true, enquiryType: true,
@@ -71,13 +87,19 @@ export const serializeLead = <T extends MoneyFields>(lead: T) => ({
 });
 
 /** Filters shared by list, board and export. */
-export const leadFilterWhere = (access: CrmAccess, query: Record<string, string>): Prisma.LeadWhereInput => {
+export const leadFilterWhere = (
+  access: CrmAccess,
+  query: Record<string, string>,
+  terminalStatuses: readonly string[] = ['WON', 'LOST'],
+): Prisma.LeadWhereInput => {
   const and: Prisma.LeadWhereInput[] = [leadScopeWhere(access), { mergedIntoId: null }];
   const list = (key: string) => (query[key] || '').split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
-  const statuses = list('status').filter((s) => (LEAD_STATUSES as readonly string[]).includes(s));
-  if (statuses.length) and.push({ status: { in: statuses as Prisma.EnumLeadStatusFilter['in'] & string[] } });
-  else if (query.view === 'open') and.push({ status: { notIn: ['WON', 'LOST'] } });
-  else if (query.view === 'closed') and.push({ status: { in: ['WON', 'LOST'] } });
+  const statuses = list('status');
+  if (statuses.length) and.push({ status: { in: statuses } });
+  else if (query.view === 'open') and.push({ status: { notIn: [...terminalStatuses] } });
+  else if (query.view === 'closed') and.push({ status: { in: [...terminalStatuses] } });
+  else if (query.view === 'won') and.push({ status: 'WON' });
+  else if (query.view === 'lost') and.push({ status: 'LOST' });
   const types = list('leadType').filter((s) => (LEAD_TYPES as readonly string[]).includes(s));
   if (types.length) and.push({ leadType: { in: types as (typeof LEAD_TYPES)[number][] } });
   const priorities = list('priority').filter((s) => (PRIORITIES as readonly string[]).includes(s));
@@ -97,7 +119,7 @@ export const leadFilterWhere = (access: CrmAccess, query: Record<string, string>
   if (query.followUp === 'overdue') and.push({ nextFollowUpAt: { lt: now } });
   else if (query.followUp === 'today') and.push({ nextFollowUpAt: { gte: now, lt: tomorrow } });
   else if (query.followUp === 'upcoming') and.push({ nextFollowUpAt: { gte: tomorrow } });
-  else if (query.followUp === 'none') and.push({ nextFollowUpAt: null, status: { notIn: ['WON', 'LOST'] } });
+  else if (query.followUp === 'none') and.push({ nextFollowUpAt: null, status: { notIn: [...terminalStatuses] } });
   if (query.sla === 'breached') and.push({ slaBreachedAt: { not: null }, firstResponseAt: null });
   const from = dateOrNull(query.from, 'from date');
   const to = dateOrNull(query.to, 'to date');
@@ -131,35 +153,81 @@ const orderFor = (sort: string | undefined): Prisma.LeadOrderByWithRelationInput
 
 export const listLeads = async (access: CrmAccess, query: Record<string, string>) => {
   const { page, pageSize, skip, take } = pageArgs(query.page, query.pageSize);
-  const where = leadFilterWhere(access, query);
-  const [total, items, byStatus] = await Promise.all([
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
+  const where = leadFilterWhere(access, query, terminalStatuses);
+  const baseWhere: Prisma.LeadWhereInput = { AND: [leadScopeWhere(access), { mergedIntoId: null }] };
+  const now = new Date();
+  const tomorrow = addMinutes(istDayStart(now), 24 * 60);
+
+  const [total, items, byStatus, todayCount, overdueCount, hotCount, noneCount, unassignedCount, slaCount] = await Promise.all([
     prisma.lead.count({ where }),
     prisma.lead.findMany({ where, orderBy: orderFor(query.sort), skip, take, select: listSelect }),
-    prisma.lead.groupBy({ by: ['status'], where: { AND: [leadScopeWhere(access), { mergedIntoId: null }] }, _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['status'], where: baseWhere, _count: { _all: true } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { nextFollowUpAt: { gte: now, lt: tomorrow } }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { nextFollowUpAt: { lt: now } }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, temperature: 'HOT' }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, nextFollowUpAt: null }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, ownerId: null }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { slaBreachedAt: { not: null }, firstResponseAt: null }] } }),
   ]);
+
+  const statusMap = Object.fromEntries(byStatus.map((row) => [row.status, row._count._all]));
+  const wonCount = statusMap.WON || 0;
+  const lostCount = statusMap.LOST || 0;
+  const closedCount = byStatus.reduce((sum, row) => sum + (terminalStatuses.includes(row.status) ? row._count._all : 0), 0);
+  const allCount = byStatus.reduce((sum, r) => sum + r._count._all, 0);
+  const openCount = allCount - closedCount;
+
+  const viewCounts: Record<string, number> = {
+    open: openCount,
+    today: todayCount,
+    overdue: overdueCount,
+    hot: hotCount,
+    none: noneCount,
+    unassigned: unassignedCount,
+    sla: slaCount,
+    won: wonCount,
+    lost: lostCount,
+    closed: closedCount,
+    all: allCount,
+  };
+
   return {
     page,
     pageSize,
     total,
     items: items.map(serializeLead),
-    statusCounts: Object.fromEntries(byStatus.map((row) => [row.status, row._count._all])),
+    statusCounts: statusMap,
+    viewCounts,
   };
 };
 
-/** Kanban: every status column with its count and first 40 cards. */
+/** Kanban: every configured stage column with its count and first 40 cards. */
 export const boardLeads = async (access: CrmAccess, query: Record<string, string>) => {
-  const { status: _ignored, view: _view, ...rest } = query;
-  const base = leadFilterWhere(access, rest);
-  const columns = await Promise.all(LEAD_STATUSES.map(async (status) => {
+  const stages = await listPipelineStages();
+  const terminalStatuses = stages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
+  const base = leadFilterWhere(access, normalizeBoardQuery(query), terminalStatuses);
+  const columns = await Promise.all(stages.map(async (stage) => {
+    const status = stage.code;
     const where: Prisma.LeadWhereInput = { AND: [base, { status }] };
     const [count, cards, value] = await Promise.all([
       prisma.lead.count({ where }),
       prisma.lead.findMany({ where, orderBy: orderFor(query.sort || 'followup'), take: 40, select: listSelect }),
       prisma.lead.aggregate({ where, _sum: { expectedValue: true } }),
     ]);
-    return { status, count, expectedValue: toNumber(value._sum.expectedValue), cards: cards.map(serializeLead) };
+    return {
+      status,
+      name: stage.name,
+      order: stage.order,
+      color: stage.color,
+      isTerminal: stage.isTerminal,
+      count,
+      expectedValue: toNumber(value._sum.expectedValue),
+      cards: cards.map(serializeLead),
+    };
   }));
-  return { columns };
+  return { columns, showClosed: boardShowsClosedStages(query, terminalStatuses) };
 };
 
 const requireLead = async (access: CrmAccess, id: string) => {
@@ -211,9 +279,34 @@ export const getLead = async (access: CrmAccess, id: string) => {
       })
       : Promise.resolve([]),
   ]);
+  const activities = [...lead.activities];
+  const hasInitialEnquiry = activities.some((a) =>
+    a.type === 'CREATED' ||
+    (a.type === 'CALL' && !a.title.includes('routing')) ||
+    (a.type === 'WHATSAPP' && !a.title.includes('routing')) ||
+    (a.title.toLowerCase().includes('enquiry') && !a.title.toLowerCase().includes('repeat'))
+  );
+  if (!hasInitialEnquiry) {
+    const isWa = lead.enquiryType && lead.enquiryType.toUpperCase().includes('WHATSAPP');
+    activities.push({
+      id: `synth-init-${lead.id}`,
+      leadId: lead.id,
+      actorId: lead.customerId,
+      type: isWa ? 'WHATSAPP' : 'CALL',
+      title: isWa ? 'WhatsApp Enquiry Received' : 'Phone Call Enquiry Initiated',
+      content: lead.message || `Customer initiated enquiry for ${lead.listingTitleSnapshot || 'machine'}.`,
+      metadata: { channel: isWa ? 'WhatsApp' : 'Call', synthesized: true, direction: 'INBOUND' },
+      createdAt: lead.createdAt,
+      updatedAt: lead.createdAt,
+      actor: lead.customer ? { id: lead.customer.id, name: lead.customer.name, role: 'CUSTOMER' } : null,
+    } as any);
+    activities.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
   return {
     lead: {
       ...serializeLead(lead),
+      activities,
       listing: lead.listing
         ? {
           id: lead.listing.id, title: lead.listing.title, status: lead.listing.status, manufacturingYear: lead.listing.manufacturingYear,
@@ -303,6 +396,15 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
   const leadType = oneOf(LEAD_TYPES, body.leadType) ?? 'BUY';
   const priority = oneOf(PRIORITIES, body.priority) ?? 'MEDIUM';
   const source = (textOrNull(body.source, 40) || 'PHONE').toUpperCase();
+  const pipelineStages = await listPipelineStages();
+  const defaultStage = pipelineStages.find((stage) => !stage.isTerminal) ?? pipelineStages[0];
+  if (!defaultStage) throw badRequest('At least one CRM pipeline stage is required.');
+  const requestedStatus = textOrNull(body.status, 50)?.toUpperCase() || defaultStage.code;
+  const selectedStage = pipelineStages.find((stage) => stage.code === requestedStatus);
+  if (!selectedStage) throw badRequest('Choose a valid pipeline stage.');
+  if (selectedStage.isTerminal) throw badRequest('New leads must start in an open pipeline stage.');
+  const status = selectedStage.code;
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
   const followUp = readFollowUpSpec(body.followUp);
   const contactInput = (body.contact && typeof body.contact === 'object' ? body.contact : body) as Record<string, unknown>;
   const listingId = textOrNull(body.listingId, 60);
@@ -331,7 +433,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
       const duplicate = await tx.lead.findFirst({
         where: {
           AND: [
-            { customerId: customer.id, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null, leadType },
+            { customerId: customer.id, status: { notIn: [...terminalStatuses] }, mergedIntoId: null, leadType },
             listing ? { listingId: listing.id } : {},
             leadScopeWhere(access),
           ],
@@ -346,6 +448,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
         ...(requirementData(body) as Omit<Prisma.LeadUncheckedCreateInput, 'customerId' | 'dealerId' | 'enquiryType'>),
         customerId: customer.id,
         dealerId,
+        status,
         listingId: listing?.id ?? null,
         enquiryType: 'CRM_MANUAL',
         message: textOrNull(body.message, 5000),
@@ -373,7 +476,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
       select: { id: true, customerId: true, ownerId: true, dealerId: true },
     });
     await tx.leadActivity.create({
-      data: { leadId: lead.id, actorId: access.userId, type: 'CREATED', title: 'Lead created in CRM', content: textOrNull(body.message, 5000), metadata: { source, leadType } },
+      data: { leadId: lead.id, actorId: access.userId, type: 'CREATED', title: 'Lead created in CRM', content: textOrNull(body.message, 5000), metadata: { source, leadType, status } },
     });
     const spec = followUp ?? (config.requireNextFollowUp ? firstFollowUpSpec(config, now) : null);
     if (spec) await createFollowUpRow(tx, { ...lead, dealerRole: access.isPartner ? 'PARTNER' : 'SUPER_ADMIN' }, spec, access.userId, !followUp);
@@ -476,23 +579,143 @@ export const updateLead = async (access: CrmAccess, id: string, body: Record<str
 export const changeStatus = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {
   if (!access.canManage) throw forbidden();
   const current = await requireLead(access, id);
-  const status = oneOf(LEAD_STATUSES, body.status);
-  if (!status) throw badRequest('Choose a valid status.');
+  const requestedStatus = String(body.status ?? '').trim().toUpperCase();
+  const stage = requestedStatus ? await getPipelineStage(requestedStatus) : null;
+  if (!stage) throw badRequest('Choose a valid pipeline stage.');
+  const status = stage.code;
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((pipelineStage) => pipelineStage.isTerminal).map((pipelineStage) => pipelineStage.code);
   const config = await getCrmConfig();
   const note = textOrNull(body.note, 2000);
   const lostReason = textOrNull(body.lostReason, 120);
   if (status === 'LOST' && !lostReason) throw badRequest('Choose why the lead was lost.');
   const next = readFollowUpSpec(body.nextFollowUp);
-  const closing = isClosedStatus(status);
+  const closing = stage.isTerminal || terminalStatuses.includes(status) || isClosedStatus(status);
+  let otherLeadsTagged: Array<{ id: string; ownerId: string | null; dealerId: string }> = [];
+  let soldMachineTitle = '';
 
   await prisma.$transaction(async (tx) => {
-    const lead = await tx.lead.findUniqueOrThrow({ where: { id }, select: { id: true, status: true, customerId: true, ownerId: true, dealerId: true, firstResponseAt: true, dealer: { select: { role: true } } } });
-    if (!closing && needsNextFollowUp(status, config.requireNextFollowUp) && !next) {
+    const lead = await tx.lead.findUniqueOrThrow({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        customerId: true,
+        ownerId: true,
+        dealerId: true,
+        firstResponseAt: true,
+        listingId: true,
+        listingTitleSnapshot: true,
+        tags: true,
+        wonSellAccountId: true,
+        dealer: { select: { role: true } },
+        customer: { select: { id: true, name: true, mobile: true, city: true, state: true } },
+      },
+    });
+
+    if (!closing && needsNextFollowUp(status, config.requireNextFollowUp, terminalStatuses) && !next) {
       const pending = await tx.crmFollowUp.count({ where: { leadId: id, status: 'PENDING' } });
       if (!pending) throw badRequest('Schedule the next follow-up for this open lead.', { code: NEXT_FOLLOW_UP_REQUIRED });
     }
-    const wonSellAccountId = textOrNull(body.wonSellAccountId, 60);
-    if (wonSellAccountId && !(await tx.sellAccount.findUnique({ where: { id: wonSellAccountId }, select: { id: true } }))) throw badRequest('Sell account not found.');
+
+    // The Close Deal form sends soldVehicleMode. Other WON paths (e.g. completing a follow-up)
+    // only change the status and never touch listings or Sold Vehicle records.
+    const soldMode = status === 'WON' ? oneOf(SOLD_VEHICLE_MODES, body.soldVehicleMode) : null;
+    const wonAmount = decimalOrNull(body.wonAmount);
+    let soldListing: Prisma.ListingGetPayload<{ select: typeof soldListingSelect }> | null = null;
+    let isAlternate = false;
+    let alternateSoldReason: string | null = null;
+    let offInventoryVehicle: string | null = null;
+    let markedListingSold = false;
+    const requestedSellAccountId = access.isPartner ? null : textOrNull(body.wonSellAccountId, 60);
+    if (requestedSellAccountId && !(await tx.sellAccount.findUnique({ where: { id: requestedSellAccountId }, select: { id: true } }))) {
+      throw badRequest('Sell account not found.');
+    }
+    // Re-saving WON keeps the Sold Vehicle record already linked to this lead.
+    let resolvedSellAccountId = requestedSellAccountId || lead.wonSellAccountId;
+
+    if (soldMode) {
+      if (!wonAmount || wonAmount.lte(0)) throw badRequest('Enter the final agreed deal value.');
+      const soldListingId = soldMode === 'ENQUIRED' ? lead.listingId : soldMode === 'ALTERNATE' ? textOrNull(body.soldListingId, 60) : null;
+      if (soldMode === 'ENQUIRED' && !soldListingId) throw badRequest('This lead has no enquired machine. Choose another machine or an outside-inventory deal.');
+      if (soldMode === 'ALTERNATE' && !soldListingId) throw badRequest('Select the machine the customer bought.');
+      if (soldMode === 'OFF_INVENTORY') {
+        offInventoryVehicle = textOrNull(body.offInventoryVehicle, 200);
+        if (!offInventoryVehicle) throw badRequest('Enter which machine the customer bought.');
+      }
+
+      if (soldListingId) {
+        soldListing = await tx.listing.findUnique({ where: { id: soldListingId }, select: soldListingSelect });
+        if (!soldListing) throw badRequest('The selected machine was not found.');
+        if (access.isPartner && soldListing.partnerId !== access.userId) throw forbidden('You can only close deals on your own listings.');
+        // Saving WON again on the same deal is allowed even though the listing is already SOLD.
+        const sameDealAgain = lead.status === 'WON' && lead.listingId === soldListing.id;
+        if (soldListing.status === 'SOLD' && !sameDealAgain) throw badRequest(`${soldListing.title} is already marked SOLD.`);
+        if (!SELLABLE_LISTING_STATUSES.includes(soldListing.status) && !sameDealAgain) {
+          throw badRequest(`${soldListing.title} is not live (${soldListing.status.replace(/_/g, ' ').toLowerCase()}), so it cannot be closed as sold.`);
+        }
+      }
+
+      // The customer enquired about one machine but bought another one (or one outside our inventory).
+      isAlternate = Boolean(lead.listingId) && soldListing?.id !== lead.listingId;
+      if (isAlternate) {
+        alternateSoldReason = textOrNull(body.alternateSoldReason, 1000);
+        if (!alternateSoldReason) throw badRequest('Enter why the customer bought a different machine.');
+      }
+
+      if (soldListing && body.markListingAsSold !== false) {
+        const soldAt = soldListing.status === 'SOLD' && soldListing.soldAt ? soldListing.soldAt : new Date();
+        await tx.listing.update({ where: { id: soldListing.id }, data: { status: 'SOLD', soldAt } });
+        const saleRecord = {
+          buyerName: lead.customer.name || lead.customer.mobile || 'Customer',
+          buyerPhone: lead.customer.mobile || 'N/A',
+          buyerCity: lead.customer.city || null,
+          buyerState: lead.customer.state || null,
+          soldPrice: wonAmount,
+          soldAt,
+          notes: `Closed as WON from CRM lead ${lead.id}`,
+        };
+        await tx.saleRecord.upsert({ where: { listingId: soldListing.id }, update: saleRecord, create: { listingId: soldListing.id, ...saleRecord } });
+        markedListingSold = true;
+      }
+
+      // The Sold Vehicle record itself is created from the Accounts form the user is sent to next
+      // (it links back to this lead on save). An existing record for the machine is linked now.
+      if (soldListing && !access.isPartner && !resolvedSellAccountId) {
+        const existing = await tx.sellAccount.findUnique({ where: { listingId: soldListing.id }, select: { id: true, deletedAt: true } });
+        if (existing && !existing.deletedAt) resolvedSellAccountId = existing.id;
+      }
+
+      // Other open enquiries on a machine that is now sold need a different offer.
+      if (soldListing && markedListingSold) {
+        const others = await tx.lead.findMany({
+          where: { listingId: soldListing.id, id: { not: lead.id }, status: { notIn: [...terminalStatuses] }, mergedIntoId: null },
+          select: { id: true, tags: true, ownerId: true, dealerId: true },
+        });
+        for (const other of others) {
+          if (!other.tags.includes(MACHINE_SOLD_TAG)) await tx.lead.update({ where: { id: other.id }, data: { tags: [...other.tags, MACHINE_SOLD_TAG] } });
+          await logLeadActivity(tx, {
+            leadId: other.id,
+            actorId: access.userId,
+            type: 'UPDATED',
+            title: `Enquired machine sold to another customer (${soldListing.title})`,
+            content: 'Offer this customer a similar machine.',
+            metadata: { soldListingId: soldListing.id, soldToLeadId: lead.id, tag: MACHINE_SOLD_TAG },
+          });
+        }
+        otherLeadsTagged = others;
+        soldMachineTitle = soldListing.title;
+      }
+    }
+
+    const updatedTags = new Set(lead.tags || []);
+    if (soldMode) {
+      updatedTags.delete('Alternate Vehicle Sold');
+      updatedTags.delete('Outside Inventory Deal');
+      if (isAlternate && soldListing) updatedTags.add('Alternate Vehicle Sold');
+      if (soldMode === 'OFF_INVENTORY') updatedTags.add('Outside Inventory Deal');
+    }
+
     await tx.lead.update({
       where: { id },
       data: {
@@ -501,31 +724,135 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
         ...(status === 'LOST' ? { lostReason } : {}),
         ...(status === 'WON'
           ? {
-            wonAmount: decimalOrNull(body.wonAmount),
-            wonSellAccountId,
+            wonAmount,
+            wonSellAccountId: resolvedSellAccountId,
             linkedPartnerProfileId: textOrNull(body.linkedPartnerProfileId, 60),
+            tags: Array.from(updatedTags),
+            // The lead now points at the machine actually sold; listingTitleSnapshot keeps the original enquiry.
+            ...(isAlternate && soldListing ? { listingId: soldListing.id } : {}),
           }
           : {}),
         ...(lead.firstResponseAt || status === 'NEW' ? {} : { firstResponseAt: new Date() }),
       },
     });
+
     if (closing) {
       await tx.crmFollowUp.updateMany({ where: { leadId: id, status: 'PENDING' }, data: { status: 'CANCELLED', outcomeNotes: `Lead marked ${status.toLowerCase()}.`, completedAt: new Date(), completedById: access.userId } });
       if (status === 'WON') await tx.crmContactProfile.upsert({ where: { userId: lead.customerId }, create: { userId: lead.customerId, lifecycle: 'CUSTOMER' }, update: { lifecycle: 'CUSTOMER' } });
     }
     if (next) await createFollowUpRow(tx, { ...lead, dealerRole: lead.dealer.role }, next, access.userId);
     await syncNextFollowUp(tx, id);
+
+    let activityTitle = `Status changed to ${status.replace(/_/g, ' ').toLowerCase()}`;
+    let activityContent = [note, status === 'LOST' ? `Reason: ${lostReason}` : null].filter(Boolean).join('\n') || null;
+
+    if (soldMode) {
+      const soldName = soldListing?.title || offInventoryVehicle || 'Machine';
+      const amount = `₹${Number(wonAmount).toLocaleString('en-IN')}`;
+      activityTitle = isAlternate
+        ? `Deal won - customer bought a different machine (${soldName})`
+        : `Deal won - ${soldName} sold`;
+      activityContent = [
+        isAlternate ? `Originally enquired: ${lead.listingTitleSnapshot || 'Enquired machine'}` : null,
+        `Sold: ${soldName}${soldMode === 'OFF_INVENTORY' ? ' (outside our inventory)' : ''} for ${amount}`,
+        isAlternate ? `Reason: ${alternateSoldReason}` : null,
+        markedListingSold ? 'Listing marked SOLD on the marketplace' : null,
+        resolvedSellAccountId ? 'Linked to the existing Sold Vehicle record' : null,
+        otherLeadsTagged.length ? `${otherLeadsTagged.length} other open lead(s) on this machine tagged ${MACHINE_SOLD_TAG}` : null,
+        note ? `Note: ${note}` : null,
+      ].filter(Boolean).join('\n');
+    }
+
     await logLeadActivity(tx, {
       leadId: id,
       actorId: access.userId,
       type: 'STATUS_CHANGE',
-      title: `Status changed to ${status.replace(/_/g, ' ').toLowerCase()}`,
-      content: [note, status === 'LOST' ? `Reason: ${lostReason}` : null].filter(Boolean).join('\n') || null,
-      metadata: { from: current.status, to: status, ...(lostReason ? { lostReason } : {}) },
+      title: activityTitle,
+      content: activityContent,
+      metadata: {
+        from: current.status,
+        to: status,
+        ...(lostReason ? { lostReason } : {}),
+        ...(soldMode
+          ? {
+            soldVehicleMode: soldMode,
+            enquiredListingId: lead.listingId,
+            enquiredListingTitle: lead.listingTitleSnapshot,
+            soldListingId: soldListing?.id || null,
+            soldListingTitle: soldListing?.title || offInventoryVehicle,
+            isAlternate,
+            alternateSoldReason,
+            wonAmount: Number(wonAmount),
+            markedListingSold,
+            wonSellAccountId: resolvedSellAccountId,
+          }
+          : {}),
+      },
     });
   });
   await rescoreLead(id).catch(() => null);
+  for (const other of otherLeadsTagged) {
+    await notifyUsers([other.ownerId || other.dealerId], {
+      title: 'Enquired machine sold',
+      message: `${soldMachineTitle} was sold to another customer. Offer a similar machine on this lead.`,
+      type: 'CRM_MACHINE_SOLD',
+      leadId: other.id,
+    });
+  }
   return getLead(access, id);
+};
+
+/** Machines a deal can be closed on; partners only see their own listings. */
+export const searchInventory = async (access: CrmAccess, query: { q?: string; excludeId?: string }) => {
+  if (!access.canManage) throw forbidden();
+  const q = String(query.q || '').trim().slice(0, 100);
+  const excludeId = textOrNull(query.excludeId, 60);
+  const listings = await prisma.listing.findMany({
+    where: {
+      status: { in: ['PUBLISHED', 'RESERVED', 'PAUSED'] },
+      ...(access.isPartner ? { partnerId: access.userId } : {}),
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+      ...(q
+        ? {
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { locationCity: { contains: q, mode: 'insensitive' } },
+            { locationState: { contains: q, mode: 'insensitive' } },
+            { brand: { name: { contains: q, mode: 'insensitive' } } },
+            { model: { name: { contains: q, mode: 'insensitive' } } },
+            { category: { name: { contains: q, mode: 'insensitive' } } },
+          ],
+        }
+        : {}),
+    },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      ...listingPricingSelect,
+      manufacturingYear: true,
+      locationCity: true,
+      locationState: true,
+      category: { select: { id: true, name: true } },
+      brand: { select: { id: true, name: true } },
+      model: { select: { id: true, name: true } },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 50,
+  });
+
+  return listings.map((l) => ({
+    id: l.id,
+    title: l.title,
+    status: l.status,
+    price: getListingFinalPrice(l),
+    manufacturingYear: l.manufacturingYear,
+    locationCity: l.locationCity,
+    locationState: l.locationState,
+    categoryName: l.category?.name || '',
+    brandName: l.brand?.name || '',
+    modelName: l.model?.name || '',
+  }));
 };
 
 export const assignLead = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {

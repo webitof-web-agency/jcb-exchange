@@ -2,24 +2,25 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { followUpScopeWhere, leadScopeWhere, type CrmAccess } from '../access';
 import { badRequest, forbidden } from '../http';
-import { addDays, istDayStart, LEAD_STATUSES, toCsv } from '../rules';
+import { addDays, istDayStart, toCsv } from '../rules';
 import { dateOrNull, toNumber } from './common';
 import { followUpSummary } from './followups.service';
 import { leadFilterWhere, serializeLead } from './leads.service';
 import { listCrmStaff } from './meta.service';
 import { getCrmConfig } from './settings.service';
+import { listPipelineStages } from './pipelineStages.service';
 
 const DAY = 24 * 60 * 60 * 1000;
 const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0);
 
 /** Per-staff workload for managers: open leads, overdue, due today and done today. */
-const teamToday = async (todayStart: Date) => {
+const teamToday = async (todayStart: Date, terminalStatuses: string[]) => {
   const now = new Date();
   const tomorrow = addDays(todayStart, 1);
   const count = (rows: Array<{ ownerId: string | null; _count: { _all: number } }>) => new Map(rows.map((row) => [row.ownerId, row._count._all]));
   const [staff, open, overdue, dueToday, doneToday] = await Promise.all([
     listCrmStaff(),
-    prisma.lead.groupBy({ by: ['ownerId'], where: { status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null }, _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['ownerId'], where: { status: { notIn: terminalStatuses }, mergedIntoId: null }, _count: { _all: true } }),
     prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'PENDING', dueAt: { lt: now } }, _count: { _all: true } }),
     prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'PENDING', dueAt: { gte: now, lt: tomorrow } }, _count: { _all: true } }),
     prisma.crmFollowUp.groupBy({ by: ['ownerId'], where: { status: 'DONE', completedAt: { gte: todayStart } }, _count: { _all: true } }),
@@ -35,9 +36,11 @@ export const getDashboard = async (access: CrmAccess) => {
   const now = new Date();
   const todayStart = istDayStart(now);
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
   const scope: Prisma.LeadWhereInput = { AND: [leadScopeWhere(access), { mergedIntoId: null }] };
-  const open: Prisma.LeadWhereInput = { AND: [scope, { status: { notIn: ['WON', 'LOST'] } }] };
-  const [openCount, newToday, unassigned, hot, noFollowUp, slaBreached, wonMonth, lostMonth, pipeline, sources, recent, followUps, myToday] = await Promise.all([
+  const open: Prisma.LeadWhereInput = { AND: [scope, { status: { notIn: terminalStatuses } }] };
+  const [openCount, newToday, unassigned, hot, noFollowUp, slaBreached, wonMonth, lostMonth, closedMonthCount, pipeline, sources, recent, followUps, myToday] = await Promise.all([
     prisma.lead.count({ where: open }),
     prisma.lead.count({ where: { AND: [scope, { createdAt: { gte: todayStart } }] } }),
     access.canAssign ? prisma.lead.count({ where: { AND: [open, { ownerId: null, dealer: { role: { not: 'PARTNER' } } }] } }) : Promise.resolve(null),
@@ -46,6 +49,7 @@ export const getDashboard = async (access: CrmAccess) => {
     prisma.lead.count({ where: { AND: [open, { slaBreachedAt: { not: null }, firstResponseAt: null }] } }),
     prisma.lead.aggregate({ where: { AND: [scope, { status: 'WON', closedAt: { gte: monthStart } }] }, _count: { _all: true }, _sum: { wonAmount: true } }),
     prisma.lead.count({ where: { AND: [scope, { status: 'LOST', closedAt: { gte: monthStart } }] } }),
+    prisma.lead.count({ where: { AND: [scope, { status: { in: terminalStatuses }, closedAt: { gte: monthStart } }] } }),
     prisma.lead.groupBy({ by: ['status'], where: scope, _count: { _all: true }, _sum: { expectedValue: true } }),
     prisma.lead.groupBy({ by: ['source'], where: { AND: [scope, { createdAt: { gte: new Date(now.getTime() - 30 * DAY) } }] }, _count: { _all: true } }),
     prisma.lead.findMany({
@@ -63,9 +67,9 @@ export const getDashboard = async (access: CrmAccess) => {
       include: { contact: { select: { id: true, name: true, mobile: true } }, lead: { select: { id: true, status: true, listingTitleSnapshot: true, leadType: true } } },
     }),
   ]);
-  const closedMonth = wonMonth._count._all + lostMonth;
+  const closedMonth = closedMonthCount;
   return {
-    team: access.canSeeAll ? await teamToday(todayStart) : null,
+    team: access.canSeeAll ? await teamToday(todayStart, terminalStatuses) : null,
     kpis: {
       openLeads: openCount,
       newToday,
@@ -79,7 +83,7 @@ export const getDashboard = async (access: CrmAccess) => {
     },
     followUps,
     myAgenda: myToday,
-    pipeline: LEAD_STATUSES.map((status) => {
+    pipeline: pipelineStages.map(({ code: status }) => {
       const row = pipeline.find((p) => p.status === status);
       return { status, count: row?._count._all ?? 0, expectedValue: toNumber(row?._sum.expectedValue ?? null) ?? 0 };
     }),
@@ -101,6 +105,8 @@ export const getReports = async (access: CrmAccess, query: Record<string, string
   if (!access.canReports) throw forbidden('You do not have access to CRM reports.');
   const { from, to } = rangeOf(query);
   const config = await getCrmConfig();
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
   const scope = leadScopeWhere(access);
   const created = await prisma.lead.findMany({
     where: { AND: [scope, { mergedIntoId: null, createdAt: { gte: from, lte: to } }] },
@@ -164,7 +170,7 @@ export const getReports = async (access: CrmAccess, query: Record<string, string
   for (const lead of closedInRange) if (lead.status === 'LOST') lostReasons.set(lead.lostReason || 'Not given', (lostReasons.get(lead.lostReason || 'Not given') ?? 0) + 1);
 
   const now = Date.now();
-  const openNow = await prisma.lead.findMany({ where: { AND: [scope, { mergedIntoId: null, status: { notIn: ['WON', 'LOST'] } }] }, select: { createdAt: true }, take: 20000 });
+  const openNow = await prisma.lead.findMany({ where: { AND: [scope, { mergedIntoId: null, status: { notIn: terminalStatuses } }] }, select: { createdAt: true }, take: 20000 });
   const aging = [
     { bucket: '0–2 days', max: 2 }, { bucket: '3–7 days', max: 7 }, { bucket: '8–30 days', max: 30 }, { bucket: '31–90 days', max: 90 }, { bucket: '90+ days', max: Infinity },
   ].map((b, i, all) => {
@@ -196,7 +202,7 @@ export const getReports = async (access: CrmAccess, query: Record<string, string
       wonValue: closedInRange.filter((l) => l.status === 'WON').reduce((sum, l) => sum + (toNumber(l.wonAmount) ?? 0), 0),
       conversion: pct(created.filter((l) => l.status === 'WON').length, created.length),
     },
-    funnel: LEAD_STATUSES.map((status) => ({ status, count: created.filter((l) => l.status === status).length })),
+    funnel: pipelineStages.map(({ code: status }) => ({ status, count: created.filter((l) => l.status === status).length })),
     bySource: groupRate('source'),
     byType: groupRate('leadType'),
     staff,
@@ -216,8 +222,10 @@ export const getReports = async (access: CrmAccess, query: Record<string, string
 
 export const exportLeadsCsv = async (access: CrmAccess, query: Record<string, string>) => {
   if (!access.canExport) throw forbidden('You do not have permission to export CRM data.');
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
   const leads = await prisma.lead.findMany({
-    where: leadFilterWhere(access, query),
+    where: leadFilterWhere(access, query, terminalStatuses),
     orderBy: { createdAt: 'desc' },
     take: 10000,
     select: {

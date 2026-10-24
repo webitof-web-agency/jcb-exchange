@@ -125,7 +125,11 @@ export const isMissed = (followUp: { status: string; dueAt: Date }, now: Date, g
   followUp.status === 'PENDING' && followUp.dueAt.getTime() + graceMinutes * 60000 < now.getTime();
 
 /** Open leads must always have a next step (unless the setting is off). */
-export const needsNextFollowUp = (status: string, requireNext: boolean) => requireNext && !isClosedStatus(status);
+export const needsNextFollowUp = (
+  status: string,
+  requireNext: boolean,
+  terminalStatuses: readonly string[] = CLOSED_STATUSES,
+) => requireNext && !terminalStatuses.includes(status);
 
 // ───────────── Scoring ─────────────
 

@@ -17,6 +17,7 @@
   },
   "navbar": {
     "home": "Home",
+    "buyVehicle": "Buy Vehicle",
     "machines": "Machines",
     "sellVehicle": "Sell Vehicle",
     "soldVehicles": "Sold Vehicles",

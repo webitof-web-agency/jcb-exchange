@@ -799,7 +799,7 @@ export default function Home() {
       </div>
 
       {/* 4.5 MOBILE APP PROMO BANNER (Desktop Only) */}
-      <section className="hidden md:flex w-full bg-[#1A1A1A] text-white py-16 px-6 relative overflow-hidden items-center justify-center">
+      <section className="hidden md:flex w-full bg-[#00000d] text-white py-16 px-6 relative overflow-hidden items-center justify-center">
         <div className="max-w-7xl w-full mx-auto flex flex-row items-center justify-between gap-12">
           {/* Left Text Content */}
           <div className="flex flex-col w-[50%] z-10">

@@ -1,15 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
-  Clock,
   Filter,
-  Flame,
   Megaphone,
   MessageSquare,
   Plus,
@@ -20,7 +18,6 @@ import {
   Target,
   Trash2,
   Users,
-  Zap,
 } from 'lucide-react';
 import api from '@/lib/api';
 import {
@@ -28,7 +25,6 @@ import {
   EmptyState,
   Field,
   inputClass,
-  LoadingState,
   Modal,
   ModalFooter,
   Panel,
@@ -37,6 +33,8 @@ import {
 import {
   CONTACT_TYPES,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   crmError,
   CrmPageFrame,
   getJson,
@@ -49,6 +47,11 @@ import {
   useCrmResource,
   type ContactLite,
 } from './crmShared';
+
+type PipelineStageMeta = {
+  code: string;
+  name: string;
+};
 
 type Filters = {
   lifecycles: string[];
@@ -72,6 +75,9 @@ type Segment = {
   filters: Filters;
   count: number;
 };
+
+const EMPTY_PIPELINE_STAGES: readonly PipelineStageMeta[] = [];
+const EMPTY_SEGMENTS: Segment[] = [];
 
 type Template = {
   id: string;
@@ -141,12 +147,15 @@ function FilterChipSelector({
   );
 }
 
-const describeFilters = (f: Filters) => {
+const pipelineStageName = (stages: readonly PipelineStageMeta[], status: string) =>
+  stages.find((stage) => stage.code === status)?.name || label(status);
+
+const describeFilters = (f: Filters, stages: readonly PipelineStageMeta[] = []) => {
   const parts: string[] = [];
   if (f.lifecycles.length) parts.push(`Lifecycle: ${f.lifecycles.map(label).join('/')}`);
   if (f.contactTypes.length) parts.push(`Type: ${f.contactTypes.map(label).join('/')}`);
   if (f.leadTypes.length) parts.push(`Requirement: ${f.leadTypes.map((t) => LEAD_TYPE_LABELS[t] || t).join('/')}`);
-  if (f.leadStatuses.length) parts.push(`Status: ${f.leadStatuses.map(label).join('/')}`);
+  if (f.leadStatuses.length) parts.push(`Status: ${f.leadStatuses.map((status) => pipelineStageName(stages, status)).join('/')}`);
   if (f.temperatures.length) parts.push(`Heat: ${f.temperatures.map(label).join('/')}`);
   if (f.states.length) parts.push(`States: ${f.states.join(', ')}`);
   if (f.cities.length) parts.push(`Cities: ${f.cities.join(', ')}`);
@@ -191,12 +200,14 @@ const PRESET_TEMPLATES: Array<{
 ];
 
 function Campaigns() {
+  const { meta } = useCrmMeta();
   const segments = useCrmResource(() => getJson<Segment[]>('/crm/segments'), 'crm-segments');
   const [editing, setEditing] = useState<Segment | 'new' | null>(null);
   const [presetSeed, setPresetSeed] = useState<{ name: string; description: string; filters: Partial<Filters> } | null>(null);
   const [sending, setSending] = useState<Segment | null>(null);
   const [previewingSegment, setPreviewingSegment] = useState<Segment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const pipelineStages = meta?.pipelineStages ?? EMPTY_PIPELINE_STAGES;
 
   const remove = async (segment: Segment) => {
     if (!window.confirm(`Delete segment "${segment.name}"? This cannot be undone.`)) return;
@@ -209,7 +220,7 @@ function Campaigns() {
     }
   };
 
-  const segmentList = segments.data || [];
+  const segmentList = segments.data ?? EMPTY_SEGMENTS;
 
   // Summary Metrics
   const totalSegments = segmentList.length;
@@ -230,9 +241,9 @@ function Campaigns() {
       (s) =>
         s.name.toLowerCase().includes(q) ||
         (s.description && s.description.toLowerCase().includes(q)) ||
-        describeFilters(s.filters).toLowerCase().includes(q)
+        describeFilters(s.filters, pipelineStages).toLowerCase().includes(q)
     );
-  }, [segmentList, searchQuery]);
+  }, [pipelineStages, segmentList, searchQuery]);
 
   const handleLaunchPreset = (preset: (typeof PRESET_TEMPLATES)[0]) => {
     setPresetSeed({
@@ -359,7 +370,7 @@ function Campaigns() {
         }
       >
         {segments.loading && !segments.data ? (
-          <LoadingState />
+          <CrmLoadingState />
         ) : segments.error ? (
           <CrmErrorBanner message={segments.error} schemaMissing={segments.schemaMissing} />
         ) : !segmentList.length ? (
@@ -532,6 +543,7 @@ function Campaigns() {
           <SegmentEditorModal
             segment={editing === 'new' ? null : editing}
             initialSeed={presetSeed}
+            pipelineStages={pipelineStages}
             onClose={() => {
               setEditing(null);
               setPresetSeed(null);
@@ -559,7 +571,7 @@ function QuickPreviewModal({ segment, onClose }: { segment: Segment; onClose: ()
   const [data, setData] = useState<{ count: number; sample: ContactLite[] } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useMemo(() => {
+  useEffect(() => {
     let active = true;
     api
       .post('/crm/segments/preview', { filters: segment.filters })
@@ -579,7 +591,7 @@ function QuickPreviewModal({ segment, onClose }: { segment: Segment; onClose: ()
     <Modal title={`Audience Sample: ${segment.name}`} subtitle={`${segment.count} matching contacts`} onClose={onClose}>
       <div className="space-y-4 p-5">
         {loading ? (
-          <LoadingState />
+          <CrmLoadingState />
         ) : !data || !data.sample.length ? (
           <EmptyState title="No contacts match this segment" description="Adjust your filters to broaden reach." />
         ) : (
@@ -624,11 +636,13 @@ function QuickPreviewModal({ segment, onClose }: { segment: Segment; onClose: ()
 function SegmentEditorModal({
   segment,
   initialSeed,
+  pipelineStages,
   onClose,
   onSaved,
 }: {
   segment: Segment | null;
   initialSeed: { name: string; description: string; filters: Partial<Filters> } | null;
+  pipelineStages: readonly PipelineStageMeta[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -647,6 +661,18 @@ function SegmentEditorModal({
   const [preview, setPreview] = useState<{ count: number; sample: ContactLite[] } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // The selected stage codes are kept even if an administrator removed a stage
+  // after this segment was saved. This prevents an edit from silently changing
+  // the audience definition; the archived code is shown as a fallback chip.
+  const statusOptions = [
+    ...pipelineStages.map((stage) => stage.code),
+    ...filters.leadStatuses.filter((status) => !pipelineStages.some((stage) => stage.code === status)),
+  ];
+  const statusName = (status: string) => {
+    const stage = pipelineStages.find((candidate) => candidate.code === status);
+    return stage ? stage.name : `${label(status)} (archived)`;
+  };
 
   const fullFilters = (): Filters => ({
     ...filters,
@@ -764,9 +790,10 @@ function SegmentEditorModal({
 
           <Field label="Lead Pipeline Status">
             <FilterChipSelector
-              options={meta?.enums.statuses || []}
+              options={statusOptions}
               value={filters.leadStatuses}
               onChange={(v) => setPatch({ leadStatuses: v })}
+              nameOf={statusName}
             />
           </Field>
 
@@ -830,7 +857,7 @@ function SegmentEditorModal({
               <span className="text-xs font-bold text-blue-950 uppercase tracking-wider">
                 Audience Reach Estimation
               </span>
-              <p className="text-xs text-blue-800 line-clamp-1">{describeFilters(fullFilters())}</p>
+              <p className="text-xs text-blue-800 line-clamp-1">{describeFilters(fullFilters(), pipelineStages)}</p>
             </div>
             <Button onClick={runPreview} busy={previewLoading} icon={<RefreshCw className="h-3.5 w-3.5" />}>
               Estimate Count
@@ -957,18 +984,13 @@ function WhatsAppCampaignModal({ segment, onClose }: { segment: Segment; onClose
                   : undefined
               }
             >
-              <select
+              <CrmSelect
+                options={[{ id: '', name: 'Select an approved marketing template...' }, ...marketingTemplates.map((t) => ({ id: t.id, name: `${t.name} (${t.language.toUpperCase()})` }))]}
                 value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Select an approved marketing template...</option>
-                {marketingTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.language.toUpperCase()})
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setTemplateId(next)}
+                searchable
+                className="w-full"
+              />
             </Field>
 
             {/* Simulated WhatsApp Preview Bubble */}

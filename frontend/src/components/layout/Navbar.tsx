@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, Tag, Briefcase, BookOpen } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Package, User, Menu, X, Home, Truck, PlusCircle, CheckCircle2, Store, Tag, Briefcase, BookOpen, ShoppingCart } from 'lucide-react';
 import SellVehicleModal from '@/components/sell/SellVehicleModal';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
@@ -307,76 +307,82 @@ export default function Navbar() {
     setIsSellModalOpen(true);
   };
 
+  const isActivePath = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+  const navLinkClass = (active: boolean) =>
+    `relative inline-flex h-10 cursor-pointer items-center whitespace-nowrap rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-jcb-yellow/60 2xl:px-3.5 ${active
+      ? 'text-white after:absolute after:inset-x-3 after:-bottom-4 after:h-0.5 after:rounded-full after:bg-jcb-yellow'
+      : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+    }`;
+
+  const buyVehicleCta = (
+    <Link
+      href="/machines"
+      className="hidden h-10 items-center gap-2 whitespace-nowrap rounded-lg bg-jcb-yellow px-4 text-sm font-bold text-black shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset] transition-colors hover:bg-[#FFCA2C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jcb-yellow/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#00000d] md:inline-flex"
+    >
+      <ShoppingCart className="h-4 w-4" strokeWidth={2.25} />
+      {t('navbar.buyVehicle', 'Buy Vehicle')}
+    </Link>
+  );
+
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-40 w-full bg-[#1A1A1A] text-white shadow-sm lg:sticky lg:left-auto lg:right-auto ${hasBlockingModalOpen
+        className={`fixed top-0 left-0 right-0 z-40 w-full border-b border-white/[0.08] bg-[#00000d] text-white lg:sticky lg:left-auto lg:right-auto ${hasBlockingModalOpen
             ? 'translate-y-0'
             : `transition-transform duration-300 ease-out will-change-transform ${shouldShowNavbar ? 'translate-y-0' : 'translate-y-0 lg:-translate-y-full'}`
           }`}
       >
-        <div className="flex flex-col">
-          <div className="flex w-full items-center justify-between border-b border-white/10 px-3 sm:px-4 md:px-6 py-3 md:py-4 relative">
-            <div className="flex items-center shrink-0">
-              <button
-                className="mr-2 sm:mr-3 lg:hidden text-gray-300 hover:text-white transition-colors"
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                aria-label="Toggle mobile menu"
-              >
-                {isMobileMenuOpen ? <X size={20} className="sm:h-6 sm:w-6" /> : <Menu size={20} className="sm:h-6 sm:w-6" />}
-              </button>
-              <div className="hidden md:block">
-                <SiteBrand />
-              </div>
+        <div className="relative mx-auto flex h-[52px] w-full max-w-[1600px] items-center justify-between gap-4 px-2 sm:px-4 lg:h-[72px] lg:px-6 xl:px-8">
+          <div className="flex flex-1 items-center gap-1 sm:gap-2 xl:flex-none">
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white xl:hidden"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle mobile menu"
+            >
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+            <div className="hidden w-24 md:block lg:w-[150px]">
+              <SiteBrand />
             </div>
+          </div>
 
-            {/* Mobile Centered Logo */}
-            <div className="md:hidden absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 flex justify-center">
-              <SiteBrand align="center" />
-            </div>
+          {/* Mobile Centered Logo */}
+          <div className="md:hidden absolute left-1/2 top-1/2 w-24 -translate-x-1/2 -translate-y-1/2 flex justify-center">
+            <SiteBrand align="center" />
+          </div>
 
-            <nav className="hidden lg:flex flex-1 justify-center items-center gap-3 lg:gap-3.5 xl:gap-6 text-xs lg:text-[13px] font-semibold text-gray-300 px-2 lg:px-4">
-              <Link href="/" className="whitespace-nowrap transition-colors hover:text-white">
-                {t('navbar.home')}
-              </Link>
-              <Link href="/machines" className="whitespace-nowrap transition-colors hover:text-white">
-                {t('navbar.machines')}
-              </Link>
-              <button
-                onClick={handleOpenSellVehicle}
-                className="whitespace-nowrap cursor-pointer outline-none transition-colors hover:text-white"
-              >
-                {t('navbar.sellVehicle')}
-              </button>
-              <Link href="/sold-vehicles" className="whitespace-nowrap transition-colors hover:text-white">
-                {t('navbar.soldVehicles')}
-              </Link>
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 2xl:gap-1 xl:flex" aria-label="Main">
+            <Link href="/machines" className={navLinkClass(isActivePath('/machines'))}>
+              {t('navbar.machines')}
+            </Link>
+            <button type="button" onClick={handleOpenSellVehicle} className={navLinkClass(false)}>
+              {t('navbar.sellVehicle')}
+            </button>
+            <Link href="/sold-vehicles" className={navLinkClass(isActivePath('/sold-vehicles'))}>
+              {t('navbar.soldVehicles')}
+            </Link>
+            <Link href="/dealers" className={navLinkClass(isActivePath('/dealers'))}>
+              {t('common.findDealer')}
+            </Link>
+            <Link href="/jobs" className={navLinkClass(isActivePath('/jobs'))}>
+              {t('navbar.careers', 'Careers')}
+            </Link>
+            <Link href="/blog" className={navLinkClass(isActivePath('/blog'))}>
+              {t('navbar.blog', 'Blog')}
+            </Link>
+          </nav>
 
-              <Link
-                href="/jobs"
-                className={`whitespace-nowrap rounded-lg px-2 lg:px-2.5 xl:px-3.5 py-1.5 text-xs lg:text-[13px] font-semibold transition-colors ${pathname === '/jobs' || pathname.startsWith('/jobs/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                {t('navbar.careers', 'Careers')}
-              </Link>
-              <Link
-                href="/blog"
-                className={`whitespace-nowrap rounded-lg px-2 lg:px-2.5 xl:px-3.5 py-1.5 text-xs lg:text-[13px] font-semibold transition-colors ${pathname === '/blog' || pathname.startsWith('/blog/') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
-              >
-                {t('navbar.blog', 'Blog')}
-              </Link>
-            </nav>
-
-            <div className="flex items-center gap-2 sm:gap-3 lg:gap-3.5 xl:gap-5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5">
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={handleToggleDropdown}
-                  className="relative flex items-center justify-center p-1 md:p-0 text-gray-300 transition-colors hover:text-white"
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-white/[0.06] hover:text-white ${isDropdownOpen ? 'bg-white/[0.06] text-white' : 'text-gray-300'}`}
                   aria-label="Open notifications"
                 >
-                  <Bell className="h-[20px] w-[20px] md:h-[20px] md:w-[20px]" strokeWidth={2.5} />
+                  <Bell className="h-5 w-5" strokeWidth={2} />
                   {isAuthenticated && user?.role === 'CUSTOMER' && unreadCount > 0 ? (
-                    <span className="absolute -right-2 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-jcb-yellow text-[10px] font-bold text-black">
+                    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-jcb-yellow px-1 text-[9px] font-extrabold leading-none text-black ring-2 ring-[#00000d]">
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   ) : null}
@@ -523,30 +529,35 @@ export default function Navbar() {
 
               </div>
 
-              <Link href="/dealers" className="hidden md:flex rounded-[4px] bg-jcb-yellow px-3.5 py-1.5 lg:px-4 lg:py-2 text-xs lg:text-sm font-bold text-black transition-colors hover:bg-yellow-400 whitespace-nowrap">
-                {t('common.findDealer')}
-              </Link>
+              <div className="hidden md:block">
+                <LanguageSwitcher size="compact" />
+              </div>
+
+              <span className="mx-1.5 hidden h-6 w-px bg-white/10 md:block" aria-hidden="true" />
 
               {isAuthenticated ? (
-                <div className="relative ml-2" ref={profileDropdownRef}>
+                <>
+                {buyVehicleCta}
+                <div className="relative md:ml-1" ref={profileDropdownRef}>
                   <button
                     onClick={() => setIsProfileDropdownOpen((current) => !current)}
-                    className="flex items-center gap-2 rounded-full py-1.5 pl-2 pr-3 transition-colors hover:bg-white/5"
+                    className={`flex h-10 items-center gap-2.5 rounded-lg pl-1 pr-1 sm:pr-2.5 transition-colors hover:bg-white/[0.06] ${isProfileDropdownOpen ? 'bg-white/[0.06]' : ''}`}
+                    aria-label="Open account menu"
                   >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-jcb-yellow/15 text-sm font-bold text-jcb-yellow ring-1 ring-jcb-yellow/40">
                       {displayName.charAt(0).toUpperCase()}
                     </div>
-                    <div className="hidden flex-col items-start sm:flex">
-                      <span className="text-sm font-bold text-white">{displayName}</span>
+                    <div className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
+                      <span className="max-w-[120px] truncate text-[13px] font-semibold text-white">{displayName}</span>
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                         {roleLabel}
                       </span>
                     </div>
-                    <ChevronDown className="hidden md:block ml-1 h-4 w-4 text-gray-400" />
+                    <ChevronDown className={`hidden h-4 w-4 text-gray-400 transition-transform duration-200 md:block ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isProfileDropdownOpen ? (
-                    <div className="absolute right-0 z-50 mt-2 w-64 origin-top-right overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-200 ease-out">
+                    <div className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right overflow-hidden rounded-xl border border-gray-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-200 ease-out">
                       <div className="border-b border-gray-100 bg-white px-5 py-4">
                         <p className="truncate text-sm font-bold text-gray-900">{displayName}</p>
                         <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email || user?.mobile || 'Customer account'}</p>
@@ -583,22 +594,22 @@ export default function Navbar() {
                     </div>
                   ) : null}
                 </div>
+                </>
               ) : (
+                <>
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  className="ml-1 md:ml-2 flex items-center justify-center gap-1.5 md:gap-2 md:rounded-[4px] md:border md:border-gray-600 px-2.5 py-1.5 md:px-3.5 md:py-2 text-xs md:text-sm font-semibold text-gray-300 md:text-white transition-colors hover:text-white md:hover:bg-white/10 whitespace-nowrap"
+                  className="flex h-10 w-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white md:w-auto md:border md:border-white/15 md:px-4 md:text-white md:hover:border-white/25"
+                  aria-label={t('common.loginSignup')}
                 >
-                  <User className="h-[20px] w-[20px] md:h-4 md:w-4" strokeWidth={2.5} />
-                  <span className="hidden md:inline">{t('common.loginSignup')}</span>
+                  <User className="h-5 w-5 md:h-4 md:w-4" strokeWidth={2} />
+                  <span className="hidden whitespace-nowrap md:inline">{t('common.loginSignup')}</span>
                 </button>
+                {buyVehicleCta}
+                </>
               )}
-              <div className="hidden md:block shrink-0">
-                <LanguageSwitcher />
-              </div>
             </div>
           </div>
-
-        </div>
       </header>
 
       {/* Mobile Menu Backdrop Overlay */}
@@ -634,6 +645,15 @@ export default function Navbar() {
         {/* Navigation Links with Icons */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           <Link
+            href="/machines"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="mb-3 flex items-center justify-center gap-2 rounded-xl bg-jcb-yellow px-4 py-3 text-sm font-bold text-black transition-colors hover:bg-[#FFCA2C]"
+          >
+            <ShoppingCart size={18} strokeWidth={2.25} />
+            <span>{t('navbar.buyVehicle', 'Buy Vehicle')}</span>
+          </Link>
+
+          <Link
             href="/"
             onClick={() => setIsMobileMenuOpen(false)}
             className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === '/' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
@@ -646,10 +666,10 @@ export default function Navbar() {
           <Link
             href="/machines"
             onClick={() => setIsMobileMenuOpen(false)}
-            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === '/machines' ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${isActivePath('/machines') ? 'bg-[#FFC107]/15 text-[#FFC107]' : 'text-gray-300 hover:bg-white/5 hover:text-white'
               }`}
           >
-            <Truck size={18} className={pathname === '/machines' ? 'text-[#FFC107]' : 'text-gray-400'} />
+            <Truck size={18} className={isActivePath('/machines') ? 'text-[#FFC107]' : 'text-gray-400'} />
             <span>{t('navbar.machines')}</span>
           </Link>
 

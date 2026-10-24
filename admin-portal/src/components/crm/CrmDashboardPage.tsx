@@ -19,11 +19,12 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
-import { Button, cellClass, EmptyState, LoadingState, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { Button, cellClass, EmptyState, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
 import { FollowUpRow } from './FollowUpRow';
 import LeadForm from './LeadForm';
 import {
   CrmErrorBanner,
+  CrmLoadingState,
   CrmPageFrame,
   crmPath,
   fmtDate,
@@ -117,7 +118,7 @@ function Dashboard() {
     return (
       <>
         {header}
-        <LoadingState label="Loading CRM dashboard metrics…" />
+        <CrmLoadingState label="Loading CRM dashboard metrics…" />
       </>
     );
   }

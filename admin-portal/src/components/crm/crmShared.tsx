@@ -6,22 +6,25 @@ import { usePathname } from 'next/navigation';
 import {
   AlertTriangle,
   BarChart3,
-  CalendarCheck,
-  CheckCircle2,
   Database,
   FileUp,
   Flame,
+  Globe,
   Inbox,
   Kanban,
   LayoutDashboard,
   Megaphone,
+  MessageSquare,
+  Phone,
   PhoneCall,
   Snowflake,
+  Sparkles,
   Sun,
   Users,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { Badge, LoadingState } from '@/components/financeWorkspace/ui';
+import BrandLoader, { type BrandLoaderBg, type BrandLoaderSize, type BrandLoaderVariant } from '@/components/ui/BrandLoader';
+import SearchableSelect, { type Option as SearchableOption } from '@/components/ui/SearchableSelect';
 
 // Shared client code for the CRM workspace (backend: /crm/*, docs/crm/00_CRM_PLAN.md).
 
@@ -33,11 +36,27 @@ export const crmErrorCode = (error: unknown) => (error as ApiError)?.response?.d
 export const crmErrorDetails = (error: unknown) => (error as ApiError)?.response?.data?.details;
 const isSchemaMissing = (error: unknown) => (error as ApiError)?.response?.data?.code === CRM_SCHEMA_MISSING_CODE;
 
+export function CrmLoadingState({
+  label = 'Loading CRM workspace…',
+  variant = 'section',
+  size = 'sm',
+  bg = 'light',
+  className,
+}: {
+  label?: string;
+  variant?: BrandLoaderVariant;
+  size?: BrandLoaderSize;
+  bg?: BrandLoaderBg;
+  className?: string;
+}) {
+  return <BrandLoader variant={variant} size={size} bg={bg} text={label} className={className} />;
+}
+
 export type Staff = { id: string; name: string; role: string; roleName: string | null };
 export type ContactLite = { id: string; name: string | null; mobile: string | null; email: string | null; whatsappNumber: string | null; city: string | null; state: string | null; role: string };
 
 export type CrmMeta = {
-  access: { isPartner: boolean; canManage: boolean; canSeeAll: boolean; canAssign: boolean; canReports: boolean; canExport: boolean; canImport: boolean; canCampaigns: boolean; canSettings: boolean };
+  access: { isPartner: boolean; canRead: boolean; canManage: boolean; canPipelineManage: boolean; canSeeAll: boolean; canAssign: boolean; canReports: boolean; canExport: boolean; canImport: boolean; canCampaigns: boolean; canSettings: boolean };
   me: string;
   config: {
     sources: string[];
@@ -54,6 +73,16 @@ export type CrmMeta = {
   };
   staff: Staff[];
   enums: { statuses: string[]; leadTypes: string[]; priorities: string[]; temperatures: string[]; followUpTypes: string[]; outcomes: string[]; lifecycles: string[] };
+  pipelineStages: Array<{
+    id: string;
+    code: string;
+    name: string;
+    order: number;
+    color: string;
+    isTerminal: boolean;
+    isSystem: boolean;
+    usageCount: number;
+  }>;
   automation: Record<string, unknown> | null;
 };
 
@@ -62,6 +91,7 @@ export type LeadRow = {
   status: string;
   leadType: string;
   source: string;
+  enquiryType?: string | null;
   priority: string;
   temperature: string;
   score: number;
@@ -115,6 +145,16 @@ export type FollowUp = {
 export const label = (value: string | null | undefined) =>
   value ? value.toLowerCase().split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : '—';
 
+/** Stage lifecycle comes from CRM metadata; Won/Lost remain a safe legacy fallback for stale responses. */
+export const isTerminalStatus = (
+  status: string | null | undefined,
+  stages?: readonly { code: string; isTerminal: boolean }[],
+) => {
+  if (!status) return false;
+  const configured = stages?.find((stage) => stage.code === status);
+  return configured?.isTerminal ?? (status === 'WON' || status === 'LOST');
+};
+
 export const LEAD_TYPE_LABELS: Record<string, string> = {
   BUY: 'Buy machine', SELL: 'Sell machine', FINANCE: 'Finance / Loan', INSURANCE: 'Insurance', RTO: 'RTO / Transfer', TRANSPORT: 'Transport',
   DEALER_ONBOARDING: 'Dealer onboarding', PRIME: 'Prime membership', VERIFICATION: 'Verification services', OTHER: 'Other',
@@ -137,12 +177,12 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
   LOST: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200/90', dot: 'bg-rose-500' },
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, name }: { status: string; name?: string }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.CONTACTED;
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-tight border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-      <span>{label(status)}</span>
+      <span>{name || label(status)}</span>
     </span>
   );
 }
@@ -180,6 +220,102 @@ export function PriorityBadge({ priority }: { priority: string }) {
       {label(priority)}
     </span>
   );
+}
+
+export function EnquiryChannelBadge({
+  enquiryType,
+  tags = [],
+}: {
+  enquiryType?: string | null;
+  tags?: string[];
+}) {
+  const raw = (enquiryType || '').toUpperCase();
+  const hasCall = tags.includes('Call') || (raw.includes('CALL') && !raw.includes('CALLBACK'));
+  const hasWhatsApp = tags.includes('WhatsApp') || raw.includes('WHATSAPP');
+  const hasCallback = tags.includes('Callback') || raw.includes('CALLBACK');
+  const isRepeat = tags.includes('Repeat Enquiry');
+
+  const channels: Array<{ key: string; label: string; icon: 'call' | 'wa' | 'cb'; color: string }> = [];
+  if (hasCall) {
+    channels.push({
+      key: 'call',
+      label: 'Call',
+      icon: 'call',
+      color: 'bg-blue-50 text-blue-700 border-blue-200/90',
+    });
+  }
+  if (hasWhatsApp) {
+    channels.push({
+      key: 'wa',
+      label: 'WhatsApp',
+      icon: 'wa',
+      color: 'bg-emerald-50 text-emerald-700 border-emerald-200/90',
+    });
+  }
+  if (hasCallback) {
+    channels.push({
+      key: 'cb',
+      label: 'Callback',
+      icon: 'cb',
+      color: 'bg-amber-50 text-amber-800 border-amber-200/90',
+    });
+  }
+
+  if (channels.length > 0) {
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {channels.map((c) => (
+          <span
+            key={c.key}
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${c.color}`}
+          >
+            {c.icon === 'call' ? (
+              <Phone className="h-2.5 w-2.5 text-blue-600" />
+            ) : c.icon === 'wa' ? (
+              <MessageSquare className="h-2.5 w-2.5 text-emerald-600" />
+            ) : (
+              <PhoneCall className="h-2.5 w-2.5 text-amber-600" />
+            )}
+            {c.label}
+          </span>
+        ))}
+        {isRepeat ? (
+          <span
+            className="inline-flex items-center rounded-md bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 text-[9px] font-bold tracking-tight"
+            title="Customer submitted repeat enquiries"
+          >
+            Repeat
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (raw.includes('FORM') || raw.includes('ENQUIRY')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200/90 px-1.5 py-0.5 text-[10px] font-bold">
+        <Sparkles className="h-2.5 w-2.5 text-purple-600" />
+        Web Form
+      </span>
+    );
+  }
+  if (raw.includes('PRIME')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/90 px-1.5 py-0.5 text-[10px] font-bold">
+        <Sparkles className="h-2.5 w-2.5 text-indigo-600" />
+        Prime Request
+      </span>
+    );
+  }
+  if (enquiryType) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold">
+        <Globe className="h-2.5 w-2.5 text-slate-500" />
+        {label(enquiryType)}
+      </span>
+    );
+  }
+  return null;
 }
 
 // ───────────── Dates (shown in IST) ─────────────
@@ -303,11 +439,46 @@ export const useCrmMeta = () => useContext(MetaContext);
 export const staffName = (meta: CrmMeta | undefined, id: string | null | undefined) =>
   !id ? 'Unassigned' : meta?.staff.find((s) => s.id === id)?.name || (id === meta?.me ? 'Me' : 'Staff');
 
-export const selectClass =
-  'w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20';
-/** Same look without w-full, for toolbar filters that set their own width. */
-export const compactSelectClass =
-  'rounded-xl border border-slate-200/90 bg-slate-50/70 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20';
+export type CrmSelectOption = SearchableOption;
+
+export function CrmSelect({
+  options,
+  value,
+  onChange,
+  placeholder = 'Select an option',
+  searchable = false,
+  disabled = false,
+  required = false,
+  className,
+  buttonClassName,
+}: {
+  options: CrmSelectOption[];
+  value: string | number;
+  onChange: (value: string, option: CrmSelectOption) => void;
+  placeholder?: string;
+  searchable?: boolean;
+  disabled?: boolean;
+  required?: boolean;
+  className?: string;
+  buttonClassName?: string;
+}) {
+  const displayValue = options.find((option) => String(option.id) === String(value))?.name || (value ? String(value) : '');
+  return (
+    <SearchableSelect
+      size="sm"
+      options={options}
+      value={value}
+      displayValue={displayValue}
+      placeholder={placeholder}
+      searchable={searchable}
+      disabled={disabled}
+      required={required}
+      className={className}
+      buttonClassName={buttonClassName}
+      onChange={(option) => onChange(String(option.id), option)}
+    />
+  );
+}
 export const chipClass = (active: boolean) =>
   `shrink-0 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-150 ${
     active ? 'border-slate-900 bg-slate-900 text-white shadow-2xs' : 'border-slate-200/90 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
@@ -317,7 +488,7 @@ export const chipClass = (active: boolean) =>
 
 function MetaGate({ children }: { children: ReactNode }) {
   const { meta } = useCrmMeta();
-  if (!meta) return <LoadingState label="Loading CRM workspace…" />;
+  if (!meta) return <CrmLoadingState />;
   return <>{children}</>;
 }
 
@@ -371,7 +542,6 @@ export function CrmPageFrame({ children }: { children: ReactNode }) {
   return (
     <CrmMetaProvider>
       <div className="w-full max-w-7xl mx-auto space-y-4 pb-12">
-        <CrmNavBar />
         <MetaGate>{children}</MetaGate>
       </div>
     </CrmMetaProvider>

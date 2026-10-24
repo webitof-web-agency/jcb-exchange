@@ -5,6 +5,7 @@ import { pickAssignee, ruleMatchesLead, type AssignmentConditions } from '../rul
 import { logLeadActivity, stringList, textOrNull, type Db } from './common';
 import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
 import { getCrmConfig } from './settings.service';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 const STRATEGIES = ['ROUND_ROBIN', 'LEAST_LOAD', 'SPECIFIC_USER'];
 
@@ -110,9 +111,10 @@ export const autoAssignLead = async (leadId: string): Promise<string | null> => 
       where: { id: { in: rule.assigneeIds }, status: 'ACTIVE', role: { in: ['EMPLOYEE', 'SUPER_ADMIN', 'ADMIN'] } },
       select: { id: true },
     });
+    const { terminal } = await listPipelineStageStatusSets();
     const loads = await prisma.lead.groupBy({
       by: ['ownerId'],
-      where: { ownerId: { in: staff.map((s) => s.id) }, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null },
+      where: { ownerId: { in: staff.map((s) => s.id) }, status: { notIn: [...terminal] }, mergedIntoId: null },
       _count: { _all: true },
     });
     const pick = pickAssignee(rule, new Set(staff.map((s) => s.id)), new Map(loads.map((row) => [row.ownerId as string, row._count._all])));

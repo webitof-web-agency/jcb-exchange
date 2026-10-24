@@ -155,7 +155,7 @@ export default function SupportPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Hero Section */}
-      <div className="bg-[#1A1A1A] text-white pt-32 pb-24 px-6 md:px-12 relative overflow-hidden">
+      <div className="bg-[#00000d] text-white pt-32 pb-24 px-6 md:px-12 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[url('/pattern.svg')] bg-repeat" />
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h1 className="text-4xl md:text-5xl font-extrabold mb-6 text-white tracking-tight">
@@ -188,7 +188,7 @@ export default function SupportPage() {
                 {contact.phoneLabel || "Available during business hours"}
               </p>
               {contact.phoneNumber ? (
-                <a href={`tel:${contact.phoneNumber}`} className="text-[#1A1A1A] font-bold text-lg hover:text-[#F0C85C] transition-colors flex items-center gap-2">
+                <a href={`tel:${contact.phoneNumber}`} className="text-[#00000d] font-bold text-lg hover:text-[#F0C85C] transition-colors flex items-center gap-2">
                   {contact.phoneNumber}
                   <ArrowRight size={16} />
                 </a>
@@ -207,7 +207,7 @@ export default function SupportPage() {
                 {contact.emailLabel || "We'll get back to you soon"}
               </p>
               {contact.emailAddress ? (
-                <a href={`mailto:${contact.emailAddress}`} className="text-[#1A1A1A] font-bold text-base hover:text-blue-600 transition-colors flex items-center gap-2 break-all">
+                <a href={`mailto:${contact.emailAddress}`} className="text-[#00000d] font-bold text-base hover:text-blue-600 transition-colors flex items-center gap-2 break-all">
                   {contact.emailAddress}
                   <ArrowRight size={16} />
                 </a>
@@ -226,7 +226,7 @@ export default function SupportPage() {
                 Our main office location
               </p>
               {contact.address ? (
-                <p className="text-[#1A1A1A] font-medium text-base leading-relaxed">
+                <p className="text-[#00000d] font-medium text-base leading-relaxed">
                   {contact.address}
                 </p>
               ) : (

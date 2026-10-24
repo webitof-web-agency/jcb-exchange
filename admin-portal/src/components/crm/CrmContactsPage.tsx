@@ -4,22 +4,20 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import {
-  Building2,
   Crown,
   MessageCircle,
   Phone,
   Plus,
   Search,
-  UserCheck,
-  Users,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { Badge, Button, cellClass, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { Button, cellClass, EmptyState, Field, inputClass, Modal, ModalFooter, tableHeadClass, Toggle } from '@/components/financeWorkspace/ui';
 import {
-  compactSelectClass,
   contactHref,
   CONTACT_TYPES,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   crmError,
   CrmPageFrame,
   fmtDate,
@@ -33,6 +31,9 @@ import {
   useCrmResource,
   type ContactLite,
 } from './crmShared';
+import { LocationFields } from './LeadForm';
+import { buildContactPayload, sanitizePhoneInput, updateContactLocation, validateContactPhones, type ContactFormState } from './contactFormState';
+import { contactLifecyclePresentation } from './contactPresentation';
 
 type ContactRow = ContactLite & {
   createdAt: string;
@@ -41,6 +42,7 @@ type ContactRow = ContactLite & {
   openLeadCount: number;
   lastLeadAt: string | null;
   nextFollowUpAt: string | null;
+  pipelineStage: { code: string; name: string; color: string; isTerminal: boolean } | null;
   crmProfile: {
     companyName: string | null;
     lifecycle: string;
@@ -60,11 +62,12 @@ function Contacts() {
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
+  const [pipelineStage, setPipelineStage] = useState('');
   const [contactType, setContactType] = useState('');
   const [openLeads, setOpenLeads] = useState('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
-  const query = { q: search, lifecycle, contactType, openLeads, page, pageSize: PAGE_SIZE };
+  const query = { q: search, lifecycle, pipelineStage, contactType, openLeads, page, pageSize: PAGE_SIZE };
   const contacts = useCrmResource(
     () => getJson<{ total: number; items: ContactRow[] }>('/crm/contacts', query),
     JSON.stringify(query),
@@ -97,7 +100,7 @@ function Contacts() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
         {/* FILTERS TOOLBAR */}
-        <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3.5 sm:p-4 md:grid-cols-3 xl:grid-cols-[minmax(260px,2fr)_repeat(3,minmax(0,1fr))]">
+        <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3.5 sm:p-4 md:grid-cols-3 xl:grid-cols-[minmax(260px,2fr)_repeat(4,minmax(0,1fr))]">
           <form
             className="relative col-span-2 md:col-span-3 xl:col-span-1"
             onSubmit={(e) => {
@@ -115,43 +118,34 @@ function Contacts() {
             />
           </form>
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Contact Lifecycles' }, ...(meta?.enums.lifecycles || []).map((l) => ({ id: l, name: label(l) }))]}
             value={lifecycle}
-            onChange={(e) => reset(() => setLifecycle(e.target.value))}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Stage"
-          >
-            <option value="">All Lifecycle Stages</option>
-            {(meta?.enums.lifecycles || []).map((l) => (
-              <option key={l} value={l}>
-                {label(l)}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => reset(() => setLifecycle(next))}
+            className="w-full"
+          />
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Pipeline Stages' }, ...(meta?.pipelineStages || []).map((stage) => ({ id: stage.code, name: stage.name }))]}
+            value={pipelineStage}
+            onChange={(next) => reset(() => setPipelineStage(next))}
+            searchable
+            className="w-full"
+          />
+
+          <CrmSelect
+            options={[{ id: '', name: 'All Contact Types' }, ...CONTACT_TYPES.map((t) => ({ id: t, name: label(t) }))]}
             value={contactType}
-            onChange={(e) => reset(() => setContactType(e.target.value))}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Contact type"
-          >
-            <option value="">All Contact Types</option>
-            {CONTACT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {label(t)}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => reset(() => setContactType(next))}
+            className="w-full"
+          />
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Records' }, { id: 'yes', name: 'Only With Active Leads' }]}
             value={openLeads}
-            onChange={(e) => reset(() => setOpenLeads(e.target.value))}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Leads"
-          >
-            <option value="">All Records</option>
-            <option value="yes">Only With Active Leads</option>
-          </select>
+            onChange={(next) => reset(() => setOpenLeads(next))}
+            className="w-full"
+          />
         </div>
 
         {/* METRIC STRIP */}
@@ -159,13 +153,14 @@ function Contacts() {
           <span className="font-bold text-slate-800">
             {total} {total === 1 ? 'Contact' : 'Contacts'} Available
           </span>
-          {search || lifecycle || contactType || openLeads ? (
+          {search || lifecycle || pipelineStage || contactType || openLeads ? (
             <button
               type="button"
               onClick={() => {
                 setQ('');
                 setSearch('');
                 setLifecycle('');
+                setPipelineStage('');
                 setContactType('');
                 setOpenLeads('');
                 setPage(1);
@@ -178,7 +173,7 @@ function Contacts() {
         </div>
 
         {contacts.loading && !contacts.data ? (
-          <LoadingState label="Loading contacts directory…" />
+          <CrmLoadingState label="Loading contacts directory…" />
         ) : contacts.error ? (
           <CrmErrorBanner message={contacts.error} schemaMissing={contacts.schemaMissing} />
         ) : !contacts.data?.items.length ? (
@@ -192,7 +187,7 @@ function Contacts() {
               <thead className={tableHeadClass}>
                 <tr>
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Customer Identity</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Role & Stage</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Role, Lifecycle & Stage</th>
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Lead History</th>
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Next Follow-up</th>
                   <th className="px-3.5 py-2.5 font-bold text-slate-700">Assigned To</th>
@@ -203,6 +198,13 @@ function Contacts() {
               <tbody className="divide-y divide-slate-100">
                 {contacts.data.items.map((c) => {
                   const links = phoneLinks(c.mobile, c.whatsappNumber);
+                  const lifecycle = contactLifecyclePresentation(c.crmProfile?.lifecycle);
+                  const lifecycleClass = {
+                    blue: 'border-blue-200 bg-blue-50 text-blue-700',
+                    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+                    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                    slate: 'border-slate-200 bg-slate-100 text-slate-700',
+                  }[lifecycle.tone];
                   return (
                     <tr
                       key={c.id}
@@ -243,15 +245,14 @@ function Contacts() {
                           {c.crmProfile?.contactTypes.map(label).join(', ') ||
                             (c.role === 'CUSTOMER' ? 'Customer' : label(c.role))}
                         </p>
-                        <span
-                          className={`inline-flex items-center rounded-md px-1.5 py-0.2 text-[10px] font-bold mt-0.5 ${
-                            c.crmProfile?.lifecycle === 'CUSTOMER'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {label(c.crmProfile?.lifecycle || 'LEAD')}
+                        <span className={`mt-0.5 inline-flex items-center rounded-md border px-1.5 py-0.2 text-[10px] font-bold ${lifecycleClass}`}>
+                          Lifecycle: {lifecycle.label}
                         </span>
+                        {c.pipelineStage ? (
+                          <span className={`inline-flex items-center rounded-md px-1.5 py-0.2 text-[10px] font-bold mt-0.5 ${c.pipelineStage.isTerminal ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-700'}`}>
+                            {c.pipelineStage.name}
+                          </span>
+                        ) : null}
                       </td>
 
                       <td className={cellClass}>
@@ -337,22 +338,42 @@ function Contacts() {
 }
 
 function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
-  const [form, setForm] = useState({
+  const { meta } = useCrmMeta();
+  const [form, setForm] = useState<ContactFormState>({
     name: '',
     mobile: '',
+    email: '',
+    whatsappNumber: '',
+    alternatePhone: '',
+    companyName: '',
     city: '',
     state: '',
-    email: '',
-    companyName: '',
+    pinCode: '',
+    address: '',
+    gstNumber: '',
+    lifecycle: 'LEAD',
     contactTypes: [] as string[],
+    tags: [] as string[],
     notes: '',
+    ownerId: '',
+    preferredLanguage: '',
+    doNotContact: false,
   });
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
+    const phoneError = validateContactPhones({
+      mobile: sanitizePhoneInput(form.mobile),
+      whatsappNumber: sanitizePhoneInput(form.whatsappNumber),
+      alternatePhone: sanitizePhoneInput(form.alternatePhone),
+    });
+    if (phoneError) {
+      toast.error(phoneError);
+      return;
+    }
     setBusy(true);
     try {
-      const result = (await api.post('/crm/contacts', form)).data as {
+      const result = (await api.post('/crm/contacts', buildContactPayload(form, Boolean(meta?.access.canAssign)))).data as {
         contact: { id: string };
         created: boolean;
       };
@@ -366,15 +387,18 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
   };
 
   return (
-    <Modal title="Create New Customer / Contact" onClose={onClose}>
-      <div className="grid gap-3 p-5 sm:p-6 md:grid-cols-2">
+    <Modal title="Create New Customer / Contact" onClose={onClose} wide>
+      <div className="grid gap-3 p-5 sm:p-7 md:grid-cols-3">
         <Field label="Mobile Number *">
           <input
             value={form.mobile}
-            onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+            onChange={(e) => setForm({ ...form, mobile: sanitizePhoneInput(e.target.value) })}
             className={inputClass}
             placeholder="e.g. 9876543210"
             inputMode="tel"
+            maxLength={10}
+            pattern="[6-9][0-9]{9}"
+            autoComplete="tel"
           />
         </Field>
         <Field label="Full Name">
@@ -383,14 +407,6 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             className={inputClass}
             placeholder="Customer or contact name"
-          />
-        </Field>
-        <Field label="Company / Entity Name">
-          <input
-            value={form.companyName}
-            onChange={(e) => setForm({ ...form, companyName: e.target.value })}
-            className={inputClass}
-            placeholder="Enterprise or dealership name"
           />
         </Field>
         <Field label="Email Address">
@@ -402,23 +418,93 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
             placeholder="customer@domain.com"
           />
         </Field>
-        <Field label="City">
+        <Field label="Company / Entity Name">
           <input
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
+            value={form.companyName}
+            onChange={(e) => setForm({ ...form, companyName: e.target.value })}
             className={inputClass}
-            placeholder="e.g. Raipur"
+            placeholder="Enterprise or dealership name"
           />
         </Field>
-        <Field label="State">
+        <Field label="WhatsApp Number">
           <input
-            value={form.state}
-            onChange={(e) => setForm({ ...form, state: e.target.value })}
+            value={form.whatsappNumber}
+            onChange={(e) => setForm({ ...form, whatsappNumber: sanitizePhoneInput(e.target.value) })}
             className={inputClass}
-            placeholder="e.g. Chhattisgarh"
+            placeholder="If different from mobile"
+            inputMode="tel"
+            maxLength={10}
+            pattern="[6-9][0-9]{9}"
+            autoComplete="tel-national"
+          />
+        </Field>
+        <Field label="Alternate Phone">
+          <input
+            value={form.alternatePhone}
+            onChange={(e) => setForm({ ...form, alternatePhone: sanitizePhoneInput(e.target.value) })}
+            className={inputClass}
+            placeholder="Optional alternate number"
+            inputMode="tel"
+            maxLength={10}
+            pattern="[6-9][0-9]{9}"
+            autoComplete="tel-national"
           />
         </Field>
         <div className="md:col-span-2">
+          <LocationFields
+            state={form.state}
+            city={form.city}
+            onStateChange={(next) => setForm((current) => updateContactLocation(current, 'state', next))}
+            onCityChange={(next) => setForm((current) => updateContactLocation(current, 'city', next))}
+          />
+        </div>
+        <Field label="PIN code">
+          <input
+            value={form.pinCode}
+            onChange={(e) => setForm({ ...form, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+            className={inputClass}
+            placeholder="6-digit PIN"
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="GSTIN">
+          <input
+            value={form.gstNumber}
+            onChange={(e) => setForm({ ...form, gstNumber: e.target.value.toUpperCase() })}
+            className={inputClass}
+            placeholder="Optional GSTIN"
+          />
+        </Field>
+        <Field label="Contact lifecycle">
+          <CrmSelect
+            options={(meta?.enums.lifecycles || []).map((l) => ({ id: l, name: label(l) }))}
+            value={form.lifecycle}
+            onChange={(next) => setForm({ ...form, lifecycle: next })}
+            className="w-full"
+          />
+        </Field>
+        {meta?.access.canAssign ? (
+          <Field label="Account owner">
+            <CrmSelect
+              options={[{ id: '', name: 'None' }, ...meta.staff.map((s) => ({ id: s.id, name: s.name }))]}
+              value={form.ownerId}
+              onChange={(next) => setForm({ ...form, ownerId: next })}
+              searchable
+              className="w-full"
+            />
+          </Field>
+        ) : null}
+        <div className="md:col-span-3">
+          <Field label="Address">
+            <input
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              className={inputClass}
+              placeholder="Full address"
+            />
+          </Field>
+        </div>
+        <div className="md:col-span-3">
           <Field label="Contact Classification">
             <div className="flex flex-wrap gap-1.5 mt-1">
               {CONTACT_TYPES.map((t) => {
@@ -446,6 +532,36 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
             </div>
           </Field>
         </div>
+        <div className="md:col-span-3">
+          <Field label="Tags">
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {[...(meta?.config.tags || []), ...form.tags.filter((tag) => !(meta?.config.tags || []).includes(tag))].map((tag) => {
+                const selected = form.tags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setForm({ ...form, tags: selected ? form.tags.filter((item) => item !== tag) : [...form.tags, tag] })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        </div>
+        <Field label="Preferred language">
+          <input
+            value={form.preferredLanguage}
+            onChange={(e) => setForm({ ...form, preferredLanguage: e.target.value })}
+            className={inputClass}
+            placeholder="Hindi / English…"
+          />
+        </Field>
+        <div className="flex items-end pb-2">
+          <Toggle checked={form.doNotContact} onChange={(value) => setForm({ ...form, doNotContact: value })} label="Do not contact" />
+        </div>
         <Field label="Initial Notes" wide>
           <textarea
             rows={3}
@@ -455,13 +571,13 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
             placeholder="Fleet size, machinery interests, financial requirements..."
           />
         </Field>
-        <div className="md:col-span-2">
+        <div className="md:col-span-3">
           <ModalFooter>
             <Button onClick={onClose}>Cancel</Button>
             <Button
               variant="primary"
               busy={busy}
-              disabled={form.mobile.replace(/\D/g, '').length < 10}
+              disabled={!/^[6-9]\d{9}$/.test(sanitizePhoneInput(form.mobile))}
               onClick={save}
             >
               Save Contact

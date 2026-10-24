@@ -30,19 +30,19 @@ import {
   cellClass,
   EmptyState,
   Field,
-  LoadingState,
   Panel,
   tableHeadClass,
 } from '@/components/financeWorkspace/ui';
 import {
   crmError,
+  CrmLoadingState,
+  CrmSelect,
   CrmPageFrame,
   fmtDateTime,
   getJson,
   label,
   LEAD_TYPE_LABELS,
   PageHeader,
-  selectClass,
   StatTile,
   useCrmMeta,
   useCrmResource,
@@ -355,50 +355,37 @@ function ImportLeads() {
               {/* Ingestion Parameters Grid */}
               <div className="grid gap-3 sm:grid-cols-3 pt-1">
                 <Field label="Default Source (If missing in CSV)">
-                  <select
+                  <CrmSelect
+                    options={(meta?.config.sources || ['IMPORT', 'EXHIBITION', 'INDIAMART', 'JUSTDIAL']).map((s) => ({ id: s, name: label(s) }))}
                     value={defaultSource}
-                    onChange={(e) => setDefaultSource(e.target.value)}
-                    className={selectClass}
-                  >
-                    {(meta?.config.sources || ['IMPORT', 'EXHIBITION', 'INDIAMART', 'JUSTDIAL']).map((s) => (
-                      <option key={s} value={s}>
-                        {label(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setDefaultSource(next)}
+                    searchable
+                    className="w-full"
+                  />
                 </Field>
 
                 <Field label="Default Lead Requirement">
-                  <select
+                  <CrmSelect
+                    options={(meta?.enums.leadTypes || ['BUY', 'SELL', 'RENT_OUT', 'RENT_IN']).map((t) => ({ id: t, name: LEAD_TYPE_LABELS[t] || label(t) }))}
                     value={defaultLeadType}
-                    onChange={(e) => setDefaultLeadType(e.target.value)}
-                    className={selectClass}
-                  >
-                    {(meta?.enums.leadTypes || ['BUY', 'SELL', 'RENT_OUT', 'RENT_IN']).map((t) => (
-                      <option key={t} value={t}>
-                        {LEAD_TYPE_LABELS[t] || label(t)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setDefaultLeadType(next)}
+                    searchable
+                    className="w-full"
+                  />
                 </Field>
 
                 <Field label="Assign Leads To">
-                  <select
+                  <CrmSelect
+                    options={[
+                      { id: '', name: 'Current User (Me)' },
+                      ...(meta?.access.canAssign ? [{ id: 'none', name: 'Unassigned (Round-Robin Pool)' }] : []),
+                      ...(meta?.access.canAssign ? (meta.staff || []).map((s) => ({ id: s.id, name: s.name })) : []),
+                    ]}
                     value={ownerId}
-                    onChange={(e) => setOwnerId(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Current User (Me)</option>
-                    {meta?.access.canAssign && (
-                      <option value="none">Unassigned (Round-Robin Pool)</option>
-                    )}
-                    {meta?.access.canAssign &&
-                      meta.staff.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                  </select>
+                    onChange={(next) => setOwnerId(next)}
+                    searchable
+                    className="w-full"
+                  />
                 </Field>
               </div>
 
@@ -636,7 +623,7 @@ function ImportLeads() {
             }
           >
             {history.loading && !history.data ? (
-              <LoadingState />
+              <CrmLoadingState />
             ) : !historyBatches.length ? (
               <EmptyState title="No previous imports" description="Files imported in this system will appear here." />
             ) : (
@@ -689,7 +676,7 @@ function ImportLeads() {
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="font-bold text-slate-400">2.</span>
-                <span><strong>De-duplication:</strong> If mobile has an open lead with the same type (e.g. BUY), it won't duplicate.</span>
+                <span><strong>De-duplication:</strong> If mobile has an open lead with the same type (e.g. BUY), it won&apos;t duplicate.</span>
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="font-bold text-slate-400">3.</span>

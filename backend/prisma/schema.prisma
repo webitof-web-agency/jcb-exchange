@@ -89,19 +89,6 @@ enum ListingStatus {
   REJECTED
 }
 
-enum LeadStatus {
-  NEW
-  CONTACTED
-  INTERESTED
-  INSPECTION_SCHEDULED
-  WON
-  LOST
-  // CRM stages (added at the end: Postgres appends new enum values).
-  QUALIFIED
-  NEGOTIATION
-  ON_HOLD
-}
-
 enum PartnerStaffRole {
   OWNER
   LISTING_MANAGER
@@ -1647,7 +1634,7 @@ model Lead {
   dealerId                     String
   enquiryType                  String
   message                      String?    @db.Text
-  status                       LeadStatus @default(NEW)
+  status                       String     @default("NEW")
   listingTitleSnapshot         String?
   listingStatusSnapshot        String?
   listingPriceSnapshot         Decimal?
@@ -1694,12 +1681,13 @@ model Lead {
   lastReengagedAt        DateTime?
   mergedIntoId           String?
 
-  listing    Listing?       @relation(fields: [listingId], references: [id])
-  customer   User           @relation("CustomerLeads", fields: [customerId], references: [id])
-  dealer     User           @relation("DealerLeads", fields: [dealerId], references: [id])
-  owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  activities LeadActivity[]
-  followUps  CrmFollowUp[]
+  listing      Listing?          @relation(fields: [listingId], references: [id])
+  pipelineStage CrmPipelineStage @relation(fields: [status], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  customer     User              @relation("CustomerLeads", fields: [customerId], references: [id])
+  dealer       User              @relation("DealerLeads", fields: [dealerId], references: [id])
+  owner        User?             @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities   LeadActivity[]
+  followUps    CrmFollowUp[]
 
   @@index([listingId])
   @@index([customerId])
@@ -4238,6 +4226,22 @@ enum CrmFollowUpOutcome {
   NO_SHOW
   MESSAGE_SENT
   OTHER
+}
+
+model CrmPipelineStage {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  name       String
+  order      Int
+  color      String   @default("blue")
+  isTerminal Boolean  @default(false)
+  isSystem   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  leads Lead[]
+
+  @@index([order])
 }
 
 model CrmContactProfile {

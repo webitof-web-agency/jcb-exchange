@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LoadingState } from '@/components/financeWorkspace/ui';
+import { CrmLoadingState } from './crmShared';
 import { resolveLeadId } from '@/lib/routeResolvers';
 
 /** Old enquiry links (slug + short id) → the CRM lead page. Enquiries now live in the CRM. */
@@ -21,5 +21,5 @@ export default function LegacyEnquiryRedirect({ param }: { param?: string }) {
     });
     return () => { cancelled = true; };
   }, [param, pathname, router]);
-  return <LoadingState label="Opening in CRM…" />;
+  return <CrmLoadingState label="Opening in CRM…" />;
 }

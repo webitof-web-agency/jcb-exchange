@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Copy, KeyRound, Play, Plus, Save, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
-import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { crmError, CrmMetaProvider, fmtDateTime, getJson, label, LEAD_TYPE_LABELS, selectClass, useCrmMeta, useCrmResource, type CrmMeta } from './crmShared';
+import { Badge, Button, EmptyState, Field, inputClass, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
+import { crmError, CrmLoadingState, CrmMetaProvider, CrmSelect, fmtDateTime, getJson, label, LEAD_TYPE_LABELS, useCrmMeta, useCrmResource, type CrmMeta } from './crmShared';
 
 type Config = NonNullable<CrmMeta['config']>;
 type Rule = { id: string; name: string; enabled: boolean; sortOrder: number; strategy: string; assigneeIds: string[]; conditions: { leadTypes?: string[]; sources?: string[]; states?: string[]; cities?: string[]; priorities?: string[] } | null };
@@ -27,7 +27,7 @@ const AUTOMATION_ITEMS: Array<{ key: string; label: string; hint: string }> = [
 
 function SettingsLoader() {
   const { meta, reloadMeta } = useCrmMeta();
-  if (!meta) return <Panel><LoadingState /></Panel>;
+  if (!meta) return <Panel><CrmLoadingState /></Panel>;
   if (!meta.access.canSettings) return <Panel><EmptyState title="No access to CRM settings" description="Ask a super admin for the crm.settings permission." /></Panel>;
   return <SettingsForm key={JSON.stringify(meta.config)} meta={meta} onSaved={reloadMeta} />;
 }
@@ -216,7 +216,7 @@ function AssignmentRules({ meta }: { meta: CrmMeta }) {
   const names = (ids: string[]) => ids.map((id) => meta.staff.find((s) => s.id === id)?.name || 'Removed user').join(', ');
   return (
     <Panel title="Assignment rules" description="Checked top to bottom; the first matching rule assigns the lead. Runs only when automation + auto-assign are on." actions={<Button icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>Add rule</Button>}>
-      {rules.loading && !rules.data ? <LoadingState /> : !rules.data?.length ? <EmptyState title="No rules" description="Example: Chhattisgarh buy leads → round-robin between Asha and Ravi." /> : (
+      {rules.loading && !rules.data ? <CrmLoadingState /> : !rules.data?.length ? <EmptyState title="No rules" description="Example: Chhattisgarh buy leads → round-robin between Asha and Ravi." /> : (
         <ul className="divide-y divide-slate-100">
           {rules.data.map((r) => (
             <li key={r.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
@@ -274,11 +274,16 @@ function RuleEditor({ meta, rule, onClose, onSaved }: { meta: CrmMeta; rule: Rul
           <Field label="Name *"><input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
           <Field label="Order"><input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className={inputClass} /></Field>
           <Field label="Strategy">
-            <select value={strategy} onChange={(e) => setStrategy(e.target.value)} className={selectClass}>
-              <option value="ROUND_ROBIN">Round robin</option>
-              <option value="LEAST_LOAD">Fewest open leads</option>
-              <option value="SPECIFIC_USER">Always the first person</option>
-            </select>
+            <CrmSelect
+              options={[
+                { id: 'ROUND_ROBIN', name: 'Round robin' },
+                { id: 'LEAST_LOAD', name: 'Fewest open leads' },
+                { id: 'SPECIFIC_USER', name: 'Always the first person' },
+              ]}
+              value={strategy}
+              onChange={(next) => setStrategy(next)}
+              className="w-full"
+            />
           </Field>
         </div>
         <Field label="Assign to *"><div className="flex flex-wrap gap-1.5">{meta.staff.map((s) => <button key={s.id} type="button" onClick={() => toggle(assigneeIds, s.id, setAssigneeIds)} className={chip(assigneeIds.includes(s.id))}>{s.name}</button>)}</div></Field>

@@ -696,8 +696,8 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
 
 export const createPublicContactLead = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!req.user?.id || req.user.role !== 'CUSTOMER') {
-      return res.status(403).json({ error: 'Customer access required.' });
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
     }
 
     const listingId = String(req.body?.listingId || '').trim();
@@ -729,20 +729,18 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       return res.status(404).json({ error: 'Customer not found.' });
     }
 
-    if (customer.role !== 'CUSTOMER') {
-      return res.status(403).json({ error: 'Only customer accounts can create enquiries.' });
-    }
-
-    const primeEligibility = await assertCustomerPrimeEligibility({
-      userId: customer.id,
-      role: customer.role,
-      feature: enquiryType as 'CALL' | 'WHATSAPP',
-    });
-    if (!primeEligibility.isAllowed) {
-      return res.status(403).json({
-        error: `An active Prime subscription is required for ${enquiryType === 'CALL' ? 'Call' : 'WhatsApp'} access.`,
-        code: 'PRIME_SUBSCRIPTION_REQUIRED',
+    if (customer.role === 'CUSTOMER') {
+      const primeEligibility = await assertCustomerPrimeEligibility({
+        userId: customer.id,
+        role: customer.role,
+        feature: enquiryType as 'CALL' | 'WHATSAPP',
       });
+      if (!primeEligibility.isAllowed) {
+        return res.status(403).json({
+          error: `An active Prime subscription is required for ${enquiryType === 'CALL' ? 'Call' : 'WhatsApp'} access.`,
+          code: 'PRIME_SUBSCRIPTION_REQUIRED',
+        });
+      }
     }
 
     let listing: any = null;
@@ -754,6 +752,10 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           id: true,
           title: true,
           status: true,
+          categoryId: true,
+          brandId: true,
+          modelId: true,
+          manufacturingYear: true,
           ...listingPricingSelect,
           locationCity: true,
           locationState: true,
@@ -841,24 +843,41 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       });
     }
 
-    if (
-      !listing?.partner?.id ||
-      listing.partner.partnerProfile?.onboardingStatus !== 'APPROVED' ||
-      listing.partner.partnerProfile?.accountStatus !== 'ACTIVE' ||
-      listing.partner.partnerProfile?.kycStatus !== 'APPROVED'
-    ) {
-      return res.status(404).json({ error: 'Approved partner listing not found.' });
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found.' });
     }
 
-    const leadRecipient = await resolvePublicLeadRecipient({
-      alternateMobile: listing.partner.partnerProfile?.alternateMobile || null,
-      user: {
-        id: listing.partner.id,
-        name: listing.partner.name,
-        mobile: listing.partner.mobile,
-        whatsappNumber: listing.partner.whatsappNumber,
-      },
-    });
+    const isApprovedPartner = Boolean(
+      listing.partner?.id &&
+      listing.partner.partnerProfile?.onboardingStatus === 'APPROVED' &&
+      listing.partner.partnerProfile?.accountStatus === 'ACTIVE' &&
+      listing.partner.partnerProfile?.kycStatus === 'APPROVED'
+    );
+
+    let leadRecipient: { recipientUserId: string; routingMode: 'SELLER' | 'SUPER_ADMIN'; fallbackApplied: boolean };
+
+    if (isApprovedPartner) {
+      leadRecipient = await resolvePublicLeadRecipient({
+        alternateMobile: listing.partner.partnerProfile?.alternateMobile || null,
+        user: {
+          id: listing.partner.id,
+          name: listing.partner.name,
+          mobile: listing.partner.mobile,
+          whatsappNumber: listing.partner.whatsappNumber,
+        },
+      });
+    } else {
+      const superAdminUser = await prismaAny.user.findFirst({
+        where: { role: 'SUPER_ADMIN' },
+        select: { id: true, name: true, mobile: true, whatsappNumber: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      leadRecipient = {
+        recipientUserId: superAdminUser?.id || listing.partner?.id || listing.partnerId,
+        routingMode: 'SUPER_ADMIN' as const,
+        fallbackApplied: true,
+      };
+    }
 
     const leadMessage = enquiryType === 'WHATSAPP'
       ? `Customer requested WhatsApp contact for ${listing.title || 'listing'}.`
@@ -886,15 +905,32 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
         ? 'SELLER_WHATSAPP'
         : 'SELLER_CALL';
 
+    const isWhatsApp = calculatedPublicEnquiryType.includes('WHATSAPP');
+    const channelType = isWhatsApp ? 'WHATSAPP' : 'CALL';
+    const channelTitle = isWhatsApp ? 'WhatsApp Enquiry Received' : 'Phone Call Enquiry Initiated';
+    const currentChannelTag = isWhatsApp ? 'WhatsApp' : 'Call';
+
     if (existingLead) {
       await prismaAny.leadActivity.create({
         data: {
           leadId: existingLead.id,
-          type: 'FOLLOW_UP',
-          title: 'Repeat Enquiry',
+          actorId: customer.id,
+          type: channelType,
+          title: isWhatsApp ? 'Repeat Enquiry via WhatsApp' : 'Repeat Enquiry via Phone Call',
           content: leadMessage,
+          metadata: {
+            channel: currentChannelTag,
+            repeat: true,
+            direction: 'INBOUND',
+            enquiryType: calculatedPublicEnquiryType,
+            machine: listing.title,
+          },
         },
       });
+
+      const existingTags = Array.isArray(existingLead.tags) ? existingLead.tags : [];
+      const prevChannelTag = existingLead.enquiryType && existingLead.enquiryType.includes('WHATSAPP') ? 'WhatsApp' : 'Call';
+      const updatedTags = Array.from(new Set([...existingTags, prevChannelTag, currentChannelTag, 'Repeat Enquiry']));
 
       lead = await prismaAny.lead.update({
         where: { id: existingLead.id },
@@ -903,6 +939,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           updatedAt: new Date(),
           enquiryType: calculatedPublicEnquiryType,
           message: leadMessage,
+          tags: updatedTags,
         },
         include: {
           customer: {
@@ -923,11 +960,21 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           customerId: customer.id,
           dealerId: leadRecipient.recipientUserId,
           enquiryType: calculatedPublicEnquiryType,
+          leadType: 'BUY',
+          source: 'LISTING_ENGAGEMENT',
+          tags: [currentChannelTag],
+          categoryId: listing.categoryId || null,
+          brandId: listing.brandId || null,
+          modelId: listing.modelId || null,
+          yearFrom: listing.manufacturingYear || null,
           listingTitleSnapshot: listing.title,
           listingStatusSnapshot: listing.status,
           listingPriceSnapshot: getListingFinalPrice(listing),
+          expectedValue: getListingFinalPrice(listing),
           listingLocationCitySnapshot: listing.locationCity,
           listingLocationStateSnapshot: listing.locationState,
+          requirementCity: listing.locationCity || customer.city || null,
+          requirementState: listing.locationState || customer.state || null,
           message: leadMessage,
         },
         include: {
@@ -939,6 +986,22 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
           },
           dealer: {
             select: leadRelatedUserSelect,
+          },
+        },
+      });
+
+      await prismaAny.leadActivity.create({
+        data: {
+          leadId: lead.id,
+          actorId: customer.id,
+          type: channelType,
+          title: channelTitle,
+          content: leadMessage,
+          metadata: {
+            channel: currentChannelTag,
+            direction: 'INBOUND',
+            enquiryType: calculatedPublicEnquiryType,
+            machine: listing.title,
           },
         },
       });
@@ -986,7 +1049,7 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       console.error('Lead routing audit error:', err);
     }
 
-    void onLeadCaptured(lead.id, { source: 'PRIME_CONTACT', repeat: Boolean(existingLead) });
+    void onLeadCaptured(lead.id, { source: 'LISTING_ENGAGEMENT', repeat: Boolean(existingLead) });
 
     return res.status(201).json({
       message: 'Enquiry created successfully.',

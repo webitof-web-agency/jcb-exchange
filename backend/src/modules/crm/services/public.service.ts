@@ -7,6 +7,7 @@ import { decimalOrNull, intOrNull, platformRecipientId, textOrNull } from './com
 import { findOrCreateContact } from './contacts.service';
 import { onLeadCaptured } from './leads.service';
 import { getCrmConfig, saveWebhookKey } from './settings.service';
+import { listPipelineStageStatusSets, listPipelineStages } from './pipelineStages.service';
 
 type CaptureInput = {
   leadType: (typeof LEAD_TYPES)[number];
@@ -23,10 +24,13 @@ type CaptureInput = {
  */
 const captureLead = async (input: CaptureInput) => {
   const dealerId = await platformRecipientId();
+  const { terminal } = await listPipelineStageStatusSets();
+  const defaultStage = (await listPipelineStages()).find((stage) => !stage.isTerminal);
+  if (!defaultStage) throw new CrmHttpError(503, 'CRM is not configured with an open pipeline stage.');
   const result = await prisma.$transaction(async (tx) => {
     const { user } = await findOrCreateContact(tx, { ...input.body, source: input.source }, null);
     const existing = await tx.lead.findFirst({
-      where: { customerId: user.id, leadType: input.leadType, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null, dealerId },
+      where: { customerId: user.id, leadType: input.leadType, status: { notIn: [...terminal] }, mergedIntoId: null, dealerId },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
@@ -41,6 +45,7 @@ const captureLead = async (input: CaptureInput) => {
         dealerId,
         enquiryType: `CRM_${input.source}`,
         leadType: input.leadType,
+        status: defaultStage.code,
         source: input.source,
         message: input.message,
         lastActivityAt: new Date(),
