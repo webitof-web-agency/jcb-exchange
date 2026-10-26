@@ -51,6 +51,7 @@ import {
 } from '@/lib/sellAccountKyc.mjs';
 import { PAN_COMPREHENSIVE_ROUTE, validatePan } from '@/lib/panVerification';
 import { validateGstin } from '@/lib/gstVerification';
+import { validateAadhaarNumber } from '@/lib/aadhaarVerification';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
 import {
@@ -78,7 +79,7 @@ import {
   type StoredSellAccountRecord,
 } from './soldVehicleModel';
 import { DeedDocumentPreview, KycVerificationPreviewModal, PanVerificationField, SellAccountKycFields, SellAccountPdfField, type KycVerificationPreview } from './SellAccountDocumentWidgets';
-import SellAccountDeedWorkflowCard from './SellAccountDeedWorkflowCard';
+import { DigilockerVerificationModal, type DigilockerVerificationSession } from './DigilockerVerificationModal';
 import CitySelect, { type LocationOption } from '../CitySelect';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 
@@ -271,6 +272,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const [verificationPreviews, setVerificationPreviews] = useState<Record<string, KycVerificationPreview>>({});
   const [activeVerificationPreview, setActiveVerificationPreview] = useState<KycVerificationPreview | null>(null);
   const [kycBusyKey, setKycBusyKey] = useState<string | null>(null);
+  const [aadhaarSession, setAadhaarSession] = useState<(DigilockerVerificationSession & { side: 'purchase' | 'sell' }) | null>(null);
   const [activeUploads, setActiveUploads] = useState(0);
   const [pendingReplacedDocuments, setPendingReplacedDocuments] = useState<SellAccountDocument[]>([]);
   const originalDocumentUrls = useRef<Set<string>>(new Set());
@@ -421,9 +423,9 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     restoredVerificationPreviews.current = true;
 
     const kyc = form.kyc || createEmptySellAccountKyc();
-    const targets: Array<{ side: 'purchase' | 'sell'; kind: 'pan' | 'gst'; number: string; recordId: string }> = [];
+    const targets: Array<{ side: 'purchase' | 'sell'; kind: 'pan' | 'gst' | 'aadhaar'; number: string; recordId: string }> = [];
     (['purchase', 'sell'] as const).forEach((side) => {
-      (['pan', 'gst'] as const).forEach((kind) => {
+      (['pan', 'gst', 'aadhaar'] as const).forEach((kind) => {
         const state = kyc[side][kind];
         if (state.status === SELL_ACCOUNT_KYC_STATUS.VERIFIED && state.number && state.verificationRecordId) {
           targets.push({ side, kind, number: state.number, recordId: state.verificationRecordId });
@@ -434,7 +436,11 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
 
     let cancelled = false;
     void Promise.allSettled(targets.map(async ({ side, kind, number, recordId }) => {
-      const endpoint = kind === 'pan' ? `/pan-verification/history/${encodeURIComponent(recordId)}` : `/gst-verification/history/${encodeURIComponent(recordId)}`;
+      const endpoint = kind === 'pan'
+        ? `/pan-verification/history/${encodeURIComponent(recordId)}`
+        : kind === 'gst'
+          ? `/gst-verification/history/${encodeURIComponent(recordId)}`
+          : `/aadhaar-verification/history/${encodeURIComponent(recordId)}`;
       const response = await api.get<Record<string, unknown>>(endpoint);
       const data = response.data;
       if (cancelled || !data || !isRecord(data.result)) return;
@@ -514,7 +520,9 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       });
     }
     if (kind === 'aadhaar') {
-      updateKycState(side, kind, { ...currentState, number: normalized, error: '' });
+      updateKycState(side, kind, currentState.number === normalized
+        ? { ...currentState, error: '' }
+        : { ...currentState, number: normalized, status: SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED, verificationRecordId: '', verifiedAt: '', cacheHit: false, error: '' });
       return;
     }
     if (cachedPreview && cachedPreview.number === normalized) {
@@ -553,10 +561,10 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     };
   };
 
-  const handleKycVerify = async (side: 'purchase' | 'sell', kind: 'pan' | 'gst') => {
+  const handleKycVerify = async (side: 'purchase' | 'sell', kind: 'pan' | 'gst' | 'aadhaar') => {
     const currentState = (form.kyc || createEmptySellAccountKyc())[side][kind];
     const normalized = normalizeSellAccountKycNumber(kind.toUpperCase(), currentState.number);
-    const validationError = kind === 'pan' ? validatePan(normalized) : validateGstin(normalized);
+    const validationError = kind === 'pan' ? validatePan(normalized) : kind === 'gst' ? validateGstin(normalized) : validateAadhaarNumber(normalized);
     if (validationError) {
       updateKycState(side, kind, { ...currentState, number: normalized, status: SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED, error: validationError });
       return;
@@ -564,6 +572,56 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     const key = `${side}-${kind}`;
     const cacheKey = buildVerificationCacheKey(kind, normalized);
     const cachedPreview = getVerificationCache<KycVerificationPreview>(cacheKey);
+    if (kind === 'aadhaar') {
+      setKycBusyKey(key);
+      updateKycState(side, kind, { ...currentState, number: normalized, status: SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED, error: '' });
+      let waitingForSdk = false;
+      try {
+        const response = await api.post<Record<string, unknown>>('/aadhaar-verification/initialize', {
+          aadhaarNumber: normalized,
+          side: side === 'purchase' ? 'PURCHASE' : 'SALE',
+        });
+        const responseData = response.data;
+        if (responseData.cacheHit === true && isRecord(responseData.result)) {
+          const result = responseData.result;
+          const verifiedNumber = typeof result.maskedAadhaar === 'string' ? result.maskedAadhaar : normalized;
+          const nextState = createVerificationState({ kind: 'AADHAAR', number: verifiedNumber, response: responseData });
+          const preview = buildAadhaarPreview(side, responseData);
+          updateKycState(side, kind, nextState as SellAccountKycState);
+          if (preview) {
+            setVerificationPreviews((current) => ({ ...current, [`${side}-aadhaar`]: preview }));
+            setActiveVerificationPreview(preview);
+          }
+          const nextKyc = {
+            ...(form.kyc || createEmptySellAccountKyc()),
+            [side]: { ...(form.kyc || createEmptySellAccountKyc())[side], aadhaar: nextState },
+          } as SellAccountKyc;
+          void persistVerifiedKyc(nextKyc);
+          toast.success('Aadhaar details loaded from verified cache.');
+          return;
+        }
+        const record = isRecord(responseData.record) ? responseData.record : {};
+        if (typeof record.id !== 'string' || typeof responseData.sdkToken !== 'string') throw new Error('DigiLocker session was not created.');
+        const providerClientId = typeof record.providerClientId === 'string' ? record.providerClientId.trim() : '';
+        if (!providerClientId) throw new Error('DigiLocker session did not return a provider client ID.');
+        setAadhaarSession({
+          recordId: record.id,
+          clientId: providerClientId,
+          sdkToken: responseData.sdkToken,
+          gateway: responseData.gateway === 'production' ? 'production' : 'sandbox',
+          expirySeconds: typeof responseData.expirySeconds === 'number' ? responseData.expirySeconds : undefined,
+          side,
+        });
+        waitingForSdk = true;
+      } catch (error) {
+        const message = apiErrorMessage(error, 'Aadhaar verification could not be started. Please try again.');
+        updateKycState(side, kind, createFailedVerificationState('AADHAAR', normalized, message) as SellAccountKycState);
+        toast.error(message);
+      } finally {
+        if (!waitingForSdk) setKycBusyKey(null);
+      }
+      return;
+    }
     if (cachedPreview) {
       const cachedResponse = { ...cachedPreview.response, cacheHit: true };
       const preview = { ...cachedPreview, side, kind };
@@ -626,6 +684,56 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       toast.error(message);
     } finally {
       setKycBusyKey(null);
+    }
+  };
+
+  const handleDigilockerSuccess = async (clientId: string) => {
+    const session = aadhaarSession;
+    if (!session) return;
+    const currentState = (form.kyc || createEmptySellAccountKyc())[session.side].aadhaar;
+    const normalized = normalizeSellAccountKycNumber('AADHAAR', currentState.number);
+    try {
+      const response = await api.post<Record<string, unknown>>('/aadhaar-verification/complete', {
+        recordId: session.recordId,
+        clientId,
+      });
+      const responseData = response.data;
+      if (!isRecord(responseData.result)) throw new Error('Aadhaar data was not returned by DigiLocker.');
+      const result = responseData.result;
+      const verifiedNumber = typeof result.maskedAadhaar === 'string' ? result.maskedAadhaar : normalized;
+      const nextState = createVerificationState({ kind: 'AADHAAR', number: verifiedNumber, response: responseData });
+      const preview = buildAadhaarPreview(session.side, responseData);
+      updateKycState(session.side, 'aadhaar', nextState as SellAccountKycState);
+      if (preview) {
+        setVerificationPreviews((current) => ({ ...current, [`${session.side}-aadhaar`]: preview }));
+        setActiveVerificationPreview(preview);
+      }
+      const nextKyc = {
+        ...(form.kyc || createEmptySellAccountKyc()),
+        [session.side]: { ...(form.kyc || createEmptySellAccountKyc())[session.side], aadhaar: nextState },
+      } as SellAccountKyc;
+      void persistVerifiedKyc(nextKyc);
+      setAadhaarSession(null);
+      toast.success('Aadhaar verified through DigiLocker. Preview opened.');
+    } catch (error) {
+      const message = apiErrorMessage(error, 'Aadhaar verification failed. Please try again.');
+      updateKycState(session.side, 'aadhaar', createFailedVerificationState('AADHAAR', normalized, message) as SellAccountKycState);
+      setAadhaarSession(null);
+      toast.error(message);
+    } finally {
+      setKycBusyKey(null);
+    }
+  };
+
+  const handleDigilockerClose = async () => {
+    const session = aadhaarSession;
+    setAadhaarSession(null);
+    setKycBusyKey(null);
+    if (!session) return;
+    try {
+      await api.post('/aadhaar-verification/cancel', { recordId: session.recordId });
+    } catch {
+      toast.info('DigiLocker session closed. The server will expire the unused session automatically.');
     }
   };
 
@@ -1374,14 +1482,6 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                 aadhaarPreviewAvailable={Boolean(verificationPreviews[`${group.side}-aadhaar`])}
                 onPreview={(kind) => openVerificationPreview(group.side, kind)}
               />
-              <SellAccountDeedWorkflowCard
-                recordId={existingRecord?.id}
-                side={group.side === 'purchase' ? 'PURCHASE' : 'SALE'}
-                document={documents[group.deedKey]}
-                defaultSignerName={group.side === 'purchase' ? form.sellerName : form.purchaserName}
-                defaultMobile={group.side === 'purchase' ? form.sellerNumber : form.purchaserNumber}
-                disabled={busy || Boolean(existingRecord?.isLocked)}
-              />
               <DeedDocumentPreview label={`${group.title} PAN verification`} document={documents[group.panKey]} onRemove={() => replaceDocument(group.panKey, null)} />
               <DeedDocumentPreview label={`${group.title} Aadhaar verification`} document={documents[group.aadhaarKey]} onRemove={() => replaceDocument(group.aadhaarKey, null)} />
             </div>
@@ -1426,6 +1526,13 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           preview={activeVerificationPreview}
           onClose={() => setActiveVerificationPreview(null)}
           onSaveToKyc={saveGeneratedKycDocument}
+        />
+      ) : null}
+      {aadhaarSession ? (
+        <DigilockerVerificationModal
+          session={aadhaarSession}
+          onSuccess={(clientId) => void handleDigilockerSuccess(clientId)}
+          onClose={() => { void handleDigilockerClose(); }}
         />
       ) : null}
     </div>

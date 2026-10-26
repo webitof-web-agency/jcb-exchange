@@ -127,7 +127,7 @@ export default function PanCardTemplate({
         {/* ── BASE TEMPLATE IMAGE (Official background, headers, emblem, labels & watermark) ── */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/images/pancard/pan-card-base-template.jpg"
+          src="/images/pancard/pan-card-template-v2.jpg"
           alt="PAN Card Template"
           className="pointer-events-none absolute inset-0 h-full w-full object-cover select-none z-0"
         />
@@ -178,7 +178,7 @@ export default function PanCardTemplate({
         <div
           className="absolute z-10 select-none overflow-hidden"
           style={{
-            top: '61.4%',
+            top: '63.2%',
             left: '5.6%',
             width: '42%',
           }}
@@ -195,7 +195,7 @@ export default function PanCardTemplate({
         <div
           className="absolute z-10 select-none overflow-hidden"
           style={{
-            top: '73.4%',
+            top: '76.2%',
             left: '5.6%',
             width: '42%',
           }}
@@ -212,7 +212,7 @@ export default function PanCardTemplate({
         <div
           className="absolute z-10 select-none overflow-hidden"
           style={{
-            top: '90.2%',
+            top: '90.5%',
             left: '5.6%',
             width: '42%',
           }}
@@ -229,13 +229,13 @@ export default function PanCardTemplate({
         <div
           className="absolute z-10 flex items-center justify-center p-[4px] bg-white rounded-[4px]"
           style={{
-            top: '27.4%',
-            left: '68.8%',
-            width: '27.2%',
-            height: '43.8%',
+            top: '31.8%',
+            left: '69.5%',
+            width: '23.8%',
+            height: '38.2%',
           }}
         >
-          <QrCodeSvg value={qrPayload} size={82} />
+          <QrCodeSvg value={qrPayload} size={86} />
         </div>
 
         {/* ── DYNAMIC FIELD 7: SIGNATURE ── */}

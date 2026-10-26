@@ -121,6 +121,8 @@ export default function AadhaarCardTemplate({
         aadhaarNumber={aadhaarNumber}
         addressHindi={addressHindi}
         addressEnglish={addressEnglish}
+        qrUrl={data?.qrUrl}
+        qrData={data?.qrData}
         className={className}
         scale={scale}
         interactive={interactive}

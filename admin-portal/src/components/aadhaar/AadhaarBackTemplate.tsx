@@ -3,6 +3,7 @@
 import React from 'react';
 import AadhaarLogoSvg from './AadhaarLogoSvg';
 import AadhaarHeaderRibbon from './AadhaarHeaderRibbon';
+import QrCodeSvg from './ReliableQrCodeSvg';
 import { Phone, Mail, Globe, Scissors } from 'lucide-react';
 
 export interface AadhaarBackTemplateProps {
@@ -12,6 +13,8 @@ export interface AadhaarBackTemplateProps {
   className?: string;
   scale?: number;
   interactive?: boolean;
+  qrUrl?: string;
+  qrData?: string;
 }
 
 function formatAadhaarNumber(num?: string): string {
@@ -41,8 +44,11 @@ export default function AadhaarBackTemplate({
   className = '',
   scale = 1,
   interactive = true,
+  qrUrl,
+  qrData,
 }: AadhaarBackTemplateProps) {
   const formattedAadhaar = formatAadhaarNumber(aadhaarNumber);
+  const qrPayload = qrUrl || qrData || 'Aadhaar DigiLocker data unavailable';
 
   return (
     <div
@@ -94,7 +100,7 @@ export default function AadhaarBackTemplate({
         </div>
 
         {/* ----------------- BODY: BILINGUAL ADDRESS ----------------- */}
-        <div className="px-5 pt-3 pb-1 grid grid-cols-2 gap-4 items-start min-h-[142px]">
+        <div className="relative px-5 pt-3 pb-1 grid grid-cols-2 gap-4 items-start min-h-[142px]">
           {/* Left Column: Hindi Address */}
           <div className="text-left leading-[1.38]">
             <p className="text-[9.5px] font-bold text-slate-900 mb-0.5">
@@ -113,6 +119,10 @@ export default function AadhaarBackTemplate({
             <p className="text-[9px] font-medium text-slate-800 leading-[1.38]">
               {addressEnglish}
             </p>
+          </div>
+          <div className="absolute bottom-0 right-4 flex flex-col items-center gap-0.5 rounded border border-slate-200 bg-white p-0.5 shadow-sm">
+            <QrCodeSvg value={qrPayload} size={48} className="h-12 w-12" />
+            <span className="text-[5px] font-bold uppercase tracking-wide text-slate-500">XML QR</span>
           </div>
         </div>
 

@@ -265,22 +265,11 @@ export default function SoldVehiclesPageClient({ initialLogoUrl }: { initialLogo
       setLoading(true);
       setError(null);
       try {
-        const [soldListingsRes, allListingsRes] = await Promise.all([
-          api.get('/master/public-listings?status=SOLD').catch(() => ({ data: { data: [] } })),
-          api.get('/master/public-listings').catch(() => ({ data: { data: [] } })),
-        ]);
+        const soldListingsRes = await api.get('/master/public-listings?status=SOLD');
 
         if (isCancelled) return;
 
-        let rawSoldListings: MachineListing[] = soldListingsRes.data?.data || [];
-        if (rawSoldListings.length === 0 && allListingsRes.data?.data) {
-          const allListings = allListingsRes.data.data as MachineListing[];
-          rawSoldListings = allListings.filter(
-            (item) => String(item.status || '').toUpperCase() === 'SOLD'
-          );
-        }
-
-        setListings(rawSoldListings);
+        setListings((soldListingsRes.data?.data || []) as MachineListing[]);
       } catch (err: unknown) {
         if (!isCancelled) {
           console.error('Failed to load sold vehicles data:', err);

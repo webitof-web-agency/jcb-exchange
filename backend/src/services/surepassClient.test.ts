@@ -292,38 +292,69 @@ test('normalizes provider failures without treating them as successful responses
   );
 });
 
-test('uses the documented eSign and eStamp endpoints without exposing the bearer token', async () => {
-  const requests: Array<{ url: string; init: RequestInit }> = [];
+test('initializes the DigiLocker SDK with the server bearer token and nested data payload', async () => {
+  let request: { url: string; init: RequestInit } | null = null;
+  const client = new SurepassClient({
+    baseUrl: 'https://sandbox.surepass.app/',
+    token: 'server-only-token',
+    fetchImpl: async (url, init) => {
+      request = { url, init: init ?? {} };
+      return response({ success: true, status_code: 200, data: { client_id: 'digilocker-client', token: 'sdk-token', expiry_seconds: 600 } });
+    },
+  });
+
+  const result = await client.initializeDigilocker({ signup_flow: true, skip_main_screen: false });
+
+  assert.equal((result.data as Record<string, unknown>).client_id, 'digilocker-client');
+  const sent = request as unknown as { url: string; init: RequestInit };
+  assert.ok(sent);
+  assert.equal(sent.url, 'https://sandbox.surepass.app/api/v1/digilocker/initialize');
+  assert.equal(sent.init.method, 'POST');
+  assert.deepEqual(JSON.parse(String(sent.init.body)), {
+    data: {
+      signup_flow: true,
+      auth_type: 'web',
+      aadhaar_xml: true,
+      skip_main_screen: false,
+    },
+  });
+  assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
+});
+
+test('downloads Aadhaar data by client id without sending the client token to the browser', async () => {
+  let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
     baseUrl: 'https://kyc-api.surepass.io',
     token: 'server-only-token',
     fetchImpl: async (url, init) => {
-      requests.push({ url, init: init ?? {} });
-      return response({ success: true, status_code: 200, data: { client_id: 'esign-1', url: 'https://sign.example/session' } });
+      request = { url, init: init ?? {} };
+      return response({ success: true, status_code: 200, data: { client_id: 'digilocker/client' } });
     },
   });
 
-  await client.getEstampArticles('CT');
-  await client.initializeStampedEsign({
-    pdf_pre_uploaded: false,
-    send_email: false,
-    config: {
-      auth_mode: '1',
-      reason: 'Vehicle sale deed',
-      positions: { '1': [{ x: 10, y: 20 }] },
-      stamp_paper_amount: 100,
-      stamp_paper_state: 'Chhattisgarh',
-      stamp_data: { deed_side: 'SALE' },
-    },
-    prefill_options: { full_name: 'Test Customer', mobile_number: '9999999999' },
-    sign_type: 'aadhaar',
-  });
+  await client.downloadAadhaar('digilocker/client');
 
-  assert.equal(requests[0]?.url, 'https://kyc-api.surepass.io/api/v1/stamper-v2/list-articles?state=CT');
-  assert.equal(requests[0]?.init.method, 'GET');
-  assert.equal((requests[0]?.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
-  assert.equal(requests[1]?.url, 'https://kyc-api.surepass.io/api/v1/esign/initialize');
-  assert.equal(requests[1]?.init.method, 'POST');
-  assert.equal((requests[1]?.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
-  assert.equal(JSON.parse(String(requests[1]?.init.body)).config.stamp_paper_amount, 100);
+  const sent = request as unknown as { url: string; init: RequestInit };
+  assert.ok(sent);
+  assert.equal(sent.url, 'https://kyc-api.surepass.io/api/v1/digilocker/download-aadhaar/digilocker%2Fclient');
+  assert.equal(sent.init.method, 'GET');
+  assert.equal(sent.init.body, undefined);
+  assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
+});
+
+test('does not expose the retired stamped eSign provider surface', () => {
+  const prototype = SurepassClient.prototype as unknown as Record<string, unknown>;
+  for (const method of [
+    'getEstampStates',
+    'getEstampArticles',
+    'orderEstamp',
+    'getEstampOrderStatus',
+    'initializeStampedEsign',
+    'uploadEsignPdfViaLink',
+    'getEsignStatus',
+    'getSignedEsignDocument',
+    'getEsignAuditTrail',
+  ]) {
+    assert.equal(prototype[method], undefined, `retired provider method remains: ${method}`);
+  }
 });

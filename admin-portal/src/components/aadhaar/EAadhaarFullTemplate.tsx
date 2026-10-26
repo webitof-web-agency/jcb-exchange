@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import AadhaarLogoSvg from './AadhaarLogoSvg';
 import NationalEmblemSvg from '../pancard/NationalEmblemSvg';
-import QrCodeSvg from '../pancard/QrCodeSvg';
+import QrCodeSvg from './ReliableQrCodeSvg';
 import AadhaarHeaderRibbon from './AadhaarHeaderRibbon';
 import { Scissors } from 'lucide-react';
 
@@ -119,11 +119,12 @@ export default function EAadhaarFullTemplate({
   const photoUrl = data?.photoUrl || '';
 
   const qrPayload = useMemo(() => {
+    if (data?.qrUrl) return data.qrUrl;
     if (data?.qrData) return data.qrData;
-    return `UIDAI:${aadhaarNumber}|NAME:${nameEnglish}|DOB:${dob}|GENDER:${gender}|PIN:${pinCode}`;
-  }, [data?.qrData, aadhaarNumber, nameEnglish, dob, gender, pinCode]);
+    return 'Aadhaar DigiLocker data unavailable';
+  }, [data?.qrData, data?.qrUrl]);
 
-  const aadhaarParts = useMemo(() => {
+  const aadhaarParts = (() => {
     const clean = aadhaarNumber.replace(/\D/g, '');
     if (clean.length === 12) {
       return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
@@ -131,7 +132,7 @@ export default function EAadhaarFullTemplate({
     const split = aadhaarNumber.trim().split(/\s+/);
     if (split.length === 3) return split;
     return [aadhaarNumber, '', ''];
-  }, [aadhaarNumber]);
+  })();
 
   return (
     <div
@@ -239,12 +240,7 @@ export default function EAadhaarFullTemplate({
           {/* Right Column (5 cols): Large Authentic High-Density 2D Secure QR Code - aligned to bottom mark */}
           <div className="col-span-5 flex flex-col items-end justify-end self-stretch">
             <div className="w-[175px] h-[175px] bg-white p-1 rounded border border-slate-200/90 flex items-center justify-center select-none shadow-xs">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data?.qrUrl || '/images/aadhaar/aadhaar-secure-qr.png'}
-                alt="UIDAI Aadhaar Secure QR Code"
-                className="w-full h-full object-contain"
-              />
+              <QrCodeSvg value={qrPayload} size="100%" className="h-full w-full" />
             </div>
           </div>
         </div>

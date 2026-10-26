@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 export const PLATFORM_API_WALLET_ID = 'platform';
 
 export const API_BILLABLE_SERVICES = [
+  { serviceKey: 'AADHAAR_DIGILOCKER', displayName: 'Aadhaar DigiLocker' },
   { serviceKey: 'PAN_VERIFICATION', displayName: 'PAN Verification' },
   { serviceKey: 'GST_VERIFICATION', displayName: 'GST Verification' },
   { serviceKey: 'MOBILE_TO_PAN', displayName: 'Mobile To PAN' },

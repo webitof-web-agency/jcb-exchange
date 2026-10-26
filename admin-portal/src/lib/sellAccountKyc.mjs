@@ -10,12 +10,13 @@ const text = (value) => (typeof value === 'string' ? value.trim() : '');
 export const normalizeSellAccountKycNumber = (kind, value) => {
   const normalized = text(value).toUpperCase();
   if (kind === 'PAN' || kind === 'GST') return normalized.replace(/\s+/g, '');
+  if (kind === 'AADHAAR') return normalized.replace(/[^0-9X]/g, '');
   return normalized.replace(/[^0-9]/g, '');
 };
 
 const emptyState = (kind) => ({
   number: '',
-  status: kind === 'AADHAAR' ? SELL_ACCOUNT_KYC_STATUS.NOT_AVAILABLE : SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED,
+  status: SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED,
   verificationRecordId: '',
   verifiedAt: '',
   cacheHit: false,
@@ -37,7 +38,6 @@ export const createEmptySellAccountKyc = () => ({
 
 const normalizeStatus = (kind, value) => {
   const status = text(value).toUpperCase();
-  if (kind === 'AADHAAR') return SELL_ACCOUNT_KYC_STATUS.NOT_AVAILABLE;
   return [SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED, SELL_ACCOUNT_KYC_STATUS.VERIFIED, SELL_ACCOUNT_KYC_STATUS.FAILED].includes(status)
     ? status
     : SELL_ACCOUNT_KYC_STATUS.NOT_VERIFIED;

@@ -317,6 +317,17 @@ enum PanVerificationStatus {
   FAILED
 }
 
+enum AadhaarVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum AadhaarVerificationSide {
+  PURCHASE
+  SALE
+}
+
 enum SurepassEnvironment {
   SANDBOX
   PRODUCTION
@@ -398,6 +409,7 @@ enum ApiBillingWebhookStatus {
 }
 
 enum ApiBillableService {
+  AADHAAR_DIGILOCKER
   PAN_VERIFICATION
   GST_VERIFICATION
   MOBILE_TO_PAN
@@ -489,6 +501,7 @@ model User {
   apiWalletLedgerEntries             ApiWalletLedger[]                  @relation("ApiWalletLedgerRequester")
   mobileToPanLookupRecords           MobileToPanLookupRecord[]           @relation("MobileToPanLookupRequester")
   gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
+  aadhaarVerificationRecords         AadhaarVerificationRecord[]         @relation("AadhaarVerificationRequester")
   blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
   answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
   ownedLeads                         Lead[]                             @relation("LeadOwner")
@@ -644,6 +657,30 @@ model PanVerificationSettings {
   updatedByUserId     String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model AadhaarVerificationRecord {
+  id                 String                    @id @default(uuid())
+  status             AadhaarVerificationStatus @default(PENDING)
+  side               AadhaarVerificationSide
+  maskedAadhaar      String
+  requestFingerprint String                    @db.VarChar(64)
+  provider           String                    @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                   @db.Text
+  encryptedResult    String?                   @db.Text
+  requestedById      String
+  createdAt          DateTime                  @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([side, status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedAadhaar, createdAt])
+  @@index([requestFingerprint, status, completedAt])
 }
 
 model MobileToPanLookupRecord {

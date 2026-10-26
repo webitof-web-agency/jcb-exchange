@@ -1,4 +1,5 @@
 export type ApiBillableServiceKey =
+  | 'AADHAAR_DIGILOCKER'
   | 'PAN_VERIFICATION'
   | 'GST_VERIFICATION'
   | 'MOBILE_TO_PAN'

@@ -29,6 +29,7 @@ const findObject = (value, keys) => {
 };
 
 const addressText = (address) => [
+  address.fullAddress,
   address.line1,
   address.line_1,
   address.line2,
@@ -66,9 +67,11 @@ export const buildAadhaarCardData = (preview, result) => {
   const photoUrl = optionalString(findField(result, ['photoUrl', 'photo_url', 'photo', 'profileImage', 'profile_image', 'image']));
   const issueDate = optionalString(findField(result, ['issueDate', 'issue_date', 'dateOfIssue', 'date_of_issue']))
     || optionalString(findField(record, ['issueDate', 'issue_date', 'dateOfIssue', 'date_of_issue']));
-  const addressEnglish = optionalString(findField(address, ['full', 'fullAddress', 'full_address', 'addressEnglish', 'address_english'])) || addressText(address) || undefined;
+  const addressEnglish = optionalString(findField(result, ['fullAddress', 'full_address'])) || optionalString(findField(address, ['full', 'fullAddress', 'full_address', 'addressEnglish', 'address_english'])) || addressText(address) || undefined;
   const addressHindi = optionalString(findField(result, ['addressHindi', 'address_hindi'])) || undefined;
-  const qrData = optionalString(findField(result, ['qrData', 'qr_data', 'qrPayload', 'qr_payload']));
+  const xmlUrl = optionalString(findField(result, ['xmlUrl', 'xml_url']));
+  const qrData = optionalString(findField(result, ['qrData', 'qr_data', 'qrPayload', 'qr_payload'])) || (xmlUrl?.startsWith('https://') ? xmlUrl : undefined);
+  const fatherName = optionalString(findField(result, ['fatherName', 'father_name', 'careOf', 'care_of']));
 
   return {
     aadhaarNumber: aadhaarNumber || '—',
@@ -84,6 +87,8 @@ export const buildAadhaarCardData = (preview, result) => {
     addressHindi: addressHindi || '—',
     ...(photoUrl ? { photoUrl } : {}),
     ...(qrData ? { qrData } : {}),
+    ...(xmlUrl?.startsWith('https://') ? { qrUrl: xmlUrl } : {}),
+    ...(fatherName ? { fatherNameEnglish: fatherName } : {}),
   };
 };
 

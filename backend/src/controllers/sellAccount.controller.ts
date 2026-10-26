@@ -22,16 +22,6 @@ import {
   type VehicleSaleReceiptChannel,
 } from '../services/vehicleSalePayment.service';
 import { getPublicApiBaseUrl } from '../utils/publicApiUrl';
-import {
-  getEsignSourceDocument,
-  getSellAccountDeedArtifact,
-  getSellAccountDeedWorkflow,
-  isDeedWorkflowError,
-  listEstampArticles,
-  refreshSellAccountDeedWorkflow,
-  startSellAccountDeedWorkflow,
-} from '../services/sellAccountDeedWorkflow.service';
-import { DeedWorkflowValidationError } from '../services/sellAccountDeedWorkflow.validation';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to process Sold Vehicle request.';
 const errorStatus = (error: unknown) => {
@@ -192,56 +182,4 @@ export const downloadSellAccountInvoice = async (req: Request, res: Response, ne
   } catch (error) {
     res.status(400).json({ success: false, error: errorMessage(error) });
   }
-};
-const deedWorkflowErrorStatus = (error: unknown) => {
-  if (error instanceof DeedWorkflowValidationError) return 400;
-  return isDeedWorkflowError(error) && 'statusCode' in error ? error.statusCode : 400;
-};
-
-export const getSellAccountDeedWorkflowRecord = async (req: Request, res: Response) => {
-  try {
-    res.json({ success: true, workflow: await getSellAccountDeedWorkflow(String(req.params.id), req.params.side) });
-  } catch (error) { res.status(deedWorkflowErrorStatus(error)).json({ success: false, error: errorMessage(error) }); }
-};
-
-export const getSellAccountEstampArticles = async (req: Request, res: Response) => {
-  try { res.json({ success: true, result: await listEstampArticles(req.query.state) }); }
-  catch (error) { res.status(deedWorkflowErrorStatus(error)).json({ success: false, error: errorMessage(error) }); }
-};
-
-export const startSellAccountDeedEsign = async (req: Request, res: Response) => {
-  try {
-    const workflow = await startSellAccountDeedWorkflow({ sellAccountId: String(req.params.id), side: req.params.side, input: req.body, ...(req.user?.id ? { requestedById: req.user.id } : {}), publicApiBaseUrl: getPublicApiBaseUrl(req) });
-    res.status(201).json({ success: true, workflow });
-  } catch (error) { res.status(deedWorkflowErrorStatus(error)).json({ success: false, error: errorMessage(error) }); }
-};
-
-export const refreshSellAccountDeedEsign = async (req: Request, res: Response) => {
-  try { res.json({ success: true, workflow: await refreshSellAccountDeedWorkflow(String(req.params.id), req.params.side) }); }
-  catch (error) { res.status(deedWorkflowErrorStatus(error)).json({ success: false, error: errorMessage(error) }); }
-};
-
-// This endpoint intentionally has no staff session: the random one-time token is the credential.
-// It streams only the chosen private PDF, expires quickly, and never reveals a Drive URL.
-export const streamSellAccountEsignSource = async (req: Request, res: Response) => {
-  try {
-    const source = await getEsignSourceDocument(String(req.params.token));
-    if (!source) return res.status(404).end();
-    res.setHeader('Content-Type', source.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${source.fileName.replace(/[\r\n"]/g, '')}"`);
-    res.setHeader('Cache-Control', 'private, no-store');
-    source.stream.on('error', () => { if (!res.headersSent) res.status(502).end(); else res.end(); });
-    source.stream.pipe(res);
-  } catch { res.status(404).end(); }
-};
-
-export const downloadSellAccountDeedArtifact = async (req: Request, res: Response) => {
-  try {
-    const artifact = await getSellAccountDeedArtifact(String(req.params.id), req.params.side, req.params.artifact);
-    res.setHeader('Content-Type', artifact.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${artifact.fileName}"`);
-    res.setHeader('Cache-Control', 'private, no-store');
-    artifact.stream.on('error', () => { if (!res.headersSent) res.status(502).end(); else res.end(); });
-    artifact.stream.pipe(res);
-  } catch (error) { res.status(deedWorkflowErrorStatus(error)).json({ success: false, error: errorMessage(error) }); }
 };
