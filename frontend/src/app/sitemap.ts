@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { generateDealerSlugPath, generateMachineSlugPath } from "@/lib/seoUtils";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout.mjs";
 
 const SITE_URL = "https://jcbexchange.com";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5002/api";
@@ -84,7 +85,7 @@ const staticRoutes = (): MetadataRoute.Sitemap => [
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       cache: "no-store",
     });
 

@@ -1,14 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import {
+  Check,
+  ChevronDown,
   Crown,
+  Loader2,
   MessageCircle,
   Phone,
   Plus,
   Search,
+  UserPlus,
+  UserX,
+  Users,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button, cellClass, EmptyState, Field, inputClass, Modal, ModalFooter, tableHeadClass, Toggle } from '@/components/financeWorkspace/ui';
@@ -26,6 +33,7 @@ import {
   label,
   PageHeader,
   phoneLinks,
+  StatusBadge,
   useCrmBase,
   useCrmMeta,
   useCrmResource,
@@ -33,7 +41,7 @@ import {
 } from './crmShared';
 import { LocationFields } from './LeadForm';
 import { buildContactPayload, sanitizePhoneInput, updateContactLocation, validateContactPhones, type ContactFormState } from './contactFormState';
-import { contactLifecyclePresentation } from './contactPresentation';
+import { contactLifecyclePresentation, type ContactLifecycleTone } from './contactPresentation';
 
 type ContactRow = ContactLite & {
   createdAt: string;
@@ -53,7 +61,275 @@ type ContactRow = ContactLite & {
   } | null;
 };
 
+const LIFECYCLE_CONFIG: Record<
+  ContactLifecycleTone,
+  { bg: string; text: string; border: string; dot: string }
+> = {
+  blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200/90', dot: 'bg-blue-500' },
+  amber: { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200/90', dot: 'bg-amber-500' },
+  green: { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200/90', dot: 'bg-emerald-500' },
+  slate: { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200/90', dot: 'bg-slate-400' },
+};
+
 const PAGE_SIZE = 50;
+
+function ContactOwnerCell({ contact, onSaved }: { contact: ContactRow; onSaved: () => void }) {
+  const { meta } = useCrmMeta();
+  const currentOwner = contact.crmProfile?.owner;
+  const currentOwnerId = currentOwner?.id || '';
+  const [ownerId, setOwnerId] = useState(currentOwnerId);
+  const [saving, setSaving] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
+
+  const canEdit = Boolean(meta?.access.canManage && meta.access.canAssign);
+  const staffList = meta?.staff || [];
+
+  // Sync state if contact prop changes
+  useEffect(() => {
+    setOwnerId(currentOwnerId);
+  }, [currentOwnerId]);
+
+  // Close popover on outside click and Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const toggleOpen = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const openUp = window.innerHeight - rect.bottom < 250 && rect.top > 250;
+      setCoords({
+        top: openUp ? rect.top - 6 : rect.bottom + 6,
+        left: Math.min(window.innerWidth - 240, Math.max(12, rect.left)),
+        openUp,
+      });
+      setSearchQuery('');
+      setIsOpen(true);
+    }
+  };
+
+  const updateOwner = async (nextOwnerId: string) => {
+    if (nextOwnerId === ownerId || saving) return;
+    const previousOwnerId = ownerId;
+    setOwnerId(nextOwnerId);
+    setSaving(true);
+    try {
+      await api.patch(`/crm/contacts/${contact.id}`, { ownerId: nextOwnerId || null });
+      toast.success(nextOwnerId ? 'Contact owner updated.' : 'Contact is now unassigned.');
+      onSaved();
+    } catch (error) {
+      setOwnerId(previousOwnerId);
+      toast.error(crmError(error, 'Could not update the contact owner.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Find current selected staff info
+  const selectedStaff = staffList.find((s) => s.id === ownerId) || (ownerId === currentOwner?.id ? currentOwner : null);
+  const displayName = selectedStaff?.name || null;
+
+  if (!canEdit) {
+    if (!displayName) {
+      return <span className="text-[11px] font-medium text-slate-400">Unassigned</span>;
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-700 border border-slate-200">
+          {displayName.charAt(0).toUpperCase()}
+        </span>
+        <span className="truncate max-w-[120px]">{displayName}</span>
+      </span>
+    );
+  }
+
+  const filteredStaff = staffList.filter((s) =>
+    (s.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="relative inline-flex items-center">
+      {displayName ? (
+        <button
+          ref={buttonRef}
+          type="button"
+          disabled={saving}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleOpen();
+          }}
+          className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-2xs hover:border-amber-400 hover:bg-amber-50/40 hover:shadow-xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/20 disabled:opacity-60"
+          title="Assigned staff (Click to change)"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-[10px] font-bold text-slate-950 shadow-2xs">
+            {displayName.charAt(0).toUpperCase()}
+          </span>
+          <span className="max-w-[105px] truncate font-semibold text-slate-800 group-hover:text-slate-950">
+            {displayName}
+          </span>
+          {saving ? (
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-600" />
+          ) : (
+            <ChevronDown
+              className={`h-3 w-3 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-700 ${
+                isOpen ? 'rotate-180 text-amber-600' : ''
+              }`}
+            />
+          )}
+        </button>
+      ) : (
+        <button
+          ref={buttonRef}
+          type="button"
+          disabled={saving}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleOpen();
+          }}
+          className="group inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 bg-slate-50/70 px-2.5 py-1 text-xs font-medium text-slate-500 hover:border-amber-400 hover:bg-white hover:text-slate-800 hover:shadow-2xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/20 disabled:opacity-60"
+          title="Unassigned (Click to assign staff)"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200/70 text-slate-400 group-hover:bg-amber-100 group-hover:text-amber-700 transition-colors">
+            <UserPlus className="h-3 w-3" />
+          </span>
+          <span className="text-[11px] font-medium text-slate-600 group-hover:text-slate-900">
+            Unassigned
+          </span>
+          {saving ? (
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-600" />
+          ) : (
+            <ChevronDown
+              className={`h-3 w-3 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-700 ${
+                isOpen ? 'rotate-180 text-amber-600' : ''
+              }`}
+            />
+          )}
+        </button>
+      )}
+
+      {isOpen && coords && typeof window !== 'undefined'
+        ? createPortal(
+            <div
+              ref={menuRef}
+              style={{
+                position: 'fixed',
+                top: `${coords.top}px`,
+                left: `${coords.left}px`,
+                width: '230px',
+                transform: coords.openUp ? 'translateY(-100%)' : 'none',
+              }}
+              className="z-[999999] overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-2xl ring-1 ring-black/5 animate-in fade-in-50 zoom-in-95 duration-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <span>Assign Contact Owner</span>
+                <Users className="h-3 w-3 text-slate-400" />
+              </div>
+
+              {staffList.length > 4 ? (
+                <div className="p-1 border-b border-slate-100">
+                  <div className="relative flex items-center">
+                    <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search staff..."
+                      autoFocus
+                      className="w-full rounded-lg bg-slate-50 py-1 pl-8 pr-2 text-xs font-semibold text-slate-900 outline-none placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="max-h-56 overflow-y-auto py-1 custom-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateOwner('');
+                    setIsOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+                    !ownerId
+                      ? 'bg-amber-50/80 font-bold text-amber-900'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                      <UserX className="h-3 w-3" />
+                    </span>
+                    <span>Unassigned</span>
+                  </div>
+                  {!ownerId ? <Check className="h-3.5 w-3.5 text-amber-600" /> : null}
+                </button>
+
+                {filteredStaff.map((staff) => {
+                  const isSelected = staff.id === ownerId;
+                  return (
+                    <button
+                      key={staff.id}
+                      type="button"
+                      onClick={() => {
+                        void updateOwner(staff.id);
+                        setIsOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-50 font-bold text-amber-950'
+                          : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-700 border border-slate-200">
+                          {(staff.name || 'S').charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 text-left">
+                          <p className="truncate text-xs font-semibold">{staff.name}</p>
+                          {staff.roleName ? (
+                            <p className="truncate text-[10px] text-slate-400 font-normal">{staff.roleName}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      {isSelected ? <Check className="h-3.5 w-3.5 text-amber-600 shrink-0 ml-1.5" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
 
 function Contacts() {
   const { meta } = useCrmMeta();
@@ -199,15 +475,10 @@ function Contacts() {
                 {contacts.data.items.map((c) => {
                   const links = phoneLinks(c.mobile, c.whatsappNumber);
                   const lifecycle = contactLifecyclePresentation(c.crmProfile?.lifecycle);
-                  const lifecycleClass = {
-                    blue: 'border-blue-200 bg-blue-50 text-blue-700',
-                    amber: 'border-amber-200 bg-amber-50 text-amber-700',
-                    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                    slate: 'border-slate-200 bg-slate-100 text-slate-700',
-                  }[lifecycle.tone];
+                  const lcCfg = LIFECYCLE_CONFIG[lifecycle.tone] || LIFECYCLE_CONFIG.blue;
                   return (
                     <tr
-                      key={c.id}
+                      key={`${c.id}:${c.crmProfile?.owner?.id || ''}`}
                       className="cursor-pointer hover:bg-slate-50/80 transition-colors"
                       onClick={() => router.push(contactHref(base, c.id))}
                     >
@@ -220,13 +491,13 @@ function Contacts() {
                             <p className="flex items-center gap-1.5 font-bold text-slate-900 text-xs hover:text-amber-600 transition-colors">
                               {c.name || 'Unnamed Customer'}
                               {c.isPrime ? (
-                                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-1.5 py-0.2 text-[10px] font-bold uppercase text-amber-700 border border-amber-400/40">
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700 border border-amber-400/40 leading-none">
                                   <Crown className="h-2.5 w-2.5 text-amber-600" />
                                   Prime
                                 </span>
                               ) : null}
                               {c.crmProfile?.doNotContact ? (
-                                <span className="rounded bg-rose-100 text-rose-700 px-1 py-0.2 text-[10px] font-bold uppercase">
+                                <span className="rounded bg-rose-100 text-rose-700 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none">
                                   DND
                                 </span>
                               ) : null}
@@ -241,18 +512,29 @@ function Contacts() {
                       </td>
 
                       <td className={cellClass}>
-                        <p className="text-[11px] font-bold text-slate-800">
-                          {c.crmProfile?.contactTypes.map(label).join(', ') ||
-                            (c.role === 'CUSTOMER' ? 'Customer' : label(c.role))}
-                        </p>
-                        <span className={`mt-0.5 inline-flex items-center rounded-md border px-1.5 py-0.2 text-[10px] font-bold ${lifecycleClass}`}>
-                          Lifecycle: {lifecycle.label}
-                        </span>
-                        {c.pipelineStage ? (
-                          <span className={`inline-flex items-center rounded-md px-1.5 py-0.2 text-[10px] font-bold mt-0.5 ${c.pipelineStage.isTerminal ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-700'}`}>
-                            {c.pipelineStage.name}
-                          </span>
-                        ) : null}
+                        <div className="flex flex-col items-start gap-1">
+                          <p className="text-xs font-bold text-slate-800 leading-tight">
+                            {c.crmProfile?.contactTypes?.length
+                              ? c.crmProfile.contactTypes.map(label).join(', ')
+                              : (c.role === 'CUSTOMER' ? 'Customer' : label(c.role))}
+                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-tight border shadow-2xs ${lcCfg.bg} ${lcCfg.text} ${lcCfg.border}`}
+                              title={`Lifecycle: ${lifecycle.label}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${lcCfg.dot}`} />
+                              <span>{lifecycle.label}</span>
+                            </span>
+                            {c.pipelineStage ? (
+                              <StatusBadge
+                                status={c.pipelineStage.isTerminal && c.pipelineStage.code !== 'WON' ? 'WON' : c.pipelineStage.code}
+                                name={c.pipelineStage.name}
+                                title={`Pipeline Stage: ${c.pipelineStage.name}`}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
                       </td>
 
                       <td className={cellClass}>
@@ -266,10 +548,8 @@ function Contacts() {
                         </span>
                       </td>
 
-                      <td className={cellClass}>
-                        <span className="text-[11px] font-semibold text-slate-600">
-                          {c.crmProfile?.owner?.name || '—'}
-                        </span>
+                      <td className={cellClass} onClick={(e) => e.stopPropagation()}>
+                        <ContactOwnerCell contact={c} onSaved={contacts.reload} />
                       </td>
 
                       <td className={cellClass}>

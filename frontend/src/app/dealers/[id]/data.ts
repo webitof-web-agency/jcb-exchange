@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
@@ -70,7 +72,7 @@ export const getDealerDetail = async (dealerId: string) => {
     return null;
   }
 
-  const response = await fetch(`${API_BASE_URL}/master/dealers/${dealerId}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/master/dealers/${dealerId}`, {
     cache: 'no-store',
   });
 
@@ -95,7 +97,7 @@ export const getDealerListings = async (dealerId: string) => {
     return [];
   }
 
-  const response = await fetch(`${API_BASE_URL}/master/dealers/${dealerId}/listings`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/master/dealers/${dealerId}/listings`, {
     cache: 'no-store',
   });
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE_URL, getRemoteMediaUrl } from '@/lib/api';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 
 // ── Cached result type ─────────────────────────────────────────────────────
 type LogoData = {
@@ -22,7 +23,7 @@ let fetchPromise: Promise<LogoData> | null = null;
 
 async function fetchLogos(): Promise<LogoData> {
   try {
-    const res = await fetch(`${API_BASE_URL}/master/site-logo`, { cache: 'no-store' });
+    const res = await fetchWithTimeout(`${API_BASE_URL}/master/site-logo`, { cache: 'no-store' });
     if (!res.ok) return { logoUrl: null, darkLogoUrl: null };
     const json = (await res.json()) as {
       data?: {

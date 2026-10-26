@@ -1,6 +1,8 @@
 import prisma from '../../../lib/prisma';
 import { PushNotificationService } from '../../../services/pushNotification.service';
 import { dispatchMarketplaceWhatsApp } from '../../../services/whatsappIntegration.service';
+import { publishNotification } from '../../../services/notificationRealtime';
+import { buildAssignmentNotification, type AssignmentNotificationEntity } from '../assignmentNotifications';
 
 /**
  * CRM notifications. In-app + push go to staff/partners; WhatsApp/SMS use the marketplace
@@ -26,9 +28,10 @@ export type CrmEvent =
 const rolePrefix = (role: string) => (role === 'SUPER_ADMIN' ? '/admin' : '/employee');
 
 /** Portal link for a user's role; partners land on their own lead pages. */
-export const crmLinkFor = (role: string, target: { leadId?: string | null; tab?: string }) => {
+export const crmLinkFor = (role: string, target: { leadId?: string | null; tab?: string; path?: string | null }) => {
   if (role === 'PARTNER') return target.leadId ? `/partner/leads/${target.leadId}` : '/partner/leads';
   const base = `${rolePrefix(role)}/crm`;
+  if (target.path) return `${rolePrefix(role)}${target.path}`;
   if (target.leadId) return `${base}/leads/${target.leadId}`;
   // One page per CRM menu item (tab keys kept for callers: followups → /follow-ups).
   return target.tab ? `${base}/${target.tab === 'followups' ? 'follow-ups' : target.tab}` : base;
@@ -43,6 +46,7 @@ type InAppInput = {
   type: string;
   leadId?: string | null;
   tab?: string;
+  path?: string | null;
   push?: boolean;
 };
 
@@ -53,10 +57,15 @@ export const notifyUsers = async (userIds: string[], input: InAppInput) => {
   try {
     const users = await prisma.user.findMany({ where: { id: { in: ids }, status: 'ACTIVE' }, select: { id: true, role: true } });
     for (const user of users) {
-      const link = crmLinkFor(user.role, { leadId: input.leadId ?? null, ...(input.tab ? { tab: input.tab } : {}) });
-      await prisma.notification.create({
+      const link = crmLinkFor(user.role, {
+        leadId: input.leadId ?? null,
+        ...(input.tab ? { tab: input.tab } : {}),
+        ...(input.path ? { path: input.path } : {}),
+      });
+      const notification = await prisma.notification.create({
         data: { userId: user.id, title: input.title.slice(0, 200), message: input.message.slice(0, 1000), type: input.type, link },
       });
+      publishNotification(user.id, notification);
       if (input.push !== false) {
         void PushNotificationService.sendToUser(user.id, { title: input.title, body: input.message, url: link });
       }
@@ -64,6 +73,53 @@ export const notifyUsers = async (userIds: string[], input: InAppInput) => {
   } catch (error) {
     console.error('[crm] notification failed:', error);
   }
+};
+
+type AssignmentNotificationInput = {
+  recipientId: string;
+  entity: AssignmentNotificationEntity;
+  entityId: string;
+  subject: string;
+  detail?: string | null;
+  actorId?: string | null;
+  push?: boolean;
+};
+
+const actorNameFor = async (actorId?: string | null) => {
+  if (!actorId) return null;
+  try {
+    const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+    return actor?.name ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** Sends one consistent assignment notification for every CRM ownership domain. */
+export const notifyAssignment = async ({ recipientId, entity, entityId, subject, detail, actorId, push }: AssignmentNotificationInput) => {
+  const actorName = await actorNameFor(actorId);
+  const notification = buildAssignmentNotification({
+    entity,
+    entityId,
+    subject,
+    ...(detail !== undefined ? { detail } : {}),
+    actorName,
+  });
+  await notifyUsers([recipientId], {
+    ...notification,
+    path: notification.path,
+    ...(push !== undefined ? { push } : {}),
+  });
+};
+
+export const notifyBulkLeadAssignment = async (recipientId: string, count: number, actorId: string | null) => {
+  const actorName = (await actorNameFor(actorId))?.trim() || 'CRM automation';
+  await notifyUsers([recipientId], {
+    title: `${count} leads assigned to you`,
+    message: `${actorName} assigned you ${count} leads. Open CRM to review them.`,
+    type: 'CRM_LEAD_ASSIGNED',
+    path: '/crm/leads',
+  });
 };
 
 const body = (values: Array<string | null | undefined>) => [{

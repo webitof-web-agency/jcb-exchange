@@ -1,7 +1,7 @@
 "use client";
 
 import Image from 'next/image';
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   Award,
@@ -50,6 +50,7 @@ import { createPublicContactEnquiry } from '@/lib/enquiries';
 import { getPublicAnalyticsIdentity } from '@/lib/analytics';
 import { useToastStore } from '@/store/toastStore';
 import { API_BASE_URL } from '@/lib/api';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { useTranslation } from '@/hooks/useTranslation';
 import MediaDownloadButton, { getMediaDownloadFileName } from '@/components/media/MediaDownloadButton';
 
@@ -381,7 +382,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     const incrementView = async () => {
       try {
         const identity = getPublicAnalyticsIdentity();
-        const response = await fetch(`${API_BASE_URL}/master/public-listings/${listing.id}/view`, {
+        const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings/${listing.id}/view`, {
           method: 'POST',
           headers: identity ? { 'Content-Type': 'application/json' } : undefined,
           body: identity ? JSON.stringify(identity) : undefined,
@@ -401,7 +402,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     let cancelled = false;
     const loadSupportContact = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/master/footer`);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/master/footer`);
         const payload = await response.json() as { data?: { contact?: PublicSupportContact } };
         if (!cancelled) setSupportContact(payload.data?.contact || {});
       } catch {
@@ -566,14 +567,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     setPendingFeature(feature);
   };
 
-  // Resume pending action once user authenticates
-  useEffect(() => {
-    if (user && pendingFeature && !isAuthModalOpen) {
-      void executeProtectedAction(pendingFeature);
-    }
-  }, [user, isAuthModalOpen]);
-
-  const executeProtectedAction = async (feature: CustomerPrimeFeature) => {
+  const executeProtectedAction = useCallback(async (feature: CustomerPrimeFeature) => {
     try {
       if (feature === 'BUY_NOW') {
         setIsBuyNowOpen(true);
@@ -604,7 +598,26 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
     } finally {
       setPendingFeature(null);
     }
-  };
+  }, [contactNumber, listing.id, showToast, t, whatsappUrl]);
+
+  // Resume pending action once user authenticates
+  useEffect(() => {
+    if (!user || !pendingFeature || isAuthModalOpen) {
+      return;
+    }
+
+    let cancelled = false;
+    const resumeTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        void executeProtectedAction(pendingFeature);
+      }
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(resumeTimer);
+    };
+  }, [executeProtectedAction, isAuthModalOpen, pendingFeature, user]);
 
   const handleBuyNowClick = () => {
     if (!user) {

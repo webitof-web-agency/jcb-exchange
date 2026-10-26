@@ -7,6 +7,17 @@ import {
   getNotificationStatus,
 } from '../utils/notificationFilters';
 import { isPushSubscriptionPayload } from '../utils/pushSubscriptions';
+import { subscribeNotification } from '../services/notificationRealtime';
+
+export const streamNotifications = (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  subscribeNotification(userId, res);
+};
 
 export const getNotifications = async (req: Request, res: Response, next: NextFunction) => {
   try {

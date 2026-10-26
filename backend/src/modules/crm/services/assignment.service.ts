@@ -3,7 +3,7 @@ import prisma from '../../../lib/prisma';
 import { badRequest, notFound } from '../http';
 import { pickAssignee, ruleMatchesLead, type AssignmentConditions } from '../rules';
 import { logLeadActivity, stringList, textOrNull, type Db } from './common';
-import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
+import { leadTypeLabel, notifyAssignment, notifyUsers, sendCrmMessage } from './notify.service';
 import { getCrmConfig } from './settings.service';
 import { listPipelineStageStatusSets } from './pipelineStages.service';
 
@@ -57,18 +57,27 @@ export const moveFollowUps = (db: Db, leadId: string, fromOwnerId: string | null
   });
 
 /** Tells the new owner (in-app/push; WhatsApp/SMS if the CRM_LEAD_ASSIGNED rule is set up). */
-export const announceAssignment = async (leadId: string, ownerId: string, reason: string) => {
+export const announceAssignment = async (leadId: string, ownerId: string, reason: string, actorId: string | null = null) => {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, leadType: true, listingTitleSnapshot: true, customer: { select: { name: true, mobile: true } }, owner: { select: { name: true, mobile: true, role: true } } },
+    select: {
+      id: true,
+      leadType: true,
+      listingTitleSnapshot: true,
+      customer: { select: { name: true, mobile: true } },
+      owner: { select: { name: true, mobile: true, role: true } },
+      followUps: { where: { status: 'PENDING' }, select: { id: true } },
+    },
   });
   if (!lead) return;
   const what = lead.listingTitleSnapshot || leadTypeLabel(lead.leadType);
-  await notifyUsers([ownerId], {
-    title: 'Lead assigned to you',
-    message: `${lead.customer.name || 'A customer'} — ${what}. ${reason}`,
-    type: 'CRM_LEAD_ASSIGNED',
-    leadId,
+  await notifyAssignment({
+    recipientId: ownerId,
+    entity: 'LEAD',
+    entityId: leadId,
+    subject: lead.customer.name || 'A customer',
+    detail: [what, reason, lead.followUps.length ? `${lead.followUps.length} pending follow-up${lead.followUps.length === 1 ? '' : 's'} moved to you` : null].filter(Boolean).join(' - '),
+    actorId,
   });
   const config = await getCrmConfig();
   if (config.reminders.whatsappToOwner || config.reminders.smsToOwner) {

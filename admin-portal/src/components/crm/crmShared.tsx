@@ -177,10 +177,13 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
   LOST: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200/90', dot: 'bg-rose-500' },
 };
 
-export function StatusBadge({ status, name }: { status: string; name?: string }) {
+export function StatusBadge({ status, name, title }: { status: string; name?: string; title?: string }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.CONTACTED;
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-tight border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-tight border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
       <span>{name || label(status)}</span>
     </span>

@@ -1,5 +1,6 @@
 import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME } from '@/lib/site';
 import { getRemoteMediaUrl } from '@/lib/api';
+import { fetchWithTimeout } from './fetchWithTimeout.mjs';
 
 export type SiteBranding = {
   logoUrl: string | null;
@@ -30,7 +31,7 @@ const appendVersionToUrl = (value: string | null, version?: string | null) => {
 
 export const getSiteBranding = async (): Promise<SiteBranding> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/master/site-logo`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/site-logo`, {
       cache: 'no-store',
     });
 

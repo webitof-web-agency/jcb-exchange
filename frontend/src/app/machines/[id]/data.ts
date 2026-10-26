@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { resolveAbsoluteMediaUrl } from '@/lib/mediaUrl.mjs';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
@@ -133,7 +134,7 @@ export const getMachineListing = cache(async (id: string): Promise<MachineListin
     return null;
   }
 
-  const response = await fetch(`${API_BASE_URL}/master/public-listings/${id}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings/${id}`, {
     cache: 'no-store',
   });
 

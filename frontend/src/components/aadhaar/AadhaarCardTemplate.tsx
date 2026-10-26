@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import NationalEmblemSvg from '../pancard/NationalEmblemSvg';
-import QrCodeSvg from '../pancard/QrCodeSvg';
 import AadhaarLogoSvg from './AadhaarLogoSvg';
 import AadhaarBackTemplate from './AadhaarBackTemplate';
 import AadhaarHeaderRibbon from './AadhaarHeaderRibbon';
@@ -54,6 +53,16 @@ function formatAadhaarNumber(num?: string): string {
   return num;
 }
 
+function getAadhaarParts(aadhaarNumber: string) {
+  const clean = aadhaarNumber.replace(/\D/g, '');
+  if (clean.length === 12) {
+    return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
+  }
+  const split = aadhaarNumber.trim().split(/\s+/);
+  if (split.length === 3) return split;
+  return [aadhaarNumber, '', ''];
+}
+
 /**
  * 1:1 Pixel-Perfect Authentic UIDAI Indian Aadhaar Card Template
  * ID-1 Format: 85.60mm x 53.98mm (Dimensions: 490px x 309px)
@@ -71,6 +80,17 @@ export default function AadhaarCardTemplate({
 }: AadhaarCardTemplateProps) {
   const [photoError, setPhotoError] = useState(false);
   const [emblemError, setEmblemError] = useState(false);
+  const aadhaarNumber = data?.aadhaarNumber || data?.aadhaar_number || '1234 5678 9101';
+  const addressHindi =
+    data?.addressHindi ||
+    data?.address_hindi ||
+    'सरायं दान शाह, कतरौली, पूरे दुर्गी, फूलपुर, इलाहाबाद, उत्तर प्रदेश, 212402';
+  const addressEnglish =
+    data?.addressEnglish ||
+    data?.address_english ||
+    'saray dan shah, KATRAULI, Poore Durgi, Phoolpur, Allahabad, Uttar Pradesh, 212402';
+
+  const aadhaarParts = getAadhaarParts(aadhaarNumber);
 
   if (side === 'full') {
     return (
@@ -82,16 +102,6 @@ export default function AadhaarCardTemplate({
       />
     );
   }
-
-  const aadhaarNumber = data?.aadhaarNumber || data?.aadhaar_number || '1234 5678 9101';
-  const addressHindi =
-    data?.addressHindi ||
-    data?.address_hindi ||
-    'सरायं दान शाह, कतरौली, पूरे दुर्गी, फूलपुर, इलाहाबाद, उत्तर प्रदेश, 212402';
-  const addressEnglish =
-    data?.addressEnglish ||
-    data?.address_english ||
-    'saray dan shah, KATRAULI, Poore Durgi, Phoolpur, Allahabad, Uttar Pradesh, 212402';
 
   if (side === 'back') {
     return (
@@ -116,22 +126,7 @@ export default function AadhaarCardTemplate({
   const photoUrl = data?.photoUrl || data?.photo_url || '';
   const issueDate = data?.issueDate || data?.issue_date || '10/07/2025';
 
-  const qrPayload = useMemo(() => {
-    if (data?.qrData) return data.qrData;
-    return `UIDAI:${aadhaarNumber}|NAME:${nameEnglish}|DOB:${dob}|GENDER:${gender}`;
-  }, [data?.qrData, aadhaarNumber, nameEnglish, dob, gender]);
-
   const formattedAadhaar = formatAadhaarNumber(aadhaarNumber);
-
-  const aadhaarParts = useMemo(() => {
-    const clean = aadhaarNumber.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
-    }
-    const split = aadhaarNumber.trim().split(/\s+/);
-    if (split.length === 3) return split;
-    return [aadhaarNumber, '', ''];
-  }, [aadhaarNumber]);
 
   return (
     <div

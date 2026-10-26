@@ -9,6 +9,7 @@ import { changeStatus, NEXT_FOLLOW_UP_REQUIRED } from './leads.service';
 import { getCrmConfig } from './settings.service';
 import { listPipelineStageStatusSets } from './pipelineStages.service';
 import { normalizeFollowUpEdit } from '../followupEdit';
+import { formatIst, notifyAssignment } from './notify.service';
 
 const followUpInclude = {
   owner: { select: staffSelect },
@@ -136,6 +137,16 @@ export const createFollowUp = async (access: CrmAccess, body: Record<string, unk
     }
     return created;
   });
+  if (ownerId && ownerId !== access.userId) {
+    await notifyAssignment({
+      recipientId: ownerId,
+      entity: 'FOLLOW_UP',
+      entityId: row.id,
+      subject: row.contact.name || 'Customer',
+      detail: `${type.charAt(0)}${type.slice(1).toLowerCase()} - ${formatIst(dueAt)}`,
+      actorId: access.userId,
+    });
+  }
   return row;
 };
 
@@ -170,6 +181,8 @@ export const updateFollowUp = async (access: CrmAccess, id: string, body: Record
     }
   }
 
+  const ownerChanged = 'ownerId' in body && ownerId !== followUp.ownerId;
+
   const updated = await prisma.$transaction(async (tx) => {
     const result = await tx.crmFollowUp.update({
       where: { id },
@@ -202,9 +215,9 @@ export const updateFollowUp = async (access: CrmAccess, id: string, body: Record
         leadId: followUp.leadId,
         actorId: access.userId,
         type: 'FOLLOW_UP',
-        title: 'Follow-up details updated',
+        title: ownerChanged ? (ownerId ? 'Follow-up assigned' : 'Follow-up unassigned') : 'Follow-up details updated',
         content: notes,
-        metadata,
+        metadata: { ...metadata, ...(ownerChanged ? { fromOwnerId: followUp.ownerId, toOwnerId: ownerId } : {}) },
       });
     } else {
       await tx.crmContactActivity.create({
@@ -212,14 +225,25 @@ export const updateFollowUp = async (access: CrmAccess, id: string, body: Record
           contactUserId: followUp.contactUserId,
           actorId: access.userId,
           type: 'FOLLOW_UP',
-          title: 'Follow-up details updated',
+          title: ownerChanged ? (ownerId ? 'Follow-up assigned' : 'Follow-up unassigned') : 'Follow-up details updated',
           content: notes,
-          metadata,
+          metadata: { ...metadata, ...(ownerChanged ? { fromOwnerId: followUp.ownerId, toOwnerId: ownerId } : {}) },
         },
       });
     }
     return result;
   });
+
+  if (ownerChanged && ownerId && ownerId !== access.userId) {
+    await notifyAssignment({
+      recipientId: ownerId,
+      entity: 'FOLLOW_UP',
+      entityId: updated.id,
+      subject: updated.contact.name || 'Customer',
+      detail: `${updated.type.charAt(0)}${updated.type.slice(1).toLowerCase()} - ${formatIst(updated.dueAt)}`,
+      actorId: access.userId,
+    });
+  }
 
   return updated;
 };
@@ -336,10 +360,21 @@ export const bulkReschedule = async (access: CrmAccess, body: Record<string, unk
 
 export const reassignFollowUp = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {
   if (!access.canAssign) throw forbidden('Only managers can reassign follow-ups.');
-  await requireFollowUp(access, id);
+  const current = await requireFollowUp(access, id);
   const ownerId = textOrNull(body.ownerId, 60);
   if (ownerId) await assertAssignableStaff(prisma, ownerId);
-  return prisma.crmFollowUp.update({ where: { id }, data: { ownerId, remindedAt: null }, include: followUpInclude });
+  const updated = await prisma.crmFollowUp.update({ where: { id }, data: { ownerId, remindedAt: null }, include: followUpInclude });
+  if (ownerId && ownerId !== current.ownerId && ownerId !== access.userId) {
+    await notifyAssignment({
+      recipientId: ownerId,
+      entity: 'FOLLOW_UP',
+      entityId: updated.id,
+      subject: updated.contact.name || 'Customer',
+      detail: `${updated.type.charAt(0)}${updated.type.slice(1).toLowerCase()} - ${formatIst(updated.dueAt)}`,
+      actorId: access.userId,
+    });
+  }
+  return updated;
 };
 
 export const cancelFollowUp = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {

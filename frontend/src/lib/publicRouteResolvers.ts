@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/lib/api';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { parseRouteParam } from '@/lib/routeSlug';
 
 type PublicListingSummary = {
@@ -53,7 +54,7 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/master/public-listings`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings`, {
       cache: 'no-store',
     });
 
@@ -80,7 +81,7 @@ export const resolvePublicDealerId = async (rawParam: string): Promise<string | 
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/master/dealers`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/dealers`, {
       next: { revalidate: 300 },
     });
 

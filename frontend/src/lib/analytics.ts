@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './api';
+import { fetchWithTimeout } from './fetchWithTimeout.mjs';
 
 const ANONYMOUS_ID_KEY = 'jcb_analytics_anonymous_id';
 const SESSION_ID_KEY = 'jcb_analytics_session_id';
@@ -57,7 +58,7 @@ export const trackPublicAnalyticsEvent = (event: PublicAnalyticsEvent) => {
       ...identity,
     };
 
-    void fetch(`${API_BASE_URL}/analytics/events`, {
+    void fetchWithTimeout(`${API_BASE_URL}/analytics/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

@@ -13,6 +13,8 @@ import {
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+export const API_REQUEST_TIMEOUT_MS = 20_000;
+export const LONG_REQUEST_TIMEOUT_MS = 120_000;
 
 export const isLegacyLocalUploadUrl = (url?: string | null) => {
   const normalizedUrl = normalizePublicUploadUrl(url);
@@ -74,6 +76,7 @@ export const getRemoteMediaUrl = (url?: string | null) => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: API_REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -34,7 +34,7 @@ import {
 } from './common';
 import { findOrCreateContact } from './contacts.service';
 import { findMatchingListings } from './matching.service';
-import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
+import { leadTypeLabel, notifyBulkLeadAssignment, notifyUsers, sendCrmMessage } from './notify.service';
 import { rescoreLead } from './scoring.service';
 import { getCrmConfig, type CrmConfig } from './settings.service';
 import { getPipelineStage, listPipelineStages } from './pipelineStages.service';
@@ -487,7 +487,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
   if (!created.ownerId && !access.isPartner && config.automation.enabled && config.automation.autoAssign) {
     await autoAssignLead(created.id).catch((error) => console.error('[crm] auto-assign failed:', error));
   } else if (created.ownerId && created.ownerId !== access.userId) {
-    await announceAssignment(created.id, created.ownerId, 'Created and assigned to you.');
+    await announceAssignment(created.id, created.ownerId, 'Created and assigned to you.', access.userId);
   }
   await acknowledgeLead(created.id, config);
   return created.id;
@@ -872,7 +872,7 @@ export const assignLead = async (access: CrmAccess, id: string, body: Record<str
       metadata: { from: current.ownerId, to: ownerId },
     });
   });
-  if (ownerId && ownerId !== access.userId) await announceAssignment(id, ownerId, textOrNull(body.reason, 200) || 'Assigned by a manager.');
+  if (ownerId && ownerId !== access.userId) await announceAssignment(id, ownerId, textOrNull(body.reason, 200) || 'Assigned by a manager.', access.userId);
   return getLead(access, id);
 };
 
@@ -915,14 +915,15 @@ export const bulkLeads = async (access: CrmAccess, body: Record<string, unknown>
     if (!access.canAssign) throw forbidden('Only managers can assign leads.');
     const ownerId = textOrNull(body.ownerId, 60);
     if (ownerId) await assertAssignableStaff(prisma, ownerId);
-    for (const lead of scoped) {
+    const changedLeads = scoped.filter((lead) => lead.ownerId !== ownerId);
+    for (const lead of changedLeads) {
       await prisma.$transaction(async (tx) => {
         await tx.lead.update({ where: { id: lead.id }, data: { ownerId, assignedAt: ownerId ? new Date() : null } });
         await moveFollowUps(tx, lead.id, lead.ownerId, ownerId);
         await logLeadActivity(tx, { leadId: lead.id, actorId: access.userId, type: 'ASSIGNED', title: 'Bulk reassignment', metadata: { from: lead.ownerId, to: ownerId } });
       });
     }
-    if (ownerId) await notifyUsers([ownerId], { title: `${scoped.length} leads assigned to you`, message: 'Open CRM to see them.', type: 'CRM_LEAD_ASSIGNED', tab: 'leads' });
+    if (ownerId && ownerId !== access.userId && changedLeads.length) await notifyBulkLeadAssignment(ownerId, changedLeads.length, access.userId);
   } else if (action === 'priority' || action === 'tag') {
     if (!access.canManage) throw forbidden();
     const priority = oneOf(PRIORITIES, body.priority);

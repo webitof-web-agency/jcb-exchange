@@ -5,9 +5,10 @@ import { PAYABLE_KEYS, RECEIVABLE_KEYS } from '../../finance-hub/services/receiv
 import { leadScopeWhere, type CrmAccess } from '../access';
 import { badRequest, conflict, forbidden, notFound } from '../http';
 import { LIFECYCLES, mobileVariants, normalizeMobile, oneOf } from '../rules';
-import { contactSelect, pageArgs, stringList, textOrNull, toNumber, type Db } from './common';
+import { assertAssignableStaff, contactSelect, pageArgs, stringList, textOrNull, toNumber, type Db } from './common';
 import { selectContactPipelineStage } from '../contactStage';
 import { listPipelineStageStatusSets } from './pipelineStages.service';
+import { notifyAssignment } from './notify.service';
 
 export type ContactInput = {
   name?: unknown;
@@ -176,7 +177,9 @@ export const lookupByMobile = async (access: CrmAccess, mobileValue: string) => 
 
 export const createContact = async (access: CrmAccess, body: Record<string, unknown>) => {
   if (access.isPartner) throw forbidden('Partners add contacts by creating a lead.');
-  return prisma.$transaction(async (tx) => {
+  if (!access.canManage) throw forbidden();
+  const ownerId = textOrNull(body.ownerId, 60);
+  const result = await prisma.$transaction(async (tx) => {
     const { user, created } = await findOrCreateContact(tx, body, access.userId);
     await applyProfilePatch(tx, access, user.id, body);
     if (created) {
@@ -184,6 +187,17 @@ export const createContact = async (access: CrmAccess, body: Record<string, unkn
     }
     return { contact: user, created };
   });
+  if (ownerId && ownerId !== access.userId) {
+    await notifyAssignment({
+      recipientId: ownerId,
+      entity: 'CONTACT',
+      entityId: result.contact.id,
+      subject: result.contact.name || 'Customer',
+      detail: 'Account owner',
+      actorId: access.userId,
+    });
+  }
+  return result;
 };
 
 const applyProfilePatch = async (db: Db, access: CrmAccess, userId: string, body: Record<string, unknown>) => {
@@ -207,6 +221,7 @@ const applyProfilePatch = async (db: Db, access: CrmAccess, userId: string, body
   if ('ownerId' in body) {
     const ownerId = textOrNull(body.ownerId, 60);
     if (ownerId && ownerId !== access.userId && !access.canAssign) throw forbidden('Only managers can change a contact owner.');
+    if (ownerId) await assertAssignableStaff(db, ownerId);
     data.ownerId = ownerId;
   }
   await db.crmContactProfile.upsert({
@@ -220,7 +235,10 @@ export const updateContact = async (access: CrmAccess, userId: string, body: Rec
   if (access.isPartner) throw forbidden('Partners cannot edit CRM contacts.');
   if (!access.canManage) throw forbidden();
   await assertContactAccess(access, userId);
-  return prisma.$transaction(async (tx) => {
+  const currentProfile = await prisma.crmContactProfile.findUnique({ where: { userId }, select: { ownerId: true } });
+  const nextOwnerId = 'ownerId' in body ? textOrNull(body.ownerId, 60) : currentProfile?.ownerId ?? null;
+  const ownerChanged = 'ownerId' in body && nextOwnerId !== (currentProfile?.ownerId ?? null);
+  const updated = await prisma.$transaction(async (tx) => {
     const userData: Prisma.UserUpdateInput = {};
     if ('name' in body && textOrNull(body.name, 120)) userData.name = textOrNull(body.name, 120);
     if ('email' in body) {
@@ -241,6 +259,17 @@ export const updateContact = async (access: CrmAccess, userId: string, body: Rec
     });
     return tx.user.findUnique({ where: { id: userId }, select: { ...contactSelect, crmProfile: true } });
   });
+  if (ownerChanged && nextOwnerId && nextOwnerId !== access.userId) {
+    await notifyAssignment({
+      recipientId: nextOwnerId,
+      entity: 'CONTACT',
+      entityId: userId,
+      subject: updated?.name || 'Customer',
+      detail: 'Account owner',
+      actorId: access.userId,
+    });
+  }
+  return updated;
 };
 
 const CONTACT_ACTIVITY_TYPES = ['NOTE', 'CALL', 'WHATSAPP', 'SMS', 'EMAIL', 'VISIT', 'MEETING'];
