@@ -5,6 +5,7 @@ export const CRM_PERMISSIONS = {
   read: 'crm.read',
   manage: 'crm.manage',
   manageAll: 'crm.manage_all',
+  pipelineManage: 'crm.pipeline.manage',
   assign: 'crm.assign',
   reports: 'crm.reports',
   export: 'crm.export',

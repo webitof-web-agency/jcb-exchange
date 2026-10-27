@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { SITE_KEYWORDS, SITE_NAME, SITE_OG_IMAGE, SITE_URL } from '@/lib/site';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { extractIdFromSlug, generateCategoryMachinesPath, parseMachineRouteParam, slugify } from '@/lib/seoUtils';
 import MachinesPageClient from './MachinesPageClient';
 
@@ -27,7 +28,7 @@ const normalizeParam = (value?: string | string[]) => {
 
 const fetchPublicCategories = async (): Promise<PublicCategory[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/master/public-categories`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-categories`, {
       cache: 'no-store',
     });
 

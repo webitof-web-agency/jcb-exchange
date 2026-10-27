@@ -7,7 +7,6 @@ import { toast } from 'react-toastify';
 import {
   AlarmClock,
   AlertCircle,
-  Calendar,
   CalendarClock,
   CalendarDays,
   CalendarRange,
@@ -17,12 +16,10 @@ import {
   ChevronRight,
   Clock,
   Copy,
-  ExternalLink,
-  Filter,
+  Edit3,
   List,
   MessageCircle,
   Phone,
-  PhoneCall,
   Plus,
   RotateCcw,
   RotateCw,
@@ -38,15 +35,15 @@ import {
   EmptyState,
   Field,
   inputClass,
-  LoadingState,
   Modal,
   ModalFooter,
   tableHeadClass,
 } from '@/components/financeWorkspace/ui';
-import { CompleteFollowUpModal, RescheduleModal, ScheduleFollowUpModal } from './CrmModals';
+import { CompleteFollowUpModal, EditFollowUpModal, RescheduleModal, ScheduleFollowUpModal } from './CrmModals';
 import {
-  compactSelectClass,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   crmError,
   CrmPageFrame,
   fmtDateTime,
@@ -148,6 +145,7 @@ function FollowUps() {
 
   // Modals state
   const [completing, setCompleting] = useState<FollowUp | null>(null);
+  const [editing, setEditing] = useState<FollowUp | null>(null);
   const [rescheduling, setRescheduling] = useState<FollowUp | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [bulkMove, setBulkMove] = useState(false);
@@ -182,8 +180,6 @@ function FollowUps() {
   const openItems = (list.data?.items || []).filter(
     (f) => f.status === 'PENDING' || f.status === 'MISSED'
   );
-
-  const activeBucket = BUCKETS.find((b) => b.key === bucket);
 
   const copyPhone = (id: string, mobile?: string | null) => {
     if (!mobile) return;
@@ -368,39 +364,27 @@ function FollowUps() {
 
             {/* Executive Filter */}
             {!access?.isPartner && access?.canSeeAll ? (
-              <select
+              <CrmSelect
+                options={[
+                  { id: '', name: 'All Team Members' },
+                  { id: 'me', name: 'Assigned to Me' },
+                  { id: 'none', name: 'Unassigned Queue' },
+                  ...(meta?.staff || []).map((s) => ({ id: s.id, name: s.name })),
+                ]}
                 value={ownerId}
-                onChange={(e) => setOwnerId(e.target.value)}
-                className={`${compactSelectClass} w-36`}
-                aria-label="Executive Filter"
-              >
-                <option value="">All Team Members</option>
-                <option value="me">Assigned to Me</option>
-                <option value="none">Unassigned Queue</option>
-                {meta?.staff.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setOwnerId(next)}
+                searchable
+                className="w-36"
+              />
             ) : null}
 
             {/* Follow-up Type Filter */}
-            <select
+            <CrmSelect
+              options={[{ id: '', name: 'All Activity Types' }, ...(meta?.enums.followUpTypes || ['CALL', 'WHATSAPP', 'VISIT', 'INSPECTION', 'MEETING', 'PAYMENT']).map((t) => ({ id: t, name: label(t) }))]}
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className={`${compactSelectClass} w-32`}
-              aria-label="Activity Type Filter"
-            >
-              <option value="">All Activity Types</option>
-              {(meta?.enums.followUpTypes || ['CALL', 'WHATSAPP', 'VISIT', 'INSPECTION', 'MEETING', 'PAYMENT']).map(
-                (t) => (
-                  <option key={t} value={t}>
-                    {label(t)}
-                  </option>
-                )
-              )}
-            </select>
+              onChange={(next) => setTypeFilter(next)}
+              className="w-32"
+            />
 
             {/* Reset Filters Chip */}
             {search || typeFilter || (ownerId && ownerId !== (access?.canSeeAll ? '' : 'me')) ? (
@@ -436,7 +420,7 @@ function FollowUps() {
           />
         ) : list.loading && !list.data ? (
           <div className="p-8">
-            <LoadingState label="Loading queue items…" />
+            <CrmLoadingState label="Loading queue items…" />
           </div>
         ) : list.error ? (
           <div className="p-4">
@@ -674,6 +658,15 @@ function FollowUps() {
                             <>
                               <button
                                 type="button"
+                                onClick={() => setEditing(f)}
+                                title="Edit follow-up"
+                                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition shadow-2xs"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => setRescheduling(f)}
                                 title="Reschedule Appointment"
                                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition shadow-2xs"
@@ -727,6 +720,18 @@ function FollowUps() {
           onClose={() => setRescheduling(null)}
           onDone={() => {
             setRescheduling(null);
+            reload();
+          }}
+        />
+      ) : null}
+
+      {/* MODAL: EDIT OPEN FOLLOW-UP */}
+      {editing ? (
+        <EditFollowUpModal
+          followUp={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
             reload();
           }}
         />

@@ -330,15 +330,18 @@ export default function Navbar() {
       <header
         className={`fixed top-0 left-0 right-0 z-40 w-full border-b border-white/[0.08] bg-[#00000d] text-white lg:sticky lg:left-auto lg:right-auto ${hasBlockingModalOpen
             ? 'translate-y-0'
-            : `transition-transform duration-300 ease-out will-change-transform ${shouldShowNavbar ? 'translate-y-0' : 'translate-y-0 xl:-translate-y-full'}`
+            : `transition-transform duration-300 ease-out will-change-transform ${shouldShowNavbar ? 'translate-y-0' : 'translate-y-0 lg:-translate-y-full'}`
           }`}
       >
         <div className="relative mx-auto flex h-[52px] w-full max-w-[1600px] items-center justify-between gap-4 px-2 sm:px-4 lg:h-[72px] lg:px-6 xl:px-8">
           <div className="flex flex-1 items-center gap-1 sm:gap-2 xl:flex-none">
             <button
+              type="button"
               className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white xl:hidden"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               aria-label="Toggle mobile menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="mobile-navigation-drawer"
             >
               {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
@@ -608,8 +611,8 @@ export default function Navbar() {
                 {buyVehicleCta}
                 </>
               )}
+            </div>
           </div>
-        </div>
       </header>
 
       {/* Mobile Menu Backdrop Overlay */}
@@ -622,6 +625,9 @@ export default function Navbar() {
 
       {/* Mobile Slide-Over Navigation Drawer */}
       <aside
+        id="mobile-navigation-drawer"
+        aria-label="Mobile navigation"
+        aria-hidden={!isMobileMenuOpen}
         className={`fixed inset-y-0 left-0 z-[10010] flex w-[290px] max-w-[85vw] flex-col bg-[#161616] text-white shadow-2xl transition-transform duration-300 ease-out xl:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
       >
@@ -633,6 +639,7 @@ export default function Navbar() {
           <div className="flex items-center gap-0">
             <LanguageSwitcher size="sm" />
             <button
+              type="button"
               onClick={() => setIsMobileMenuOpen(false)}
               className="rounded-full p-2 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
               aria-label="Close menu"

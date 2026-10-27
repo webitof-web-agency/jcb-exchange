@@ -26,41 +26,95 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.profile-print-only {
+.profile-print-only,
+.print-only {
   display: none;
 }
 
 @media print {
+  @page {
+    margin: 10mm;
+    size: auto;
+  }
+
+  /* Reset body and html for multi-page print */
+  html,
   body {
     background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  body * {
-    visibility: hidden !important;
+  /* Hide administrative chrome, sidebar, header, navigation, and floating widgets */
+  aside,
+  header,
+  nav:not(.print-visible),
+  .no-print,
+  .profile-no-print,
+  .print\:hidden,
+  .Toastify,
+  .Toastify__toast-container,
+  [data-no-print] {
+    display: none !important;
   }
 
-  .profile-print-target,
-  .profile-print-target * {
-    visibility: visible !important;
-  }
-
-  .profile-print-target {
-    position: absolute !important;
-    inset: 0 !important;
+  /* Unclamp main layout containers so content fills 100% width and flows over pages */
+  main {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    color: #111827 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    overflow: visible !important;
   }
 
-  .profile-print-only {
+  main > div,
+  .custom-scrollbar {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Show print-only elements */
+  .profile-print-only,
+  .print-only {
     display: block !important;
   }
 
-  .profile-no-print {
-    display: none !important;
+  /* Ensure profile and targeted sections render cleanly */
+  .profile-print-target {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111827 !important;
+    position: static !important;
+  }
+
+  /* Ensure colors, backgrounds, borders and text render crisp and clear */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Prevent page breaks inside cards, tables, sections */
+  table, tr, td, th,
+  section, article,
+  .rounded-xl, .rounded-2xl {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

@@ -3,8 +3,9 @@ import { dispatchApprovedWhatsAppTemplate, getWhatsAppMetaTemplates } from '../.
 import { canTouchLead, type CrmAccess } from '../access';
 import { badRequest, forbidden, notFound } from '../http';
 import { CRM_ANY_PERMISSIONS } from '../permissions';
-import { FOLLOW_UP_OUTCOMES, FOLLOW_UP_TYPES, LEAD_STATUSES, LEAD_TYPES, LIFECYCLES, PRIORITIES, TEMPERATURES } from '../rules';
+import { FOLLOW_UP_OUTCOMES, FOLLOW_UP_TYPES, LEAD_TYPES, LIFECYCLES, PRIORITIES, TEMPERATURES } from '../rules';
 import { logLeadActivity, textOrNull } from './common';
+import { listPipelineStages } from './pipelineStages.service';
 import { getCrmConfig, publicCrmConfig, readAutomationState } from './settings.service';
 
 /** Staff who can own CRM work: super admins/admins and employees with a CRM (or enquiries) permission. */
@@ -25,10 +26,13 @@ export const listCrmStaff = async () => {
 
 export const getMeta = async (access: CrmAccess) => {
   const config = await getCrmConfig();
+  const pipelineStages = await listPipelineStages();
   return {
     access: {
       isPartner: access.isPartner,
+      canRead: access.canRead,
       canManage: access.canManage,
+      canPipelineManage: access.canPipelineManage,
       canSeeAll: access.canSeeAll,
       canAssign: access.canAssign,
       canReports: access.canReports,
@@ -40,7 +44,8 @@ export const getMeta = async (access: CrmAccess) => {
     me: access.userId,
     config: access.isPartner ? { sources: config.sources, lostReasons: config.lostReasons, tags: config.tags, requireNextFollowUp: config.requireNextFollowUp } : publicCrmConfig(config),
     staff: access.isPartner ? [] : await listCrmStaff(),
-    enums: { statuses: LEAD_STATUSES, leadTypes: LEAD_TYPES, priorities: PRIORITIES, temperatures: TEMPERATURES, followUpTypes: FOLLOW_UP_TYPES, outcomes: FOLLOW_UP_OUTCOMES, lifecycles: LIFECYCLES },
+    enums: { statuses: pipelineStages.map((stage) => stage.code), leadTypes: LEAD_TYPES, priorities: PRIORITIES, temperatures: TEMPERATURES, followUpTypes: FOLLOW_UP_TYPES, outcomes: FOLLOW_UP_OUTCOMES, lifecycles: LIFECYCLES },
+    pipelineStages,
     automation: access.canSettings ? await readAutomationState() : null,
   };
 };

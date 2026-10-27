@@ -19,7 +19,7 @@ import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS, financeLegacyLinks, financeWorkspaceGroups, getVisibleFinanceWorkspaceGroups, matchFinanceModulePath } from '@/lib/financeWorkspace';
 import FinanceSidebarNav from '@/components/layout/FinanceSidebarNav';
 import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandPalette';
-import { CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
+import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -47,6 +47,7 @@ import {
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
 import { UserAvatar } from '@/components/profile/AvatarUpload';
 import { getPublicSiteTarget } from '@/lib/publicSite.mjs';
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 
 const navItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
@@ -238,15 +239,20 @@ export default function AdminLayout({
   // /admin is the super admin panel. The legacy ADMIN role works like an employee:
   // the /employee portal, limited to its permissions.
   const isEmployee = user?.role === 'EMPLOYEE' || user?.role === 'ADMIN';
+  const userPermissions = useMemo(() => user?.permissions || [], [user?.permissions]);
+  const userPermissionKey = userPermissions.join('|');
+  const canUseCrm = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && hasAnyPermission(userPermissions, CRM_VIEW_PERMISSIONS));
+  const { notifications, unreadCount: notificationUnreadCount, markAsRead: markNotificationAsRead, markAllAsRead: markAllNotificationsAsRead } = useRealtimeNotifications({
+    enabled: hasHydrated && isAuthenticated && (isSuperAdmin || isAdmin),
+    token,
+  });
   const totalPendingNotifications =
+    notificationUnreadCount +
     (badges.enquiries || 0) +
     (badges.verifications || 0) +
     (badges.listingsPendingApproval || 0) +
     (badges.recruitmentApplications || 0) +
     (badges.recruitmentInterviews || 0);
-  const userPermissions = useMemo(() => user?.permissions || [], [user?.permissions]);
-  const userPermissionKey = userPermissions.join('|');
-  const canUseCrm = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && hasAnyPermission(userPermissions, CRM_VIEW_PERMISSIONS));
 
   // My overdue + due-today CRM follow-ups, shown on the CRM → Follow-ups menu item.
   useEffect(() => {
@@ -877,11 +883,12 @@ export default function AdminLayout({
     if (!crmItem) return null;
     const base = crmItem.href;
     // Mirrors backend/src/modules/crm/access.ts (enquiries.manage = every lead).
-    const crmCan = (keys: string[]) => !isEmployee || hasAnyPermission(userPermissions, keys);
+    const crmCan = (keys: string[]) => user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || hasAnyPermission(userPermissions, keys);
+    const crmRead = crmCan(CRM_READ_PERMISSIONS);
     const children = [
       { href: base, label: 'Dashboard', icon: LayoutDashboard, visible: true, exact: true, badge: 0 },
-      { href: `${base}/leads`, label: 'Leads', icon: ListChecks, visible: true, exact: false, badge: getNavBadgeCount(base) },
-      { href: `${base}/pipeline`, label: 'Pipeline', icon: Columns3, visible: true, exact: false, badge: 0 },
+      { href: `${base}/leads`, label: 'Leads', icon: ListChecks, visible: crmRead, exact: false, badge: getNavBadgeCount(base) },
+      { href: `${base}/pipeline`, label: 'Pipeline', icon: Columns3, visible: crmRead, exact: false, badge: 0 },
       { href: `${base}/follow-ups`, label: 'Follow-ups', icon: CalendarClock, visible: true, exact: false, badge: crmDueCount },
       { href: `${base}/contacts`, label: 'Contacts', icon: Contact, visible: true, exact: false, badge: 0 },
       { href: `${base}/reports`, label: 'Reports', icon: BarChart3, visible: crmCan(['crm.reports', 'crm.manage_all', 'enquiries.manage']), exact: false, badge: 0 },
@@ -1367,6 +1374,50 @@ export default function AdminLayout({
                       </span>
                     </div>
                     <div className="p-1.5 space-y-0.5 text-xs">
+                      {notifications.length > 0 && (
+                        <div className="mb-1 border-b border-slate-100 pb-1">
+                          <div className="flex items-center justify-between px-2 py-1">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Recent notifications</span>
+                            {notificationUnreadCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => { void markAllNotificationsAsRead().catch(() => undefined); }}
+                                className="text-[10px] font-semibold text-amber-700 hover:text-amber-900"
+                              >
+                                Mark all read
+                              </button>
+                            )}
+                          </div>
+                          {notifications.slice(0, 5).map((notification) => {
+                            const NotificationIcon = notification.type?.includes('FOLLOW_UP')
+                              ? CalendarClock
+                              : notification.type?.includes('CONTACT')
+                                ? Contact
+                                : MessagesSquare;
+                            const href = notification.link || (isEmployee ? '/employee/notifications' : '/admin/notifications');
+                            return (
+                              <Link
+                                key={notification.id}
+                                href={href}
+                                onClick={() => {
+                                  void markNotificationAsRead(notification.id).catch(() => undefined);
+                                  setIsNotificationOpen(false);
+                                }}
+                                className="flex items-start gap-2 rounded-lg p-2 text-left text-slate-700 transition-colors hover:bg-amber-50 hover:text-slate-950"
+                              >
+                                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
+                                  <NotificationIcon className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[11px] font-bold">{notification.title}</span>
+                                  <span className="mt-0.5 block line-clamp-2 text-[10px] leading-4 text-slate-500">{notification.message}</span>
+                                </span>
+                                {!notification.isRead && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
                       {badges.verifications > 0 && (
                         <Link
                           href="/admin/verifications"
@@ -1412,7 +1463,7 @@ export default function AdminLayout({
                           </span>
                         </Link>
                       )}
-                      {totalPendingNotifications === 0 && (
+                      {totalPendingNotifications === 0 && notifications.length === 0 && (
                         <div className="py-4 text-center text-xs text-slate-400">
                           All operational queues are clear!
                         </div>

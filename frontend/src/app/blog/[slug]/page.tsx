@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import BlogArticleClient from '@/components/blog/BlogArticleClient';
 import { extractBlogFaq, faqAnswerToPlainText } from '@/lib/blogFaq';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://jcbexchange.com';
@@ -12,7 +13,7 @@ const toAbsoluteImageUrl = (value: string | null | undefined) => {
 
 const fetchBlog = async (slug: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/blogs/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    const response = await fetchWithTimeout(`${API_BASE_URL}/blogs/${encodeURIComponent(slug)}`, { cache: 'no-store' });
     if (!response.ok) return null;
     const payload = await response.json() as { data?: {
       title: string;

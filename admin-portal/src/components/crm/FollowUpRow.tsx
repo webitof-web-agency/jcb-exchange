@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Edit3,
   MessageCircle,
   Phone,
   RotateCcw,
@@ -32,12 +33,14 @@ export function FollowUpRow({
   followUp,
   now,
   onComplete,
+  onEdit,
   onReschedule,
   showOwner,
 }: {
   followUp: FollowUp;
   now: number;
   onComplete?: () => void;
+  onEdit?: () => void;
   onReschedule?: () => void;
   showOwner?: boolean;
 }) {
@@ -210,6 +213,18 @@ export function FollowUpRow({
               aria-label="Reschedule"
             >
               <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+
+          {open && onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition shadow-2xs"
+              title="Edit follow-up"
+              aria-label="Edit follow-up"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
             </button>
           ) : null}
 

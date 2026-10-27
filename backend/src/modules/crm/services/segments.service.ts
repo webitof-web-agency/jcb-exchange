@@ -3,8 +3,9 @@ import prisma from '../../../lib/prisma';
 import { createWhatsAppCampaignForUsers } from '../../../services/whatsappCampaign.service';
 import type { CrmAccess } from '../access';
 import { badRequest, forbidden, notFound } from '../http';
-import { LEAD_STATUSES, LEAD_TYPES, LIFECYCLES, TEMPERATURES } from '../rules';
+import { LEAD_TYPES, LIFECYCLES, TEMPERATURES } from '../rules';
 import { contactSelect, stringList, textOrNull } from './common';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 export type SegmentFilters = {
   lifecycles: string[];
@@ -35,7 +36,8 @@ export const readSegmentFilters = (value: unknown): SegmentFilters => {
     tags: pick(input.tags),
     states: pick(input.states),
     cities: pick(input.cities),
-    leadStatuses: pick(input.leadStatuses, LEAD_STATUSES),
+    // Stage codes are database configuration, so custom stages must survive segment save/edit.
+    leadStatuses: pick(input.leadStatuses).map((v) => v.toUpperCase()),
     leadTypes: pick(input.leadTypes, LEAD_TYPES),
     temperatures: pick(input.temperatures, TEMPERATURES),
     sources: pick(input.sources).map((v) => v.toUpperCase()),
@@ -46,7 +48,7 @@ export const readSegmentFilters = (value: unknown): SegmentFilters => {
 };
 
 /** Customers matching the filters. Do-not-contact contacts are always excluded. */
-export const segmentWhere = (f: SegmentFilters): Prisma.UserWhereInput => {
+export const segmentWhere = (f: SegmentFilters, terminalStatuses: readonly string[] = ['WON', 'LOST']): Prisma.UserWhereInput => {
   const and: Prisma.UserWhereInput[] = [
     { status: 'ACTIVE' },
     { OR: [{ role: 'CUSTOMER' }, { crmProfile: { isNot: null } }] },
@@ -59,8 +61,8 @@ export const segmentWhere = (f: SegmentFilters): Prisma.UserWhereInput => {
   if (f.cities.length) and.push({ OR: f.cities.map((city) => ({ city: { equals: city, mode: 'insensitive' as const } })) });
   if (f.primeOnly) and.push({ customerPrimeSubscriptions: { some: { status: 'ACTIVE' } } });
   const leadAnd: Prisma.LeadWhereInput[] = [{ mergedIntoId: null }];
-  if (f.leadStatuses.length) leadAnd.push({ status: { in: f.leadStatuses as (typeof LEAD_STATUSES)[number][] } });
-  if (f.openLeadOnly) leadAnd.push({ status: { notIn: ['WON', 'LOST'] } });
+  if (f.leadStatuses.length) leadAnd.push({ status: { in: f.leadStatuses } });
+  if (f.openLeadOnly) leadAnd.push({ status: { notIn: [...terminalStatuses] } });
   if (f.leadTypes.length) leadAnd.push({ leadType: { in: f.leadTypes as (typeof LEAD_TYPES)[number][] } });
   if (f.temperatures.length) leadAnd.push({ temperature: { in: f.temperatures as (typeof TEMPERATURES)[number][] } });
   if (f.sources.length) leadAnd.push({ source: { in: f.sources } });
@@ -79,7 +81,8 @@ const requireCampaigns = (access: CrmAccess) => {
 export const listSegments = async (access: CrmAccess) => {
   requireCampaigns(access);
   const segments = await prisma.crmSegment.findMany({ orderBy: { createdAt: 'desc' } });
-  return Promise.all(segments.map(async (segment) => ({ ...segment, count: await prisma.user.count({ where: segmentWhere(readSegmentFilters(segment.filters)) }) })));
+  const { terminal } = await listPipelineStageStatusSets();
+  return Promise.all(segments.map(async (segment) => ({ ...segment, count: await prisma.user.count({ where: segmentWhere(readSegmentFilters(segment.filters), terminal) }) })));
 };
 
 export const saveSegment = async (access: CrmAccess, body: Record<string, unknown>, id?: string) => {
@@ -99,7 +102,8 @@ export const deleteSegment = async (access: CrmAccess, id: string) => {
 
 export const previewSegment = async (access: CrmAccess, body: Record<string, unknown>) => {
   requireCampaigns(access);
-  const where = segmentWhere(readSegmentFilters(body.filters));
+  const { terminal } = await listPipelineStageStatusSets();
+  const where = segmentWhere(readSegmentFilters(body.filters), terminal);
   const [count, sample] = await Promise.all([
     prisma.user.count({ where }),
     prisma.user.findMany({ where, take: 25, orderBy: { createdAt: 'desc' }, select: contactSelect }),
@@ -114,7 +118,8 @@ export const segmentCampaign = async (access: CrmAccess, id: string, body: Recor
   if (!segment) throw notFound('Segment not found.');
   const templateId = textOrNull(body.templateId, 60);
   if (!templateId) throw badRequest('Choose an approved marketing template.');
-  const users = await prisma.user.findMany({ where: segmentWhere(readSegmentFilters(segment.filters)), select: { id: true }, take: 5000 });
+  const { terminal } = await listPipelineStageStatusSets();
+  const users = await prisma.user.findMany({ where: segmentWhere(readSegmentFilters(segment.filters), terminal), select: { id: true }, take: 5000 });
   try {
     const result = await createWhatsAppCampaignForUsers({
       name: textOrNull(body.name, 120) || `CRM: ${segment.name}`,

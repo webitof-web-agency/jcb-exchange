@@ -89,19 +89,6 @@ enum ListingStatus {
   REJECTED
 }
 
-enum LeadStatus {
-  NEW
-  CONTACTED
-  INTERESTED
-  INSPECTION_SCHEDULED
-  WON
-  LOST
-  // CRM stages (added at the end: Postgres appends new enum values).
-  QUALIFIED
-  NEGOTIATION
-  ON_HOLD
-}
-
 enum PartnerStaffRole {
   OWNER
   LISTING_MANAGER
@@ -330,6 +317,17 @@ enum PanVerificationStatus {
   FAILED
 }
 
+enum AadhaarVerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum AadhaarVerificationSide {
+  PURCHASE
+  SALE
+}
+
 enum SurepassEnvironment {
   SANDBOX
   PRODUCTION
@@ -411,6 +409,7 @@ enum ApiBillingWebhookStatus {
 }
 
 enum ApiBillableService {
+  AADHAAR_DIGILOCKER
   PAN_VERIFICATION
   GST_VERIFICATION
   MOBILE_TO_PAN
@@ -498,10 +497,13 @@ model User {
   passwordResetTokens                PasswordResetToken[]
   emailOtpChallenges                 EmailOtpChallenge[]
   panVerificationRecords             PanVerificationRecord[]            @relation("PanVerificationRequester")
+  panVerificationTemplates           PanVerificationTemplate[]          @relation("PanVerificationTemplateRequester")
   apiBillingUsageRecords             ApiUsageRecord[]                   @relation("ApiBillingUsageRequester")
   apiWalletLedgerEntries             ApiWalletLedger[]                  @relation("ApiWalletLedgerRequester")
-  mobileToPanLookupRecords           MobileToPanLookupRecord[]           @relation("MobileToPanLookupRequester")
+  mobileToPanLookupRecords           MobileToPanLookupRecord[]          @relation("MobileToPanLookupRequester")
   gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
+  gstVerificationTemplates           GstVerificationTemplate[]          @relation("GstVerificationTemplateRequester")
+  aadhaarVerificationRecords         AadhaarVerificationRecord[]        @relation("AadhaarVerificationRequester")
   blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
   answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
   ownedLeads                         Lead[]                             @relation("LeadOwner")
@@ -513,19 +515,19 @@ model User {
 }
 
 model MobileOtpChallenge {
-  id           String                   @id @default(uuid())
+  id           String                    @id @default(uuid())
   mobile       String
   userId       String?
   purpose      MobileOtpChallengePurpose @default(LOGIN)
-  status       MobileOtpChallengeStatus @default(PENDING)
-  attemptCount Int                      @default(0)
-  resendCount  Int                      @default(0)
-  createdAt    DateTime                 @default(now())
-  lastSentAt   DateTime                 @default(now())
+  status       MobileOtpChallengeStatus  @default(PENDING)
+  attemptCount Int                       @default(0)
+  resendCount  Int                       @default(0)
+  createdAt    DateTime                  @default(now())
+  lastSentAt   DateTime                  @default(now())
   expiresAt    DateTime
   verifiedAt   DateTime?
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   resetToken PasswordResetToken?
 
   @@index([mobile, purpose, status, createdAt])
@@ -533,13 +535,13 @@ model MobileOtpChallenge {
 }
 
 model PasswordResetToken {
-  id          String              @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
-  challengeId String              @unique
-  tokenHash   String              @unique
+  challengeId String    @unique
+  tokenHash   String    @unique
   expiresAt   DateTime
   consumedAt  DateTime?
-  createdAt   DateTime            @default(now())
+  createdAt   DateTime  @default(now())
 
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   challenge MobileOtpChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
@@ -627,9 +629,12 @@ model PanVerificationRecord {
   messageCode        String?
   safeMessage        String?                  @db.Text
   encryptedResult    String?                  @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime                 @default(now())
   completedAt        DateTime?
+
+  template PanVerificationTemplate? @relation("PanVerificationRecordTemplate")
 
   requestedBy User @relation("PanVerificationRequester", fields: [requestedById], references: [id])
 
@@ -640,31 +645,48 @@ model PanVerificationRecord {
   @@index([operation, requestFingerprint, status, completedAt])
 }
 
-model PanVerificationSettings {
-  id                  String   @id @default("default")
-  enabled             Boolean  @default(false)
-  activeEnvironment   SurepassEnvironment @default(SANDBOX)
-  baseUrl             String?
-  encryptedToken      String?  @db.Text
-  encryptedCustomerId String?  @db.Text
-  sandboxBaseUrl      String?
-  encryptedSandboxToken String? @db.Text
-  encryptedSandboxCustomerId String? @db.Text
-  productionBaseUrl   String?
-  encryptedProductionToken String? @db.Text
-  encryptedProductionCustomerId String? @db.Text
-  encryptedDataSecret String?  @db.Text
-  updatedByUserId     String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+model PanVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord PanVerificationRecord @relation("PanVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                  @relation("PanVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
-model MobileToPanLookupRecord {
+model PanVerificationSettings {
+  id                            String              @id @default("default")
+  enabled                       Boolean             @default(false)
+  activeEnvironment             SurepassEnvironment @default(SANDBOX)
+  baseUrl                       String?
+  encryptedToken                String?             @db.Text
+  encryptedCustomerId           String?             @db.Text
+  sandboxBaseUrl                String?
+  encryptedSandboxToken         String?             @db.Text
+  encryptedSandboxCustomerId    String?             @db.Text
+  productionBaseUrl             String?
+  encryptedProductionToken      String?             @db.Text
+  encryptedProductionCustomerId String?             @db.Text
+  encryptedDataSecret           String?             @db.Text
+  updatedByUserId               String?
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+}
+
+model AadhaarVerificationRecord {
   id                 String                    @id @default(uuid())
-  status             MobileToPanLookupStatus   @default(PENDING)
-  maskedName         String
-  maskedMobileNumber String
-  requestFingerprint String                    @unique @db.VarChar(64)
+  status             AadhaarVerificationStatus @default(PENDING)
+  side               AadhaarVerificationSide
+  maskedAadhaar      String
+  requestFingerprint String                    @db.VarChar(64)
   provider           String                    @default("SUREPASS")
   providerClientId   String?
   messageCode        String?
@@ -672,6 +694,30 @@ model MobileToPanLookupRecord {
   encryptedResult    String?                   @db.Text
   requestedById      String
   createdAt          DateTime                  @default(now())
+  completedAt        DateTime?
+
+  requestedBy User @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([side, status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([maskedAadhaar, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+}
+
+model MobileToPanLookupRecord {
+  id                 String                  @id @default(uuid())
+  status             MobileToPanLookupStatus @default(PENDING)
+  maskedName         String
+  maskedMobileNumber String
+  requestFingerprint String                  @unique @db.VarChar(64)
+  provider           String                  @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?                 @db.Text
+  encryptedResult    String?                 @db.Text
+  requestedById      String
+  createdAt          DateTime                @default(now())
   completedAt        DateTime?
 
   requestedBy User @relation("MobileToPanLookupRequester", fields: [requestedById], references: [id])
@@ -696,9 +742,12 @@ model GstVerificationRecord {
   messageCode        String?
   safeMessage        String?               @db.Text
   encryptedResult    String?               @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime              @default(now())
   completedAt        DateTime?
+
+  template GstVerificationTemplate? @relation("GstVerificationRecordTemplate")
 
   requestedBy User @relation("GstVerificationRequester", fields: [requestedById], references: [id])
 
@@ -707,6 +756,24 @@ model GstVerificationRecord {
   @@index([maskedGstin, createdAt])
   @@index([gstinStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model GstVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord GstVerificationRecord @relation("GstVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                  @relation("GstVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model DrivingLicenseVerificationRecord {
@@ -929,8 +996,8 @@ model ApiUsageRecord {
   currency             String             @default("INR") @db.VarChar(3)
   createdAt            DateTime           @default(now())
 
-  wallet      ApiWallet       @relation(fields: [walletId], references: [id])
-  requestedBy User            @relation("ApiBillingUsageRequester", fields: [requestedById], references: [id])
+  wallet      ApiWallet        @relation(fields: [walletId], references: [id])
+  requestedBy User             @relation("ApiBillingUsageRequester", fields: [requestedById], references: [id])
   ledger      ApiWalletLedger?
 
   @@index([serviceKey, createdAt])
@@ -963,15 +1030,15 @@ model ApiWalletLedger {
 }
 
 model ApiBillingWebhookEvent {
-  id              String                      @id @default(uuid())
-  eventId         String                      @unique @db.VarChar(150)
+  id              String                     @id @default(uuid())
+  eventId         String                     @unique @db.VarChar(150)
   eventType       ApiBillingWebhookEventType
   occurredAt      DateTime
-  payloadChecksum String                      @db.VarChar(64)
+  payloadChecksum String                     @db.VarChar(64)
   status          ApiBillingWebhookStatus
   outcome         Json?
   processedAt     DateTime?
-  createdAt       DateTime                    @default(now())
+  createdAt       DateTime                   @default(now())
 
   @@index([eventType, createdAt])
 }
@@ -1114,16 +1181,16 @@ model Listing {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  partner            User                       @relation(fields: [partnerId], references: [id])
-  category           Category                   @relation(fields: [categoryId], references: [id])
-  brand              Brand                      @relation(fields: [brandId], references: [id])
-  model              Model                      @relation(fields: [modelId], references: [id])
-  media              Media[]
-  leads              Lead[]
-  saleRecord         SaleRecord?
-  paymentSubmissions ListingPaymentSubmission[]
-  rtoRecords         VehicleRtoRecord[]
-  sellAccount        SellAccount?
+  partner             User                        @relation(fields: [partnerId], references: [id])
+  category            Category                    @relation(fields: [categoryId], references: [id])
+  brand               Brand                       @relation(fields: [brandId], references: [id])
+  model               Model                       @relation(fields: [modelId], references: [id])
+  media               Media[]
+  leads               Lead[]
+  saleRecord          SaleRecord?
+  paymentSubmissions  ListingPaymentSubmission[]
+  rtoRecords          VehicleRtoRecord[]
+  sellAccount         SellAccount?
   vehicleVerification ListingVehicleVerification?
 
   @@index([status, soldAt])
@@ -1142,20 +1209,20 @@ enum ListingVerificationSource {
 }
 
 model ListingVehicleVerification {
-  id                    String                    @id @default(uuid())
-  listingId             String                    @unique
-  verificationRecordId  String?
-  verificationSource    ListingVerificationSource?
-  status                ListingVerificationStatus @default(NOT_VERIFIED)
+  id                         String                     @id @default(uuid())
+  listingId                  String                     @unique
+  verificationRecordId       String?
+  verificationSource         ListingVerificationSource?
+  status                     ListingVerificationStatus  @default(NOT_VERIFIED)
   verifiedRegistrationNumber String?
-  verifiedChassisNumber String?
-  verifiedEngineNumber  String?
-  verifiedFieldHashes   Json?
-  changedFields         Json?
-  lastVerifiedAt        DateTime?
-  lastModifiedAt        DateTime?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  verifiedChassisNumber      String?
+  verifiedEngineNumber       String?
+  verifiedFieldHashes        Json?
+  changedFields              Json?
+  lastVerifiedAt             DateTime?
+  lastModifiedAt             DateTime?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
@@ -1306,60 +1373,60 @@ enum RtoTransferTaskStatus {
 }
 
 model SellAccount {
-  id                    String                 @id @default(uuid())
-  recordNumber          String                 @unique
-  listingId             String?                @unique
-  listingTitle          String?
-  ownerName             String?
-  ownerNumber           String?
-  vehicleNumber         String?
-  chassisNumber         String?
-  sellDate              DateTime?
-  purchaserDate         DateTime?
-  sellerDate            DateTime?
-  vehicleType           String?
-  brandName             String?
-  vehicleModel          String?
-  sellerName            String?
-  sellerNumber          String?
-  purchaserName         String?
-  purchaserNumber       String?
-  sellerState            String?
-  purchaserState        String?
-  sellerCity            String?
-  purchaserCity         String?
-  sourceType            SellAccountSourceType?
-  purchaseType          SellAccountPurchaseType @default(PURCHASE)
-  saleType              SellAccountSaleType    @default(SELL)
-  purchaseExchangeValue Decimal                @default(0) @db.Decimal(14, 2)
+  id                      String                  @id @default(uuid())
+  recordNumber            String                  @unique
+  listingId               String?                 @unique
+  listingTitle            String?
+  ownerName               String?
+  ownerNumber             String?
+  vehicleNumber           String?
+  chassisNumber           String?
+  sellDate                DateTime?
+  purchaserDate           DateTime?
+  sellerDate              DateTime?
+  vehicleType             String?
+  brandName               String?
+  vehicleModel            String?
+  sellerName              String?
+  sellerNumber            String?
+  purchaserName           String?
+  purchaserNumber         String?
+  sellerState             String?
+  purchaserState          String?
+  sellerCity              String?
+  purchaserCity           String?
+  sourceType              SellAccountSourceType?
+  purchaseType            SellAccountPurchaseType @default(PURCHASE)
+  saleType                SellAccountSaleType     @default(SELL)
+  purchaseExchangeValue   Decimal                 @default(0) @db.Decimal(14, 2)
   purchaseExchangeVehicle String?
-  saleExchangeValue     Decimal                @default(0) @db.Decimal(14, 2)
-  saleExchangeVehicle   String?
-  brokerName            String?
-  brokerNumber          String?
-  expenseBreakdown      Json?
-  purchaseAmount        Decimal                @db.Decimal(14, 2)
-  sellAmount            Decimal                @db.Decimal(14, 2)
-  expenses              Decimal                @default(0) @db.Decimal(14, 2)
-  balanceAmount         Decimal                @default(0) @db.Decimal(14, 2)
-  netProfit             Decimal                @default(0) @db.Decimal(14, 2)
-  netProfitAfterGst     Decimal                @default(0) @db.Decimal(14, 2)
-  gstRatePercent        Decimal                @default(18) @db.Decimal(5, 2)
-  taxMode               SellAccountTaxMode     @default(INCLUSIVE)
-  marginBasis           SellAccountMarginBasis @default(AFTER_EXPENSES)
-  transferDetails       String?                @db.Text
-  remarks               String?                @db.Text
-  documents             Json?
-  isDraft               Boolean                @default(false)
-  draftSavedAt          DateTime?
-  isLocked              Boolean                @default(false)
-  lockedAt              DateTime?
-  lockedById            String?
-  dealStatus            SellAccountDealStatus  @default(OPEN)
-  rtoStatusSnapshot     String                 @default("PENDING")
-  completedAt           DateTime?
-  invoiceNumber         String?                @unique
-  invoiceGeneratedAt    DateTime?
+  saleExchangeValue       Decimal                 @default(0) @db.Decimal(14, 2)
+  saleExchangeVehicle     String?
+  brokerName              String?
+  brokerNumber            String?
+  expenseBreakdown        Json?
+  purchaseAmount          Decimal                 @db.Decimal(14, 2)
+  sellAmount              Decimal                 @db.Decimal(14, 2)
+  expenses                Decimal                 @default(0) @db.Decimal(14, 2)
+  balanceAmount           Decimal                 @default(0) @db.Decimal(14, 2)
+  netProfit               Decimal                 @default(0) @db.Decimal(14, 2)
+  netProfitAfterGst       Decimal                 @default(0) @db.Decimal(14, 2)
+  gstRatePercent          Decimal                 @default(18) @db.Decimal(5, 2)
+  taxMode                 SellAccountTaxMode      @default(INCLUSIVE)
+  marginBasis             SellAccountMarginBasis  @default(AFTER_EXPENSES)
+  transferDetails         String?                 @db.Text
+  remarks                 String?                 @db.Text
+  documents               Json?
+  isDraft                 Boolean                 @default(false)
+  draftSavedAt            DateTime?
+  isLocked                Boolean                 @default(false)
+  lockedAt                DateTime?
+  lockedById              String?
+  dealStatus              SellAccountDealStatus   @default(OPEN)
+  rtoStatusSnapshot       String                  @default("PENDING")
+  completedAt             DateTime?
+  invoiceNumber           String?                 @unique
+  invoiceGeneratedAt      DateTime?
   // Only a SHA-256 hash of the public invoice link token is stored.
   invoiceTokenHash      String?                @unique
   invoiceTokenExpiresAt DateTime?
@@ -1393,39 +1460,39 @@ model SellAccount {
 }
 
 model SellAccountDeedWorkflow {
-  id                       String                         @id @default(uuid())
-  sellAccountId            String
-  side                     SellAccountDeedSide
-  status                   SellAccountDeedWorkflowStatus  @default(INITIALIZING)
-  sourceDocument           Json
-  sourceLinkTokenHash      String?                        @unique
-  sourceLinkExpiresAt      DateTime?
-  executionStateCode       String                         @db.VarChar(2)
-  executionStateName       String
-  articleId                Int
-  stampDuty                Int
-  considerationAmount      Int
-  signerName               String
-  signerMobile             String
-  signerEmail              String?
-  signature                Json
-  providerEnvironment      SurepassEnvironment
-  esignClientId            String?                        @unique
-  providerStatus           String?
-  signingUrlCiphertext     String?
-  signedDocument           Json?
-  auditTrail               Json?
-  providerChargeStatus     String                         @default("PENDING_RECONCILIATION")
+  id                         String                        @id @default(uuid())
+  sellAccountId              String
+  side                       SellAccountDeedSide
+  status                     SellAccountDeedWorkflowStatus @default(INITIALIZING)
+  sourceDocument             Json
+  sourceLinkTokenHash        String?                       @unique
+  sourceLinkExpiresAt        DateTime?
+  executionStateCode         String                        @db.VarChar(2)
+  executionStateName         String
+  articleId                  Int
+  stampDuty                  Int
+  considerationAmount        Int
+  signerName                 String
+  signerMobile               String
+  signerEmail                String?
+  signature                  Json
+  providerEnvironment        SurepassEnvironment
+  esignClientId              String?                       @unique
+  providerStatus             String?
+  signingUrlCiphertext       String?
+  signedDocument             Json?
+  auditTrail                 Json?
+  providerChargeStatus       String                        @default("PENDING_RECONCILIATION")
   providerChargedAmountPaise Int?
-  providerChargeReference  String?                        @unique
-  lastErrorCode            String?
-  lastErrorMessage         String?
-  requestedById            String?
-  signedAt                 DateTime?
-  createdAt                DateTime                       @default(now())
-  updatedAt                DateTime                       @updatedAt
+  providerChargeReference    String?                       @unique
+  lastErrorCode              String?
+  lastErrorMessage           String?
+  requestedById              String?
+  signedAt                   DateTime?
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
 
-  sellAccount              SellAccount                    @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+  sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@unique([sellAccountId, side])
   @@index([sellAccountId, updatedAt])
@@ -1452,13 +1519,13 @@ model SellAccountPayment {
   receiptNumber  String?                 @unique
   receiptTokenHash String?               @unique
   receiptTokenCiphertext String?
-  receiptTokenExpiresAt DateTime?
-  receiptGeneratedAt DateTime?
-  receiptDelivery Json?
-  createdById    String?
-  createdAt      DateTime                @default(now())
+  receiptTokenExpiresAt  DateTime?
+  receiptGeneratedAt     DateTime?
+  receiptDelivery        Json?
+  createdById            String?
+  createdAt              DateTime                 @default(now())
 
-  sellAccount    SellAccount             @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+  sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, side, paymentDate])
 }
@@ -1497,15 +1564,15 @@ model SellAccountRefund {
 }
 
 model SellAccountStatusHistory {
-  id             String                @id @default(uuid())
-  sellAccountId  String
-  oldStatus      SellAccountDealStatus?
-  newStatus      SellAccountDealStatus
-  reason         String?
-  changedById    String?
-  createdAt      DateTime              @default(now())
+  id            String                 @id @default(uuid())
+  sellAccountId String
+  oldStatus     SellAccountDealStatus?
+  newStatus     SellAccountDealStatus
+  reason        String?
+  changedById   String?
+  createdAt     DateTime               @default(now())
 
-  sellAccount    SellAccount           @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+  sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, createdAt])
 }
@@ -1556,8 +1623,8 @@ model VehicleRtoRecord {
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
-  listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  sellAccount SellAccount? @relation(fields: [sellAccountId], references: [id], onDelete: SetNull)
+  listing       Listing?              @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  sellAccount   SellAccount?          @relation(fields: [sellAccountId], references: [id], onDelete: SetNull)
   transferTasks RtoTransferTask[]
   statusLogs    VehicleRtoStatusLog[]
 
@@ -1715,20 +1782,20 @@ model Media {
 }
 
 model Lead {
-  id                           String     @id @default(uuid())
+  id                           String   @id @default(uuid())
   listingId                    String?
   customerId                   String
   dealerId                     String
   enquiryType                  String
-  message                      String?    @db.Text
-  status                       LeadStatus @default(NEW)
+  message                      String?  @db.Text
+  status                       String   @default("NEW")
   listingTitleSnapshot         String?
   listingStatusSnapshot        String?
   listingPriceSnapshot         Decimal?
   listingLocationCitySnapshot  String?
   listingLocationStateSnapshot String?
-  createdAt                    DateTime   @default(now())
-  updatedAt                    DateTime   @updatedAt
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
 
   // CRM (docs/crm/00_CRM_PLAN.md). dealerId stays the recipient (partner or platform);
   // ownerId is the staff member working the lead.
@@ -1768,12 +1835,13 @@ model Lead {
   lastReengagedAt        DateTime?
   mergedIntoId           String?
 
-  listing    Listing?       @relation(fields: [listingId], references: [id])
-  customer   User           @relation("CustomerLeads", fields: [customerId], references: [id])
-  dealer     User           @relation("DealerLeads", fields: [dealerId], references: [id])
-  owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  activities LeadActivity[]
-  followUps  CrmFollowUp[]
+  listing       Listing?         @relation(fields: [listingId], references: [id])
+  pipelineStage CrmPipelineStage @relation(fields: [status], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  customer      User             @relation("CustomerLeads", fields: [customerId], references: [id])
+  dealer        User             @relation("DealerLeads", fields: [dealerId], references: [id])
+  owner         User?            @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities    LeadActivity[]
+  followUps     CrmFollowUp[]
 
   @@index([listingId])
   @@index([customerId])
@@ -1802,27 +1870,27 @@ model LeadActivity {
 }
 
 model KycDocument {
-  id               String            @id @default(uuid())
-  partnerProfileId String
-  documentType     KycDocumentType
-  fileUrl          String?
-  fileName         String?
-  documentNumber   String?
-  nameOnDocument   String?
-  issueDate        DateTime?
-  expiryDate       DateTime?
-  submittedNote    String?           @db.Text
-  status           KycDocumentStatus @default(UPLOADED)
-  verificationRecordId String?
-  verificationStatus String              @default("NOT_STARTED")
-  verificationCacheHit Boolean             @default(false)
-  verificationMessage String?             @db.Text
+  id                      String            @id @default(uuid())
+  partnerProfileId        String
+  documentType            KycDocumentType
+  fileUrl                 String?
+  fileName                String?
+  documentNumber          String?
+  nameOnDocument          String?
+  issueDate               DateTime?
+  expiryDate              DateTime?
+  submittedNote           String?           @db.Text
+  status                  KycDocumentStatus @default(UPLOADED)
+  verificationRecordId    String?
+  verificationStatus      String            @default("NOT_STARTED")
+  verificationCacheHit    Boolean           @default(false)
+  verificationMessage     String?           @db.Text
   verificationCompletedAt DateTime?
-  reviewComment    String?           @db.Text
-  reviewedById     String?
-  reviewedAt       DateTime?
-  uploadedAt       DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  reviewComment           String?           @db.Text
+  reviewedById            String?
+  reviewedAt              DateTime?
+  uploadedAt              DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
   partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
   reviewedBy     User?          @relation("KycReviewer", fields: [reviewedById], references: [id])
@@ -1887,8 +1955,8 @@ model PartnerAgreement {
   userAgent        String?
   createdAt        DateTime      @default(now())
 
-  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
-  acceptedByUser User           @relation("AgreementAcceptor", fields: [acceptedByUserId], references: [id])
+  partnerProfile PartnerProfile              @relation(fields: [partnerProfileId], references: [id])
+  acceptedByUser User                        @relation("AgreementAcceptor", fields: [acceptedByUserId], references: [id])
   definition     PartnerAgreementDefinition? @relation(fields: [definitionId], references: [id])
 
   @@unique([partnerProfileId, agreementType, version])
@@ -1896,21 +1964,21 @@ model PartnerAgreement {
 }
 
 model PartnerAgreementDefinition {
-  id                      String                           @id @default(uuid())
-  agreementType           AgreementType                    @unique
-  title                   String
-  summary                 String?                          @db.Text
-  content                 String                           @db.Text
-  version                 String
-  applicablePartnerTypes  String[]                         @default([])
-  isRequired              Boolean                          @default(true)
-  status                  PartnerAgreementDefinitionStatus @default(DRAFT)
-  effectiveFrom           DateTime?
-  displayOrder            Int                              @default(0)
-  createdById             String?
-  updatedById             String?
-  createdAt               DateTime                         @default(now())
-  updatedAt               DateTime                         @updatedAt
+  id                     String                           @id @default(uuid())
+  agreementType          AgreementType                    @unique
+  title                  String
+  summary                String?                          @db.Text
+  content                String                           @db.Text
+  version                String
+  applicablePartnerTypes String[]                         @default([])
+  isRequired             Boolean                          @default(true)
+  status                 PartnerAgreementDefinitionStatus @default(DRAFT)
+  effectiveFrom          DateTime?
+  displayOrder           Int                              @default(0)
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
 
   acceptances PartnerAgreement[]
 
@@ -2905,16 +2973,16 @@ enum FinQueueStatus {
 
 // Singleton row (id = "default"). postingMode is the kill switch for ledger posting.
 model FinSettings {
-  id                   String         @id @default("default")
-  postingMode          FinPostingMode @default(OFF)
-  baseCurrency         String         @default("INR") @db.VarChar(3)
-  booksBeginDate       DateTime?      @db.Date
-  cashLimitPerVoucher  Decimal?       @db.Decimal(14, 2)
-  cashReceiptLimit     Decimal?       @db.Decimal(14, 2)
-  config               Json?
-  updatedById          String?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  id                  String         @id @default("default")
+  postingMode         FinPostingMode @default(OFF)
+  baseCurrency        String         @default("INR") @db.VarChar(3)
+  booksBeginDate      DateTime?      @db.Date
+  cashLimitPerVoucher Decimal?       @db.Decimal(14, 2)
+  cashReceiptLimit    Decimal?       @db.Decimal(14, 2)
+  config              Json?
+  updatedById         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 }
 
 model FinAuditLog {
@@ -3220,7 +3288,7 @@ model FinParty {
 
   links           FinPartyLink[]
   openingBalances FinOpeningBalance[]
-  vouchers        FinVoucher[]        @relation("FinVoucherParty")
+  vouchers        FinVoucher[]           @relation("FinVoucherParty")
   voucherLines    FinVoucherLine[]
   documents       FinDocument[]          @relation("FinDocumentParty")
   settlements     FinPartnerSettlement[] @relation("FinSettlementParty")
@@ -3487,9 +3555,9 @@ model FinDocument {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  party           FinParty            @relation("FinDocumentParty", fields: [partyId], references: [id])
-  againstDocument FinDocument?        @relation("FinDocumentAgainst", fields: [againstDocumentId], references: [id])
-  notesAgainst    FinDocument[]       @relation("FinDocumentAgainst")
+  party           FinParty          @relation("FinDocumentParty", fields: [partyId], references: [id])
+  againstDocument FinDocument?      @relation("FinDocumentAgainst", fields: [againstDocumentId], references: [id])
+  notesAgainst    FinDocument[]     @relation("FinDocumentAgainst")
   lines           FinDocumentLine[]
 
   @@index([docType, date])
@@ -3499,22 +3567,22 @@ model FinDocument {
 }
 
 model FinDocumentLine {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   documentId    String
   lineNo        Int
-  description   String   @db.VarChar(300)
+  description   String  @db.VarChar(300)
   accountId     String
-  hsnSac        String?  @db.VarChar(10)
-  quantity      Decimal  @default(1) @db.Decimal(12, 3)
-  rate          Decimal  @db.Decimal(14, 2)
-  discount      Decimal  @default(0) @db.Decimal(14, 2)
-  taxableValue  Decimal  @db.Decimal(14, 2)
-  gstRate       Decimal  @default(0) @db.Decimal(5, 2)
-  cgst          Decimal  @default(0) @db.Decimal(14, 2)
-  sgst          Decimal  @default(0) @db.Decimal(14, 2)
-  igst          Decimal  @default(0) @db.Decimal(14, 2)
-  itcEligible   Boolean  @default(true)
-  sellAccountId String?  @db.VarChar(60)
+  hsnSac        String? @db.VarChar(10)
+  quantity      Decimal @default(1) @db.Decimal(12, 3)
+  rate          Decimal @db.Decimal(14, 2)
+  discount      Decimal @default(0) @db.Decimal(14, 2)
+  taxableValue  Decimal @db.Decimal(14, 2)
+  gstRate       Decimal @default(0) @db.Decimal(5, 2)
+  cgst          Decimal @default(0) @db.Decimal(14, 2)
+  sgst          Decimal @default(0) @db.Decimal(14, 2)
+  igst          Decimal @default(0) @db.Decimal(14, 2)
+  itcEligible   Boolean @default(true)
+  sellAccountId String? @db.VarChar(60)
   costCentreId  String?
 
   document FinDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -3528,21 +3596,21 @@ model FinDocumentLine {
 // Finance terms of one Sold Vehicle that the Sold Vehicle form does not hold. Keyed by the
 // SellAccount id without a foreign key, so Sold Vehicle deletes keep working.
 model FinVehicleDealExt {
-  id                       String      @id @default(uuid())
-  sellAccountId            String      @unique @db.VarChar(60)
-  dealMode                 FinDealMode @default(OUTRIGHT)
-  consignorPartyId         String?
-  consignmentCommission    Decimal?    @db.Decimal(14, 2)
-  brokerPartyId            String?
-  brokeragePayable         Decimal     @default(0) @db.Decimal(14, 2)
-  brokerageReceivable      Decimal     @default(0) @db.Decimal(14, 2)
+  id                         String      @id @default(uuid())
+  sellAccountId              String      @unique @db.VarChar(60)
+  dealMode                   FinDealMode @default(OUTRIGHT)
+  consignorPartyId           String?
+  consignmentCommission      Decimal?    @db.Decimal(14, 2)
+  brokerPartyId              String?
+  brokeragePayable           Decimal     @default(0) @db.Decimal(14, 2)
+  brokerageReceivable        Decimal     @default(0) @db.Decimal(14, 2)
   brokerageReceivablePartyId String?
-  partnerPartyId           String?
-  partnerShareAmount       Decimal     @default(0) @db.Decimal(14, 2)
-  notes                    String?     @db.Text
-  updatedById              String?
-  createdAt                DateTime    @default(now())
-  updatedAt                DateTime    @updatedAt
+  partnerPartyId             String?
+  partnerShareAmount         Decimal     @default(0) @db.Decimal(14, 2)
+  notes                      String?     @db.Text
+  updatedById                String?
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
 }
 
 enum FinSettlementStatus {
@@ -3553,26 +3621,26 @@ enum FinSettlementStatus {
 
 // Payout to a partner, broker or consignor against their open payables.
 model FinPartnerSettlement {
-  id               String              @id @default(uuid())
-  partyId          String
-  status           FinSettlementStatus @default(DRAFT)
-  date             DateTime            @db.Date
-  bankAccountId    String?
-  paymentMethod    String?             @db.VarChar(20)
-  reference        String?             @db.VarChar(80)
-  grossAmount      Decimal             @db.Decimal(14, 2)
-  tdsSection       String?             @db.VarChar(10)
-  tdsAmount        Decimal             @default(0) @db.Decimal(14, 2)
-  netAmount        Decimal             @db.Decimal(14, 2)
-  lines            Json
-  notes            String?             @db.Text
-  voucherId        String?             @unique
-  createdById      String?
-  paidById         String?
-  paidAt           DateTime?
-  cancelReason     String?             @db.Text
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id            String              @id @default(uuid())
+  partyId       String
+  status        FinSettlementStatus @default(DRAFT)
+  date          DateTime            @db.Date
+  bankAccountId String?
+  paymentMethod String?             @db.VarChar(20)
+  reference     String?             @db.VarChar(80)
+  grossAmount   Decimal             @db.Decimal(14, 2)
+  tdsSection    String?             @db.VarChar(10)
+  tdsAmount     Decimal             @default(0) @db.Decimal(14, 2)
+  netAmount     Decimal             @db.Decimal(14, 2)
+  lines         Json
+  notes         String?             @db.Text
+  voucherId     String?             @unique
+  createdById   String?
+  paidById      String?
+  paidAt        DateTime?
+  cancelReason  String?             @db.Text
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   party FinParty @relation("FinSettlementParty", fields: [partyId], references: [id])
 
@@ -3986,27 +4054,27 @@ model FinSalaryStructure {
 
 /// Monthly salary of an employee party. `earnings` = [{ code, name, amount, pfWage }].
 model FinEmployeeSalary {
-  id              String    @id @default(uuid())
-  partyId         String    @unique
-  employeeCode    String?   @db.VarChar(30)
-  designation     String?
-  department      String?
-  dateOfJoining   DateTime? @db.Date
-  dateOfLeaving   DateTime? @db.Date
-  structureId     String?
-  earnings        Json
-  pfApplicable    Boolean   @default(true)
-  pfWageCap       Boolean   @default(true)
-  esiApplicable   Boolean   @default(true)
-  ptState         String?   @db.VarChar(2)
-  monthlyTds      Decimal   @default(0) @db.Decimal(14, 2)
-  uan             String?   @db.VarChar(12)
-  esiNumber       String?   @db.VarChar(17)
-  costCentreId    String?
-  isActive        Boolean   @default(true)
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  partyId       String    @unique
+  employeeCode  String?   @db.VarChar(30)
+  designation   String?
+  department    String?
+  dateOfJoining DateTime? @db.Date
+  dateOfLeaving DateTime? @db.Date
+  structureId   String?
+  earnings      Json
+  pfApplicable  Boolean   @default(true)
+  pfWageCap     Boolean   @default(true)
+  esiApplicable Boolean   @default(true)
+  ptState       String?   @db.VarChar(2)
+  monthlyTds    Decimal   @default(0) @db.Decimal(14, 2)
+  uan           String?   @db.VarChar(12)
+  esiNumber     String?   @db.VarChar(17)
+  costCentreId  String?
+  isActive      Boolean   @default(true)
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 enum FinPayrollStatus {
@@ -4039,26 +4107,26 @@ model FinPayrollRun {
 
 /// One employee's pay for a run. Amount fields are monthly figures after loss-of-pay.
 model FinPayslip {
-  id               String   @id @default(uuid())
-  runId            String
-  partyId          String
-  daysInMonth      Int
-  paidDays         Decimal  @db.Decimal(5, 1)
-  earnings         Json
-  additions        Decimal  @default(0) @db.Decimal(14, 2)
-  gross            Decimal  @db.Decimal(14, 2)
-  pfWage           Decimal  @default(0) @db.Decimal(14, 2)
-  employeePf       Decimal  @default(0) @db.Decimal(14, 2)
-  employeeEsi      Decimal  @default(0) @db.Decimal(14, 2)
-  professionalTax  Decimal  @default(0) @db.Decimal(14, 2)
-  tds              Decimal  @default(0) @db.Decimal(14, 2)
-  advanceRecovery  Decimal  @default(0) @db.Decimal(14, 2)
-  net              Decimal  @db.Decimal(14, 2)
-  employerPf       Decimal  @default(0) @db.Decimal(14, 2)
-  employerEsi      Decimal  @default(0) @db.Decimal(14, 2)
-  notes            String?  @db.Text
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(uuid())
+  runId           String
+  partyId         String
+  daysInMonth     Int
+  paidDays        Decimal  @db.Decimal(5, 1)
+  earnings        Json
+  additions       Decimal  @default(0) @db.Decimal(14, 2)
+  gross           Decimal  @db.Decimal(14, 2)
+  pfWage          Decimal  @default(0) @db.Decimal(14, 2)
+  employeePf      Decimal  @default(0) @db.Decimal(14, 2)
+  employeeEsi     Decimal  @default(0) @db.Decimal(14, 2)
+  professionalTax Decimal  @default(0) @db.Decimal(14, 2)
+  tds             Decimal  @default(0) @db.Decimal(14, 2)
+  advanceRecovery Decimal  @default(0) @db.Decimal(14, 2)
+  net             Decimal  @db.Decimal(14, 2)
+  employerPf      Decimal  @default(0) @db.Decimal(14, 2)
+  employerEsi     Decimal  @default(0) @db.Decimal(14, 2)
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   run FinPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
@@ -4113,25 +4181,25 @@ model FinFullFinal {
 
 /// A document kept for the books / audit (stored through the secure upload or as a link).
 model FinVaultDocument {
-  id           String    @id @default(uuid())
-  title        String
-  category     String    @db.VarChar(60)
-  financialYear String?  @db.VarChar(20)
-  period       String?   @db.VarChar(7)
-  fileUrl      String
-  fileName     String?
-  mimeType     String?   @db.VarChar(120)
-  size         Int?
-  version      Int       @default(1)
-  previousId   String?
-  entityType   String?   @db.VarChar(40)
-  entityId     String?   @db.VarChar(60)
-  expiresAt    DateTime? @db.Date
-  tags         String[]  @default([])
-  notes        String?   @db.Text
-  isArchived   Boolean   @default(false)
-  uploadedById String?
-  createdAt    DateTime  @default(now())
+  id            String    @id @default(uuid())
+  title         String
+  category      String    @db.VarChar(60)
+  financialYear String?   @db.VarChar(20)
+  period        String?   @db.VarChar(7)
+  fileUrl       String
+  fileName      String?
+  mimeType      String?   @db.VarChar(120)
+  size          Int?
+  version       Int       @default(1)
+  previousId    String?
+  entityType    String?   @db.VarChar(40)
+  entityId      String?   @db.VarChar(60)
+  expiresAt     DateTime? @db.Date
+  tags          String[]  @default([])
+  notes         String?   @db.Text
+  isArchived    Boolean   @default(false)
+  uploadedById  String?
+  createdAt     DateTime  @default(now())
 
   @@index([category, financialYear])
   @@index([entityType, entityId])
@@ -4151,13 +4219,13 @@ model FinCloseChecklist {
 
 /// Year-end close: profit transferred to retained earnings by `voucherId`.
 model FinYearClose {
-  id          String    @id @default(uuid())
-  yearId      String    @unique
-  voucherId   String    @unique
-  profit      Decimal   @db.Decimal(14, 2)
-  closedById  String?
-  closedAt    DateTime  @default(now())
-  reopenedAt  DateTime?
+  id           String    @id @default(uuid())
+  yearId       String    @unique
+  voucherId    String    @unique
+  profit       Decimal   @db.Decimal(14, 2)
+  closedById   String?
+  closedAt     DateTime  @default(now())
+  reopenedAt   DateTime?
   reopenedById String?
 }
 
@@ -4224,21 +4292,21 @@ model FinImportBatch {
 
 /// A credit or settlement received from a connected bank or gateway, waiting to be booked.
 model FinIntegrationEvent {
-  id          String   @id @default(uuid())
-  provider    String   @db.VarChar(30)
-  eventType   String   @db.VarChar(40)
-  externalId  String   @db.VarChar(100)
-  amount      Decimal? @db.Decimal(14, 2)
+  id          String    @id @default(uuid())
+  provider    String    @db.VarChar(30)
+  eventType   String    @db.VarChar(40)
+  externalId  String    @db.VarChar(100)
+  amount      Decimal?  @db.Decimal(14, 2)
   eventDate   DateTime? @db.Date
-  reference   String?  @db.VarChar(100)
+  reference   String?   @db.VarChar(100)
   payerName   String?
   payload     Json
-  status      String   @default("RECEIVED") @db.VarChar(12)
+  status      String    @default("RECEIVED") @db.VarChar(12)
   voucherId   String?
-  note        String?  @db.Text
+  note        String?   @db.Text
   handledById String?
-  receivedAt  DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  receivedAt  DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([provider, externalId])
   @@index([status, receivedAt])
@@ -4312,6 +4380,22 @@ enum CrmFollowUpOutcome {
   NO_SHOW
   MESSAGE_SENT
   OTHER
+}
+
+model CrmPipelineStage {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  name       String
+  order      Int
+  color      String   @default("blue")
+  isTerminal Boolean  @default(false)
+  isSystem   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  leads Lead[]
+
+  @@index([order])
 }
 
 model CrmContactProfile {

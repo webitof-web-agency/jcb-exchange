@@ -1,4 +1,5 @@
 const publicListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED', 'SOLD'] as const;
+const publicAvailableListingStatuses = ['PUBLISHED', 'RESERVED', 'PAUSED'] as const;
 
 const approvedPartnerProfileWhere = {
   onboardingStatus: 'APPROVED',
@@ -7,6 +8,8 @@ const approvedPartnerProfileWhere = {
 } as const;
 
 export const getPublicListingStatuses = () => [...publicListingStatuses];
+
+export const getPublicAvailableListingStatuses = () => [...publicAvailableListingStatuses];
 
 export const getApprovedPartnerProfileWhere = () => ({ ...approvedPartnerProfileWhere });
 
@@ -33,6 +36,13 @@ export const getPublicSellerWhere = () => ({
 export const getPublicMarketplaceListingWhere = () => ({
   status: {
     in: getPublicListingStatuses(),
+  },
+  partner: getPublicSellerWhere(),
+});
+
+export const getPublicMarketplaceAvailableListingWhere = () => ({
+  status: {
+    in: getPublicAvailableListingStatuses(),
   },
   partner: getPublicSellerWhere(),
 });

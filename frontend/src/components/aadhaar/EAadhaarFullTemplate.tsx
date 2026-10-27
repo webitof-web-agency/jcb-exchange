@@ -2,8 +2,6 @@
 
 import React, { useMemo } from 'react';
 import AadhaarLogoSvg from './AadhaarLogoSvg';
-import NationalEmblemSvg from '../pancard/NationalEmblemSvg';
-import QrCodeSvg from '../pancard/QrCodeSvg';
 import AadhaarHeaderRibbon from './AadhaarHeaderRibbon';
 import { Scissors } from 'lucide-react';
 
@@ -53,6 +51,16 @@ function formatVid(vid?: string): string {
     return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12, 16)}`;
   }
   return vid;
+}
+
+function getAadhaarParts(aadhaarNumber: string) {
+  const clean = aadhaarNumber.replace(/\D/g, '');
+  if (clean.length === 12) {
+    return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
+  }
+  const split = aadhaarNumber.trim().split(/\s+/);
+  if (split.length === 3) return split;
+  return [aadhaarNumber, '', ''];
 }
 
 /**
@@ -118,20 +126,7 @@ export default function EAadhaarFullTemplate({
   const genderHindi = data?.genderHindi || (gender.toLowerCase().startsWith('f') ? 'महिला' : 'पुरुष');
   const photoUrl = data?.photoUrl || '';
 
-  const qrPayload = useMemo(() => {
-    if (data?.qrData) return data.qrData;
-    return `UIDAI:${aadhaarNumber}|NAME:${nameEnglish}|DOB:${dob}|GENDER:${gender}|PIN:${pinCode}`;
-  }, [data?.qrData, aadhaarNumber, nameEnglish, dob, gender, pinCode]);
-
-  const aadhaarParts = useMemo(() => {
-    const clean = aadhaarNumber.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
-    }
-    const split = aadhaarNumber.trim().split(/\s+/);
-    if (split.length === 3) return split;
-    return [aadhaarNumber, '', ''];
-  }, [aadhaarNumber]);
+  const aadhaarParts = getAadhaarParts(aadhaarNumber);
 
   return (
     <div

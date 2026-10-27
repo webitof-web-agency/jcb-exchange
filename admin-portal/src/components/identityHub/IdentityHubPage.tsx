@@ -3,14 +3,17 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Building2, CalendarDays, CheckCircle2, Eye, FileCheck2, FileSearch, History, Loader2, Search, ShieldAlert, XCircle, ScanLine, ArrowLeft, ArrowRight, Phone } from 'lucide-react';
+import { BadgeCheck, Building2, CalendarDays, CheckCircle2, Eye, FileCheck2, FileSearch, History, Loader2, Search, ShieldAlert, ShieldCheck, XCircle, ScanLine, ArrowLeft, ArrowRight, Phone } from 'lucide-react';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
-import { canViewFeature, GST_VIEW_PERMISSIONS, MOBILE_TO_PAN_VIEW_PERMISSIONS, PAN_VIEW_PERMISSIONS } from '@/lib/featurePermissions';
+import { canViewFeature, AADHAAR_DIGILOCKER_VIEW_PERMISSIONS, GST_VIEW_PERMISSIONS, MOBILE_TO_PAN_VIEW_PERMISSIONS, PAN_VIEW_PERMISSIONS } from '@/lib/featurePermissions';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiServicePrice } from '@/components/apiBilling/ApiBillingDisplay';
+import AadhaarDigiLockerPanel from '@/components/identityHub/AadhaarDigiLockerPanel';
+import PanTemplatePreview from '@/components/identityHub/PanTemplatePreview';
+import GstTemplatePreview from '@/components/identityHub/GstTemplatePreview';
 import {
   normalizePan,
   operationLabel,
@@ -48,7 +51,7 @@ import {
 import { filterDrivingLicenseDobYears, getDrivingLicenseDobYears } from '@/lib/drivingLicenseVerification';
 
 // --- Shared Types & Helpers ---
-type Tab = 'overview' | 'pan' | 'gst' | 'mobileToPan';
+type Tab = 'overview' | 'pan' | 'gst' | 'mobileToPan' | 'aadhaar';
 type PanTab = 'verify' | 'aadhaar' | 'contact' | 'comprehensive';
 type HistoryResponse<T> = { records: T[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
 type UnifiedRecord = (
@@ -214,82 +217,12 @@ function VerificationHistoryState({
 
 // --- Components ---
 
-function PanComprehensiveV2ResultPanel({ response }: { response: PanResultResponse }) {
-  const result = response.result || {};
-  const details = result.panDetails && typeof result.panDetails === 'object' ? result.panDetails as Record<string, unknown> : {};
-  const address = details.address && typeof details.address === 'object' ? details.address as Record<string, unknown> : {};
-  const nameParts = Array.isArray(details.fullNameSplit) ? details.fullNameSplit.filter((item): item is string => typeof item === 'string').join(' · ') : '';
-  const booleanValue = (value: unknown) => typeof value === 'boolean' ? (value ? 'Yes' : 'No') : 'Not available';
-  const addressValue = address.full || [address.line1, address.streetName, address.city, address.state, address.zip, address.country].filter(Boolean).join(', ');
-
-  return (
-    <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status" aria-live="polite">
-      <div className="flex items-center gap-2 text-sm font-bold text-emerald-800">
-        <BadgeCheck className="h-5 w-5" /> PAN Comprehensive completed{response.cacheHit ? ' · served from saved result' : ''}
-      </div>
-      <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-        <div><span className="text-slate-500">PAN</span><p className="font-semibold text-slate-900">{String(result.panNumber || result.pan || response.record.maskedPan)}</p></div>
-        <div><span className="text-slate-500">Full name</span><p className="font-semibold text-slate-900">{String(details.fullName || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Name parts</span><p className="font-semibold text-slate-900">{nameParts || 'Not available'}</p></div>
-        <div><span className="text-slate-500">Category</span><p className="font-semibold text-slate-900">{String(details.category || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Date of birth</span><p className="font-semibold text-slate-900">{String(details.dob || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Input DOB</span><p className="font-semibold text-slate-900">{String(details.inputDob || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Gender</span><p className="font-semibold text-slate-900">{String(details.gender || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Provider status</span><p className="font-semibold text-slate-900">{String(details.status || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Masked Aadhaar</span><p className="font-semibold text-slate-900">{String(details.maskedAadhaar || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Email</span><p className="font-semibold text-slate-900">{String(details.email || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Phone</span><p className="font-semibold text-slate-900">{String(details.phoneNumber || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Aadhaar linked</span><p className="font-semibold text-slate-900">{booleanValue(details.aadhaarLinked)}</p></div>
-        <div><span className="text-slate-500">DOB verified</span><p className="font-semibold text-slate-900">{booleanValue(details.dobVerified)}</p></div>
-        <div><span className="text-slate-500">DOB check</span><p className="font-semibold text-slate-900">{booleanValue(details.dobCheck)}</p></div>
-        <div><span className="text-slate-500">Limited information</span><p className="font-semibold text-slate-900">{booleanValue(details.lessInfo)}</p></div>
-        <div><span className="text-slate-500">Sole proprietor</span><p className="font-semibold text-slate-900">{booleanValue(result.isSoleProprietor)}</p></div>
-        <div><span className="text-slate-500">Director</span><p className="font-semibold text-slate-900">{booleanValue(result.isDirector)}</p></div>
-        <div><span className="text-slate-500">Salaried</span><p className="font-semibold text-slate-900">{booleanValue(result.isSalaried)}</p></div>
-        <div className="sm:col-span-2"><span className="text-slate-500">Address</span><p className="font-semibold text-slate-900">{String(addressValue || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Address line 1</span><p className="font-semibold text-slate-900">{String(address.line1 || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Address line 2</span><p className="font-semibold text-slate-900">{String(address.line2 || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Street</span><p className="font-semibold text-slate-900">{String(address.streetName || 'Not available')}</p></div>
-        <div><span className="text-slate-500">City</span><p className="font-semibold text-slate-900">{String(address.city || 'Not available')}</p></div>
-        <div><span className="text-slate-500">State</span><p className="font-semibold text-slate-900">{String(address.state || 'Not available')}</p></div>
-        <div><span className="text-slate-500">ZIP</span><p className="font-semibold text-slate-900">{String(address.zip || 'Not available')}</p></div>
-        <div><span className="text-slate-500">Country</span><p className="font-semibold text-slate-900">{String(address.country || 'Not available')}</p></div>
-      </div>
-      {result.providerData && typeof result.providerData === 'object' ? (
-        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-700">Complete provider response data</summary>
-          <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{JSON.stringify(result.providerData, null, 2)}</pre>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function PanResultPanel({ response }: { response: PanResultResponse }) {
+function PanResultPanel({ response, onUploaded, panNumber }: { response: PanResultResponse; onUploaded?: (response: PanResultResponse) => void; panNumber?: string }) {
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title={operationLabel(response.record.operation)} record={response.record} />;
   }
-  if (response.record.operation === PAN_COMPREHENSIVE_OPERATION) {
-    return <PanComprehensiveV2ResultPanel response={response} />;
-  }
-  const result = response.result || {};
-  return (
-    <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status" aria-live="polite">
-      <div className="flex items-center gap-2 text-sm font-bold text-emerald-800">
-        <CheckCircle2 className="h-5 w-5" />
-        {operationLabel(response.record.operation)} completed{response.cacheHit ? ' · served from saved result' : ''}
-      </div>
-      <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-        <div><span className="text-slate-500">PAN</span><p className="font-semibold text-slate-900">{String(result.pan || response.record.maskedPan)}</p></div>
-        {'fullName' in result ? <div><span className="text-slate-500">Full name</span><p className="font-semibold text-slate-900">{String(result.fullName || '—')}</p></div> : null}
-        {'dob' in result ? <div><span className="text-slate-500">Date of birth</span><p className="font-semibold text-slate-900">{String(result.dob || '—')}</p></div> : null}
-        {'status' in result ? <div><span className="text-slate-500">Provider status</span><p className="font-semibold text-slate-900">{String(result.status || '—')}</p></div> : null}
-         {'aadhaarNumber' in result ? <div><span className="text-slate-500">Aadhaar</span><p className="font-semibold text-slate-900">{String(result.aadhaarNumber || 'Not available')}</p></div> : null}
-       </div>
-     </div>
-  );
+  return <PanTemplatePreview response={response} onUploaded={onUploaded} panNumber={panNumber} />;
 }
-
 function MobileToPanResultPanel({ response }: { response: MobileToPanResponse }) {
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title="Mobile To PAN lookup" record={response.record} />;
@@ -316,9 +249,12 @@ function MobileToPanResultPanel({ response }: { response: MobileToPanResponse })
   );
 }
 
-function GstResultPanel({ response }: { response: GstResultResponse }) {
+function GstResultPanel({ response, onUploaded }: { response: GstResultResponse; onUploaded?: (response: GstResultResponse) => void }) {
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title="GST verification" record={response.record} />;
+  }
+  if (response.template && !response.result) {
+    return <GstTemplatePreview response={response} onUploaded={onUploaded} />;
   }
   const result = response.result || {};
   const isActive = typeof result.gstinStatus === 'string' && result.gstinStatus.toUpperCase() === 'ACTIVE';
@@ -395,11 +331,13 @@ function GstResultPanel({ response }: { response: GstResultResponse }) {
           ) : <p className="text-sm text-slate-500">No provider detail was returned.</p>}
         </section>
       )}
+
+      <GstTemplatePreview response={response} onUploaded={onUploaded} />
     </div>
   );
 }
 
-function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDetail, activeTab = 'overview', panTab = 'verify' }: { refreshTrigger: number; onTotalQueriesChange?: (count: number) => void; onSelectDetail?: (type: "PAN" | "GST" | "MOBILE_TO_PAN", id: string) => Promise<void>; activeTab?: Tab; panTab?: PanTab }) {
+function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDetail, activeTab = 'overview', panTab = 'comprehensive' }: { refreshTrigger: number; onTotalQueriesChange?: (count: number) => void; onSelectDetail?: (type: "PAN" | "GST" | "MOBILE_TO_PAN", id: string) => Promise<void>; activeTab?: Tab; panTab?: PanTab }) {
   const { user } = useAuthStore();
   const permissions = user?.permissions;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -605,9 +543,16 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
                   <td className="px-3 py-3 font-mono font-semibold text-slate-800">
                     {record._type === 'PAN' ? record.maskedPan : record._type === 'GST' ? record.maskedGstin : `${record.maskedName} · ${record.maskedMobileNumber}`}
                   </td>
-                  <td className="px-3 py-3">
-                    <StatusBadge status={record.status} />
-                  </td>
+                   <td className="px-3 py-3">
+                     <div className="flex flex-col items-start gap-1">
+                       <StatusBadge status={record.status} />
+                       {((record._type === 'PAN' || record._type === 'GST') && record.template) ? (
+                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                           <CheckCircle2 className="h-3 w-3" /> Template saved
+                         </span>
+                       ) : null}
+                     </div>
+                   </td>
                   <td className="px-3 py-3 text-slate-500">{formatDate(record.createdAt)}</td>
                   <td className="px-3 py-3 text-right">
                     <button 
@@ -660,7 +605,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
               <div><p className="text-xs font-bold uppercase tracking-widest text-purple-600">GST Verification</p><h2 className="mt-1 text-xl font-bold text-slate-900">Result Details</h2></div>
               <button type="button" onClick={() => setGstDetail(null)} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100">Close</button>
             </div>
-            <GstResultPanel response={gstDetail} />
+            <GstResultPanel response={gstDetail} onUploaded={(updated) => setGstDetail(updated)} />
           </div>
         </div>
       ) : null}
@@ -692,6 +637,7 @@ export default function IdentityHubPage() {
   const canPanView = canViewFeature(user?.role, permissions, PAN_VIEW_PERMISSIONS);
   const canGstView = canViewFeature(user?.role, permissions, GST_VIEW_PERMISSIONS);
   const canMobileToPanView = canViewFeature(user?.role, permissions, MOBILE_TO_PAN_VIEW_PERMISSIONS);
+  const canAadhaarView = canViewFeature(user?.role, permissions, AADHAAR_DIGILOCKER_VIEW_PERMISSIONS);
   const canPanVerify = isSuperAdmin || hasAnyPermission(permissions, ['pan.verification.read']);
   const canGstVerify = isSuperAdmin || hasAnyPermission(permissions, ['gst.verification.read']);
   const canMobileToPanLookup = isSuperAdmin || hasAnyPermission(permissions, ['pan.mobile-to-pan.read']);
@@ -707,8 +653,7 @@ export default function IdentityHubPage() {
       try {
         const result = await api.get<GstResultResponse>(`/gst-verification/history/${id}`);
         setGstResponse(result.data);
-        const gstinVal = typeof result.data.result?.gstin === 'string' ? result.data.result.gstin : result.data.record?.maskedGstin;
-        if (gstinVal) setGstin(String(gstinVal));
+        setGstin(typeof result.data.result?.gstin === 'string' ? result.data.result.gstin : '');
       } catch (err) {
         setGstError(safeGstApiError(err, 'Unable to load GST result detail.'));
       }
@@ -718,14 +663,7 @@ export default function IdentityHubPage() {
       setPanResponse(null);
       try {
         const result = await api.get<PanResultResponse>(`/pan-verification/history/${id}`);
-        const operationTab: PanTab = result.data.record.operation === 'PAN_TO_AADHAAR'
-          ? 'aadhaar'
-          : result.data.record.operation === 'PAN_CONTACT_LOOKUP'
-            ? 'contact'
-            : result.data.record.operation === PAN_COMPREHENSIVE_OPERATION
-              ? 'comprehensive'
-              : 'verify';
-        setPanTab(operationTab);
+        setPanTab('comprehensive');
         setPanResponse(result.data);
         const panVal = typeof result.data.result?.pan === 'string' ? result.data.result.pan : result.data.record?.maskedPan;
         if (panVal) setPan(String(panVal));
@@ -748,7 +686,7 @@ export default function IdentityHubPage() {
   };
 
   // PAN State
-  const [panTab, setPanTab] = useState<PanTab>('verify');
+  const [panTab, setPanTab] = useState<PanTab>('comprehensive');
   const [pan, setPan] = useState('');
   const [fullName, setFullName] = useState('');
   const [dob, setDob] = useState('');
@@ -777,14 +715,15 @@ export default function IdentityHubPage() {
   };
 
   useEffect(() => {
-    if (!canPanView && !canGstView && !canMobileToPanView) {
+    if (!canPanView && !canGstView && !canMobileToPanView && !canAadhaarView) {
       router.replace(accessDeniedHref);
       return;
     }
     if (activeTab === 'pan' && !canPanView) setActiveTab(canGstView ? 'gst' : 'overview');
     if (activeTab === 'gst' && !canGstView) setActiveTab(canPanView ? 'pan' : 'overview');
     if (activeTab === 'mobileToPan' && !canMobileToPanView) setActiveTab(canPanView ? 'pan' : canGstView ? 'gst' : 'overview');
-  }, [accessDeniedHref, activeTab, canGstView, canMobileToPanView, canPanView, router]);
+    if (activeTab === 'aadhaar' && !canAadhaarView) setActiveTab(canPanView ? 'pan' : canGstView ? 'gst' : 'overview');
+  }, [accessDeniedHref, activeTab, canAadhaarView, canGstView, canMobileToPanView, canPanView, router]);
 
   useEffect(() => {
     const headerTitle = activeTab === 'pan'
@@ -793,6 +732,8 @@ export default function IdentityHubPage() {
         ? 'GST Verification'
         : activeTab === 'mobileToPan'
           ? 'Mobile To PAN'
+          : activeTab === 'aadhaar'
+            ? 'Aadhaar Verification'
           : null;
 
     setCustomHeader(
@@ -805,6 +746,20 @@ export default function IdentityHubPage() {
   }, [activeTab, setCustomHeader]);
 
   const triggerHistoryRefresh = () => setRefreshHistory(prev => prev + 1);
+
+  const handlePanTemplateUploaded = (updated: PanResultResponse) => {
+    setPanResponse(updated);
+    setPan('');
+    setFullName('');
+    setDob('');
+    triggerHistoryRefresh();
+  };
+
+  const handleGstTemplateUploaded = (updated: GstResultResponse) => {
+    setGstResponse(updated);
+    setGstin('');
+    triggerHistoryRefresh();
+  };
 
   const submitPan = async (event: FormEvent) => {
     event.preventDefault();
@@ -894,7 +849,7 @@ export default function IdentityHubPage() {
     }
   };
 
-  if (!canPanView && !canGstView && !canMobileToPanView) {
+  if (!canPanView && !canGstView && !canMobileToPanView && !canAadhaarView) {
     return null;
   }
 
@@ -904,7 +859,12 @@ export default function IdentityHubPage() {
         <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
           {canPanView && (
             <div
-              onClick={() => setActiveTab('pan')}
+              onClick={() => {
+                setPanTab('comprehensive');
+                setPanResponse(null);
+                setPanError('');
+                setActiveTab('pan');
+              }}
               className="group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md sm:rounded-2xl sm:p-5"
             >
               <div>
@@ -956,6 +916,31 @@ export default function IdentityHubPage() {
             </div>
           )}
 
+          {canAadhaarView && (
+            <div
+              onClick={() => setActiveTab('aadhaar')}
+              className="group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md sm:rounded-2xl sm:p-5"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950 sm:h-10 sm:w-10 sm:rounded-xl">
+                    <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </div>
+                  <span className="inline-flex max-w-[95px] items-center gap-1 truncate rounded-full border border-emerald-200/60 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-800 sm:max-w-none sm:px-2.5 sm:text-xs">
+                    <CheckCircle2 className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" /> Aadhaar Verification
+                  </span>
+                </div>
+                <div className="mt-3 sm:mt-4">
+                  <h2 className="line-clamp-2 text-xs font-bold leading-snug text-slate-950 transition-colors group-hover:text-amber-600 sm:text-base">Aadhaar Verification</h2>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
+                <ApiServicePrice summary={billing.summary} serviceKey="AADHAAR_DIGILOCKER" />
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-hover:translate-x-1 group-hover:text-amber-600 sm:h-4 sm:w-4" />
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     );
@@ -995,9 +980,6 @@ export default function IdentityHubPage() {
                 </div>
                 <div className="p-5 sm:p-6 flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                    <div className="flex gap-2 mb-5 border-b border-slate-100 pb-3.5">
-                     <button type="button" onClick={()=>handlePanTabChange('verify')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='verify'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Basic Verify</button>
-                     <button type="button" onClick={()=>handlePanTabChange('aadhaar')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='aadhaar'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Aadhaar Link</button>
-                     <button type="button" onClick={()=>handlePanTabChange('contact')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='contact'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>Fetch Contact</button>
                      <button type="button" onClick={()=>handlePanTabChange('comprehensive')} className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${panTab==='comprehensive'?'bg-amber-500 text-slate-950 shadow-sm':'text-slate-600 hover:bg-slate-100'}`}>PAN Comprehensive</button>
                    </div>
                    <form onSubmit={submitPan} className="max-w-xl">
@@ -1025,7 +1007,7 @@ export default function IdentityHubPage() {
                       {panBusy ? 'Processing...' : 'Run Verification'}
                     </button>
                    </form>
-                   {panResponse && <PanResultPanel response={panResponse} />}
+                   {panResponse && <PanResultPanel response={panResponse} panNumber={pan} onUploaded={handlePanTemplateUploaded} />}
                 </div>
               </div>
             )}
@@ -1058,7 +1040,7 @@ export default function IdentityHubPage() {
                       {gstBusy ? 'Verifying...' : 'Verify GSTIN'}
                     </button>
                    </form>
-                   {gstResponse && <GstResultPanel response={gstResponse} />}
+                   {gstResponse && <GstResultPanel response={gstResponse} onUploaded={handleGstTemplateUploaded} />}
                 </div>
               </div>
             )}
@@ -1103,6 +1085,10 @@ export default function IdentityHubPage() {
                   {mobileToPanResponse && <MobileToPanResultPanel response={mobileToPanResponse} />}
                 </div>
               </div>
+            )}
+
+            {activeTab === 'aadhaar' && (
+              <AadhaarDigiLockerPanel canVerify={canAadhaarView} />
             )}
 
           </div>

@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../fetchWithTimeout.mjs';
+
 const REGISTRATION_BATCH_WINDOW_MS = 600;
 const REGISTRATION_BATCH_LIMIT = 25;
 const REGISTER_ENDPOINT = '/master/translations/register-missing';
@@ -25,7 +27,7 @@ const flushMissingTranslations = async (app: 'admin-portal' | 'frontend') => {
   }
 
   try {
-    const response = await fetch(`${resolveApiBaseUrl()}${REGISTER_ENDPOINT}`, {
+    const response = await fetchWithTimeout(`${resolveApiBaseUrl()}${REGISTER_ENDPOINT}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

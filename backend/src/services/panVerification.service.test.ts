@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  PanVerificationError,
   PanVerificationService,
   sanitizeAadhaarResult,
   sanitizeContactResult,
@@ -349,4 +350,178 @@ test('charges the PAN wallet only when a fresh provider request is made', async 
   await service.verifyPan({ id_number: 'ABCDE1234F', full_name: 'Test User', dob: '2000-01-01' }, 'user-1');
 
   assert.deepEqual(charges, [{ serviceKey: 'PAN_VERIFICATION', verificationRecordId: 'record-1', requestedById: 'user-1' }]);
+});
+
+test('PAN Comprehensive V2 concurrently calls PAN to father name and populates fatherName', async () => {
+  const calls: string[] = [];
+  const records: any[] = [];
+  const recordRepository = {
+    findFirst: async () => null,
+    findUnique: async () => null,
+    findMany: async () => records,
+    count: async () => records.length,
+    create: async ({ data }: { data: Record<string, unknown> }) => {
+      const record = { id: 'rec-1', ...data, provider: 'SUREPASS', providerClientId: null, messageCode: null, safeMessage: null, encryptedResult: null, createdAt: new Date(), completedAt: null };
+      records.push(record);
+      return record;
+    },
+    update: async ({ data }: { data: Record<string, unknown> }) => {
+      Object.assign(records[0], data);
+      return records[0];
+    },
+  };
+
+  const provider = {
+    getPanComprehensiveV2: async () => {
+      calls.push('comprehensive');
+      return {
+        success: true,
+        status_code: 200,
+        data: {
+          client_id: 'comp-1',
+          pan_number: 'JRXPD1234N',
+          full_name: 'SHIVRAJ DHEEMAR',
+          pan_details: { full_name: 'SHIVRAJ DHEEMAR', category: 'person' },
+        },
+      };
+    },
+    getPanFatherName: async () => {
+      calls.push('father_name');
+      return {
+        success: true,
+        status_code: 200,
+        data: {
+          client_id: 'father-1',
+          pan_number: 'JRXPD1234N',
+          father_name: 'DALLU LAL DHEEMAR',
+          full_name: 'SHIVRAJ DHEEMAR',
+        },
+      };
+    },
+  };
+
+  const service = new PanVerificationService({
+    record: recordRepository as any,
+    provider: provider as any,
+    dataSecret: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  });
+
+  const response = await service.getPanComprehensiveV2({ id_number: 'JRXPD1234N' }, 'user-1');
+  assert.equal(calls.includes('comprehensive'), true);
+  assert.equal(calls.includes('father_name'), true);
+  assert.equal((response.result?.panDetails as any)?.fatherName, 'DALLU LAL DHEEMAR');
+});
+
+test('PAN history returns safe saved-template metadata without exposing the Drive file id', async () => {
+  const service = new PanVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => null,
+      findMany: async () => [{
+        id: 'record-1',
+        operation: 'PAN_COMPREHENSIVE_V2',
+        status: 'SUCCESS',
+        maskedPan: 'ABCDE****F',
+        provider: 'SUREPASS',
+        providerClientId: null,
+        messageCode: null,
+        safeMessage: null,
+        requestedBy: null,
+        createdAt: new Date('2026-10-27T10:00:00.000Z'),
+        completedAt: new Date('2026-10-27T10:00:01.000Z'),
+        rawDataExpiresAt: null,
+        template: {
+          id: 'template-1',
+          fileName: 'pan-template-record-1.png',
+          mimeType: 'image/png',
+          fileSize: 2048,
+          sha256: 'a'.repeat(64),
+          createdAt: new Date('2026-10-27T10:00:02.000Z'),
+          driveFileId: 'private-drive-file-id',
+        },
+      }],
+      count: async () => 1,
+      create: async () => null,
+      update: async () => null,
+    },
+    dataSecret: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  });
+
+  const result = await service.listHistory({ operation: 'PAN_COMPREHENSIVE_V2' });
+  const record = result.records[0] as Record<string, any>;
+
+  assert.deepEqual(record.template, {
+    id: 'template-1',
+    fileName: 'pan-template-record-1.png',
+    mimeType: 'image/png',
+    fileSize: 2048,
+    sha256: 'a'.repeat(64),
+    createdAt: '2026-10-27T10:00:02.000Z',
+  });
+  assert.equal('driveFileId' in record, false);
+  assert.equal(record.rawDataExpiresAt, null);
+});
+
+test('PAN history list scopes employee records to the requesting user', async () => {
+  let listWhere: Record<string, unknown> | null = null;
+  let countWhere: Record<string, unknown> | null = null;
+  const service = new PanVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => null,
+      findMany: async ({ where }: { where: Record<string, unknown> }) => {
+        listWhere = where;
+        return [];
+      },
+      count: async ({ where }: { where: Record<string, unknown> }) => {
+        countWhere = where;
+        return 0;
+      },
+      create: async () => null,
+      update: async () => null,
+    },
+    dataSecret: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  });
+
+  await service.listHistory({}, 'employee-1', 'EMPLOYEE');
+
+  assert.deepEqual(listWhere, { requestedById: 'employee-1' });
+  assert.deepEqual(countWhere, { requestedById: 'employee-1' });
+});
+
+test('PAN history detail denies an employee access to another employee record', async () => {
+  const service = new PanVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => ({
+        id: 'record-1',
+        operation: 'PAN_COMPREHENSIVE_V2',
+        status: 'SUCCESS',
+        maskedPan: 'ABCDE****F',
+        requestedById: 'employee-2',
+        encryptedResult: null,
+        rawDataExpiresAt: null,
+        template: {
+          id: 'template-1',
+          fileName: 'pan-template-record-1.png',
+          mimeType: 'image/png',
+          fileSize: 128,
+          sha256: 'a'.repeat(64),
+          createdAt: new Date('2026-10-27T10:00:00.000Z'),
+        },
+      }),
+      findMany: async () => [],
+      count: async () => 0,
+      create: async () => null,
+      update: async () => null,
+    },
+    dataSecret: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  });
+
+  await assert.rejects(
+    () => service.getHistoryDetail('record-1', 'employee-1', 'EMPLOYEE'),
+    (error: unknown) => error instanceof Error
+      && (error as PanVerificationError).statusCode === 403
+      && (error as PanVerificationError).code === 'history_forbidden',
+  );
 });

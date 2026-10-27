@@ -32,14 +32,14 @@ import {
 } from '../lib/webViewLoading';
 
 interface Props {
-  onWebLoaded?: () => void;
+  onWebSettled?: () => void;
 }
 
 function getMessageText(value: string | object | undefined, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
-function HybridWebView({ onWebLoaded }: Props) {
+function HybridWebView({ onWebSettled }: Props) {
   const webViewRef = useRef<any>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -48,6 +48,7 @@ function HybridWebView({ onWebLoaded }: Props) {
   const [fcmToken, setFcmToken] = useState<string>('');
   const [webReady, setWebReady] = useState(false);
   const hasVisiblePageRef = useRef(false);
+  const settledNotificationRef = useRef(false);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webAppUrl = getWebAppUrl();
   const apiBaseUrl = getApiBaseUrl();
@@ -70,11 +71,34 @@ function HybridWebView({ onWebLoaded }: Props) {
     }
   }, []);
 
-  const completeWebViewLoading = useCallback(() => {
-    hasVisiblePageRef.current = true;
+  const notifyWebViewSettled = useCallback(() => {
+    if (settledNotificationRef.current) {
+      return;
+    }
+
+    settledNotificationRef.current = true;
+    onWebSettled?.();
+  }, [onWebSettled]);
+
+  const settleWebViewLoading = useCallback((hasVisiblePage: boolean) => {
+    if (hasVisiblePage) {
+      hasVisiblePageRef.current = true;
+    }
+
     clearLoadingTimeout();
     setLoading(false);
-  }, [clearLoadingTimeout]);
+    notifyWebViewSettled();
+  }, [clearLoadingTimeout, notifyWebViewSettled]);
+
+  const completeWebViewLoading = useCallback(() => {
+    settleWebViewLoading(true);
+  }, [settleWebViewLoading]);
+
+  const failWebViewLoading = useCallback((message: string) => {
+    settleWebViewLoading(false);
+    setWebReady(false);
+    setErrorMessage(message);
+  }, [settleWebViewLoading]);
 
   const beginWebViewLoading = useCallback((force = false) => {
     if (!shouldShowWebViewLoading(hasVisiblePageRef.current, force)) {
@@ -82,14 +106,13 @@ function HybridWebView({ onWebLoaded }: Props) {
     }
 
     clearLoadingTimeout();
+    settledNotificationRef.current = false;
     setLoading(true);
     loadingTimeoutRef.current = setTimeout(() => {
       loadingTimeoutRef.current = null;
-      setLoading(false);
-      setWebReady(false);
-      setErrorMessage('The web app is taking too long to respond. Please try again.');
+      failWebViewLoading('The web app is taking too long to respond. Please try again.');
     }, WEBVIEW_LOADING_TIMEOUT_MS);
-  }, [clearLoadingTimeout]);
+  }, [clearLoadingTimeout, failWebViewLoading]);
 
   const syncFcmToken = useCallback(
     (token: string) => {
@@ -164,10 +187,19 @@ function HybridWebView({ onWebLoaded }: Props) {
 
   useEffect(() => {
     hasVisiblePageRef.current = false;
+
+    if (configurationError) {
+      clearLoadingTimeout();
+      setLoading(false);
+      setWebReady(false);
+      notifyWebViewSettled();
+      return clearLoadingTimeout;
+    }
+
     beginWebViewLoading(true);
 
     return clearLoadingTimeout;
-  }, [beginWebViewLoading, clearLoadingTimeout, currentUrl]);
+  }, [beginWebViewLoading, clearLoadingTimeout, configurationError, currentUrl, notifyWebViewSettled]);
 
   useEffect(() => clearLoadingTimeout, [clearLoadingTimeout]);
 
@@ -379,7 +411,6 @@ function HybridWebView({ onWebLoaded }: Props) {
         onLoadEnd={() => {
           completeWebViewLoading();
           setWebReady(true);
-          if (onWebLoaded) onWebLoaded();
         }}
         onLoadProgress={({ nativeEvent }) => {
           if (shouldHideWebViewLoading(nativeEvent)) {
@@ -387,9 +418,7 @@ function HybridWebView({ onWebLoaded }: Props) {
           }
         }}
         onError={(event) => {
-          completeWebViewLoading();
-          setWebReady(false);
-          setErrorMessage(
+          failWebViewLoading(
             event.nativeEvent.description ||
               'The web app could not be reached from the mobile shell.',
           );

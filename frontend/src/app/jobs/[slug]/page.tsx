@@ -2,6 +2,7 @@ import React from 'react';
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { SITE_NAME, SITE_URL } from '@/lib/site';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import JobDetailClient from './JobDetailClient';
 
 interface JobDetailProps {
@@ -14,7 +15,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/a
 
 async function fetchJobData(slug: string) {
   try {
-    const res = await fetch(`${API_BASE_URL}/recruitment/public/jobs/${slug}`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/recruitment/public/jobs/${slug}`, {
       next: { revalidate: 60 },
     });
     if (!res.ok) return null;

@@ -7,9 +7,6 @@ import {
   AlertTriangle,
   UserCheck,
   User,
-  Phone,
-  Mail,
-  MapPin,
   Tag,
   Truck,
   CalendarClock,
@@ -19,10 +16,12 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { emptyNextStep, type NextStep } from './CrmModals';
+import { getInitialLeadStage } from './leadViews';
 import {
   crmError,
   crmErrorCode,
   crmErrorDetails,
+  CrmSelect,
   fromLocalInput,
   toLocalInput,
   quickTimes,
@@ -35,6 +34,150 @@ import {
 } from './crmShared';
 
 type Option = { id: string; name: string };
+
+type LocationOption = { id: string | number; name: string };
+
+let indiaStatesPromise: Promise<LocationOption[]> | null = null;
+const citiesPromises = new Map<string, Promise<LocationOption[]>>();
+
+const loadIndiaStates = () => {
+  if (!indiaStatesPromise) {
+    indiaStatesPromise = Promise.all([
+      api.get<LocationOption[]>('/locations/countries'),
+    ])
+      .then(([countriesResponse]) => {
+        const countries = countriesResponse.data || [];
+        const india = countries.find((country) => country.name.toLowerCase() === 'india' || String((country as LocationOption & { iso2?: string }).iso2 || '').toUpperCase() === 'IN');
+        if (!india) throw new Error('India location data is unavailable.');
+        return api.get<LocationOption[]>(`/locations/states/${india.id}`).then((response) => response.data || []);
+      })
+      .catch((error) => {
+        indiaStatesPromise = null;
+        throw error;
+      });
+  }
+  return indiaStatesPromise;
+};
+
+const loadCities = (stateId: string | number) => {
+  const key = String(stateId);
+  const existing = citiesPromises.get(key);
+  if (existing) return existing;
+  const promise = api.get<LocationOption[]>(`/locations/cities/${key}`)
+    .then((response) => response.data || [])
+    .catch((error) => {
+      citiesPromises.delete(key);
+      throw error;
+    });
+  citiesPromises.set(key, promise);
+  return promise;
+};
+
+function useIndianLocations(stateName: string) {
+  const [states, setStates] = useState<LocationOption[]>([]);
+  const [cities, setCities] = useState<LocationOption[]>([]);
+  const [statesLoading, setStatesLoading] = useState(true);
+  const [citiesForState, setCitiesForState] = useState('');
+  const [locationError, setLocationError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    loadIndiaStates()
+      .then((nextStates) => {
+        if (!cancelled) {
+          setStates(nextStates);
+          setLocationError('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLocationError('Location list could not be loaded.');
+      })
+      .finally(() => {
+        if (!cancelled) setStatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedState = states.find((state) => state.name.toLowerCase() === stateName.trim().toLowerCase());
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedState) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    loadCities(selectedState.id)
+      .then((nextCities) => {
+        if (!cancelled) {
+          setCities(nextCities);
+          setCitiesForState(String(selectedState.id));
+          setLocationError('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCities([]);
+          setCitiesForState(String(selectedState.id));
+          setLocationError('City list could not be loaded.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedState]);
+
+  const citiesLoading = Boolean(selectedState && citiesForState !== String(selectedState.id));
+  const availableCities = citiesForState === String(selectedState?.id) ? cities : [];
+  return { states, cities: availableCities, statesLoading, citiesLoading, locationError };
+}
+
+export function LocationFields({
+  state,
+  city,
+  onStateChange,
+  onCityChange,
+}: {
+  state: string;
+  city: string;
+  onStateChange: (value: string) => void;
+  onCityChange: (value: string) => void;
+}) {
+  const { states, cities, statesLoading, citiesLoading, locationError } = useIndianLocations(state);
+  const stateMatch = states.some((option) => option.name.toLowerCase() === state.trim().toLowerCase());
+  const cityMatch = cities.some((option) => option.name.toLowerCase() === city.trim().toLowerCase());
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <div>
+        <label className="text-[11px] font-semibold text-slate-700 block mb-1">City</label>
+        <CrmSelect
+          options={cities}
+          value={cityMatch ? city : ''}
+          onChange={(_, option) => onCityChange(option.name)}
+          disabled={!stateMatch || citiesLoading || !cities.length}
+          placeholder={!stateMatch ? 'Select state first' : citiesLoading ? 'Loading cities…' : locationError ? 'Cities unavailable' : 'Select city'}
+          searchable
+          className="w-full"
+        />
+      </div>
+      <div>
+        <label className="text-[11px] font-semibold text-slate-700 block mb-1">State</label>
+        <CrmSelect
+          options={states}
+          value={stateMatch ? state : ''}
+          onChange={(_, option) => onStateChange(option.name)}
+          disabled={statesLoading || !states.length}
+          placeholder={statesLoading ? 'Loading states…' : locationError ? 'Locations unavailable' : 'Select state'}
+          searchable
+          className="w-full"
+        />
+      </div>
+    </div>
+  );
+}
 
 /** Categories / brands, and models for the chosen brand (master data). */
 export const useCatalog = (brandId: string) => {
@@ -134,45 +277,39 @@ export function RequirementFields({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div>
           <label className="text-[11px] font-semibold text-slate-700 block mb-1">Category</label>
-          <select
+          <CrmSelect
+            options={categories}
             value={value.categoryId}
-            onChange={(e) => set({ categoryId: e.target.value })}
-            className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-medium text-slate-800 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-          >
-            <option value="">Any Category</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={(next) => set({ categoryId: next })}
+            placeholder="Any Category"
+            searchable
+            className="w-full"
+          />
         </div>
 
         <div>
           <label className="text-[11px] font-semibold text-slate-700 block mb-1">Brand</label>
-          <select
+          <CrmSelect
+            options={brands}
             value={value.brandId}
-            onChange={(e) => set({ brandId: e.target.value, modelId: '' })}
-            className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-medium text-slate-800 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-          >
-            <option value="">Any Brand</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+            onChange={(next) => set({ brandId: next, modelId: '' })}
+            placeholder="Any Brand"
+            searchable
+            className="w-full"
+          />
         </div>
 
         <div>
           <label className="text-[11px] font-semibold text-slate-700 block mb-1">Model</label>
-          <select
+          <CrmSelect
+            options={models}
             value={value.modelId}
-            onChange={(e) => set({ modelId: e.target.value })}
+            onChange={(next) => set({ modelId: next })}
             disabled={!value.brandId}
-            className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-medium text-slate-800 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15 disabled:bg-slate-50 disabled:text-slate-400"
-          >
-            <option value="">Any Model</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
+            placeholder="Any Model"
+            searchable
+            className="w-full"
+          />
         </div>
       </div>
 
@@ -222,26 +359,12 @@ export function RequirementFields({
       </div>
 
       {/* Required Location */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <div>
-          <label className="text-[11px] font-semibold text-slate-700 block mb-1">Required in City</label>
-          <input
-            value={value.requirementCity}
-            onChange={(e) => set({ requirementCity: e.target.value })}
-            className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-            placeholder="Preferred city"
-          />
-        </div>
-        <div>
-          <label className="text-[11px] font-semibold text-slate-700 block mb-1">Required in State</label>
-          <input
-            value={value.requirementState}
-            onChange={(e) => set({ requirementState: e.target.value })}
-            className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-            placeholder="Preferred state"
-          />
-        </div>
-      </div>
+      <LocationFields
+        state={value.requirementState}
+        city={value.requirementCity}
+        onStateChange={(nextState) => set({ requirementState: nextState, requirementCity: '' })}
+        onCityChange={(nextCity) => set({ requirementCity: nextCity })}
+      />
 
       {/* Requirement Notes */}
       <div>
@@ -293,6 +416,7 @@ export default function LeadForm({
 
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [leadType, setLeadType] = useState('BUY');
+  const [status, setStatus] = useState('NEW');
   const [source, setSource] = useState('PHONE');
   const [priority, setPriority] = useState('MEDIUM');
   const [message, setMessage] = useState('');
@@ -304,6 +428,10 @@ export default function LeadForm({
   const [busy, setBusy] = useState(false);
 
   const isPartner = Boolean(meta?.access.isPartner);
+  const pipelineStages = meta?.pipelineStages || [];
+  const openPipelineStages = pipelineStages.filter((stage) => !stage.isTerminal);
+  const initialStage = getInitialLeadStage(pipelineStages);
+  const effectiveStatus = openPipelineStages.some((stage) => stage.code === status) ? status : initialStage;
 
   const checkMobile = useCallback(async () => {
     const digits = contact.mobile.replace(/\D/g, '');
@@ -338,6 +466,7 @@ export default function LeadForm({
         const response = await api.post('/crm/leads', {
           contact,
           leadType,
+          status: effectiveStatus,
           source,
           priority,
           message: message || undefined,
@@ -371,7 +500,7 @@ export default function LeadForm({
         setBusy(false);
       }
     },
-    [contact, leadType, source, priority, message, expectedValue, ownerId, requirement, followUp, onCreated]
+    [contact, leadType, effectiveStatus, source, priority, message, expectedValue, ownerId, requirement, followUp, onCreated]
   );
 
   // Keyboard shortcut listeners (Esc = close, Ctrl+Enter / Cmd+Enter = submit)
@@ -539,27 +668,13 @@ export default function LeadForm({
                     />
                   </div>
 
-                  {/* City */}
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">City</label>
-                    <input
-                      value={contact.city}
-                      onChange={(e) => setContact({ ...contact, city: e.target.value })}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15 transition-all"
-                      placeholder="e.g. Pune"
-                    />
-                  </div>
-
-                  {/* State */}
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">State</label>
-                    <input
-                      value={contact.state}
-                      onChange={(e) => setContact({ ...contact, state: e.target.value })}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15 transition-all"
-                      placeholder="e.g. Maharashtra"
-                    />
-                  </div>
+                  {/* City and State */}
+                  <LocationFields
+                    state={contact.state}
+                    city={contact.city}
+                    onStateChange={(nextState) => setContact({ ...contact, state: nextState, city: '' })}
+                    onCityChange={(nextCity) => setContact({ ...contact, city: nextCity })}
+                  />
                 </div>
 
                 {/* Existing Customer Lookup Notification */}
@@ -612,23 +727,35 @@ export default function LeadForm({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {/* Lead Type */}
                   <div>
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                       Lead Type
                     </label>
-                    <select
+                    <CrmSelect
+                      options={(meta?.enums.leadTypes || Object.keys(LEAD_TYPE_LABELS)).map((t) => ({ id: t, name: LEAD_TYPE_LABELS[t] || label(t) }))}
                       value={leadType}
-                      onChange={(e) => setLeadType(e.target.value)}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-semibold text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-                    >
-                      {(meta?.enums.leadTypes || Object.keys(LEAD_TYPE_LABELS)).map((t) => (
-                        <option key={t} value={t}>
-                          {LEAD_TYPE_LABELS[t] || label(t)}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => setLeadType(next)}
+                      searchable={false}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Initial Pipeline Stage */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                      Status / Stage
+                    </label>
+                    <CrmSelect
+                      options={openPipelineStages.map((stage) => ({ id: stage.code, name: stage.name }))}
+                      value={effectiveStatus}
+                      onChange={(next) => setStatus(next)}
+                      disabled={!openPipelineStages.length}
+                      placeholder={meta ? 'Select stage' : 'Loading stages...'}
+                      searchable={openPipelineStages.length > 6}
+                      className="w-full"
+                    />
                   </div>
 
                   {/* Source */}
@@ -636,17 +763,13 @@ export default function LeadForm({
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                       Source
                     </label>
-                    <select
+                    <CrmSelect
+                      options={(meta?.config.sources || ['PHONE']).map((s) => ({ id: s, name: label(s) }))}
                       value={source}
-                      onChange={(e) => setSource(e.target.value)}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-semibold text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-                    >
-                      {(meta?.config.sources || ['PHONE']).map((s) => (
-                        <option key={s} value={s}>
-                          {label(s)}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => setSource(next)}
+                      searchable
+                      className="w-full"
+                    />
                   </div>
 
                   {/* Priority */}
@@ -654,17 +777,13 @@ export default function LeadForm({
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                       Priority
                     </label>
-                    <select
+                    <CrmSelect
+                      options={(meta?.enums.priorities || ['LOW', 'MEDIUM', 'HIGH', 'URGENT']).map((p) => ({ id: p, name: label(p) }))}
                       value={priority}
-                      onChange={(e) => setPriority(e.target.value)}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-semibold text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-                    >
-                      {(meta?.enums.priorities || ['LOW', 'MEDIUM', 'HIGH', 'URGENT']).map((p) => (
-                        <option key={p} value={p}>
-                          {label(p)}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => setPriority(next)}
+                      searchable={false}
+                      className="w-full"
+                    />
                   </div>
 
                   {/* Owner */}
@@ -673,25 +792,14 @@ export default function LeadForm({
                       <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                         Owner
                       </label>
-                      <select
+                      <CrmSelect
+                        options={meta?.access.canAssign ? [{ id: 'none', name: 'Auto-assign' }, ...meta.staff.map((s) => ({ id: s.id, name: s.name }))] : [{ id: '', name: 'Me' }]}
                         value={ownerId}
-                        onChange={(e) => setOwnerId(e.target.value)}
+                        onChange={(next) => setOwnerId(next)}
                         disabled={!meta?.access.canAssign}
-                        className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-semibold text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15 disabled:bg-slate-50 disabled:text-slate-400"
-                      >
-                        {meta?.access.canAssign ? (
-                          <option value="none">Auto-assign</option>
-                        ) : (
-                          <option value="">Me</option>
-                        )}
-                        {meta?.access.canAssign
-                          ? meta.staff.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))
-                          : null}
-                      </select>
+                        searchable
+                        className="w-full"
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -766,25 +874,13 @@ export default function LeadForm({
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                       Action Type
                     </label>
-                    <select
+                    <CrmSelect
+                      options={(meta?.enums.followUpTypes || ['CALL', 'WHATSAPP', 'VISIT', 'INSPECTION', 'MEETING']).map((t) => ({ id: t, name: label(t) }))}
                       value={followUp.type}
-                      onChange={(e) => setFollowUp({ ...followUp, type: e.target.value })}
-                      className="h-8.5 w-full rounded-lg border border-slate-200/90 bg-white px-2 text-xs font-semibold text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/15"
-                    >
-                      {(
-                        meta?.enums.followUpTypes || [
-                          'CALL',
-                          'WHATSAPP',
-                          'VISIT',
-                          'INSPECTION',
-                          'MEETING',
-                        ]
-                      ).map((t) => (
-                        <option key={t} value={t}>
-                          {label(t)}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => setFollowUp({ ...followUp, type: next })}
+                      searchable={false}
+                      className="w-full"
+                    />
                   </div>
 
                   <div>

@@ -2088,9 +2088,9 @@ export default function PartnerListingsPage() {
       </div>
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
-          <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:px-4 sm:py-6">
+          <div className="relative flex h-[100dvh] sm:h-auto sm:max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 sm:px-6 py-3.5 sm:py-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
               </div>
@@ -2103,7 +2103,7 @@ export default function PartnerListingsPage() {
               </button>
             </div>
 
-            <form ref={modalFormRef} onSubmit={handleSubmit} className="overflow-y-auto px-6 py-5">
+            <form ref={modalFormRef} onSubmit={handleSubmit} className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 flex-1 flex flex-col justify-between">
               {editingListingId ? (
                 <div className={`mb-5 rounded-xl border px-4 py-3 text-sm ${editingVerification.className}`}>
                   <div className="flex items-center gap-2 font-semibold">
@@ -2567,25 +2567,25 @@ export default function PartnerListingsPage() {
                 </section>
               </div>
 
-              <div className="sticky bottom-0 mt-6 border-t border-gray-100 bg-white pt-4">
-                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="sticky bottom-0 -mx-4 sm:-mx-6 -mb-4 sm:-mb-5 mt-6 border-t border-gray-100 bg-white px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-20">
+                <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                   {error ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:max-w-md">
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs sm:text-sm text-red-700 max-w-full sm:max-w-md">
                       {error}
                     </div>
                   ) : <div />}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-end gap-2.5">
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="rounded-lg border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      className="h-10 sm:h-auto rounded-lg border border-gray-200 px-4 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-gray-700 transition hover:bg-gray-50 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={saving || uploadingCount > 0}
-                      className="rounded-lg bg-[#FFC107] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex-1 sm:flex-none h-10 sm:h-auto rounded-lg bg-[#FFC107] px-4 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
                     >
                       {saving ? (editingListingId ? 'Updating...' : 'Adding...') : uploadingCount > 0 ? 'Waiting for uploads...' : editingListingId ? 'Update' : 'Add'}
                     </button>

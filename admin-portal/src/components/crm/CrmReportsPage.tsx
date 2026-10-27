@@ -25,9 +25,10 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
-import { cellClass, EmptyState, inputClass, LoadingState, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { cellClass, EmptyState, inputClass, Panel, tableHeadClass } from '@/components/financeWorkspace/ui';
 import {
   CrmErrorBanner,
+  CrmLoadingState,
   CrmPageFrame,
   fmtInr,
   getJson,
@@ -196,7 +197,7 @@ function Reports() {
       />
 
       {data.loading && !r ? (
-        <LoadingState label="Analyzing conversion reports…" />
+        <CrmLoadingState label="Analyzing conversion reports…" />
       ) : data.error || !r ? (
         <CrmErrorBanner message={data.error} schemaMissing={data.schemaMissing} />
       ) : (

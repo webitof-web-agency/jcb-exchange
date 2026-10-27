@@ -1,6 +1,6 @@
 'use client';
 
-import api from '@/lib/api';
+import api, { LONG_REQUEST_TIMEOUT_MS } from '@/lib/api';
 import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
@@ -531,6 +531,7 @@ export const uploadFileToServer = async ({
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    timeout: LONG_REQUEST_TIMEOUT_MS,
   });
 
   return response.data.file;
@@ -554,6 +555,7 @@ export const uploadListingMediaToServer = async ({
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 
@@ -572,6 +574,7 @@ export const uploadFinanceSupportImageToServer = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 
@@ -590,6 +593,7 @@ export const uploadHeroImageToServer = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 
@@ -608,6 +612,7 @@ export const uploadInspectionSectionImageToServer = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 
@@ -626,6 +631,7 @@ export const uploadCustomerPrimeReceiptToServer = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 
@@ -644,6 +650,7 @@ export const uploadListingPaymentReceiptToServer = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: LONG_REQUEST_TIMEOUT_MS,
     }
   );
 

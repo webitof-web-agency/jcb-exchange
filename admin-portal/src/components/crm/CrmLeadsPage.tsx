@@ -5,44 +5,43 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import {
   Download,
-  Filter,
-  Flame,
+  Kanban,
+  List,
   MessageCircle,
   Phone,
   Plus,
   Search,
   Tag,
   UserPlus,
-  Users,
   X,
-  AlertCircle,
+  SlidersHorizontal,
   Clock,
-  ExternalLink,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { Button, cellClass, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { Button, cellClass, EmptyState, Field, inputClass, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
 import { AssignModal } from './CrmModals';
 import LeadForm from './LeadForm';
+import CrmPipelineStageManager from './CrmPipelineStageManager';
+import { CrmPipelineBoard } from './CrmPipelinePage';
 import {
-  compactSelectClass,
   CrmErrorBanner,
+  CrmSelect,
+  CrmLoadingState,
   crmError,
   CrmPageFrame,
   EnquiryChannelBadge,
-  fmtDate,
   fmtDateTime,
   fmtInr,
   getJson,
+  isTerminalStatus,
   label,
   LEAD_TYPE_LABELS,
   leadHref,
-  PageHeader,
   leadWhatsAppMessage,
   phoneLinks,
   PriorityBadge,
   relative,
   requirementSummary,
-  selectClass,
   StatusBadge,
   TemperatureBadge,
   useCrmBase,
@@ -50,6 +49,7 @@ import {
   useCrmResource,
   type LeadRow,
 } from './crmShared';
+import { LEAD_SAVED_VIEWS } from './leadViews';
 
 type LeadList = { page: number; pageSize: number; total: number; items: LeadRow[]; statusCounts: Record<string, number>; viewCounts?: Record<string, number> };
 
@@ -59,26 +59,11 @@ const PAGE_SIZE = 50;
 
 const emptyFilters = (): Filters => Object.fromEntries(FILTER_KEYS.map((key) => [key, ''])) as Filters;
 
-// Saved views: one click sets a filter combination.
-const VIEWS: Array<{ key: string; label: string; filters: Partial<Filters>; needs?: 'assign'; icon?: typeof Flame }> = [
-  { key: 'open', label: 'Open Leads', filters: { view: 'open' } },
-  { key: 'today', label: 'Due Today', filters: { followUp: 'today' } },
-  { key: 'overdue', label: 'Overdue Follow-up', filters: { followUp: 'overdue' } },
-  { key: 'hot', label: 'Hot Leads', filters: { view: 'open', temperature: 'HOT' } },
-  { key: 'none', label: 'No Next Step', filters: { followUp: 'none' } },
-  { key: 'unassigned', label: 'Unassigned', filters: { view: 'open', ownerId: 'none' }, needs: 'assign' },
-  { key: 'sla', label: 'SLA Breached', filters: { sla: 'breached' } },
-  { key: 'won', label: 'Won', filters: { view: 'won' } },
-  { key: 'lost', label: 'Lost', filters: { view: 'lost' } },
-  { key: 'closed', label: 'Closed Deals', filters: { view: 'closed' } },
-  { key: 'all', label: 'All Records', filters: {} },
-];
-
 const sameFilters = (a: Filters, b: Partial<Filters>) =>
   FILTER_KEYS.filter((k) => k !== 'sort' && k !== 'q').every((key) => (a[key] || '') === (b[key] || ''));
 
 function Leads() {
-  const { meta } = useCrmMeta();
+  const { meta, reloadMeta } = useCrmMeta();
   const { base } = useCrmBase();
   const router = useRouter();
   const params = useSearchParams();
@@ -94,10 +79,17 @@ function Leads() {
   const [creating, setCreating] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [tagging, setTagging] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => params.get('display') === 'kanban' ? 'kanban' : 'list');
+  const [stageManagerOpen, setStageManagerOpen] = useState(false);
+  const [kanbanRefreshToken, setKanbanRefreshToken] = useState(0);
   const [now] = useState(() => Date.now());
   const query = useMemo(
     () => ({ ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), page, pageSize: PAGE_SIZE }),
     [filters, page],
+  );
+  const boardQuery = useMemo(
+    () => Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+    [filters],
   );
   const leads = useCrmResource(() => getJson<LeadList>('/crm/leads', query), JSON.stringify(query));
   const access = meta?.access;
@@ -108,11 +100,16 @@ function Leads() {
     setSelected([]);
   };
   const set = (key: keyof Filters, value: string) => apply({ ...filters, [key]: value });
+  const stageName = (status: string) => meta?.pipelineStages.find((stage) => stage.code === status)?.name || label(status);
+  const refreshWorkspace = () => {
+    leads.reload();
+    setKanbanRefreshToken((value) => value + 1);
+  };
   const items = leads.data?.items || [];
   const total = leads.data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const allSelected = items.length > 0 && items.every((l) => selected.includes(l.id));
-  const activeView = VIEWS.find((v) => sameFilters(filters, v.filters))?.key;
+  const activeView = LEAD_SAVED_VIEWS.find((v) => sameFilters(filters, v.filters))?.key;
   const hasExtraFilters = Boolean(
     filters.status ||
       filters.leadType ||
@@ -141,63 +138,98 @@ function Leads() {
     }
   };
 
+  const renderSavedView = (v: (typeof LEAD_SAVED_VIEWS)[number]) => {
+    const on = activeView === v.key;
+    const count = leads.data?.viewCounts?.[v.key] ?? (
+      v.key === 'won' ? leads.data?.statusCounts?.WON :
+      v.key === 'lost' ? leads.data?.statusCounts?.LOST :
+      undefined
+    );
+
+    return (
+      <button
+        key={v.key}
+        type="button"
+        onClick={() => apply({ ...emptyFilters(), sort: filters.sort, q: filters.q, ...v.filters })}
+        className={`shrink-0 inline-flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition-all duration-150 ${
+          on
+            ? 'border-amber-500 text-slate-900 shadow-2xs'
+            : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+        }`}
+      >
+        <span>{v.label}</span>
+        {count !== undefined ? (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-black transition-colors ${
+              on
+                ? v.key === 'won'
+                  ? 'bg-emerald-600 text-white'
+                  : v.key === 'lost'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-slate-900 text-white'
+                : v.key === 'won'
+                ? 'bg-emerald-100 text-emerald-800'
+                : v.key === 'lost'
+                ? 'bg-rose-100 text-rose-800'
+                : v.key === 'hot'
+                ? 'bg-amber-100 text-amber-900'
+                : v.key === 'overdue' || v.key === 'sla'
+                ? count > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-500'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {count}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
+
   return (
     <>
       <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
         {/* 1. SAVED VIEWS TABS + ICON ACTIONS */}
         <div className="flex items-center justify-between border-b border-slate-100 px-3 pt-2.5 sm:px-4">
-          {/* Scrollable Tabs */}
-          <div className="flex flex-1 items-center gap-1.5 overflow-x-auto custom-scrollbar pr-2">
-            {VIEWS.filter((v) => v.needs !== 'assign' || access?.canAssign).map((v) => {
-              const on = activeView === v.key;
-              const count = leads.data?.viewCounts?.[v.key] ?? (
-                v.key === 'won' ? leads.data?.statusCounts?.WON :
-                v.key === 'lost' ? leads.data?.statusCounts?.LOST :
-                undefined
-              );
-
-              return (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => apply({ ...emptyFilters(), sort: filters.sort, q: filters.q, ...v.filters })}
-                  className={`shrink-0 inline-flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition-all duration-150 ${
-                    on
-                      ? 'border-amber-500 text-slate-900 shadow-2xs'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                  }`}
-                >
-                  <span>{v.label}</span>
-                  {count !== undefined ? (
-                    <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-black transition-colors ${
-                        on
-                          ? v.key === 'won'
-                            ? 'bg-emerald-600 text-white'
-                            : v.key === 'lost'
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-slate-900 text-white'
-                          : v.key === 'won'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : v.key === 'lost'
-                          ? 'bg-rose-100 text-rose-800'
-                          : v.key === 'hot'
-                          ? 'bg-amber-100 text-amber-900'
-                          : v.key === 'overdue' || v.key === 'sla'
-                          ? count > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-500'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+          {/* Keep the unfiltered total visible while the other saved views scroll. */}
+          <div className="flex min-w-0 flex-1 items-center pr-2">
+            <div className="shrink-0 border-r border-slate-200 pr-1">
+              {renderSavedView(LEAD_SAVED_VIEWS[0])}
+            </div>
+            <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar">
+              <div className="flex min-w-max items-center gap-1.5 pl-1">
+                {LEAD_SAVED_VIEWS.slice(1).filter((v) => v.needs !== 'assign' || access?.canAssign).map(renderSavedView)}
+              </div>
+            </div>
           </div>
 
           {/* Right Icon Actions: Export CSV + Create New Lead */}
           <div className="flex shrink-0 items-center gap-1.5 pb-2 pl-2">
+            <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Lead view">
+              <button
+                type="button"
+                aria-pressed={viewMode === 'list'}
+                onClick={() => setViewMode('list')}
+                title="List view"
+                className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-bold transition ${
+                  viewMode === 'list' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={viewMode === 'kanban'}
+                onClick={() => setViewMode('kanban')}
+                title="Kanban view"
+                className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-bold transition ${
+                  viewMode === 'kanban' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Kanban className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Kanban</span>
+              </button>
+            </div>
             {hasExtraFilters || filters.q ? (
               <button
                 type="button"
@@ -220,6 +252,16 @@ function Leads() {
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition shadow-2xs"
               >
                 <Download className="h-4 w-4" />
+              </button>
+            ) : null}
+            {access?.canPipelineManage && !access.isPartner ? (
+              <button
+                type="button"
+                onClick={() => setStageManagerOpen(true)}
+                title="Manage pipeline stages"
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-slate-900 transition shadow-2xs"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
               </button>
             ) : null}
             {access?.canManage ? (
@@ -267,89 +309,65 @@ function Leads() {
             ) : null}
           </form>
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'Any Status' }, ...(meta?.enums.statuses || []).map((s) => ({ id: s, name: `${stageName(s)}${leads.data?.statusCounts[s] ? ` (${leads.data.statusCounts[s]})` : ''}` }))]}
             value={filters.status}
-            onChange={(e) => set('status', e.target.value)}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Status"
-          >
-            <option value="">Any Status</option>
-            {(meta?.enums.statuses || []).map((s) => (
-              <option key={s} value={s}>
-                {label(s)}
-                {leads.data?.statusCounts[s] ? ` (${leads.data.statusCounts[s]})` : ''}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set('status', next)}
+            searchable
+            className="w-full"
+          />
 
           {!access?.isPartner ? (
-            <select
+            <CrmSelect
+              options={[
+                { id: '', name: 'All Executives' },
+                { id: 'me', name: 'My Leads' },
+                ...(access?.canAssign ? [{ id: 'none', name: 'Unassigned' }] : []),
+                ...(access?.canSeeAll ? (meta?.staff || []).map((s) => ({ id: s.id, name: s.name })) : []),
+              ]}
               value={filters.ownerId}
-              onChange={(e) => set('ownerId', e.target.value)}
-              className={`${compactSelectClass} w-full`}
-              aria-label="Owner"
-            >
-              <option value="">All Executives</option>
-              <option value="me">My Leads</option>
-              {access?.canAssign ? <option value="none">Unassigned</option> : null}
-              {access?.canSeeAll ? meta?.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : null}
-            </select>
+              onChange={(next) => set('ownerId', next)}
+              searchable
+              className="w-full"
+            />
           ) : null}
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Lead Types' }, ...(meta?.enums.leadTypes || []).map((t) => ({ id: t, name: LEAD_TYPE_LABELS[t] || label(t) }))]}
             value={filters.leadType}
-            onChange={(e) => set('leadType', e.target.value)}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Lead type"
-          >
-            <option value="">All Lead Types</option>
-            {(meta?.enums.leadTypes || []).map((t) => (
-              <option key={t} value={t}>
-                {LEAD_TYPE_LABELS[t] || label(t)}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set('leadType', next)}
+            searchable
+            className="w-full"
+          />
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Sources' }, ...(meta?.config.sources || []).map((s) => ({ id: s, name: label(s) }))]}
             value={filters.source}
-            onChange={(e) => set('source', e.target.value)}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Source"
-          >
-            <option value="">All Sources</option>
-            {(meta?.config.sources || []).map((s) => (
-              <option key={s} value={s}>
-                {label(s)}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set('source', next)}
+            searchable
+            className="w-full"
+          />
 
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'All Priorities' }, ...(meta?.enums.priorities || []).map((p) => ({ id: p, name: label(p) }))]}
             value={filters.priority}
-            onChange={(e) => set('priority', e.target.value)}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Priority"
-          >
-            <option value="">All Priorities</option>
-            {(meta?.enums.priorities || []).map((p) => (
-              <option key={p} value={p}>
-                {label(p)}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set('priority', next)}
+            className="w-full"
+          />
 
-          <select
+          <CrmSelect
+            options={[
+              { id: '', name: 'Newest First' },
+              { id: 'followup', name: 'Next Follow-up Due' },
+              { id: 'score', name: 'Highest Intent Score' },
+              { id: 'activity', name: 'Recent Activity' },
+              { id: 'oldest', name: 'Oldest First' },
+            ]}
             value={filters.sort}
-            onChange={(e) => set('sort', e.target.value)}
-            className={`${compactSelectClass} w-full`}
-            aria-label="Sort"
-          >
-            <option value="">Newest First</option>
-            <option value="followup">Next Follow-up Due</option>
-            <option value="score">Highest Intent Score</option>
-            <option value="activity">Recent Activity</option>
-            <option value="oldest">Oldest First</option>
-          </select>
+            onChange={(next) => set('sort', next)}
+            searchable={false}
+            className="w-full"
+          />
         </div>
 
         {/* 3. BULK ACTION BAR (Only shown when items are selected) */}
@@ -386,9 +404,16 @@ function Leads() {
           </div>
         ) : null}
 
-        {/* 4. HIGH-DENSITY LEADS TABLE */}
-        {leads.loading && !leads.data ? (
-          <LoadingState label="Loading leads data…" />
+        {/* 4. LEADS LIST OR STAGE-BASED KANBAN */}
+        {viewMode === 'kanban' ? (
+          <CrmPipelineBoard
+            embedded
+            externalQuery={boardQuery}
+            refreshToken={kanbanRefreshToken}
+            onDataChanged={() => leads.reload()}
+          />
+        ) : leads.loading && !leads.data ? (
+          <CrmLoadingState label="Loading leads data…" />
         ) : leads.error ? (
           <CrmErrorBanner message={leads.error} schemaMissing={leads.schemaMissing} />
         ) : !items.length ? (
@@ -423,7 +448,7 @@ function Leads() {
               <tbody className="divide-y divide-slate-100">
                 {items.map((lead) => {
                   const overdue = lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() < now;
-                  const open = lead.status !== 'WON' && lead.status !== 'LOST';
+                  const open = !isTerminalStatus(lead.status, meta?.pipelineStages);
                   const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
 
                   return (
@@ -472,7 +497,7 @@ function Leads() {
 
                       <td className={cellClass}>
                         <div className="flex flex-col items-start gap-1">
-                          <StatusBadge status={lead.status} />
+                          <StatusBadge status={lead.status} name={stageName(lead.status)} />
                           {lead.slaBreachedAt && !lead.firstResponseAt ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
                               <span className="h-1 w-1 rounded-full bg-rose-500 animate-pulse" />
@@ -528,7 +553,7 @@ function Leads() {
                             <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
                               {label(lead.source)}
                             </span>
-                            {lead.tags?.includes('Machine Sold') && lead.status !== 'WON' && lead.status !== 'LOST' ? (
+                            {lead.tags?.includes('Machine Sold') && open ? (
                               <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title="The enquired machine was sold to another customer">
                                 Machine sold
                               </span>
@@ -595,7 +620,26 @@ function Leads() {
       </section>
 
       {creating ? (
-        <LeadForm onClose={() => setCreating(false)} onCreated={(id) => router.push(leadHref(base, id))} />
+        <LeadForm
+          onClose={() => setCreating(false)}
+          onCreated={(id) => {
+            if (viewMode === 'kanban') {
+              setCreating(false);
+              refreshWorkspace();
+            } else {
+              router.push(leadHref(base, id));
+            }
+          }}
+        />
+      ) : null}
+      {stageManagerOpen ? (
+        <CrmPipelineStageManager
+          onChanged={() => {
+            setStageManagerOpen(false);
+            reloadMeta();
+            refreshWorkspace();
+          }}
+        />
       ) : null}
       {assigning ? (
         <AssignModal
@@ -661,14 +705,12 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: string[]; onClose: () => 
           </datalist>
         </Field>
         <Field label="Set Priority Level">
-          <select value={priority} onChange={(e) => setPriority(e.target.value)} className={selectClass}>
-            <option value="">Don&apos;t change priority</option>
-            {(meta?.enums.priorities || []).map((p) => (
-              <option key={p} value={p}>
-                {label(p)}
-              </option>
-            ))}
-          </select>
+          <CrmSelect
+            options={[{ id: '', name: "Don't change priority" }, ...(meta?.enums.priorities || []).map((p) => ({ id: p, name: label(p) }))]}
+            value={priority}
+            onChange={(next) => setPriority(next)}
+            className="w-full"
+          />
         </Field>
         <ModalFooter>
           <Button onClick={onClose}>Cancel</Button>

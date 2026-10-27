@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   PermissionsAndroid,
   Platform,
@@ -23,7 +23,11 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [minTimePassed, setMinTimePassed] = useState(false);
-  const [webViewLoaded, setWebViewLoaded] = useState(false);
+  const [webViewSettled, setWebViewSettled] = useState(false);
+
+  const handleWebViewSettled = useCallback(() => {
+    setWebViewSettled(true);
+  }, []);
 
   useEffect(() => {
     // 2-second splash screen minimum timer
@@ -39,8 +43,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Hide splash screen only when 2 seconds have passed AND the webview has loaded
-    if (minTimePassed && webViewLoaded) {
+    // Hide splash screen only when 2 seconds have passed AND the webview has
+    // reached a terminal state (loaded, failed, timed out, or misconfigured).
+    if (minTimePassed && webViewSettled) {
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 500,
@@ -49,7 +54,7 @@ function App() {
         setShowSplash(false);
       });
     }
-  }, [minTimePassed, webViewLoaded, fadeAnim]);
+  }, [minTimePassed, webViewSettled, fadeAnim]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -83,7 +88,7 @@ function App() {
         {...statusBarProps}
       />
       <SafeAreaView style={styles.safeArea}>
-        <HybridWebView onWebLoaded={() => setWebViewLoaded(true)} />
+        <HybridWebView onWebSettled={handleWebViewSettled} />
         {showSplash && (
           <Animated.View style={[StyleSheet.absoluteFill, styles.splashContainer, { opacity: fadeAnim }]}>
             <Image

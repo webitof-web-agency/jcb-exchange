@@ -5,6 +5,7 @@ import { LEAD_TYPES, mobileVariants, normalizeMobile, oneOf, parseCsv, PRIORITIE
 import { numberOrNull, textOrNull } from './common';
 import { createLeadRecord } from './leads.service';
 import { getCrmConfig } from './settings.service';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 const MAX_ROWS = 2000;
 
@@ -84,10 +85,11 @@ const parseRows = async (csv: string, defaults: { source: string; leadType: stri
   });
   const mobiles = rows.map((r) => r.mobile).filter((m): m is string => Boolean(m));
   if (mobiles.length) {
+    const { terminal } = await listPipelineStageStatusSets();
     const users = await prisma.user.findMany({ where: { mobile: { in: mobiles.flatMap(mobileVariants) } }, select: { id: true, mobile: true } });
     const byMobile = new Map(users.map((u) => [normalizeMobile(u.mobile) ?? '', u.id]));
     const openLeads = users.length
-      ? await prisma.lead.findMany({ where: { customerId: { in: users.map((u) => u.id) }, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null }, select: { id: true, customerId: true, leadType: true } })
+      ? await prisma.lead.findMany({ where: { customerId: { in: users.map((u) => u.id) }, status: { notIn: [...terminal] }, mergedIntoId: null }, select: { id: true, customerId: true, leadType: true } })
       : [];
     for (const row of rows) {
       const userId = row.mobile ? byMobile.get(row.mobile) ?? null : null;

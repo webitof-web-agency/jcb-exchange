@@ -65,6 +65,7 @@ test('SLA and next-step rules', () => {
   assert.deepEqual(slaDueAt(created, 'nonsense', sla), ist('2026-10-22T14:00:00'));
   assert.equal(needsNextFollowUp('INTERESTED', true), true);
   assert.equal(needsNextFollowUp('WON', true), false);
+  assert.equal(needsNextFollowUp('ARCHIVED', true, ['ARCHIVED']), false);
   assert.equal(needsNextFollowUp('NEW', false), false);
 });
 

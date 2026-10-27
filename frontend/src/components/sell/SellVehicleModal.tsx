@@ -1628,8 +1628,8 @@ export default function SellVehicleModal({
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs">
-            <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-xs">
+            <div className="relative flex h-[100dvh] sm:h-auto sm:max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl">
               {/* Header */}
               <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-5 py-3">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -1715,7 +1715,7 @@ export default function SellVehicleModal({
               </div>
 
               {/* Form Content */}
-              <form ref={modalFormRef} onSubmit={handleSubmit} noValidate className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <form ref={modalFormRef} onSubmit={handleSubmit} noValidate className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 sm:py-4 space-y-4">
                 {/* Tab 1: Equipment & Specs */}
                 <div className={modalTab !== 'equipment' && modalTab !== 'all' ? 'hidden' : 'space-y-3'}>
                   {listingVerificationPolicy?.enabled ? <ApiFillLegend /> : null}
@@ -2552,29 +2552,33 @@ export default function SellVehicleModal({
                 )}
 
                 {/* Sticky Footer */}
-                <div className="sticky bottom-0 -mx-5 -mb-4 mt-4 border-t border-gray-200 bg-white/95 backdrop-blur-xs px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
-                  <div className="flex items-center gap-2">
+                <div className="sticky bottom-0 -mx-4 sm:-mx-5 -mb-3 sm:-mb-4 mt-4 border-t border-gray-200 bg-white px-4 sm:px-5 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-20">
+                  <div className="flex items-center justify-between sm:justify-start gap-2">
                     {error ? (
-                      <div className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 max-w-md">
+                      <div className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 max-w-full sm:max-w-md">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
                         <span className="truncate">{error}</span>
                       </div>
                     ) : modalTab !== 'all' ? (
-                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
-                        <span>Step {activeTabIndex + 1} of {tabKeys.length}:</span>
-                        <span className="font-bold text-gray-800">{modalTabs[activeTabIndex]?.label}</span>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                        <span className="rounded-full bg-amber-100 text-amber-900 border border-amber-300/60 px-2 py-0.5 text-[10px] font-bold">
+                          Step {activeTabIndex + 1} of {tabKeys.length}
+                        </span>
+                        <span className="font-bold text-gray-800 text-xs truncate max-w-[200px]">
+                          {modalTabs[activeTabIndex]?.label}
+                        </span>
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-2 ml-auto">
+                  <div className="flex items-center gap-1.5 sm:gap-2 justify-end">
                     {modalTab !== 'all' && (
                       <>
                         <button
                           type="button"
                           onClick={handlePrevTab}
                           disabled={activeTabIndex <= 0}
-                          className="h-[34px] px-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                          className="h-10 sm:h-[34px] px-3 inline-flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer shrink-0"
                         >
                           <ChevronLeft className="h-3.5 w-3.5" />
                           <span>Prev</span>
@@ -2584,7 +2588,7 @@ export default function SellVehicleModal({
                           <button
                             type="button"
                             onClick={handleNextTab}
-                            className="h-[34px] px-3 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
+                            className="h-10 sm:h-[34px] px-3.5 inline-flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer shrink-0"
                           >
                             <span>Next</span>
                             <ChevronRight className="h-3.5 w-3.5" />
@@ -2596,7 +2600,7 @@ export default function SellVehicleModal({
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="h-[34px] px-3.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
+                      className="h-10 sm:h-[34px] px-3.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition cursor-pointer shrink-0"
                     >
                       Cancel
                     </button>
@@ -2604,7 +2608,7 @@ export default function SellVehicleModal({
                     <button
                       type="submit"
                       disabled={saving || uploadingCount > 0}
-                      className="h-[34px] px-4 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-xs hover:bg-[#E5AD06] transition flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                      className="flex-1 sm:flex-none h-10 sm:h-[34px] px-4 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-xs hover:bg-[#E5AD06] transition flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
                     >
                       {saving ? (
                         <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {editingListingId ? 'Updating...' : 'Adding...'}</>

@@ -8,6 +8,7 @@ import {
   clearNotifications,
   savePushSubscription,
   saveFcmToken,
+  streamNotifications,
 } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -17,6 +18,7 @@ router.get('/push-config', getPushConfig);
 
 router.use(requireAuth);
 
+router.get('/stream', streamNotifications);
 router.get('/', getNotifications);
 router.post('/push-subscription', savePushSubscription);
 router.post('/fcm-token', saveFcmToken);

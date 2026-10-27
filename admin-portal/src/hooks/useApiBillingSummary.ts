@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchApiBillingSummary } from '@/lib/apiBillingClient';
-import type { ApiBillingSummary } from '@/lib/apiBilling';
+import { API_BILLING_SUMMARY_CHANGED_EVENT, type ApiBillingSummary } from '@/lib/apiBilling';
 import { useAuthStore } from '@/store/authStore';
 import {
   API_BILLING_POLL_INTERVAL_MS,
@@ -54,6 +54,11 @@ export const useApiBillingSummary = () => {
 
     void loadSummary();
 
+    const refreshOnBillingChange = () => {
+      void loadSummary();
+    };
+    window.addEventListener(API_BILLING_SUMMARY_CHANGED_EVENT, refreshOnBillingChange);
+
     const refreshIfVisible = () => {
       if (shouldPollApiBillingSummary(hasHydrated, token, document.visibilityState === 'visible')) {
         void loadSummary();
@@ -67,6 +72,7 @@ export const useApiBillingSummary = () => {
       active = false;
       window.clearInterval(pollId);
       document.removeEventListener('visibilitychange', refreshIfVisible);
+      window.removeEventListener(API_BILLING_SUMMARY_CHANGED_EVENT, refreshOnBillingChange);
     };
   }, [hasHydrated, token]);
 

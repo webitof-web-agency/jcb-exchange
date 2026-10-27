@@ -10,58 +10,40 @@ import {
   Trophy,
   Bell,
   Building2,
-  Calendar,
   CalendarPlus,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Clock,
   Copy,
   Edit3,
   ExternalLink,
-  Flame,
   GitMerge,
-  Globe,
-  IndianRupee,
   MapPin,
   MessageCircle,
-  MessageSquare,
-  MessageSquareText,
   Phone,
   PhoneCall,
   Plus,
   Receipt,
-  RotateCcw,
   Send,
-  Share2,
-  Shield,
   Shuffle,
-  Snowflake,
-  Sparkles,
-  Star,
   StickyNote,
-  Sun,
-  Tag,
-  Truck,
-  User,
-  UserCheck,
   UserCog,
-  Users,
-  X,
   XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyPermission } from '@/lib/permissionUtils';
-import { Badge, Button, EmptyState, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
-import { AssignModal, CompleteFollowUpModal, LogActivityModal, RescheduleModal, ScheduleFollowUpModal, StatusChangeModal } from './CrmModals';
+import { Badge, Button, EmptyState, Field, inputClass, Modal, ModalFooter, Toggle } from '@/components/financeWorkspace/ui';
+import { AssignModal, CompleteFollowUpModal, EditFollowUpModal, LogActivityModal, RescheduleModal, ScheduleFollowUpModal, StatusChangeModal } from './CrmModals';
 import { FollowUpRow } from './FollowUpRow';
 import { emptyRequirement, RequirementFields, requirementPayload, type RequirementState } from './LeadForm';
+import { getStageStepperOptions } from './leadViews';
 import {
   contactHref,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   crmError,
   CrmMetaProvider,
   EnquiryChannelBadge,
@@ -76,7 +58,6 @@ import {
   phoneLinks,
   PriorityBadge,
   relative,
-  selectClass,
   StatusBadge,
   TemperatureBadge,
   useCrmBase,
@@ -181,15 +162,6 @@ type Detail = {
   payments: Payment[];
 };
 
-const STAGES = [
-  'NEW',
-  'CONTACTED',
-  'QUALIFIED',
-  'INTERESTED',
-  'INSPECTION_SCHEDULED',
-  'NEGOTIATION',
-];
-
 function getActivityVisuals(type: string, title: string) {
   const t = (type || '').toUpperCase();
   const lowTitle = (title || '').toLowerCase();
@@ -260,29 +232,32 @@ function getActivityVisuals(type: string, title: string) {
 /** Professional Interactive Stage Stepper */
 function StageStepper({
   status,
+  stages,
   onSelectStage,
   canManage,
 }: {
   status: string;
+  stages: Array<{ code: string; name: string; isTerminal?: boolean }>;
   onSelectStage: (stage: string) => void;
   canManage: boolean;
 }) {
-  const closed = status === 'WON' || status === 'LOST';
-  const currentIndex = STAGES.indexOf(status);
+  const stageOptions = getStageStepperOptions(stages, status);
+  const currentStage = stageOptions.find((stage) => stage.code === status);
+  const currentIndex = stageOptions.findIndex((stage) => stage.code === status);
 
   return (
     <div className="w-full">
       <div className="flex items-center gap-1 overflow-x-auto py-1 custom-scrollbar">
-        {STAGES.map((stage, i) => {
-          const isDone = closed ? status === 'WON' : currentIndex >= 0 && i < currentIndex;
-          const isCurrent = stage === status;
+        {stageOptions.map((stage, i) => {
+          const isDone = currentIndex >= 0 && i < currentIndex;
+          const isCurrent = stage.code === status;
 
           return (
             <button
-              key={stage}
+              key={stage.code}
               type="button"
               disabled={!canManage}
-              onClick={() => onSelectStage(stage)}
+              onClick={() => onSelectStage(stage.code)}
               className={`group relative flex flex-1 min-w-[110px] items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition-all ${
                 isCurrent
                   ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/10'
@@ -298,25 +273,27 @@ function StageStepper({
               ) : (
                 <span className="text-[10px] opacity-60">#{i + 1}</span>
               )}
-              <span className="truncate">{label(stage)}</span>
+              <span className="truncate">{stage.name}</span>
             </button>
           );
         })}
 
-        <button
-          type="button"
-          disabled={!canManage}
-          onClick={() => onSelectStage(status === 'WON' ? 'LOST' : 'WON')}
-          className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
-            status === 'WON'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : status === 'LOST'
-              ? 'bg-rose-600 text-white shadow-sm'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          {status === 'LOST' ? 'Deal Lost' : status === 'WON' ? 'Deal Won' : 'Close Deal'}
-        </button>
+        {!currentStage?.isTerminal || status === 'WON' || status === 'LOST' ? (
+          <button
+            type="button"
+            disabled={!canManage}
+            onClick={() => onSelectStage(status === 'WON' ? 'LOST' : 'WON')}
+            className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+              status === 'WON'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : status === 'LOST'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {status === 'LOST' ? 'Deal Lost' : status === 'WON' ? 'Deal Won' : 'Close Deal'}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -331,6 +308,7 @@ function Detail({ leadId }: { leadId: string }) {
   const [modal, setModal] = useState<null | 'status' | 'schedule' | 'log' | 'assign' | 'edit' | 'merge' | 'template'>(null);
   const [targetStatus, setTargetStatus] = useState<string | undefined>(undefined);
   const [completing, setCompleting] = useState<FollowUp | null>(null);
+  const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [rescheduling, setRescheduling] = useState<FollowUp | null>(null);
   const [logType, setLogType] = useState('CALL');
 
@@ -352,11 +330,12 @@ function Detail({ leadId }: { leadId: string }) {
     setModal(null);
     setTargetStatus(undefined);
     setCompleting(null);
+    setEditingFollowUp(null);
     setRescheduling(null);
     data.reload();
   };
 
-  if (data.loading && !data.data) return <LoadingState label="Loading lead workspace…" />;
+  if (data.loading && !data.data) return <CrmLoadingState label="Loading lead workspace…" />;
   if (data.error || !data.data) {
     return <CrmErrorBanner message={data.error || 'Lead not found.'} schemaMissing={data.schemaMissing} />;
   }
@@ -364,7 +343,8 @@ function Detail({ leadId }: { leadId: string }) {
   const { lead, otherLeads, matches, payments } = data.data;
   const access = meta?.access;
   const isPartner = Boolean(access?.isPartner);
-  const open = lead.status !== 'WON' && lead.status !== 'LOST';
+  const currentStage = meta?.pipelineStages?.find((stage) => stage.code === lead.status);
+  const open = !currentStage?.isTerminal && lead.status !== 'WON' && lead.status !== 'LOST';
   const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
   const pending = lead.followUps
     .filter((f) => f.status === 'PENDING' || f.status === 'MISSED')
@@ -650,6 +630,9 @@ function Detail({ leadId }: { leadId: string }) {
         <div className="pt-1">
           <StageStepper
             status={lead.status}
+            stages={(meta?.pipelineStages || [])
+              .filter((stage) => !stage.isTerminal || stage.code === lead.status)
+              .map(({ code, name, isTerminal }) => ({ code, name, isTerminal }))}
             onSelectStage={handleStageSelect}
             canManage={Boolean(access?.canManage)}
           />
@@ -841,14 +824,12 @@ function Detail({ leadId }: { leadId: string }) {
 
                 {inlineTab === 'CALL' ? (
                   <div className="flex items-center gap-2 text-xs">
-                    <select
+                    <CrmSelect
+                      options={[{ id: 'OUTBOUND', name: 'Outgoing Call' }, { id: 'INBOUND', name: 'Incoming Call' }]}
                       value={inlineDirection}
-                      onChange={(e) => setInlineDirection(e.target.value as any)}
-                      className="rounded-md border border-slate-200 bg-slate-50 py-0.5 px-1.5 text-[11px] font-semibold text-slate-700 outline-none"
-                    >
-                      <option value="OUTBOUND">Outgoing Call</option>
-                      <option value="INBOUND">Incoming Call</option>
-                    </select>
+                      onChange={(next) => setInlineDirection(next as 'OUTBOUND' | 'INBOUND')}
+                      className="w-36"
+                    />
                     <input
                       type="number"
                       min={1}
@@ -953,6 +934,7 @@ function Detail({ leadId }: { leadId: string }) {
                     now={now}
                     showOwner={!isPartner}
                     onComplete={access?.canManage ? () => setCompleting(f) : undefined}
+                    onEdit={access?.canManage ? () => setEditingFollowUp(f) : undefined}
                     onReschedule={access?.canManage ? () => setRescheduling(f) : undefined}
                   />
                 ))}
@@ -1348,7 +1330,7 @@ function Detail({ leadId }: { leadId: string }) {
           {otherLeads.length ? (
             <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-2.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-2">
-                Customer's Other Inquiries ({otherLeads.length})
+                Customer&apos;s Other Inquiries ({otherLeads.length})
               </h3>
               <ul className="divide-y divide-slate-100">
                 {otherLeads.map((o) => (
@@ -1417,6 +1399,13 @@ function Detail({ leadId }: { leadId: string }) {
         <RescheduleModal
           followUp={rescheduling}
           onClose={() => setRescheduling(null)}
+          onDone={done}
+        />
+      ) : null}
+      {editingFollowUp ? (
+        <EditFollowUpModal
+          followUp={{ ...editingFollowUp, contact: lead.customer }}
+          onClose={() => setEditingFollowUp(null)}
           onDone={done}
         />
       ) : null}
@@ -1582,43 +1571,13 @@ function EditLeadModal({
       <div className="space-y-4 p-4 sm:p-6 text-xs">
         <div className="grid gap-3 md:grid-cols-4">
           <Field label="Lead type">
-            <select
-              value={leadType}
-              onChange={(e) => setLeadType(e.target.value)}
-              className={selectClass}
-            >
-              {(meta?.enums.leadTypes || []).map((t) => (
-                <option key={t} value={t}>
-                  {LEAD_TYPE_LABELS[t] || t}
-                </option>
-              ))}
-            </select>
+            <CrmSelect options={(meta?.enums.leadTypes || []).map((t) => ({ id: t, name: LEAD_TYPE_LABELS[t] || t }))} value={leadType} onChange={(next) => setLeadType(next)} searchable className="w-full" />
           </Field>
           <Field label="Priority">
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className={selectClass}
-            >
-              {(meta?.enums.priorities || []).map((p) => (
-                <option key={p} value={p}>
-                  {label(p)}
-                </option>
-              ))}
-            </select>
+            <CrmSelect options={(meta?.enums.priorities || []).map((p) => ({ id: p, name: label(p) }))} value={priority} onChange={(next) => setPriority(next)} className="w-full" />
           </Field>
           <Field label="Source">
-            <select
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              className={selectClass}
-            >
-              {[...new Set([...(meta?.config.sources || []), source])].map((s) => (
-                <option key={s} value={s}>
-                  {label(s)}
-                </option>
-              ))}
-            </select>
+            <CrmSelect options={[...new Set([...(meta?.config.sources || []), source])].map((s) => ({ id: s, name: label(s) }))} value={source} onChange={(next) => setSource(next)} searchable className="w-full" />
           </Field>
           <Field label="Expected value (₹)">
             <input
@@ -1705,19 +1664,13 @@ function MergeModal({
     >
       <div className="space-y-4 p-4 sm:p-6 text-xs">
         <Field label="Keep this lead *">
-          <select
+          <CrmSelect
+            options={[{ id: '', name: 'Choose target lead…' }, ...others.map((o) => ({ id: o.id, name: `${LEAD_TYPE_LABELS[o.leadType] || o.leadType} · ${label(o.status)} · ${fmtDate(o.createdAt)}${o.listingTitleSnapshot ? ` · ${o.listingTitleSnapshot}` : ''}` }))]}
             value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-            className={selectClass}
-          >
-            <option value="">Choose target lead…</option>
-            {others.map((o) => (
-              <option key={o.id} value={o.id}>
-                {LEAD_TYPE_LABELS[o.leadType] || o.leadType} · {label(o.status)} · {fmtDate(o.createdAt)}
-                {o.listingTitleSnapshot ? ` · ${o.listingTitleSnapshot}` : ''}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => setTargetId(next)}
+            searchable
+            className="w-full"
+          />
         </Field>
         <ModalFooter>
           <Button onClick={onClose}>Cancel</Button>
@@ -1780,7 +1733,7 @@ function TemplateModal({
     >
       <div className="space-y-4 p-4 sm:p-6 text-xs">
         {templates.loading ? (
-          <LoadingState />
+          <CrmLoadingState />
         ) : !usable.length ? (
           <EmptyState
             title="No sendable templates"
@@ -1788,18 +1741,13 @@ function TemplateModal({
           />
         ) : (
           <Field label="Template">
-            <select
+            <CrmSelect
+              options={[{ id: '', name: 'Choose…' }, ...usable.map((t) => ({ id: t.id, name: `${t.name} (${t.language}) · ${label(t.category)}` }))]}
               value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              className={selectClass}
-            >
-              <option value="">Choose…</option>
-              {usable.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.language}) · {label(t.category)}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setTemplateId(next)}
+              searchable
+              className="w-full"
+            />
           </Field>
         )}
         <ModalFooter>

@@ -5,7 +5,6 @@ import {
   CHASSIS_TO_RC_VIEW_PERMISSIONS,
   RC_TO_MOBILE_VIEW_PERMISSIONS,
   MOBILE_TO_RC_VIEW_PERMISSIONS,
-  RC_MOBILE_NUMBER_CHECK_VIEW_PERMISSIONS,
   canViewFeature,
 } from './featurePermissions';
 
@@ -21,7 +20,6 @@ assert.equal(canViewFeature('EMPLOYEE', ['rc.to-mobile.read'], RC_TO_MOBILE_VIEW
 assert.equal(canViewFeature('EMPLOYEE', ['rc.to-mobile.verify'], RC_TO_MOBILE_VIEW_PERMISSIONS), false);
 assert.equal(canViewFeature('EMPLOYEE', ['rc.mobile-to-rc.read'], MOBILE_TO_RC_VIEW_PERMISSIONS), true);
 assert.equal(canViewFeature('EMPLOYEE', ['rc.mobile-to-rc.lookup'], MOBILE_TO_RC_VIEW_PERMISSIONS), false);
-assert.equal(canViewFeature('EMPLOYEE', ['rc.mobile-number-check.read'], RC_MOBILE_NUMBER_CHECK_VIEW_PERMISSIONS), true);
-assert.equal(canViewFeature('EMPLOYEE', ['rc.mobile-number-check.check'], RC_MOBILE_NUMBER_CHECK_VIEW_PERMISSIONS), false);
+assert.equal(VEHICLE_TRANSPORT_VIEW_PERMISSIONS.includes('rc.mobile-number-check.read'), false);
 
 console.log('feature permission tests passed');

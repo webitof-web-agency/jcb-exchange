@@ -2,12 +2,72 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   GstVerificationService,
+  getGstRawDataExpiresAt,
+  isGstRawDataAvailable,
   normalizeGstVerificationResult,
   maskGstin,
 } from './gstVerification.service';
 import { encryptPanData } from './panVerification.dataCrypto';
 
 const dataSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+test('keeps GST raw data available only for the five-minute template window', () => {
+  const completedAt = new Date('2026-10-27T10:00:00.000Z');
+  const expiresAt = getGstRawDataExpiresAt(completedAt);
+  assert.equal(expiresAt.toISOString(), '2026-10-27T10:05:00.000Z');
+  assert.equal(isGstRawDataAvailable({ encryptedResult: 'cipher', rawDataExpiresAt: expiresAt }, expiresAt.getTime() - 1), true);
+  assert.equal(isGstRawDataAvailable({ encryptedResult: 'cipher', rawDataExpiresAt: expiresAt }, expiresAt.getTime()), false);
+});
+
+test('stores a GST template privately and clears the encrypted result after upload', async () => {
+  const records: any[] = [{
+    id: 'gst-template-record',
+    status: 'SUCCESS',
+    maskedGstin: '08AK********1ZN',
+    requestedById: 'user-1',
+    provider: 'SUREPASS',
+    encryptedResult: 'cipher',
+    rawDataExpiresAt: new Date(Date.now() + 60_000),
+    requestedBy: null,
+    template: null,
+    createdAt: new Date(),
+    completedAt: new Date(),
+  }];
+  const templates: any[] = [];
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => records[0],
+      findMany: async () => records,
+      count: async () => records.length,
+      create: async () => ({}),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(records[0], data);
+        return records[0];
+      },
+    },
+    template: {
+      findUnique: async () => null,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const template = { id: 'gst-template-1', ...data, createdAt: new Date() };
+        templates.push(template);
+        records[0].template = template;
+        return template;
+      },
+      delete: async () => ({}),
+    },
+    uploadTemplateFile: async () => ({ fileId: 'drive-gst-template-1' }),
+    deleteTemplateFile: async () => undefined,
+    dataSecret,
+  });
+
+  const pdf = Buffer.from('%PDF-1.7\nmock-gst-template');
+  const result = await service.uploadTemplate('gst-template-record', 'user-1', 'EMPLOYEE', pdf, 'application/pdf');
+  assert.equal(templates.length, 1);
+  assert.equal(result.template?.id, 'gst-template-1');
+  assert.equal(records[0].encryptedResult, null);
+  assert.equal(records[0].rawDataExpiresAt, null);
+});
 
 test('masks GSTIN and normalizes documented GST business fields', () => {
   assert.equal(maskGstin('08AKWPJ1234H1ZN'), '08AK********1ZN');
@@ -170,6 +230,7 @@ test('loads a saved GST detail with the configured encryption secret', async () 
         messageCode: 'success',
         safeMessage: null,
         encryptedResult: encryptPanData(JSON.stringify(result), dataSecret),
+        rawDataExpiresAt: new Date(Date.now() + 60_000),
         requestedBy: null,
         createdAt: new Date(),
         completedAt: new Date(),

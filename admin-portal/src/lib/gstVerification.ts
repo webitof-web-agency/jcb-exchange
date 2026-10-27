@@ -16,6 +16,17 @@ export type GstRecord = {
   requestedBy?: { id: string; name: string | null; email: string | null } | null;
   createdAt: string;
   completedAt: string | null;
+  rawDataExpiresAt: string | null;
+  template: GstTemplateSummary | null;
+};
+
+export type GstTemplateSummary = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sha256: string;
+  createdAt: string;
 };
 
 export type GstResultResponse = {
@@ -23,6 +34,8 @@ export type GstResultResponse = {
   cacheHit?: boolean;
   record: GstRecord;
   result: Record<string, unknown> | null;
+  template?: GstTemplateSummary | null;
+  alreadyUploaded?: boolean;
 };
 
 export const normalizeGstin = (value: string) => value.trim().toUpperCase();

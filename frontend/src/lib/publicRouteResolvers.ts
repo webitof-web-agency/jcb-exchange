@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/lib/api';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { parseRouteParam } from '@/lib/routeSlug';
 
 type PublicListingSummary = {
@@ -53,7 +54,7 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/master/public-listings`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings`, {
       cache: 'no-store',
     });
 
@@ -62,7 +63,22 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
     }
 
     const data = (await response.json()) as PublicListingsResponse;
-    return findUniqueIdByPrefix(data.data || [], parsed.shortSuffix);
+    const availableListingId = findUniqueIdByPrefix(data.data || [], parsed.shortSuffix);
+    if (availableListingId) {
+      return availableListingId;
+    }
+
+    // Sold vehicle cards keep the same canonical machine detail URL, but the default
+    // marketplace feed intentionally excludes SOLD records.
+    const soldResponse = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings?status=SOLD`, {
+      cache: 'no-store',
+    });
+    if (!soldResponse.ok) {
+      return null;
+    }
+
+    const soldData = (await soldResponse.json()) as PublicListingsResponse;
+    return findUniqueIdByPrefix(soldData.data || [], parsed.shortSuffix);
   } catch {
     return null;
   }
@@ -80,7 +96,7 @@ export const resolvePublicDealerId = async (rawParam: string): Promise<string | 
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/master/dealers`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/master/dealers`, {
       next: { revalidate: 300 },
     });
 

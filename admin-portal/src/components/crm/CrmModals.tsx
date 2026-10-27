@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
-import { ArrowRightLeft, CalendarClock, Check, CheckCircle2, IndianRupee, PackageX, Search, Truck } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, Check, CheckCircle2, Edit3, IndianRupee, PackageX, Search, Truck } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyPermission } from '@/lib/permissionUtils';
@@ -12,12 +12,12 @@ import { Button, Field, inputClass, Modal, ModalFooter } from '@/components/fina
 import {
   crmError,
   crmErrorCode,
+  CrmSelect,
   fmtInr,
   fromLocalInput,
   label,
   OUTCOME_LABELS,
   quickTimes,
-  selectClass,
   toLocalInput,
   useCrmBase,
   useCrmMeta,
@@ -31,15 +31,13 @@ export const emptyNextStep = (type = 'CALL'): NextStep => ({ type, dueAt: '', no
 /** Follow-up type + when + note, with quick time picks. */
 export function NextStepFields({ value, onChange, required, title = 'Next follow-up' }: { value: NextStep; onChange: (next: NextStep) => void; required?: boolean; title?: string }) {
   const { meta } = useCrmMeta();
-  const types = meta?.enums.followUpTypes || ['CALL', 'WHATSAPP', 'VISIT', 'INSPECTION', 'MEETING'];
+  const types = meta?.enums.followUpTypes || ['CALL', 'WHATSAPP', 'SMS', 'VISIT', 'INSPECTION', 'MEETING', 'EMAIL', 'PAYMENT', 'OTHER'];
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
       <p className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-amber-600" />{title}{required ? <span className="text-xs font-semibold text-red-600">required</span> : null}</p>
       <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
         <Field label="Type">
-          <select value={value.type} onChange={(e) => onChange({ ...value, type: e.target.value })} className={selectClass}>
-            {types.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-          </select>
+          <CrmSelect options={types.map((t) => ({ id: t, name: label(t) }))} value={value.type} onChange={(next) => onChange({ ...value, type: next })} className="w-full" />
         </Field>
         <Field label={required ? 'When *' : 'When'}>
           <input type="datetime-local" value={value.dueAt} min={toLocalInput(new Date())} onChange={(e) => onChange({ ...value, dueAt: e.target.value })} className={inputClass} />
@@ -143,8 +141,10 @@ export function StatusChangeModal({
   const [next, setNext] = useState<NextStep>(emptyNextStep());
   const [busy, setBusy] = useState(false);
   const [needsNext, setNeedsNext] = useState(false);
-  const closing = status === 'WON' || status === 'LOST';
   const statuses = meta?.enums.statuses || [];
+  const stageName = (value: string) => meta?.pipelineStages?.find((stage) => stage.code === value)?.name || label(value);
+  const selectedStage = meta?.pipelineStages?.find((stage) => stage.code === status);
+  const closing = Boolean(selectedStage?.isTerminal) || status === 'WON' || status === 'LOST';
   const isWon = status === 'WON';
   // A reason is needed whenever the customer did not buy the machine they enquired about.
   const boughtSomethingElse = Boolean(enquiredListingId) && mode !== 'ENQUIRED';
@@ -215,7 +215,7 @@ export function StatusChangeModal({
       if (isWon) {
         toast.success(`Deal closed as WON${soldFromInventory && markListingAsSold ? ' — listing marked SOLD' : ''}.`);
       } else {
-        toast.success(`Lead moved to ${label(status)}.`);
+        toast.success(`Lead moved to ${stageName(status)}.`);
       }
       if (isWon && canCreateSoldVehicle && openSoldVehicleForm) {
         // Same flow as the Sell Vehicle button on a listing row; the form opens the machine's
@@ -249,7 +249,7 @@ export function StatusChangeModal({
   );
 
   return (
-    <Modal title="Change lead status" subtitle={`Currently ${label(currentStatus)}`} onClose={onClose}>
+    <Modal title="Change lead status" subtitle={`Currently ${stageName(currentStatus)}`} onClose={onClose}>
       <div className="space-y-4 p-5 sm:p-7">
         <div className="flex flex-wrap gap-2">
           {statuses.map((s) => (
@@ -267,17 +267,14 @@ export function StatusChangeModal({
                   : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
             >
-              {label(s)}
+              {stageName(s)}
             </button>
           ))}
         </div>
 
         {status === 'LOST' ? (
           <Field label="Why was it lost? *">
-            <select value={lostReason} onChange={(e) => setLostReason(e.target.value)} className={selectClass}>
-              <option value="">Choose a reason</option>
-              {(meta?.config.lostReasons || []).map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+            <CrmSelect options={[{ id: '', name: 'Choose a reason' }, ...(meta?.config.lostReasons || []).map((r) => ({ id: r, name: r }))]} value={lostReason} onChange={(next) => setLostReason(next)} searchable className="w-full" />
           </Field>
         ) : null}
 
@@ -470,8 +467,14 @@ export function CompleteFollowUpModal({ followUp, leadStatus, onClose, onDone }:
   const [lostReason, setLostReason] = useState('');
   const [next, setNext] = useState<NextStep>(emptyNextStep(followUp.type));
   const [busy, setBusy] = useState(false);
-  const closing = newStatus === 'WON' || newStatus === 'LOST';
-  const leadOpen = Boolean(followUp.leadId) && leadStatus !== 'WON' && leadStatus !== 'LOST';
+  const stageName = (value: string | null | undefined) => meta?.pipelineStages?.find((stage) => stage.code === value)?.name || label(value || '');
+  const currentStage = meta?.pipelineStages?.find((stage) => stage.code === leadStatus);
+  const selectedStage = meta?.pipelineStages?.find((stage) => stage.code === newStatus);
+  const closing = Boolean(selectedStage?.isTerminal) || newStatus === 'WON' || newStatus === 'LOST';
+  const leadOpen = Boolean(followUp.leadId) && !currentStage?.isTerminal && leadStatus !== 'WON' && leadStatus !== 'LOST';
+  const statusOptions = (meta?.pipelineStages || []).length
+    ? (meta?.pipelineStages || []).map((stage) => ({ id: stage.code, name: stage.name }))
+    : (meta?.enums.statuses || []).map((status) => ({ id: status, name: stageName(status) }));
   const requireNext = Boolean(meta?.config.requireNextFollowUp) && leadOpen && !closing;
 
   const save = async () => {
@@ -509,17 +512,11 @@ export function CompleteFollowUpModal({ followUp, leadStatus, onClose, onDone }:
         {leadOpen ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Move lead to (optional)">
-              <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className={selectClass}>
-                <option value="">Keep {label(leadStatus)}</option>
-                {(meta?.enums.statuses || []).filter((s) => s !== leadStatus).map((s) => <option key={s} value={s}>{label(s)}</option>)}
-              </select>
+              <CrmSelect options={[{ id: '', name: `Keep ${stageName(leadStatus)}` }, ...statusOptions.filter((option) => option.id !== leadStatus)]} value={newStatus} onChange={(next) => setNewStatus(next)} searchable className="w-full" />
             </Field>
             {newStatus === 'LOST' ? (
               <Field label="Lost reason *">
-                <select value={lostReason} onChange={(e) => setLostReason(e.target.value)} className={selectClass}>
-                  <option value="">Choose a reason</option>
-                  {(meta?.config.lostReasons || []).map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <CrmSelect options={[{ id: '', name: 'Choose a reason' }, ...(meta?.config.lostReasons || []).map((r) => ({ id: r, name: r }))]} value={lostReason} onChange={(next) => setLostReason(next)} searchable className="w-full" />
               </Field>
             ) : null}
           </div>
@@ -571,6 +568,58 @@ export function RescheduleModal({ followUp, onClose, onDone }: { followUp: Follo
   );
 }
 
+export function EditFollowUpModal({ followUp, onClose, onDone }: { followUp: FollowUp; onClose: () => void; onDone: () => void }) {
+  const { meta } = useCrmMeta();
+  const [step, setStep] = useState<NextStep>({
+    type: followUp.type,
+    dueAt: toLocalInput(new Date(followUp.dueAt)),
+    notes: followUp.notes || '',
+  });
+  const [title, setTitle] = useState(followUp.title || '');
+  const [ownerId, setOwnerId] = useState(followUp.ownerId || followUp.owner?.id || '');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!step.dueAt) return toast.error('Choose when to follow up.');
+    setBusy(true);
+    try {
+      await api.patch(`/crm/followups/${followUp.id}`, {
+        type: step.type,
+        dueAt: fromLocalInput(step.dueAt),
+        title: title.trim() || null,
+        notes: step.notes.trim() || null,
+        ...(meta?.access.canAssign ? { ownerId: ownerId || null } : {}),
+      });
+      toast.success('Follow-up updated.');
+      onDone();
+    } catch (error) {
+      toast.error(crmError(error, 'Could not update the follow-up.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Edit follow-up" subtitle={followUp.contact?.name || followUp.contact?.mobile || 'Customer follow-up'} onClose={onClose}>
+      <div className="space-y-4 p-5 sm:p-7">
+        <Field label="Title">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} placeholder="e.g. Share inspection report" />
+        </Field>
+        <NextStepFields value={step} onChange={setStep} required title="When and how" />
+        {meta?.access.canAssign ? (
+          <Field label="Assign to" hint="Leave empty to keep this follow-up unassigned.">
+            <CrmSelect options={[{ id: '', name: 'Unassigned' }, ...meta.staff.map((s) => ({ id: s.id, name: s.name }))]} value={ownerId} onChange={(next) => setOwnerId(next)} searchable className="w-full" />
+          </Field>
+        ) : null}
+        <ModalFooter>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<Edit3 className="h-4 w-4" />} busy={busy} disabled={!step.dueAt} onClick={save}>Save changes</Button>
+        </ModalFooter>
+      </div>
+    </Modal>
+  );
+}
+
 export function ScheduleFollowUpModal({ leadId, contactUserId, onClose, onDone }: { leadId?: string; contactUserId?: string; onClose: () => void; onDone: () => void }) {
   const { meta } = useCrmMeta();
   const [step, setStep] = useState<NextStep>(emptyNextStep());
@@ -598,10 +647,7 @@ export function ScheduleFollowUpModal({ leadId, contactUserId, onClose, onDone }
         <NextStepFields value={step} onChange={setStep} required title="When and how" />
         {meta?.access.canAssign ? (
           <Field label="Assign to" hint="Leave empty to give it to the lead owner (or yourself).">
-            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={selectClass}>
-              <option value="">Lead owner / me</option>
-              {meta.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <CrmSelect options={[{ id: '', name: 'Lead owner / me' }, ...meta.staff.map((s) => ({ id: s.id, name: s.name }))]} value={ownerId} onChange={(next) => setOwnerId(next)} searchable className="w-full" />
           </Field>
         ) : null}
         <ModalFooter>
@@ -655,10 +701,7 @@ export function LogActivityModal({ endpoint, initialType = 'CALL', onClose, onDo
         {type === 'CALL' ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Direction">
-              <select value={direction} onChange={(e) => setDirection(e.target.value)} className={selectClass}>
-                <option value="OUTBOUND">Outgoing</option>
-                <option value="INBOUND">Incoming</option>
-              </select>
+              <CrmSelect options={[{ id: 'OUTBOUND', name: 'Outgoing' }, { id: 'INBOUND', name: 'Incoming' }]} value={direction} onChange={(next) => setDirection(next)} className="w-full" />
             </Field>
             <Field label="Duration (minutes)">
               <input type="number" min={0} step={0.5} value={minutes} onChange={(e) => setMinutes(e.target.value)} className={inputClass} />
@@ -699,10 +742,7 @@ export function AssignModal({ leadIds, currentOwnerId, onClose, onDone }: { lead
     <Modal title={leadIds.length > 1 ? `Assign ${leadIds.length} leads` : 'Assign lead'} onClose={onClose}>
       <div className="space-y-4 p-5 sm:p-7">
         <Field label="Owner">
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={selectClass}>
-            <option value="">Unassigned</option>
-            {(meta?.staff || []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.roleName ? ` · ${s.roleName}` : ''}</option>)}
-          </select>
+          <CrmSelect options={[{ id: '', name: 'Unassigned' }, ...(meta?.staff || []).map((s) => ({ id: s.id, name: `${s.name}${s.roleName ? ` · ${s.roleName}` : ''}` }))]} value={ownerId} onChange={(next) => setOwnerId(next)} searchable className="w-full" />
         </Field>
         {leadIds.length === 1 ? (
           <Field label="Reason (shown in the timeline)">

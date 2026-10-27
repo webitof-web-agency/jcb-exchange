@@ -1,19 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
-  ArrowLeft,
-  ArrowRight,
   CalendarClock,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   Columns,
-  ExternalLink,
-  Flame,
   GripVertical,
   Kanban,
   Maximize2,
@@ -23,19 +18,18 @@ import {
   Plus,
   RotateCw,
   Search,
-  Sparkles,
+  SlidersHorizontal,
   Tractor,
-  Truck,
-  User,
   X,
-  XCircle,
 } from 'lucide-react';
-import { LoadingState } from '@/components/financeWorkspace/ui';
 import { StatusChangeModal } from './CrmModals';
 import LeadForm from './LeadForm';
+import CrmPipelineStageManager from './CrmPipelineStageManager';
+import { shouldRenderPipelineStage } from './leadViews';
 import {
-  compactSelectClass,
   CrmErrorBanner,
+  CrmLoadingState,
+  CrmSelect,
   CrmPageFrame,
   fmtInr,
   getJson,
@@ -54,7 +48,8 @@ import {
 } from './crmShared';
 
 type Board = {
-  columns: Array<{ status: string; count: number; expectedValue: number; cards: LeadRow[] }>;
+  showClosed?: boolean;
+  columns: Array<{ status: string; name: string; order: number; color: string; isTerminal: boolean; count: number; expectedValue: number; cards: LeadRow[] }>;
 };
 
 const COLUMN_THEMES: Record<
@@ -135,48 +130,79 @@ const COLUMN_THEMES: Record<
   },
 };
 
-const STAGE_FLOW: Record<string, { prev?: string; next?: string }> = {
-  NEW: { next: 'CONTACTED' },
-  CONTACTED: { prev: 'NEW', next: 'QUALIFIED' },
-  QUALIFIED: { prev: 'CONTACTED', next: 'INTERESTED' },
-  INTERESTED: { prev: 'QUALIFIED', next: 'INSPECTION_SCHEDULED' },
-  INSPECTION_SCHEDULED: { prev: 'INTERESTED', next: 'NEGOTIATION' },
-  NEGOTIATION: { prev: 'INSPECTION_SCHEDULED', next: 'WON' },
-  ON_HOLD: { next: 'NEGOTIATION' },
-  WON: { prev: 'NEGOTIATION' },
-  LOST: { prev: 'NEGOTIATION' },
+const COLOR_THEMES: Record<string, (typeof COLUMN_THEMES)[string]> = {
+  blue: COLUMN_THEMES.NEW,
+  slate: COLUMN_THEMES.CONTACTED,
+  purple: COLUMN_THEMES.QUALIFIED,
+  indigo: COLUMN_THEMES.INTERESTED,
+  amber: COLUMN_THEMES.INSPECTION_SCHEDULED,
+  orange: COLUMN_THEMES.NEGOTIATION,
+  zinc: COLUMN_THEMES.ON_HOLD,
+  emerald: COLUMN_THEMES.WON,
+  rose: COLUMN_THEMES.LOST,
+  cyan: COLUMN_THEMES.QUALIFIED,
+  teal: COLUMN_THEMES.INTERESTED,
+  pink: COLUMN_THEMES.QUALIFIED,
+  lime: COLUMN_THEMES.INSPECTION_SCHEDULED,
+  green: COLUMN_THEMES.WON,
+  violet: COLUMN_THEMES.QUALIFIED,
+  red: COLUMN_THEMES.LOST,
+  gray: COLUMN_THEMES.CONTACTED,
 };
 
-function Pipeline() {
-  const { meta } = useCrmMeta();
+export type CrmPipelineBoardProps = {
+  embedded?: boolean;
+  externalQuery?: Record<string, string>;
+  onDataChanged?: () => void;
+  refreshToken?: number;
+};
+
+export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChanged, refreshToken = 0 }: CrmPipelineBoardProps) {
+  const { meta, reloadMeta } = useCrmMeta();
   const { base } = useCrmBase();
   const [ownerId, setOwnerId] = useState('');
   const [leadType, setLeadType] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useState(true);
   const [search, setSearch] = useState('');
   const [dragging, setDragging] = useState<LeadRow | null>(null);
   const [move, setMove] = useState<{ lead: LeadRow; to: string } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [stageManagerOpen, setStageManagerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [now] = useState(() => Date.now());
 
-  const query = {
+  const localQuery: Record<string, string> = {
     ...(ownerId ? { ownerId } : {}),
     ...(leadType ? { leadType } : {}),
     ...(priorityFilter ? { priority: priorityFilter } : {}),
   };
+  const query: Record<string, string> = externalQuery || localQuery;
 
   const board = useCrmResource(() => getJson<Board>('/crm/leads/board', query), JSON.stringify(query));
+  const reloadBoard = board.reload;
+
+  useEffect(() => {
+    if (refreshToken > 0) reloadBoard();
+  }, [refreshToken, reloadBoard]);
 
   const rawColumns = board.data?.columns || [];
 
+  const queryView = String(query.view || '').toLowerCase();
+  const queryStatuses = String(query.status || '')
+    .split(',')
+    .map((status) => status.trim().toUpperCase())
+    .filter(Boolean);
+  const externalShowsClosed = queryView === 'all' || queryView === 'closed' || queryView === 'won' || queryView === 'lost'
+    || rawColumns.some((column) => column.isTerminal && queryStatuses.includes(column.status));
+  const displayClosed = externalQuery ? (board.data?.showClosed ?? externalShowsClosed) : showClosed;
+
   const columns = rawColumns.filter(
-    (c) => showClosed || (c.status !== 'WON' && c.status !== 'LOST'),
+    (c) => shouldRenderPipelineStage({ embedded, showClosed: displayClosed, isTerminal: c.isTerminal }),
   );
 
   const openValue = rawColumns
-    .filter((c) => c.status !== 'WON' && c.status !== 'LOST')
+    .filter((c) => !c.isTerminal)
     .reduce((sum, c) => sum + c.expectedValue, 0);
 
   const wonValue = rawColumns
@@ -184,6 +210,10 @@ function Pipeline() {
     .reduce((sum, c) => sum + c.expectedValue, 0);
 
   const totalCards = columns.reduce((sum, c) => sum + c.count, 0);
+  const totalStages = rawColumns.length;
+  const closedToggleLabel = rawColumns.some((column) => column.isTerminal && column.status !== 'WON' && column.status !== 'LOST')
+    ? 'Closed stages'
+    : 'Won & Lost';
 
   const toggleCollapse = (status: string) => {
     setCollapsed((prev) => ({ ...prev, [status]: !prev[status] }));
@@ -229,6 +259,11 @@ function Pipeline() {
               <span>{totalCards} Deals</span>
             </span>
 
+            <span className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 shadow-2xs">
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              <span>{totalStages} Stages</span>
+            </span>
+
             <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 shadow-2xs">
               <span className="text-emerald-600 font-black">₹</span>
               <span>{fmtInr(openValue)} Pipeline</span>
@@ -241,7 +276,7 @@ function Pipeline() {
             ) : null}
 
             {/* Instant Search in Pipeline */}
-            <div className="relative min-w-[180px] max-w-[240px]">
+            {!embedded ? <div className="relative min-w-[180px] max-w-[240px]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
@@ -260,58 +295,46 @@ function Pipeline() {
                   <X className="h-3 w-3" />
                 </button>
               ) : null}
-            </div>
+            </div> : null}
           </div>
 
           {/* Right: Compact Filter Controls & Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-1.5">
-            {!meta?.access.isPartner ? (
-              <select
+            {!embedded && !meta?.access.isPartner ? (
+              <CrmSelect
+                options={[
+                  { id: '', name: 'All Executives' },
+                  { id: 'me', name: 'My Deals' },
+                  ...(meta?.access.canAssign ? [{ id: 'none', name: 'Unassigned' }] : []),
+                  ...(meta?.access.canSeeAll ? meta.staff.map((s) => ({ id: s.id, name: s.name })) : []),
+                ]}
                 value={ownerId}
-                onChange={(e) => setOwnerId(e.target.value)}
-                className={`${compactSelectClass} w-32`}
-                aria-label="Owner"
-              >
-                <option value="">All Executives</option>
-                <option value="me">My Deals</option>
-                {meta?.access.canAssign ? <option value="none">Unassigned</option> : null}
-                {meta?.access.canSeeAll ? meta.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : null}
-              </select>
+                onChange={(next) => setOwnerId(next)}
+                searchable
+                className="w-32"
+              />
             ) : null}
 
-            <select
+            {!embedded ? <CrmSelect
+              options={[{ id: '', name: 'All Lead Types' }, ...(meta?.enums.leadTypes || []).map((t) => ({ id: t, name: LEAD_TYPE_LABELS[t] || label(t) }))]}
               value={leadType}
-              onChange={(e) => setLeadType(e.target.value)}
-              className={`${compactSelectClass} w-32`}
-              aria-label="Lead type"
-            >
-              <option value="">All Lead Types</option>
-              {(meta?.enums.leadTypes || []).map((t) => (
-                <option key={t} value={t}>
-                  {LEAD_TYPE_LABELS[t] || label(t)}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setLeadType(next)}
+              searchable
+              className="w-32"
+            /> : null}
 
-            <select
+            {!embedded ? <CrmSelect
+              options={[{ id: '', name: 'All Priorities' }, ...(meta?.enums.priorities || []).map((p) => ({ id: p, name: label(p) }))]}
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className={`${compactSelectClass} w-28`}
-              aria-label="Priority"
-            >
-              <option value="">All Priorities</option>
-              {(meta?.enums.priorities || []).map((p) => (
-                <option key={p} value={p}>
-                  {label(p)}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setPriorityFilter(next)}
+              className="w-28"
+            /> : null}
 
             {/* Show Won / Lost Toggle Pill */}
-            <button
+            {!embedded ? <button
               type="button"
               onClick={() => setShowClosed((prev) => !prev)}
-              title="Toggle Won & Lost stages"
+              title={`Toggle ${closedToggleLabel.toLowerCase()}`}
               className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-bold transition shadow-2xs ${
                 showClosed
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-400/20'
@@ -319,8 +342,8 @@ function Pipeline() {
               }`}
             >
               <span className={`h-2 w-2 rounded-full ${showClosed ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              <span>Won & Lost</span>
-            </button>
+              <span>{closedToggleLabel}</span>
+            </button> : null}
 
             {/* Collapse / Expand Columns Toggle */}
             <button
@@ -343,7 +366,7 @@ function Pipeline() {
             </button>
 
             {/* Create Lead Action */}
-            {meta?.access.canManage ? (
+            {!embedded && meta?.access.canManage ? (
               <button
                 type="button"
                 onClick={() => setCreating(true)}
@@ -354,13 +377,25 @@ function Pipeline() {
                 <span className="hidden sm:inline">Add Deal</span>
               </button>
             ) : null}
+
+            {!embedded && meta?.access.canPipelineManage && !meta.access.isPartner ? (
+              <button
+                type="button"
+                onClick={() => setStageManagerOpen(true)}
+                title="Manage pipeline stages"
+                className="flex h-8 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 shadow-2xs transition hover:border-amber-300 hover:bg-amber-50 hover:text-slate-900"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">Manage Stages</span>
+              </button>
+            ) : null}
           </div>
         </div>
 
         {/* KANBAN BOARD CONTAINER */}
         {board.loading && !board.data ? (
           <div className="p-8">
-            <LoadingState label="Loading pipeline board…" />
+            <CrmLoadingState label="Loading pipeline board…" />
           </div>
         ) : board.error ? (
           <div className="p-4">
@@ -369,7 +404,7 @@ function Pipeline() {
         ) : (
           <div className="flex gap-2.5 overflow-x-auto p-3 custom-scrollbar bg-slate-100/60 min-h-[580px] h-[calc(100vh-10.5rem)]">
             {columns.map((column) => {
-              const theme = COLUMN_THEMES[column.status] || {
+              const theme = COLUMN_THEMES[column.status] || COLOR_THEMES[column.color] || {
                 border: 'border-t-slate-400',
                 bg: 'bg-slate-50/20',
                 dot: 'bg-slate-400',
@@ -397,7 +432,7 @@ function Pipeline() {
                         setDragging(null);
                       }
                     }}
-                    title={`Click to expand ${label(column.status)}`}
+                    title={`Click to expand ${column.name || label(column.status)}`}
                     className={`flex min-w-[44px] max-w-[44px] flex-col items-center justify-between rounded-2xl border border-slate-200/90 bg-white py-3 shadow-2xs cursor-pointer hover:bg-slate-50 transition-all duration-150 ${
                       theme.border
                     } border-t-4 ${isDropTarget ? 'ring-2 ring-amber-400 bg-amber-50/60' : ''}`}
@@ -411,7 +446,7 @@ function Pipeline() {
 
                     {/* Vertical Stage Label */}
                     <div className="my-auto py-4 select-none [writing-mode:vertical-lr] rotate-180 text-xs font-bold text-slate-700 tracking-wider uppercase">
-                      {label(column.status)}
+                      {column.name || label(column.status)}
                     </div>
 
                     <button
@@ -449,7 +484,7 @@ function Pipeline() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${theme.dot}`} />
                       <p className="text-xs font-bold text-slate-900 truncate tracking-tight">
-                        {label(column.status)}
+                        {column.name || label(column.status)}
                       </p>
                       <span className="inline-flex items-center justify-center rounded-full bg-slate-100 text-slate-700 px-1.5 py-0.2 text-[10px] font-black">
                         {search ? `${filteredCards.length}/${column.count}` : column.count}
@@ -464,11 +499,11 @@ function Pipeline() {
                       ) : null}
 
                       {/* Column quick add deal */}
-                      {meta?.access.canManage && column.status !== 'WON' && column.status !== 'LOST' ? (
+                      {meta?.access.canManage && !column.isTerminal ? (
                         <button
                           type="button"
                           onClick={() => setCreating(true)}
-                          title={`Add deal in ${label(column.status)}`}
+                          title={`Add deal in ${column.name || label(column.status)}`}
                           className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-slate-100 transition"
                         >
                           <Plus className="h-3 w-3 stroke-[2.5]" />
@@ -490,7 +525,7 @@ function Pipeline() {
                   {/* DROP TARGET ACTIVE PLACEHOLDER */}
                   {isDropTarget ? (
                     <div className="m-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-100/50 p-2 text-center text-xs font-bold text-amber-900 animate-pulse transition">
-                      Drop here to move to {label(column.status)}
+                      Drop here to move to {column.name || label(column.status)}
                     </div>
                   ) : null}
 
@@ -503,8 +538,17 @@ function Pipeline() {
                         !overdue &&
                         new Date(lead.nextFollowUpAt).toDateString() === new Date(now).toDateString();
                       const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
-                      const flow = STAGE_FLOW[lead.status] || {};
-                      const hasAlternateFlow = lead.status === 'NEGOTIATION' || lead.status === 'INSPECTION_SCHEDULED';
+                      const stageIndex = rawColumns.findIndex((item) => item.status === lead.status);
+                      const dynamicFlow = stageIndex >= 0 ? {
+                        prev: rawColumns[stageIndex - 1]?.status,
+                        next: rawColumns[stageIndex + 1]?.isTerminal ? undefined : rawColumns[stageIndex + 1]?.status,
+                      } : {};
+                      const flow = dynamicFlow;
+                      const flowStageName = (status: string) => rawColumns.find((item) => item.status === status)?.name || label(status);
+                      const hasAlternateFlow = !rawColumns[stageIndex]?.isTerminal
+                        && !flow.next
+                        && rawColumns.some((item) => item.status === 'WON' && item.isTerminal)
+                        && rawColumns.some((item) => item.status === 'LOST' && item.isTerminal);
 
                       return (
                         <div
@@ -588,7 +632,7 @@ function Pipeline() {
                                   ? 'bg-amber-50 text-amber-800 border border-amber-200/90'
                                   : lead.nextFollowUpAt
                                   ? 'bg-slate-50 text-slate-600 border border-slate-200/80'
-                                  : lead.status === 'WON' || lead.status === 'LOST'
+                                  : column.isTerminal
                                   ? 'bg-slate-50 text-slate-500'
                                   : 'bg-amber-50 text-amber-900 border border-amber-200/70'
                               }`}
@@ -607,7 +651,7 @@ function Pipeline() {
                                   ? `Due Today`
                                   : lead.nextFollowUpAt
                                   ? relative(lead.nextFollowUpAt, now)
-                                  : lead.status === 'WON' || lead.status === 'LOST'
+                                  : column.isTerminal
                                   ? 'Deal Closed'
                                   : 'No Next Step'}
                               </span>
@@ -657,7 +701,7 @@ function Pipeline() {
                                   <button
                                     type="button"
                                     onClick={() => setMove({ lead, to: flow.prev! })}
-                                    title={`Move back to ${label(flow.prev)}`}
+                                    title={`Move back to ${flowStageName(flow.prev)}`}
                                     className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100 transition shadow-2xs"
                                   >
                                     <ChevronLeft className="h-3.5 w-3.5" />
@@ -687,10 +731,10 @@ function Pipeline() {
                                   <button
                                     type="button"
                                     onClick={() => setMove({ lead, to: flow.next! })}
-                                    title={`Advance to ${label(flow.next)}`}
+                                    title={`Advance to ${flowStageName(flow.next)}`}
                                     className="flex h-6 items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
                                   >
-                                    <span>{label(flow.next)}</span>
+                                    <span>{flowStageName(flow.next)}</span>
                                     <ChevronRight className="h-3 w-3" />
                                   </button>
                                 ) : null}
@@ -734,6 +778,7 @@ function Pipeline() {
           onCreated={() => {
             setCreating(false);
             board.reload();
+            onDataChanged?.();
           }}
         />
       ) : null}
@@ -749,6 +794,18 @@ function Pipeline() {
           onDone={() => {
             setMove(null);
             board.reload();
+            onDataChanged?.();
+          }}
+        />
+      ) : null}
+
+      {stageManagerOpen ? (
+        <CrmPipelineStageManager
+          onChanged={() => {
+            setStageManagerOpen(false);
+            reloadMeta();
+            board.reload();
+            onDataChanged?.();
           }}
         />
       ) : null}
@@ -759,7 +816,7 @@ function Pipeline() {
 export default function CrmPipelinePage() {
   return (
     <CrmPageFrame>
-      <Pipeline />
+      <CrmPipelineBoard />
     </CrmPageFrame>
   );
 }

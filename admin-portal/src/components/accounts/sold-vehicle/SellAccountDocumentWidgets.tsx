@@ -928,7 +928,7 @@ export function SellAccountKycFields({
   values: SellAccountKycSide;
   busyKey: string | null;
   onNumberChange: (kind: SellAccountKycKind, value: string) => void;
-  onVerify: (kind: 'pan' | 'gst') => void;
+  onVerify: (kind: 'pan' | 'gst' | 'aadhaar') => void;
   previewAvailable?: boolean;
   aadhaarPreviewAvailable?: boolean;
   onPreview?: (kind: 'gst' | 'aadhaar') => void;
@@ -995,22 +995,33 @@ export function SellAccountKycFields({
       {renderVerificationField('gst', 'GSTIN', '08ABCDE1234F1ZN', values.gst)}
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <label className="block text-xs font-semibold text-gray-700">Aadhaar / VID</label>
-          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600">Input only</span>
+          <label className="block text-xs font-semibold text-gray-700">Aadhaar number</label>
+          {renderStatus(values.aadhaar)}
         </div>
-        <div className="relative">
-          <ApiSparkleIcon label="Aadhaar or VID data can be fetched through API when provider is configured" className="absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2" />
-          <input
-            type="text"
-            value={values.aadhaar.number}
-            onChange={(event) => onNumberChange('aadhaar', event.target.value)}
-            placeholder="12-digit Aadhaar or VID"
-            inputMode="numeric"
-            autoComplete="off"
-            className="h-9 w-full rounded-lg border border-gray-200 bg-[#F5F8FA] pl-10 pr-3.5 text-sm font-semibold text-gray-900 placeholder:normal-case placeholder:font-normal placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:outline-none transition"
-          />
+        <div className="flex items-stretch gap-2">
+          <div className="relative min-w-0 flex-1">
+            <ApiSparkleIcon label="Aadhaar data can be fetched through DigiLocker" className="absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2" />
+            <input
+              type="text"
+              value={values.aadhaar.number}
+              onChange={(event) => onNumberChange('aadhaar', event.target.value)}
+              placeholder="12-digit Aadhaar"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={12}
+              className="h-9 w-full rounded-lg border border-gray-200 bg-[#F5F8FA] pl-10 pr-3.5 text-sm font-semibold text-gray-900 placeholder:normal-case placeholder:font-normal placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:outline-none transition"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => onVerify('aadhaar')}
+            disabled={!values.aadhaar.number || busyKey === `${side}-aadhaar`}
+            className="inline-flex min-w-24 items-center justify-center rounded-lg bg-[#FFC107] px-3 text-xs font-extrabold text-gray-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
+          >
+            {busyKey === `${side}-aadhaar` ? 'Verifying...' : 'Verify'}
+          </button>
         </div>
-        <p className="mt-1 text-xs text-gray-500">Aadhaar verification will be enabled after its provider is configured.</p>
+        {values.aadhaar.error ? <p className="mt-1 text-xs font-medium text-rose-600">{values.aadhaar.error}</p> : <p className="mt-1 text-xs text-gray-500">12-digit Aadhaar verification via DigiLocker.</p>}
         {aadhaarPreviewAvailable && onPreview ? (
           <button type="button" onClick={() => onPreview('aadhaar')} className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-violet-700 hover:text-violet-900 hover:underline">
             <Eye className="h-3.5 w-3.5" />Preview fetched data

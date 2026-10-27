@@ -11,6 +11,7 @@ import * as meta from './services/meta.service';
 import * as publicForms from './services/public.service';
 import * as reports from './services/reports.service';
 import * as segments from './services/segments.service';
+import * as pipelineStages from './services/pipelineStages.service';
 import { publicCrmConfig, updateCrmConfig } from './services/settings.service';
 import { crmTick } from './worker';
 
@@ -45,6 +46,8 @@ router.post('/webhook/leads', limit(600), handle((req) => publicForms.webhookLea
 router.use(requireAuth, requireCrmUser);
 const q = (req: Request) => Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '')]));
 const settings = requireCrmCapability('canSettings');
+const read = requireCrmCapability('canRead');
+const pipelineManage = requireCrmCapability('canPipelineManage');
 
 router.get('/meta', handle((req) => meta.getMeta(crmAccessOf(req))));
 router.get('/dashboard', handle((req) => reports.getDashboard(crmAccessOf(req))));
@@ -52,8 +55,13 @@ router.get('/reports', handle((req) => reports.getReports(crmAccessOf(req), q(re
 router.get('/templates', handle((req) => meta.listSendableTemplates(crmAccessOf(req))));
 router.get('/inventory', handle((req) => leads.searchInventory(crmAccessOf(req), q(req))));
 
-router.get('/leads', handle((req) => leads.listLeads(crmAccessOf(req), q(req))));
-router.get('/leads/board', handle((req) => leads.boardLeads(crmAccessOf(req), q(req))));
+router.get('/pipeline-stages', handle(() => pipelineStages.listPipelineStages()));
+router.post('/pipeline-stages', pipelineManage, handle((req) => pipelineStages.createPipelineStage(crmAccessOf(req), requestBody(req)), 201));
+router.put('/pipeline-stages/:code', pipelineManage, handle((req) => pipelineStages.updatePipelineStage(crmAccessOf(req), routeParam(req, 'code'), requestBody(req))));
+router.delete('/pipeline-stages/:code', pipelineManage, handle((req) => pipelineStages.deletePipelineStage(crmAccessOf(req), routeParam(req, 'code'))));
+
+router.get('/leads', read, handle((req) => leads.listLeads(crmAccessOf(req), q(req))));
+router.get('/leads/board', read, handle((req) => leads.boardLeads(crmAccessOf(req), q(req))));
 router.get('/leads/export.csv', async (req, res, next) => {
   try {
     const csv = await reports.exportLeadsCsv(crmAccessOf(req), q(req));
@@ -66,19 +74,20 @@ router.get('/leads/export.csv', async (req, res, next) => {
 });
 router.post('/leads', handle((req) => leads.createLead(crmAccessOf(req), requestBody(req)), 201));
 router.post('/leads/bulk', handle((req) => leads.bulkLeads(crmAccessOf(req), requestBody(req))));
-router.get('/leads/:id', handle((req) => leads.getLead(crmAccessOf(req), routeParam(req, 'id'))));
+router.get('/leads/:id', read, handle((req) => leads.getLead(crmAccessOf(req), routeParam(req, 'id'))));
 router.patch('/leads/:id', handle((req) => leads.updateLead(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/leads/:id/status', handle((req) => leads.changeStatus(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/leads/:id/assign', handle((req) => leads.assignLead(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/leads/:id/activities', handle((req) => leads.addLeadActivity(crmAccessOf(req), routeParam(req, 'id'), requestBody(req)), 201));
 router.post('/leads/:id/merge', handle((req) => leads.mergeLeads(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
-router.get('/leads/:id/matches', handle((req) => leads.leadMatches(crmAccessOf(req), routeParam(req, 'id'))));
+router.get('/leads/:id/matches', read, handle((req) => leads.leadMatches(crmAccessOf(req), routeParam(req, 'id'))));
 router.post('/leads/:id/whatsapp', handle((req) => meta.sendLeadWhatsApp(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 
 router.get('/followups', handle((req) => followUps.listFollowUps(crmAccessOf(req), q(req))));
 router.get('/followups/summary', handle((req) => followUps.followUpSummary(crmAccessOf(req), queryString(req, 'ownerId'))));
 router.post('/followups', handle((req) => followUps.createFollowUp(crmAccessOf(req), requestBody(req)), 201));
 router.post('/followups/bulk-reschedule', handle((req) => followUps.bulkReschedule(crmAccessOf(req), requestBody(req))));
+router.patch('/followups/:id', handle((req) => followUps.updateFollowUp(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/followups/:id/complete', handle((req) => followUps.completeFollowUp(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/followups/:id/reschedule', handle((req) => followUps.rescheduleFollowUp(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));
 router.post('/followups/:id/reassign', handle((req) => followUps.reassignFollowUp(crmAccessOf(req), routeParam(req, 'id'), requestBody(req))));

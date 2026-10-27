@@ -8,7 +8,6 @@ import {
   FOLLOW_UP_TYPES,
   istDayStart,
   isClosedStatus,
-  LEAD_STATUSES,
   LEAD_TYPES,
   needsNextFollowUp,
   oneOf,
@@ -35,10 +34,12 @@ import {
 } from './common';
 import { findOrCreateContact } from './contacts.service';
 import { findMatchingListings } from './matching.service';
-import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
+import { leadTypeLabel, notifyBulkLeadAssignment, notifyUsers, sendCrmMessage } from './notify.service';
 import { rescoreLead } from './scoring.service';
 import { getCrmConfig, type CrmConfig } from './settings.service';
+import { getPipelineStage, listPipelineStages } from './pipelineStages.service';
 import { getListingFinalPrice, listingPricingSelect } from '../../../utils/listingPricing';
+import { boardShowsClosedStages, normalizeBoardQuery } from '../boardQuery';
 
 export const NEXT_FOLLOW_UP_REQUIRED = 'NEXT_FOLLOW_UP_REQUIRED';
 
@@ -86,13 +87,17 @@ export const serializeLead = <T extends MoneyFields>(lead: T) => ({
 });
 
 /** Filters shared by list, board and export. */
-export const leadFilterWhere = (access: CrmAccess, query: Record<string, string>): Prisma.LeadWhereInput => {
+export const leadFilterWhere = (
+  access: CrmAccess,
+  query: Record<string, string>,
+  terminalStatuses: readonly string[] = ['WON', 'LOST'],
+): Prisma.LeadWhereInput => {
   const and: Prisma.LeadWhereInput[] = [leadScopeWhere(access), { mergedIntoId: null }];
   const list = (key: string) => (query[key] || '').split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
-  const statuses = list('status').filter((s) => (LEAD_STATUSES as readonly string[]).includes(s));
-  if (statuses.length) and.push({ status: { in: statuses as Prisma.EnumLeadStatusFilter['in'] & string[] } });
-  else if (query.view === 'open') and.push({ status: { notIn: ['WON', 'LOST'] } });
-  else if (query.view === 'closed') and.push({ status: { in: ['WON', 'LOST'] } });
+  const statuses = list('status');
+  if (statuses.length) and.push({ status: { in: statuses } });
+  else if (query.view === 'open') and.push({ status: { notIn: [...terminalStatuses] } });
+  else if (query.view === 'closed') and.push({ status: { in: [...terminalStatuses] } });
   else if (query.view === 'won') and.push({ status: 'WON' });
   else if (query.view === 'lost') and.push({ status: 'LOST' });
   const types = list('leadType').filter((s) => (LEAD_TYPES as readonly string[]).includes(s));
@@ -114,7 +119,7 @@ export const leadFilterWhere = (access: CrmAccess, query: Record<string, string>
   if (query.followUp === 'overdue') and.push({ nextFollowUpAt: { lt: now } });
   else if (query.followUp === 'today') and.push({ nextFollowUpAt: { gte: now, lt: tomorrow } });
   else if (query.followUp === 'upcoming') and.push({ nextFollowUpAt: { gte: tomorrow } });
-  else if (query.followUp === 'none') and.push({ nextFollowUpAt: null, status: { notIn: ['WON', 'LOST'] } });
+  else if (query.followUp === 'none') and.push({ nextFollowUpAt: null, status: { notIn: [...terminalStatuses] } });
   if (query.sla === 'breached') and.push({ slaBreachedAt: { not: null }, firstResponseAt: null });
   const from = dateOrNull(query.from, 'from date');
   const to = dateOrNull(query.to, 'to date');
@@ -148,7 +153,9 @@ const orderFor = (sort: string | undefined): Prisma.LeadOrderByWithRelationInput
 
 export const listLeads = async (access: CrmAccess, query: Record<string, string>) => {
   const { page, pageSize, skip, take } = pageArgs(query.page, query.pageSize);
-  const where = leadFilterWhere(access, query);
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
+  const where = leadFilterWhere(access, query, terminalStatuses);
   const baseWhere: Prisma.LeadWhereInput = { AND: [leadScopeWhere(access), { mergedIntoId: null }] };
   const now = new Date();
   const tomorrow = addMinutes(istDayStart(now), 24 * 60);
@@ -159,16 +166,16 @@ export const listLeads = async (access: CrmAccess, query: Record<string, string>
     prisma.lead.groupBy({ by: ['status'], where: baseWhere, _count: { _all: true } }),
     prisma.lead.count({ where: { AND: [baseWhere, { nextFollowUpAt: { gte: now, lt: tomorrow } }] } }),
     prisma.lead.count({ where: { AND: [baseWhere, { nextFollowUpAt: { lt: now } }] } }),
-    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: ['WON', 'LOST'] }, temperature: 'HOT' }] } }),
-    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: ['WON', 'LOST'] }, nextFollowUpAt: null }] } }),
-    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: ['WON', 'LOST'] }, ownerId: null }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, temperature: 'HOT' }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, nextFollowUpAt: null }] } }),
+    prisma.lead.count({ where: { AND: [baseWhere, { status: { notIn: [...terminalStatuses] }, ownerId: null }] } }),
     prisma.lead.count({ where: { AND: [baseWhere, { slaBreachedAt: { not: null }, firstResponseAt: null }] } }),
   ]);
 
   const statusMap = Object.fromEntries(byStatus.map((row) => [row.status, row._count._all]));
   const wonCount = statusMap.WON || 0;
   const lostCount = statusMap.LOST || 0;
-  const closedCount = wonCount + lostCount;
+  const closedCount = byStatus.reduce((sum, row) => sum + (terminalStatuses.includes(row.status) ? row._count._all : 0), 0);
   const allCount = byStatus.reduce((sum, r) => sum + r._count._all, 0);
   const openCount = allCount - closedCount;
 
@@ -196,20 +203,31 @@ export const listLeads = async (access: CrmAccess, query: Record<string, string>
   };
 };
 
-/** Kanban: every status column with its count and first 40 cards. */
+/** Kanban: every configured stage column with its count and first 40 cards. */
 export const boardLeads = async (access: CrmAccess, query: Record<string, string>) => {
-  const { status: _ignored, view: _view, ...rest } = query;
-  const base = leadFilterWhere(access, rest);
-  const columns = await Promise.all(LEAD_STATUSES.map(async (status) => {
+  const stages = await listPipelineStages();
+  const terminalStatuses = stages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
+  const base = leadFilterWhere(access, normalizeBoardQuery(query), terminalStatuses);
+  const columns = await Promise.all(stages.map(async (stage) => {
+    const status = stage.code;
     const where: Prisma.LeadWhereInput = { AND: [base, { status }] };
     const [count, cards, value] = await Promise.all([
       prisma.lead.count({ where }),
       prisma.lead.findMany({ where, orderBy: orderFor(query.sort || 'followup'), take: 40, select: listSelect }),
       prisma.lead.aggregate({ where, _sum: { expectedValue: true } }),
     ]);
-    return { status, count, expectedValue: toNumber(value._sum.expectedValue), cards: cards.map(serializeLead) };
+    return {
+      status,
+      name: stage.name,
+      order: stage.order,
+      color: stage.color,
+      isTerminal: stage.isTerminal,
+      count,
+      expectedValue: toNumber(value._sum.expectedValue),
+      cards: cards.map(serializeLead),
+    };
   }));
-  return { columns };
+  return { columns, showClosed: boardShowsClosedStages(query, terminalStatuses) };
 };
 
 const requireLead = async (access: CrmAccess, id: string) => {
@@ -378,6 +396,15 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
   const leadType = oneOf(LEAD_TYPES, body.leadType) ?? 'BUY';
   const priority = oneOf(PRIORITIES, body.priority) ?? 'MEDIUM';
   const source = (textOrNull(body.source, 40) || 'PHONE').toUpperCase();
+  const pipelineStages = await listPipelineStages();
+  const defaultStage = pipelineStages.find((stage) => !stage.isTerminal) ?? pipelineStages[0];
+  if (!defaultStage) throw badRequest('At least one CRM pipeline stage is required.');
+  const requestedStatus = textOrNull(body.status, 50)?.toUpperCase() || defaultStage.code;
+  const selectedStage = pipelineStages.find((stage) => stage.code === requestedStatus);
+  if (!selectedStage) throw badRequest('Choose a valid pipeline stage.');
+  if (selectedStage.isTerminal) throw badRequest('New leads must start in an open pipeline stage.');
+  const status = selectedStage.code;
+  const terminalStatuses = pipelineStages.filter((stage) => stage.isTerminal).map((stage) => stage.code);
   const followUp = readFollowUpSpec(body.followUp);
   const contactInput = (body.contact && typeof body.contact === 'object' ? body.contact : body) as Record<string, unknown>;
   const listingId = textOrNull(body.listingId, 60);
@@ -406,7 +433,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
       const duplicate = await tx.lead.findFirst({
         where: {
           AND: [
-            { customerId: customer.id, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null, leadType },
+            { customerId: customer.id, status: { notIn: [...terminalStatuses] }, mergedIntoId: null, leadType },
             listing ? { listingId: listing.id } : {},
             leadScopeWhere(access),
           ],
@@ -421,6 +448,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
         ...(requirementData(body) as Omit<Prisma.LeadUncheckedCreateInput, 'customerId' | 'dealerId' | 'enquiryType'>),
         customerId: customer.id,
         dealerId,
+        status,
         listingId: listing?.id ?? null,
         enquiryType: 'CRM_MANUAL',
         message: textOrNull(body.message, 5000),
@@ -448,7 +476,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
       select: { id: true, customerId: true, ownerId: true, dealerId: true },
     });
     await tx.leadActivity.create({
-      data: { leadId: lead.id, actorId: access.userId, type: 'CREATED', title: 'Lead created in CRM', content: textOrNull(body.message, 5000), metadata: { source, leadType } },
+      data: { leadId: lead.id, actorId: access.userId, type: 'CREATED', title: 'Lead created in CRM', content: textOrNull(body.message, 5000), metadata: { source, leadType, status } },
     });
     const spec = followUp ?? (config.requireNextFollowUp ? firstFollowUpSpec(config, now) : null);
     if (spec) await createFollowUpRow(tx, { ...lead, dealerRole: access.isPartner ? 'PARTNER' : 'SUPER_ADMIN' }, spec, access.userId, !followUp);
@@ -459,7 +487,7 @@ export const createLeadRecord = async (access: CrmAccess, body: Record<string, u
   if (!created.ownerId && !access.isPartner && config.automation.enabled && config.automation.autoAssign) {
     await autoAssignLead(created.id).catch((error) => console.error('[crm] auto-assign failed:', error));
   } else if (created.ownerId && created.ownerId !== access.userId) {
-    await announceAssignment(created.id, created.ownerId, 'Created and assigned to you.');
+    await announceAssignment(created.id, created.ownerId, 'Created and assigned to you.', access.userId);
   }
   await acknowledgeLead(created.id, config);
   return created.id;
@@ -551,14 +579,18 @@ export const updateLead = async (access: CrmAccess, id: string, body: Record<str
 export const changeStatus = async (access: CrmAccess, id: string, body: Record<string, unknown>) => {
   if (!access.canManage) throw forbidden();
   const current = await requireLead(access, id);
-  const status = oneOf(LEAD_STATUSES, body.status);
-  if (!status) throw badRequest('Choose a valid status.');
+  const requestedStatus = String(body.status ?? '').trim().toUpperCase();
+  const stage = requestedStatus ? await getPipelineStage(requestedStatus) : null;
+  if (!stage) throw badRequest('Choose a valid pipeline stage.');
+  const status = stage.code;
+  const pipelineStages = await listPipelineStages();
+  const terminalStatuses = pipelineStages.filter((pipelineStage) => pipelineStage.isTerminal).map((pipelineStage) => pipelineStage.code);
   const config = await getCrmConfig();
   const note = textOrNull(body.note, 2000);
   const lostReason = textOrNull(body.lostReason, 120);
   if (status === 'LOST' && !lostReason) throw badRequest('Choose why the lead was lost.');
   const next = readFollowUpSpec(body.nextFollowUp);
-  const closing = isClosedStatus(status);
+  const closing = stage.isTerminal || terminalStatuses.includes(status) || isClosedStatus(status);
   let otherLeadsTagged: Array<{ id: string; ownerId: string | null; dealerId: string }> = [];
   let soldMachineTitle = '';
 
@@ -581,7 +613,7 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
       },
     });
 
-    if (!closing && needsNextFollowUp(status, config.requireNextFollowUp) && !next) {
+    if (!closing && needsNextFollowUp(status, config.requireNextFollowUp, terminalStatuses) && !next) {
       const pending = await tx.crmFollowUp.count({ where: { leadId: id, status: 'PENDING' } });
       if (!pending) throw badRequest('Schedule the next follow-up for this open lead.', { code: NEXT_FOLLOW_UP_REQUIRED });
     }
@@ -658,7 +690,7 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
       // Other open enquiries on a machine that is now sold need a different offer.
       if (soldListing && markedListingSold) {
         const others = await tx.lead.findMany({
-          where: { listingId: soldListing.id, id: { not: lead.id }, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null },
+          where: { listingId: soldListing.id, id: { not: lead.id }, status: { notIn: [...terminalStatuses] }, mergedIntoId: null },
           select: { id: true, tags: true, ownerId: true, dealerId: true },
         });
         for (const other of others) {
@@ -841,7 +873,7 @@ export const assignLead = async (access: CrmAccess, id: string, body: Record<str
       metadata: { from: current.ownerId, to: ownerId },
     });
   });
-  if (ownerId && ownerId !== access.userId) await announceAssignment(id, ownerId, textOrNull(body.reason, 200) || 'Assigned by a manager.');
+  if (ownerId && ownerId !== access.userId) await announceAssignment(id, ownerId, textOrNull(body.reason, 200) || 'Assigned by a manager.', access.userId);
   return getLead(access, id);
 };
 
@@ -884,14 +916,15 @@ export const bulkLeads = async (access: CrmAccess, body: Record<string, unknown>
     if (!access.canAssign) throw forbidden('Only managers can assign leads.');
     const ownerId = textOrNull(body.ownerId, 60);
     if (ownerId) await assertAssignableStaff(prisma, ownerId);
-    for (const lead of scoped) {
+    const changedLeads = scoped.filter((lead) => lead.ownerId !== ownerId);
+    for (const lead of changedLeads) {
       await prisma.$transaction(async (tx) => {
         await tx.lead.update({ where: { id: lead.id }, data: { ownerId, assignedAt: ownerId ? new Date() : null } });
         await moveFollowUps(tx, lead.id, lead.ownerId, ownerId);
         await logLeadActivity(tx, { leadId: lead.id, actorId: access.userId, type: 'ASSIGNED', title: 'Bulk reassignment', metadata: { from: lead.ownerId, to: ownerId } });
       });
     }
-    if (ownerId) await notifyUsers([ownerId], { title: `${scoped.length} leads assigned to you`, message: 'Open CRM to see them.', type: 'CRM_LEAD_ASSIGNED', tab: 'leads' });
+    if (ownerId && ownerId !== access.userId && changedLeads.length) await notifyBulkLeadAssignment(ownerId, changedLeads.length, access.userId);
   } else if (action === 'priority' || action === 'tag') {
     if (!access.canManage) throw forbidden();
     const priority = oneOf(PRIORITIES, body.priority);

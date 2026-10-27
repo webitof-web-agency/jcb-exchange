@@ -1,4 +1,5 @@
 import { type AppLocale } from '@/lib/i18n/config';
+import { fetchWithTimeout } from '../fetchWithTimeout.mjs';
 
 const resolveApiBaseUrl = () =>
   (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api').replace(/\/$/, '');
@@ -11,7 +12,7 @@ export const fetchTranslationOverrides = async (
     app
   )}&locale=${encodeURIComponent(locale)}`;
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       'Accept-Language': locale,

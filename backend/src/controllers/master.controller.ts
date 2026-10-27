@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
-import { getSoldListingCutoff } from '../utils/soldListingRetention';
 import {
   getMarketplaceSellerPresentation,
   getPublicListingStatuses,
+  getPublicMarketplaceAvailableListingWhere,
   getPublicMarketplaceListingWhere,
   isPublicMarketplaceListingVisible,
 } from '../utils/publicListingVisibility';
@@ -111,20 +111,6 @@ const getPublicListingAvailability = (status?: string | null) => {
   }
 };
 
-const buildVisibleSoldListingWhere = (now = new Date()) => {
-  const cutoff = getSoldListingCutoff(now);
-
-  return {
-    OR: [
-      { soldAt: { gte: cutoff } },
-      {
-        soldAt: null,
-        updatedAt: { gte: cutoff },
-      },
-    ],
-  };
-};
-
 const getPublicListingPrice = (listing: ListingPricingSource & {
   status?: string | null;
   saleRecord?: {
@@ -165,10 +151,8 @@ const isBuyNowPaymentConfigured = (settings: Awaited<ReturnType<typeof getAppSet
 
 const buildPublicMarketplaceFeedWhere = ({
   status,
-  now = new Date(),
 }: {
   status?: string;
-  now?: Date;
 }) => {
   const baseWhere = getPublicMarketplaceListingWhere();
   const targetStatus = String(status || '').trim().toUpperCase();
@@ -188,16 +172,7 @@ const buildPublicMarketplaceFeedWhere = ({
     };
   }
 
-  return {
-    ...baseWhere,
-    OR: [
-      { status: { not: 'SOLD' } },
-      {
-        status: 'SOLD',
-        ...buildVisibleSoldListingWhere(now),
-      },
-    ],
-  };
+  return getPublicMarketplaceAvailableListingWhere();
 };
 
 const normalizePhoneNumber = (value?: string | null) => {

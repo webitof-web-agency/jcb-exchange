@@ -1,31 +1,5 @@
 type SurepassPayload = Record<string, unknown>;
 
-export type SurepassStampedEsignPayload = {
-  file_id?: string;
-  send_email: boolean;
-  pdf_pre_uploaded?: boolean;
-  callback_url?: string;
-  redirect_url?: string;
-  previous_client_id?: string;
-  testing_mode?: boolean;
-  expiry_minutes?: number;
-  sign_type: string;
-  state?: string;
-  config: {
-    auth_mode: '1' | '2' | '3' | '4';
-    reason: string;
-    positions: Record<string, Array<{ x: number; y: number }>>;
-    stamp_paper_amount: number;
-    stamp_paper_state: string;
-    stamp_data: Record<string, unknown>;
-  };
-  prefill_options?: {
-    full_name?: string;
-    mobile_number?: string;
-    user_email?: string;
-  };
-};
-
 type SurepassResponse = {
   data?: unknown;
   status_code?: number;
@@ -196,12 +170,42 @@ export class SurepassClient {
     return this.request('GET', path);
   }
 
+  initializeDigilocker(payload: {
+    signup_flow?: boolean;
+    auth_type?: 'web' | 'app';
+    aadhaar_xml?: boolean;
+    logo_url?: string;
+    skip_main_screen?: boolean;
+    webhook_url?: string;
+  } = {}) {
+    return this.post('/api/v1/digilocker/initialize', {
+      data: {
+        signup_flow: payload.signup_flow ?? true,
+        auth_type: payload.auth_type ?? 'web',
+        aadhaar_xml: payload.aadhaar_xml ?? true,
+        ...(payload.logo_url ? { logo_url: payload.logo_url } : {}),
+        ...(payload.skip_main_screen !== undefined ? { skip_main_screen: payload.skip_main_screen } : {}),
+        // Webhook delivery is intentionally disabled while direct SDK callbacks are used.
+        // To enable provider callbacks later, uncomment the next line and add the verified server URL.
+        // ...(payload.webhook_url ? { webhook_url: payload.webhook_url } : {}),
+      },
+    });
+  }
+
+  downloadAadhaar(clientId: string) {
+    const normalized = clientId.trim();
+    if (!normalized || normalized.length > 200 || /[\u0000-\u001f?#\\]/.test(normalized)) {
+      throw new Error('A valid DigiLocker client id is required.');
+    }
+    return this.get(`/api/v1/digilocker/download-aadhaar/${encodeURIComponent(normalized)}`);
+  }
+
   verifyPan(payload: { id_number: string; full_name: string; dob: string }) {
     return this.post('/api/v1/pan/pan-verify', payload);
   }
 
   verifyGstin(payload: { id_number: string }) {
-    return this.post('/api/v1/corporate/gstin', payload);
+    return this.post('/api/v1/corporate/gstin-advanced', payload);
   }
 
   verifyDrivingLicense(payload: { id_number: string; dob: string }) {
@@ -260,52 +264,8 @@ export class SurepassClient {
     });
   }
 
-  getEstampStates() {
-    return this.get('/api/v1/estamp/get-state-list');
-  }
-
-  getEstampArticles(state: string) {
-    return this.get(`/api/v1/stamper-v2/list-articles?state=${encodeURIComponent(state)}`);
-  }
-
-  orderEstamp(payload: {
-    first_party: string;
-    second_party: string;
-    state: string;
-    article_id: number;
-    amount: number;
-    consideration_amount: number;
-    first_party_address?: string;
-    courier_address?: string;
-    first_party_father_name?: string;
-    description?: string;
-    webhook_url?: string;
-  }) {
-    return this.post('/api/v1/stamper-v2/order-stamp', payload);
-  }
-
-  getEstampOrderStatus(clientId: string) {
-    return this.get(`/api/v1/stamper-v2/order-status?client_id=${encodeURIComponent(clientId)}`);
-  }
-
-  initializeStampedEsign(payload: SurepassStampedEsignPayload) {
-    return this.post('/api/v1/esign/initialize', payload as unknown as SurepassPayload);
-  }
-
-  uploadEsignPdfViaLink(payload: { client_id: string; link: string }) {
-    return this.post('/api/v1/esign/upload-pdf', payload);
-  }
-
-  getEsignStatus(clientId: string) {
-    return this.get(`/api/v1/esign/status/${encodeURIComponent(clientId)}`);
-  }
-
-  getSignedEsignDocument(clientId: string) {
-    return this.get(`/api/v1/esign/get-signed-document/${encodeURIComponent(clientId)}`);
-  }
-
-  getEsignAuditTrail(clientId: string) {
-    return this.get(`/api/v1/esign/audit-trail/${encodeURIComponent(clientId)}`);
+  getPanFatherName(payload: { id_number: string }) {
+    return this.post('/api/v1/pan/pan-to-father-name', payload);
   }
 }
 

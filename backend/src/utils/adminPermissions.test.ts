@@ -59,7 +59,6 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
     'rc.chassis-to-rc.read',
     'rc.to-mobile.read',
     'rc.mobile-to-rc.read',
-    'rc.mobile-number-check.read',
   ].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
   });
@@ -82,6 +81,7 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
   ].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), false, `${permission} should not be exposed`);
   });
+  assert.equal(allowedAdminPermissions.has('rc.mobile-number-check.read'), false);
 });
 
 test('allowedAdminPermissions exposes only the Mobile To PAN view permission', () => {
@@ -92,4 +92,8 @@ test('allowedAdminPermissions exposes only the Mobile To PAN view permission', (
   ['pan.mobile-to-pan.lookup', 'pan.mobile-to-pan.history'].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), false, `${permission} should not be exposed`);
   });
+});
+
+test('allowedAdminPermissions exposes the Aadhaar DigiLocker view permission', () => {
+  assert.equal(allowedAdminPermissions.has('aadhaar.digilocker.read'), true);
 });

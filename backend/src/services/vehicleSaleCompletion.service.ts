@@ -6,6 +6,7 @@ import { recordRtoStatusChange } from './rtoTransferStore';
 import { getSellAccount, paymentSummaryForRecord } from './sellAccount.service';
 import { dispatchConfiguredSms } from './smsIntegration.service';
 import { issueInvoiceToken, nextVehicleSaleInvoiceNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
+import { buildVehicleSaleInvoiceDeliveryMessage, isVehicleSaleInvoiceResendable } from './vehicleSaleInvoiceDelivery';
 import { dispatchConfiguredWhatsApp } from './whatsappIntegration.service';
 
 export class VehicleSaleCompletionError extends Error {
@@ -54,6 +55,7 @@ export const deliverVehicleSaleInvoice = async (
     invoiceAmount: amount,
     invoiceUrl,
   };
+  const deliveryMessage = buildVehicleSaleInvoiceDeliveryMessage(payloadSnapshot);
 
   const [whatsapp, sms] = await Promise.all([
     dispatchConfiguredWhatsApp({
@@ -63,18 +65,8 @@ export const deliverVehicleSaleInvoice = async (
       recipientType: 'CUSTOMER',
       recipientPhone: record.purchaserNumber,
       // Body variables {{1}}..{{6}} of the approved "vehicle sale invoice" template.
-      templateComponents: [{
-        type: 'body',
-        parameters: [
-          { type: 'text', text: customerName },
-          { type: 'text', text: vehicleTitle },
-          { type: 'text', text: record.vehicleNumber || '-' },
-          { type: 'text', text: record.invoiceNumber },
-          { type: 'text', text: amount },
-          { type: 'text', text: invoiceUrl },
-        ],
-      }],
-      payloadSnapshot,
+      templateComponents: deliveryMessage.whatsappTemplateComponents,
+      payloadSnapshot: deliveryMessage.payloadSnapshot,
       dedupeSuffix,
     }),
     dispatchConfiguredSms({
@@ -83,7 +75,7 @@ export const deliverVehicleSaleInvoice = async (
       relatedEntityId: record.id,
       recipientType: 'CUSTOMER',
       recipientPhone: record.purchaserNumber,
-      payloadSnapshot,
+      payloadSnapshot: deliveryMessage.payloadSnapshot,
       dedupeSuffix,
     }),
   ]);
@@ -209,12 +201,33 @@ export const resendVehicleSaleInvoice = async (id: string, publicApiBaseUrl: str
   const record = await prisma.sellAccount.findFirst({ where: { OR: [{ id }, { recordNumber: id }], deletedAt: null } });
   if (!record) return null;
   if (record.cancelledAt) throw new VehicleSaleCompletionError('This sale is cancelled; its Bill of Supply cannot be sent.');
-  if (!record.invoiceNumber || !record.completedAt) throw new VehicleSaleCompletionError('Complete the sale before sending the invoice.');
+  if (!isVehicleSaleInvoiceResendable(record)) throw new VehicleSaleCompletionError('Generate the invoice before sending it.');
+  const previousTokenHash = record.invoiceTokenHash;
+  const previousTokenExpiresAt = record.invoiceTokenExpiresAt;
   const issued = issueInvoiceToken();
   await prisma.sellAccount.update({
     where: { id: record.id },
     data: { invoiceTokenHash: issued.tokenHash, invoiceTokenExpiresAt: issued.expiresAt },
   });
-  const delivery = await deliverVehicleSaleInvoice(record.id, issued.token, publicApiBaseUrl, `resend-${Date.now()}`);
-  return { record: await getSellAccount(record.id), delivery };
+  let delivery;
+  try {
+    delivery = await deliverVehicleSaleInvoice(record.id, issued.token, publicApiBaseUrl, `resend-${Date.now()}`);
+  } catch (error) {
+    await prisma.sellAccount.update({
+      where: { id: record.id },
+      data: { invoiceTokenHash: previousTokenHash, invoiceTokenExpiresAt: previousTokenExpiresAt },
+    });
+    throw error;
+  }
+  if (!delivery.anySent) {
+    await prisma.sellAccount.update({
+      where: { id: record.id },
+      data: { invoiceTokenHash: previousTokenHash, invoiceTokenExpiresAt: previousTokenExpiresAt },
+    });
+  }
+  return {
+    record: await getSellAccount(record.id),
+    // The newly issued link is rolled back when no channel accepted the resend.
+    delivery: delivery.anySent ? delivery : { ...delivery, invoiceUrl: null },
+  };
 };

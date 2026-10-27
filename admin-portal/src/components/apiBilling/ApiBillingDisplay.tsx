@@ -46,26 +46,13 @@ export function ApiServicePrice({
   className?: string;
 }) {
   if (!summary) {
-    return (
-      <span
-        className={`inline-flex h-6 w-24 animate-pulse rounded-lg bg-slate-100 ${className}`}
-        aria-hidden="true"
-      />
-    );
+    return null;
   }
 
   const price = getApiServicePrice(summary, serviceKey);
 
   if (!price) {
-    return (
-      <span
-        className={`inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/90 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors group-hover:border-slate-300 ${className}`}
-        title="Price is not yet configured for this service"
-      >
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
-        Price not configured
-      </span>
-    );
+    return null;
   }
 
   return (

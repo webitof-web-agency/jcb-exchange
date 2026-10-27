@@ -3,8 +3,9 @@ import prisma from '../../../lib/prisma';
 import { badRequest, notFound } from '../http';
 import { pickAssignee, ruleMatchesLead, type AssignmentConditions } from '../rules';
 import { logLeadActivity, stringList, textOrNull, type Db } from './common';
-import { leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
+import { leadTypeLabel, notifyAssignment, notifyUsers, sendCrmMessage } from './notify.service';
 import { getCrmConfig } from './settings.service';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 const STRATEGIES = ['ROUND_ROBIN', 'LEAST_LOAD', 'SPECIFIC_USER'];
 
@@ -56,18 +57,27 @@ export const moveFollowUps = (db: Db, leadId: string, fromOwnerId: string | null
   });
 
 /** Tells the new owner (in-app/push; WhatsApp/SMS if the CRM_LEAD_ASSIGNED rule is set up). */
-export const announceAssignment = async (leadId: string, ownerId: string, reason: string) => {
+export const announceAssignment = async (leadId: string, ownerId: string, reason: string, actorId: string | null = null) => {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, leadType: true, listingTitleSnapshot: true, customer: { select: { name: true, mobile: true } }, owner: { select: { name: true, mobile: true, role: true } } },
+    select: {
+      id: true,
+      leadType: true,
+      listingTitleSnapshot: true,
+      customer: { select: { name: true, mobile: true } },
+      owner: { select: { name: true, mobile: true, role: true } },
+      followUps: { where: { status: 'PENDING' }, select: { id: true } },
+    },
   });
   if (!lead) return;
   const what = lead.listingTitleSnapshot || leadTypeLabel(lead.leadType);
-  await notifyUsers([ownerId], {
-    title: 'Lead assigned to you',
-    message: `${lead.customer.name || 'A customer'} — ${what}. ${reason}`,
-    type: 'CRM_LEAD_ASSIGNED',
-    leadId,
+  await notifyAssignment({
+    recipientId: ownerId,
+    entity: 'LEAD',
+    entityId: leadId,
+    subject: lead.customer.name || 'A customer',
+    detail: [what, reason, lead.followUps.length ? `${lead.followUps.length} pending follow-up${lead.followUps.length === 1 ? '' : 's'} moved to you` : null].filter(Boolean).join(' - '),
+    actorId,
   });
   const config = await getCrmConfig();
   if (config.reminders.whatsappToOwner || config.reminders.smsToOwner) {
@@ -110,9 +120,10 @@ export const autoAssignLead = async (leadId: string): Promise<string | null> => 
       where: { id: { in: rule.assigneeIds }, status: 'ACTIVE', role: { in: ['EMPLOYEE', 'SUPER_ADMIN', 'ADMIN'] } },
       select: { id: true },
     });
+    const { terminal } = await listPipelineStageStatusSets();
     const loads = await prisma.lead.groupBy({
       by: ['ownerId'],
-      where: { ownerId: { in: staff.map((s) => s.id) }, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null },
+      where: { ownerId: { in: staff.map((s) => s.id) }, status: { notIn: [...terminal] }, mergedIntoId: null },
       _count: { _all: true },
     });
     const pick = pickAssignee(rule, new Set(staff.map((s) => s.id)), new Map(loads.map((row) => [row.ownerId as string, row._count._all])));

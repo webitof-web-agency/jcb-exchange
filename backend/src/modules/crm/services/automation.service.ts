@@ -5,6 +5,7 @@ import { findMatchingListings } from './matching.service';
 import { formatIst, leadTypeLabel, notifyUsers, sendCrmMessage } from './notify.service';
 import { rescoreLead } from './scoring.service';
 import { getCrmConfig, readAutomationState, writeAutomationState, type CrmConfig } from './settings.service';
+import { listPipelineStageStatusSets } from './pipelineStages.service';
 
 const SITE_URL = (process.env.PUBLIC_SITE_URL || 'https://jcbexchange.com').replace(/\/+$/, '');
 const BATCH = 200;
@@ -93,8 +94,9 @@ const markMissed = async (config: CrmConfig, now: Date) => {
 
 /** First-response SLA: always marks the breach; notifies managers only when SLA escalation is on. */
 const checkSla = async (config: CrmConfig, now: Date) => {
+  const { terminal } = await listPipelineStageStatusSets();
   const breached = await prisma.lead.findMany({
-    where: { firstResponseAt: null, slaBreachedAt: null, slaDueAt: { lt: now }, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null },
+    where: { firstResponseAt: null, slaBreachedAt: null, slaDueAt: { lt: now }, status: { notIn: [...terminal] }, mergedIntoId: null },
     take: BATCH,
     select: { id: true, ownerId: true, priority: true, customer: { select: { name: true } }, listingTitleSnapshot: true, leadType: true, dealer: { select: { role: true } } },
   });
@@ -139,8 +141,9 @@ const customerReminders = async (now: Date) => {
 
 /** Tells buyers about newly published listings that fit their saved requirement (one per run). */
 const matchAlerts = async (since: Date) => {
+  const { terminal } = await listPipelineStageStatusSets();
   const leads = await prisma.lead.findMany({
-    where: { matchAlertsEnabled: true, status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null },
+    where: { matchAlertsEnabled: true, status: { notIn: [...terminal] }, mergedIntoId: null },
     take: BATCH,
     include: { customer: { select: { name: true, mobile: true, whatsappNumber: true, crmProfile: { select: { doNotContact: true } } } } },
   });
@@ -202,7 +205,8 @@ const reengage = async (config: CrmConfig, now: Date) => {
 };
 
 const rescoreOpen = async () => {
-  const leads = await prisma.lead.findMany({ where: { status: { notIn: ['WON', 'LOST'] }, mergedIntoId: null }, select: { id: true }, orderBy: { updatedAt: 'desc' }, take: 500 });
+  const { terminal } = await listPipelineStageStatusSets();
+  const leads = await prisma.lead.findMany({ where: { status: { notIn: [...terminal] }, mergedIntoId: null }, select: { id: true }, orderBy: { updatedAt: 'desc' }, take: 500 });
   for (const lead of leads) await rescoreLead(lead.id).catch(() => null);
   return leads.length;
 };
