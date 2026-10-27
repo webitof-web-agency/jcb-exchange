@@ -70,7 +70,7 @@ const moduleGroup = (
 });
 
 export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
-  moduleGroup('dashboard', 'Dashboard', 'Daily financial control centre.', [
+  moduleGroup('dashboard', 'Overview & Alerts', 'Daily financial control centre.', [
     ['financial-overview', 'Financial Overview', 'Opening balance, income, expenses, profit, receivables and payables.', '/admin/dashboard'],
     ['cash-flow-overview', 'Cash Flow Overview', 'Cash and bank movement with inflow, outflow and closing balance.', '/admin/finance/expenses'],
     ['alerts-pending-approvals', 'Alerts & Pending Approvals', 'Unmatched entries, overdue dues, missing documents and pending approvals.'],
@@ -140,7 +140,6 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
   ]),
   moduleGroup('expenses-assets', 'Expenses & Assets', 'Operating costs, assets and amortisation.', [
     ['expense-register', 'Expense Register', 'Existing expense/transaction register with filters and export.', '/admin/finance/expenses'],
-    ['add-expense', 'Add Expense', 'Existing manual debit entry flow with validation.', '/admin/finance/expenses'],
     ['vendor-bills', 'Vendor Bills', 'Vendor bill capture, due date, approval and payment linkage.'],
     ['recurring-expenses', 'Recurring Expenses', 'Repeat expense schedule, generation and exception handling.', '/admin/recurrence'],
     ['employee-reimbursements', 'Employee Reimbursements', 'Claims, receipts, approval and payout.'],
@@ -216,6 +215,39 @@ export const financeWorkspaceModules = financeWorkspaceGroups.flatMap((group) =>
 
 export const getFinanceWorkspaceModule = (key: string | null | undefined) =>
   financeWorkspaceModules.find((module) => module.key === key) || financeWorkspaceModules[0];
+
+/** Portal prefix ('/admin' or '/employee') for a pathname. */
+export const financePortalPrefix = (pathname: string) => (pathname.startsWith('/employee') ? '/employee' : '/admin');
+
+/** The finance dashboard (formerly the single-page workspace). */
+export const financeDashboardPath = (prefix: string) => `${prefix}/finance/workspace`;
+
+/** Own page of a workspace module: /{prefix}/finance/{group}/{module}. Unknown keys fall back to the dashboard. */
+export const financeModulePath = (prefix: string, moduleKey: string, params?: Record<string, string | undefined>) => {
+  const target = financeWorkspaceModules.find((item) => item.key === moduleKey);
+  const base = target ? `${prefix}/finance/${target.groupKey}/${target.key}` : financeDashboardPath(prefix);
+  const query = new URLSearchParams(Object.entries(params ?? {}).filter((entry): entry is [string, string] => Boolean(entry[1]))).toString();
+  return query ? `${base}?${query}` : base;
+};
+
+/** Resolves /{prefix}/finance/{group}/{module}; null when the path is not a module page. */
+export const matchFinanceModulePath = (pathname: string) => {
+  const match = /^\/(?:admin|employee)\/finance\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  const group = financeWorkspaceGroups.find((item) => item.key === match[1]);
+  const page = group?.modules.find((item) => item.key === match[2]);
+  return group && page ? { group, module: page } : null;
+};
+
+/**
+ * Older finance pages that keep their own route and permission but sit inside a workspace group
+ * in the sidebar. `suffix` matches the portal nav item (e.g. '/invoices').
+ */
+export const financeLegacyLinks: Array<{ suffix: string; label: string; groupKey: string }> = [
+  { suffix: '/invoices', label: 'Vehicle Sale Invoices', groupKey: 'sales-revenue' },
+  { suffix: '/recurrence', label: 'Customer Prime Payments', groupKey: 'sales-revenue' },
+  { suffix: '/finance/expenses', label: 'Expenses & Transactions', groupKey: 'expenses-assets' },
+];
 
 // Opening the workspace needs at least one finance-workspace key. The legacy finance.read /
 // finance.manage keys only cover the old Expenses page and deliberately do not open it.

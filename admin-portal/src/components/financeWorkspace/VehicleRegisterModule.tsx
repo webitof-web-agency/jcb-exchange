@@ -168,7 +168,7 @@ const VIEWS: Record<RegisterView, { title: string; description: string; status: 
     dateBasis: 'sale',
     extra: { invoiced: 'true' },
     columns: [
-      { header: 'Invoice', cell: (row) => <span className="font-mono text-xs font-bold">{row.invoiceNumber}</span>, value: (row) => row.invoiceNumber },
+      { header: 'Invoice', cell: (row) => <span className="font-mono text-xs font-semibold">{row.invoiceNumber}</span>, value: (row) => row.invoiceNumber },
       { header: 'Date', cell: (row) => formatDate(row.invoiceGeneratedAt), value: (row) => row.invoiceGeneratedAt?.slice(0, 10) ?? null },
       vehicleCell,
       { header: 'Purchaser', cell: (row) => row.purchaserName ?? '—', value: (row) => row.purchaserName },
@@ -227,7 +227,7 @@ export default function VehicleRegisterModule({ view, title }: { view: RegisterV
       description={config.description}
       actions={canExport && register.data?.rows.length ? <><Button icon={<Download className="h-4 w-4" />} onClick={() => exportFile('xls')}>Excel</Button><Button onClick={() => exportFile('csv')}>CSV</Button></> : null}
     >
-      <form onSubmit={apply} className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[2fr_repeat(4,minmax(0,1fr))_auto] md:items-end">
+      <form onSubmit={apply} className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[2fr_repeat(4,minmax(0,1fr))_auto] md:items-end">
         <Field label="Search">
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Record, vehicle no., chassis, seller, purchaser, invoice…" className={`${inputClass} pl-9`} /></div>
         </Field>
@@ -260,23 +260,23 @@ export default function VehicleRegisterModule({ view, title }: { view: RegisterV
         <EmptyState title="No vehicles match" description="Records come from Sold Vehicles (Daily Operations → Sold Vehicles)." />
       ) : (
         <>
-          <div className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5">
-            {config.kpis(register.data.totals).map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-lg font-bold text-slate-900">{value}</p></div>)}
+          <div className="grid gap-3 p-3 sm:grid-cols-3 lg:grid-cols-5">
+            {config.kpis(register.data.totals).map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold text-slate-900">{value}</p></div>)}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead className={tableHeadClass}><tr>{config.columns.map((column) => <th key={column.header} className={`px-4 py-2.5 ${column.align === 'right' ? 'text-right' : ''}`}>{column.header}</th>)}{view === 'invoices' ? <th className="px-4 py-2.5" /> : null}</tr></thead>
+            <table className="w-full min-w-[1000px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr>{config.columns.map((column) => <th key={column.header} className={`px-3 py-2 ${column.align === 'right' ? 'text-right' : ''}`}>{column.header}</th>)}{view === 'invoices' ? <th className="px-3 py-2" /> : null}</tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {register.data.rows.map((row) => (
                   <tr key={row.id} onClick={() => setOpenId(row.id)} className="cursor-pointer hover:bg-amber-50/40">
-                    {config.columns.map((column) => <td key={column.header} className={`px-4 py-2.5 align-top ${column.align === 'right' ? 'text-right' : ''}`}>{column.cell(row)}</td>)}
-                    {view === 'invoices' ? <td className="px-4 py-2.5 text-right" onClick={(event) => event.stopPropagation()}><Button variant="ghost" icon={<Download className="h-3.5 w-3.5" />} onClick={() => void downloadInvoice(row)}>PDF</Button></td> : null}
+                    {config.columns.map((column) => <td key={column.header} className={`px-3 py-2 align-top ${column.align === 'right' ? 'text-right' : ''}`}>{column.cell(row)}</td>)}
+                    {view === 'invoices' ? <td className="px-3 py-2 text-right" onClick={(event) => event.stopPropagation()}><Button variant="ghost" icon={<Download className="h-3.5 w-3.5" />} onClick={() => void downloadInvoice(row)}>PDF</Button></td> : null}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
             <span>{register.data.total} vehicles{view === 'stock' ? ` · as on ${formatDate(register.data.asOn)}` : ''}</span>
             <span className="flex items-center gap-2">
               <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)} icon={<ChevronLeft className="h-4 w-4" />}>Prev</Button>

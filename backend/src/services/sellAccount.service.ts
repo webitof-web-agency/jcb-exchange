@@ -8,6 +8,7 @@ import {
   SellAccountPaymentMethod,
   SellAccountPaymentSide,
   SellAccountPurchaseType,
+  SellAccountReceiptStatus,
   SellAccountSaleType,
   SellAccountSourceType,
   SellAccountTaxMode,
@@ -19,6 +20,7 @@ import {
   calculateSellAccountPaymentSummary,
   deriveSellAccountDealStatus,
   normalizeSellAccountExpenseBreakdown,
+  paymentSummaryForSellAccount,
   sumSellAccountExpenseBreakdown,
   type SellAccountDealStatus as FinanceDealStatus,
 } from './sellAccountFinance';
@@ -26,7 +28,7 @@ import { normalizeRtoWorkStatus, statusForSellAccountHandoff } from './rtoStatus
 import { assertDealDoneBeforeLock, assertRecordEditable } from './recordLock';
 import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linkedRecordDeletion';
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
-import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
+import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 import { linkSoldVehicleToWonLeads } from '../modules/crm/services/soldVehicleLink';
 
@@ -52,13 +54,35 @@ const exchangeValues = (record: any) => ({
   saleExchangeValue: record.saleType === SellAccountSaleType.EXCHANGE ? Number(record.saleExchangeValue || 0) : 0,
 });
 
-export const paymentSummaryForRecord = (record: any, payments: Array<{ side: string; amount: unknown }>) =>
-  calculateSellAccountPaymentSummary({
-    sellAmount: Number(record.sellAmount),
-    purchaseAmount: Number(record.purchaseAmount),
-    ...exchangeValues(record),
-    payments: payments.map((item) => ({ side: item.side, amount: Number(item.amount) })),
-  });
+/** `refunds` defaults to record.refunds, so callers should load them with the record. */
+export const paymentSummaryForRecord = (
+  record: any,
+  payments: Array<{ side: string; amount: unknown; receiptStatus?: string | null }>,
+  refunds: Array<{ status: string; amount: unknown; forfeitAmount?: unknown }> = record.refunds || [],
+) => paymentSummaryForSellAccount(record, payments, refunds);
+
+const SALE_LOCKED_FIELDS = ['sellAmount', 'saleType', 'saleExchangeValue'] as const;
+
+/** After a Bill of Supply or a cancellation the sale amount is fixed; change it by cancelling. */
+const assertSaleTermsUnchanged = (existing: any, payload: Record<string, unknown>) => {
+  if (!existing.invoiceNumber && !existing.cancelledAt) return;
+  const changed = SALE_LOCKED_FIELDS.some((field) => String(existing[field] ?? '') !== String(payload[field] ?? ''));
+  if (!changed) return;
+  throw new Error(existing.cancelledAt
+    ? 'This sale is cancelled; its sale amount cannot change.'
+    : `Bill of Supply ${existing.invoiceNumber} is already issued for this sale amount. Cancel the sale (credit note) to change it.`);
+};
+
+const assertFullPaymentForRto = (summary: ReturnType<typeof paymentSummaryForRecord>) => {
+  if (summary.purchaserPaymentStatus === 'FULL') return;
+  throw new Error(summary.purchaserDraftPending > 0
+    ? 'Full purchaser payment is required before starting RTO work. Convert the draft receipts to real receipts first.'
+    : 'Full purchaser payment is required before starting RTO work.');
+};
+
+/** Bumps updatedAt so the Finance Hub sweep re-posts the deal. */
+const touchSellAccount = (tx: any, id: string, actorId?: string) =>
+  tx.sellAccount.update({ where: { id }, data: { updatedById: actorId || null } });
 
 // Records are hard-deleted, so a row count can point at a number that is still in use.
 // Continue from the highest existing sequence for the year instead.
@@ -117,6 +141,11 @@ const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatus
     hasPublicReceiptLink: Boolean(receiptTokenHash) && (!payment.receiptTokenExpiresAt || new Date(payment.receiptTokenExpiresAt) > new Date()),
   };
   });
+  const refunds = (record.refunds || []).map((refund: any) => ({
+    ...refund,
+    amount: Number(refund.amount),
+    forfeitAmount: Number(refund.forfeitAmount || 0),
+  }));
   const financeInput = {
     sellAmount: Number(record.sellAmount),
     purchaseAmount: Number(record.purchaseAmount),
@@ -128,10 +157,12 @@ const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatus
     purchaserState: record.purchaserState || '',
     ...exchangeValues(record),
     payments,
+    refunds,
+    cancelled: Boolean(record.cancelledAt),
   };
   const gst = calculateSellAccountGst(financeInput);
   const paymentSummary = calculateSellAccountPaymentSummary(financeInput);
-  const dealStatus = dealStatusOverride || deriveSellAccountDealStatus(
+  const dealStatus = record.cancelledAt ? SellAccountDealStatus.CANCELLED : dealStatusOverride || deriveSellAccountDealStatus(
     paymentSummary.purchaserPaymentStatus,
     rtoState.status || record.rtoStatusSnapshot,
     rtoState.linked,
@@ -150,6 +181,7 @@ const serialize = (rawRecord: any, rtoStateInput?: RtoState | string, dealStatus
     gstRatePercent: 18,
     taxMode: SellAccountTaxMode.INCLUSIVE,
     payments,
+    refunds,
     dealStatus,
     isDraft,
     draftSavedAt: record.draftSavedAt,
@@ -280,6 +312,7 @@ const getRtoState = async (client: any, sellAccountId: string, listingId: string
 
 const include = {
   payments: { orderBy: { paymentDate: 'asc' as const } },
+  refunds: { orderBy: { createdAt: 'asc' as const } },
   statusHistory: { orderBy: { createdAt: 'asc' as const } },
   rtoRecord: { select: { id: true, listingId: true, sellAccountId: true, rtoStatus: true, updatedAt: true, isLocked: true, lockedAt: true, transferTasks: { select: { status: true } } } },
 };
@@ -294,7 +327,10 @@ const buildPaymentPayload = (value: any, actorId?: string) => {
     amount: paymentAmount(value?.amount),
     paymentDate,
     reference: text(value?.reference) || null,
+    drawnOn: text(value?.drawnOn).slice(0, 120) || null,
     note: text(value?.note) || null,
+    // Customer receipts start as drafts; staff convert them to real receipts.
+    receiptStatus: side === SellAccountPaymentSide.PURCHASER_RECEIPT ? SellAccountReceiptStatus.DRAFT : SellAccountReceiptStatus.ISSUED,
     createdById: actorId || null,
   };
 };
@@ -302,8 +338,11 @@ const buildPaymentPayload = (value: any, actorId?: string) => {
 const syncStatus = async (tx: any, record: any, actorId?: string) => {
   const rtoState = await getRtoState(tx, record.id, record.listingId);
   const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: record.id } });
-  const summary = paymentSummaryForRecord(record, payments);
-  const nextStatus = deriveSellAccountDealStatus(summary.purchaserPaymentStatus, rtoState.status, rtoState.linked) as SellAccountDealStatus;
+  const refunds = await tx.sellAccountRefund.findMany({ where: { sellAccountId: record.id } });
+  const summary = paymentSummaryForRecord(record, payments, refunds);
+  const nextStatus = record.cancelledAt
+    ? SellAccountDealStatus.CANCELLED
+    : deriveSellAccountDealStatus(summary.purchaserPaymentStatus, rtoState.status, rtoState.linked) as SellAccountDealStatus;
   if (record.isLocked) {
     return { nextStatus: record.dealStatus, rtoStatus: record.rtoStatusSnapshot || rtoState.status, rtoState };
   }
@@ -497,14 +536,11 @@ export const updateSellAccount = async (id: string, body: unknown, actorId?: str
   const error = validatePayload(payload);
   if (error) throw new Error(error);
   if (payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, id);
+  assertSaleTermsUnchanged(existing, payload);
   const record = await prisma.$transaction(async (tx) => {
+    // Payments of a saved record are managed one by one (add, convert, cancel, delete), so a
+    // form save never touches them: replacing them would drop receipt numbers and links.
     const updated = await tx.sellAccount.update({ where: { id }, data: { ...payload, updatedById: actorId || null }, include });
-    if (Array.isArray((body as any)?.payments)) {
-      await tx.sellAccountPayment.deleteMany({ where: { sellAccountId: id } });
-      for (const payment of (body as any).payments) {
-        await tx.sellAccountPayment.create({ data: { sellAccountId: id, ...buildPaymentPayload(payment, actorId) } });
-      }
-    }
     const withPayments = await tx.sellAccount.findUnique({ where: { id }, include });
     await syncStatus(tx, withPayments || updated, actorId);
     return (await tx.sellAccount.findUnique({ where: { id }, include })) || withPayments || updated;
@@ -538,11 +574,21 @@ export const deleteSellAccount = async (id: string, actorId?: string) => {
   await prisma.$transaction(async (tx) => {
     const current = await tx.sellAccount.findUnique({
       where: { id },
-      select: { id: true, isLocked: true, rtoRecord: { select: { id: true, isLocked: true } } },
+      select: {
+        id: true, isLocked: true, invoiceNumber: true, creditNoteNumber: true,
+        rtoRecord: { select: { id: true, isLocked: true } },
+        payments: { where: { side: SellAccountPaymentSide.PURCHASER_RECEIPT, receiptStatus: SellAccountReceiptStatus.ISSUED }, select: { id: true }, take: 1 },
+        refunds: { where: { status: { not: 'REJECTED' } }, select: { id: true }, take: 1 },
+      },
     });
     if (!current) return;
     assertRecordEditable(current.isLocked || Boolean(current.rtoRecord?.isLocked));
     if (current.rtoRecord) throw new RtoHandoffRequiredError();
+    // Issued documents (receipts handed to the customer, Bill of Supply, credit note, refunds)
+    // must stay on record; the sale is cancelled instead of deleted.
+    if (current.invoiceNumber || current.creditNoteNumber || current.payments.length || current.refunds.length) {
+      throw new Error('This Sold Vehicle has real money receipts, a Bill of Supply or refunds, so it cannot be deleted. Cancel the sale instead (or cancel receipts whose money was never received).');
+    }
     await tx.sellAccount.delete({ where: { id } });
   });
   return true;
@@ -554,45 +600,150 @@ const paymentAmount = (value: unknown) => {
   return new Prisma.Decimal(amount);
 };
 
+/** Customer receipts are saved as drafts: no receipt number, nothing sent, not in the balance. */
 export const addSellAccountPayment = async (id: string, body: any, actorId?: string) => {
   const existing = await prisma.sellAccount.findUnique({ where: { id } });
   if (!existing || existing.deletedAt) return null;
   assertRecordEditable(existing.isLocked);
-  const side = validEnum(body.side, Object.values(SellAccountPaymentSide), SellAccountPaymentSide.PURCHASER_RECEIPT);
-  const method = validEnum(body.method, Object.values(SellAccountPaymentMethod), SellAccountPaymentMethod.OTHER);
-  const paymentDate = dateOrNull(body.paymentDate) || new Date();
+  // The purchase still stands on a cancelled sale, so the seller can still be paid.
+  const side = validEnum(body?.side, Object.values(SellAccountPaymentSide), SellAccountPaymentSide.PURCHASER_RECEIPT);
+  if (existing.cancelledAt && side === SellAccountPaymentSide.PURCHASER_RECEIPT) {
+    throw new Error('This sale is cancelled; record a refund instead of a new customer payment.');
+  }
   const result = await prisma.$transaction(async (tx) => {
-    const receipt = side === SellAccountPaymentSide.PURCHASER_RECEIPT
-      ? issuePaymentReceiptToken(paymentDate)
-      : null;
-    const receiptNumber = receipt
-      ? await nextVehicleSalePaymentReceiptNumberFor(tx, paymentDate, existing.purchaserCity)
-      : null;
-    const payment = await tx.sellAccountPayment.create({
-      data: {
-        sellAccountId: id,
-        ...buildPaymentPayload({ ...body, side, method, paymentDate }, actorId),
-        ...(receipt && receiptNumber ? {
-          receiptNumber,
-          receiptTokenHash: receipt.tokenHash,
-          receiptTokenCiphertext: encryptDocumentLinkToken(receipt.token),
-          receiptTokenExpiresAt: receipt.expiresAt,
-          receiptGeneratedAt: new Date(),
-        } : {}),
-      },
-    });
+    const payment = await tx.sellAccountPayment.create({ data: { sellAccountId: id, ...buildPaymentPayload(body, actorId) } });
+    await touchSellAccount(tx, id, actorId);
     const current = await tx.sellAccount.findUnique({ where: { id }, include });
     if (!current) throw new Error('Sold Vehicle not found.');
     await syncStatus(tx, current, actorId);
-    return { record: await tx.sellAccount.findUnique({ where: { id }, include }), paymentId: payment.id, receiptToken: receipt?.token || null };
+    return { record: await tx.sellAccount.findUnique({ where: { id }, include }), paymentId: payment.id };
   });
   if (!result?.record) return null;
   const synced = await syncStatus(prisma, result.record, actorId);
-  return {
-    record: serialize(result.record, synced.rtoState, synced.nextStatus),
-    paymentId: result.paymentId,
-    receiptToken: result.receiptToken,
-  };
+  return { record: serialize(result.record, synced.rtoState, synced.nextStatus), paymentId: result.paymentId };
+};
+
+const findCustomerReceipt = async (tx: any, id: string, paymentId: string) => {
+  await tx.$queryRaw`SELECT id FROM "SellAccountPayment" WHERE id = ${paymentId} FOR UPDATE`;
+  const payment = await tx.sellAccountPayment.findFirst({ where: { id: paymentId, sellAccountId: id } });
+  if (!payment) return null;
+  if (payment.side !== SellAccountPaymentSide.PURCHASER_RECEIPT) throw new Error('Only customer receipts have a money receipt.');
+  return payment;
+};
+
+/**
+ * Converts a draft receipt into the real money receipt: assigns the receipt number and the
+ * public link, and from now on it counts towards the customer balance and the books.
+ */
+export const issueSellAccountReceipt = async (id: string, paymentId: string, actorId?: string) => {
+  const existing = await prisma.sellAccount.findUnique({ where: { id } });
+  if (!existing || existing.deletedAt) return null;
+  if (existing.cancelledAt) throw new Error('This sale is cancelled.');
+  const result = await prisma.$transaction(async (tx) => {
+    const payment = await findCustomerReceipt(tx, id, paymentId);
+    if (!payment) return null;
+    if (payment.receiptStatus !== SellAccountReceiptStatus.DRAFT) throw new Error('Only a draft receipt can be converted to a real receipt.');
+    const now = new Date();
+    const receipt = issuePaymentReceiptToken(now);
+    const receiptNumber = payment.receiptNumber || await nextVehicleSalePaymentReceiptNumberFor(tx, payment.paymentDate, existing.purchaserCity);
+    await tx.sellAccountPayment.update({
+      where: { id: payment.id },
+      data: {
+        receiptStatus: SellAccountReceiptStatus.ISSUED,
+        issuedAt: now,
+        issuedById: actorId || null,
+        receiptNumber,
+        receiptTokenHash: receipt.tokenHash,
+        receiptTokenCiphertext: encryptDocumentLinkToken(receipt.token),
+        receiptTokenExpiresAt: receipt.expiresAt,
+        receiptGeneratedAt: now,
+      },
+    });
+    await touchSellAccount(tx, id, actorId);
+    const current = await tx.sellAccount.findUnique({ where: { id }, include });
+    if (current) await syncStatus(tx, current, actorId);
+    return { paymentId: payment.id, receiptToken: receipt.token };
+  });
+  if (!result) return null;
+  return { ...result, record: await getSellAccount(id) };
+};
+
+/**
+ * Cancels an issued receipt whose money never arrived (bounced cheque, failed transfer). The
+ * receipt number is kept for the audit trail; the books reverse the receipt voucher.
+ * Money that did arrive and is given back is a refund, not a cancellation.
+ */
+export const cancelSellAccountReceipt = async (id: string, paymentId: string, body: any, actorId?: string) => {
+  const reason = text(body?.reason);
+  if (reason.length < 5) throw new Error('Enter the reason for cancelling this receipt (at least 5 characters).');
+  const existing = await prisma.sellAccount.findUnique({ where: { id } });
+  if (!existing || existing.deletedAt) return null;
+  assertRecordEditable(existing.isLocked);
+  const done = await prisma.$transaction(async (tx) => {
+    const payment = await findCustomerReceipt(tx, id, paymentId);
+    if (!payment) return false;
+    if (payment.receiptStatus !== SellAccountReceiptStatus.ISSUED) throw new Error('Only a real (issued) receipt can be cancelled. Delete a draft receipt instead.');
+    const record = await tx.sellAccount.findUnique({ where: { id }, include });
+    if (!record) return false;
+    const remaining = record.payments.map((item: any) => (item.id === payment.id ? { ...item, receiptStatus: SellAccountReceiptStatus.CANCELLED } : item));
+    const summary = paymentSummaryForRecord(record, remaining, record.refunds);
+    if (summary.purchaserReceivedGross < summary.purchaserRefunded + summary.purchaserForfeited + summary.purchaserRefundPending) {
+      throw new Error('This money has already been refunded or is in a refund request; it cannot be cancelled.');
+    }
+    await tx.sellAccountPayment.update({
+      where: { id: payment.id },
+      data: { receiptStatus: SellAccountReceiptStatus.CANCELLED, cancelledAt: new Date(), cancelledById: actorId || null, cancelReason: reason, receiptTokenHash: null, receiptTokenCiphertext: null, receiptTokenExpiresAt: null },
+    });
+    await touchSellAccount(tx, id, actorId);
+    const current = await tx.sellAccount.findUnique({ where: { id }, include });
+    if (current) await syncStatus(tx, current, actorId);
+    return true;
+  });
+  return done ? getSellAccount(id) : null;
+};
+
+/**
+ * Cancels the sale (customer backed out or returned the vehicle). Draft receipts are dropped;
+ * a credit note number is issued against an existing Bill of Supply. Money still held is then
+ * refunded (or partly forfeited) through refunds.
+ */
+export const cancelSellAccountSale = async (id: string, body: any, actorId?: string) => {
+  const reason = text(body?.reason);
+  if (reason.length < 5) throw new Error('Enter the reason for cancelling the sale (at least 5 characters).');
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "SellAccount" WHERE id = ${id} FOR UPDATE`;
+    const current = await tx.sellAccount.findFirst({ where: { id, deletedAt: null }, include });
+    if (!current) return null;
+    assertRecordEditable(current.isLocked);
+    if (current.isDraft) throw new Error('A draft record cannot be cancelled; delete it instead.');
+    if (current.cancelledAt) throw new Error('This sale is already cancelled.');
+    const now = new Date();
+    await tx.sellAccountPayment.updateMany({
+      where: { sellAccountId: id, receiptStatus: SellAccountReceiptStatus.DRAFT },
+      data: { receiptStatus: SellAccountReceiptStatus.CANCELLED, cancelledAt: now, cancelledById: actorId || null, cancelReason: 'Sale cancelled.' },
+    });
+    const creditNoteNumber = current.invoiceNumber ? await nextSellAccountCreditNoteNumberFor(tx, now) : null;
+    await tx.sellAccount.update({
+      where: { id },
+      data: {
+        cancelledAt: now,
+        cancelledById: actorId || null,
+        cancelReason: reason,
+        dealStatus: SellAccountDealStatus.CANCELLED,
+        ...(creditNoteNumber ? { creditNoteNumber, creditNoteDate: now } : {}),
+        // The public Bill of Supply link stops working once the sale is cancelled.
+        invoiceTokenHash: null,
+        invoiceTokenExpiresAt: null,
+        updatedById: actorId || null,
+      },
+    });
+    await tx.sellAccountStatusHistory.create({
+      data: { sellAccountId: id, oldStatus: current.dealStatus, newStatus: SellAccountDealStatus.CANCELLED, reason, changedById: actorId || null },
+    });
+    const refreshed = await tx.sellAccount.findUnique({ where: { id }, include });
+    const rtoState = await getRtoState(tx, id, current.listingId);
+    return refreshed ? serialize(refreshed, rtoState, SellAccountDealStatus.CANCELLED) : null;
+  });
 };
 
 export const saveAndStartRtoWork = async (id: string | undefined, body: unknown, actorId?: string) => {
@@ -608,6 +759,8 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
   const error = validatePayload(payload);
   if (error) throw new Error(error);
   if (!existing || payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, existing?.id);
+  if (existing?.cancelledAt) throw new Error('This sale is cancelled.');
+  if (existing) assertSaleTermsUnchanged(existing, payload);
 
   return prisma.$transaction(async (tx) => {
     let record: any;
@@ -626,8 +779,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
       await linkSoldVehicleToWonLeads(tx, record, (requestBody as any).crmLeadId, actorId);
     }
 
-    if (Array.isArray((requestBody as any).payments)) {
-      await tx.sellAccountPayment.deleteMany({ where: { sellAccountId: record.id } });
+    if (!existing && Array.isArray((requestBody as any).payments)) {
       for (const payment of (requestBody as any).payments) {
         await tx.sellAccountPayment.create({ data: { sellAccountId: record.id, ...buildPaymentPayload(payment, actorId) } });
       }
@@ -636,10 +788,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
     const current = await tx.sellAccount.findUnique({ where: { id: record.id }, include });
     if (!current) throw new Error('Sold Vehicle could not be saved.');
     const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: current.id } });
-    const summary = paymentSummaryForRecord(current, payments);
-    if (summary.purchaserPaymentStatus !== 'FULL') {
-      throw new Error('Full purchaser payment is required before starting RTO work.');
-    }
+    assertFullPaymentForRto(paymentSummaryForRecord(current, payments));
 
     if (!existing) {
       await tx.sellAccountStatusHistory.create({
@@ -671,12 +820,10 @@ export const startRtoWork = async (id: string, actorId?: string) => {
     if (!current) return null;
     assertRecordEditable(current.isLocked);
     if (current.isDraft) throw new Error('Save the Sold Vehicle record before starting RTO work.');
+    if (current.cancelledAt) throw new Error('This sale is cancelled.');
 
     const payments = await tx.sellAccountPayment.findMany({ where: { sellAccountId: current.id } });
-    const summary = paymentSummaryForRecord(current, payments);
-    if (summary.purchaserPaymentStatus !== 'FULL') {
-      throw new Error('Full purchaser payment is required before starting RTO work.');
-    }
+    assertFullPaymentForRto(paymentSummaryForRecord(current, payments));
 
     const rtoRecord = await ensureRtoRecord(tx, current, actorId);
 
@@ -694,8 +841,13 @@ export const deleteSellAccountPayment = async (id: string, paymentId: string, ac
   if (account) assertRecordEditable(account.isLocked);
   const payment = await prisma.sellAccountPayment.findFirst({ where: { id: paymentId, sellAccountId: id } });
   if (!payment) return false;
+  // A real money receipt was handed to the customer: it can only be cancelled or refunded.
+  if (payment.side === SellAccountPaymentSide.PURCHASER_RECEIPT && payment.receiptStatus !== SellAccountReceiptStatus.DRAFT) {
+    throw new Error('A real money receipt cannot be deleted. Cancel it (money not received) or record a refund.');
+  }
   await prisma.$transaction(async (tx) => {
     await tx.sellAccountPayment.delete({ where: { id: paymentId } });
+    await touchSellAccount(tx, id, actorId);
     const current = await tx.sellAccount.findUnique({ where: { id }, include });
     if (current) await syncStatus(tx, current, actorId);
   });

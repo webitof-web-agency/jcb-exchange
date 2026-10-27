@@ -1211,6 +1211,7 @@ enum SellAccountDealStatus {
   RTO_WORK_FAILED
   RTO_WORK_COMPLETED
   DEAL_DONE
+  CANCELLED
 }
 
 enum SellAccountPaymentSide {
@@ -1223,6 +1224,30 @@ enum SellAccountPaymentMethod {
   UPI
   BANK_TRANSFER
   CHEQUE
+  OTHER
+}
+
+// Customer receipts start as DRAFT (no receipt number, not sent, not counted in the balance)
+// and become ISSUED when staff convert them. CANCELLED = an issued receipt whose money never
+// arrived (e.g. a bounced cheque). Seller payments are always ISSUED.
+enum SellAccountReceiptStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum SellAccountRefundStatus {
+  REQUESTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum SellAccountRefundReason {
+  DEAL_CANCELLED
+  EXCESS_PAYMENT
+  PRICE_REDUCTION
+  VEHICLE_RETURN
   OTHER
 }
 
@@ -1340,6 +1365,13 @@ model SellAccount {
   invoiceTokenExpiresAt DateTime?
   invoiceSentAt         DateTime?
   invoiceDelivery       Json?
+  // Sale cancelled (customer backed out / vehicle returned). When a Bill of Supply was already
+  // issued, a credit note number is assigned against it.
+  cancelledAt           DateTime?
+  cancelledById         String?
+  cancelReason          String?                @db.Text
+  creditNoteNumber      String?                @unique
+  creditNoteDate        DateTime?
   createdById           String?
   updatedById           String?
   createdAt             DateTime               @default(now())
@@ -1349,6 +1381,7 @@ model SellAccount {
   listing               Listing?               @relation(fields: [listingId], references: [id], onDelete: SetNull)
   rtoRecord             VehicleRtoRecord?
   payments              SellAccountPayment[]
+  refunds               SellAccountRefund[]
   statusHistory         SellAccountStatusHistory[]
   deedWorkflows         SellAccountDeedWorkflow[]
 
@@ -1407,7 +1440,15 @@ model SellAccountPayment {
   paymentDate    DateTime
   method         SellAccountPaymentMethod @default(OTHER)
   reference      String?
+  // Bank the cheque / transfer was drawn on ("Drawn on" on the money receipt).
+  drawnOn        String?
   note           String?                 @db.Text
+  receiptStatus  SellAccountReceiptStatus @default(ISSUED)
+  issuedAt       DateTime?
+  issuedById     String?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?                 @db.Text
   receiptNumber  String?                 @unique
   receiptTokenHash String?               @unique
   receiptTokenCiphertext String?
@@ -1420,6 +1461,39 @@ model SellAccountPayment {
   sellAccount    SellAccount             @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, side, paymentDate])
+}
+
+// Money returned to the purchaser. Maker-checker: requested by one user, approved by another,
+// then marked paid. Only PAID refunds reach the books and the customer balance.
+// forfeitAmount (cancelled deals only) is kept by JCB Exchange as a cancellation charge.
+model SellAccountRefund {
+  id             String                   @id @default(uuid())
+  sellAccountId  String
+  refundNumber   String?                  @unique
+  status         SellAccountRefundStatus  @default(REQUESTED)
+  reason         SellAccountRefundReason
+  amount         Decimal                  @db.Decimal(14, 2)
+  forfeitAmount  Decimal                  @default(0) @db.Decimal(14, 2)
+  method         SellAccountPaymentMethod @default(BANK_TRANSFER)
+  reference      String?
+  drawnOn        String?
+  refundDate     DateTime?
+  note           String?                  @db.Text
+  requestedById  String?
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedById   String?
+  rejectedAt     DateTime?
+  rejectReason   String?                  @db.Text
+  paidById       String?
+  paidAt         DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  sellAccount    SellAccount              @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@index([sellAccountId, status])
+  @@index([status, createdAt])
 }
 
 model SellAccountStatusHistory {

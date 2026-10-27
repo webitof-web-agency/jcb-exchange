@@ -66,8 +66,8 @@ export default function VoucherNumberingModule() {
       {!canManage ? <ReadOnlyNotice>Changing series needs “Manage Finance Settings”.</ReadOnlyNotice> : null}
       {series.loading ? <LoadingState /> : series.error ? <ErrorBanner message={series.error} schemaMissing={series.schemaMissing} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Voucher type</th><th className="px-4 py-2.5">Prefix</th><th className="px-4 py-2.5">Digits</th><th className="px-4 py-2.5">Next number</th><th className="px-4 py-2.5">Next voucher no.</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[640px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Voucher type</th><th className="px-3 py-2">Prefix</th><th className="px-3 py-2">Digits</th><th className="px-3 py-2">Next number</th><th className="px-3 py-2">Next voucher no.</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {(series.data ?? []).map((item) => (
                 <tr key={item.id}>
@@ -75,7 +75,7 @@ export default function VoucherNumberingModule() {
                   <td className={`${cellClass} font-mono text-xs`}>{item.prefix}</td>
                   <td className={cellClass}>{item.padLength}</td>
                   <td className={cellClass}>{item.nextNumber}</td>
-                  <td className={`${cellClass} font-mono text-xs font-bold text-slate-900`}>{item.preview}</td>
+                  <td className={`${cellClass} font-mono text-xs font-semibold text-slate-900`}>{item.preview}</td>
                   <td className={`${cellClass} text-right`}>{canManage ? <Button variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => startEdit(item)}>Edit</Button> : null}</td>
                 </tr>
               ))}
@@ -86,13 +86,13 @@ export default function VoucherNumberingModule() {
 
       {editing ? (
         <Modal title={`${enumLabel(editing.voucherType)} numbering`} subtitle={activeYear?.label} onClose={() => { if (!busy) setEditing(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-3">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-3">
               <Field label="Prefix *" hint="Letters, digits, / _ -"><input value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value.toUpperCase() })} className={`${inputClass} font-mono`} maxLength={30} required /></Field>
               <Field label="Digits *"><input type="number" min={1} max={8} value={form.padLength} onChange={(event) => setForm({ ...form, padLength: event.target.value })} className={inputClass} required /></Field>
               <Field label="Next number *" hint={`Cannot be lower than ${editing.nextNumber}`}><input type="number" min={editing.nextNumber} value={form.nextNumber} onChange={(event) => setForm({ ...form, nextNumber: event.target.value })} className={inputClass} required /></Field>
             </div>
-            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Next voucher will be <span className="font-mono font-bold text-slate-900">{preview}</span></p>
+            <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-600">Next voucher will be <span className="font-mono font-semibold text-slate-900">{preview}</span></p>
             <ModalFooter>
               <Button onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
               <Button type="submit" variant="primary" busy={busy}>Save</Button>

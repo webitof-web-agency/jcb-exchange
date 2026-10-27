@@ -99,9 +99,9 @@ export default function PostingPanel() {
       ) : null}
     >
       {!canManage ? <ReadOnlyNotice>Changing posting needs “Manage Finance Settings”.</ReadOnlyNotice> : null}
-      <div className="grid gap-5 p-5 lg:grid-cols-2">
+      <div className="grid gap-4 p-4 lg:grid-cols-2">
         <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Mode</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</p>
           <div className="flex flex-wrap gap-2">
             {(['OFF', 'SHADOW', 'LIVE'] as Mode[]).map((mode) => (
               <button
@@ -109,7 +109,7 @@ export default function PostingPanel() {
                 type="button"
                 disabled={!isSuperAdmin || mode === data.postingMode || busy}
                 onClick={() => { setReason(''); setModeChange(mode); }}
-                className={`rounded-xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed ${mode === data.postingMode ? 'border-amber-300 bg-amber-50 text-slate-900 ring-1 ring-amber-200' : 'border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50'}`}
+                className={`rounded-lg border px-3 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed ${mode === data.postingMode ? 'border-amber-300 bg-amber-50 text-slate-900 ring-1 ring-amber-200' : 'border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50'}`}
               >
                 {mode}
               </button>
@@ -118,7 +118,7 @@ export default function PostingPanel() {
           <p className="text-xs leading-5 text-slate-600"><Badge tone={modeTone[data.postingMode]}>{data.postingMode}</Badge> {MODE_HELP[data.postingMode]}</p>
           {!isSuperAdmin ? <p className="text-[11px] text-slate-400">Only a super admin can change the mode.</p> : null}
 
-          <p className="pt-2 text-xs font-bold uppercase tracking-wide text-slate-500">What to post</p>
+          <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">What to post</p>
           <div className="space-y-2">
             {(Object.keys(SOURCE_LABELS) as Source[]).map((source) => (
               <Toggle key={source} checked={data.config.sources[source]} disabled={!canManage || busy} onChange={(value) => saveConfig({ sources: { ...data.config.sources, [source]: value } })} label={SOURCE_LABELS[source]} />
@@ -131,10 +131,10 @@ export default function PostingPanel() {
         </div>
 
         <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Status</p>
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+          <div className="grid grid-cols-2 gap-2 text-[13px]">
             {[['Automatic drafts', data.autoDrafts], ['Automatic posted', data.autoPosted], ['Queue waiting', data.queue.counts.PENDING ?? 0], ['Failed', data.queue.counts.FAILED ?? 0]].map(([label, value]) => (
-              <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-lg font-bold text-slate-900">{value}</p></div>
+              <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold text-slate-900">{value}</p></div>
             ))}
           </div>
           <p className="text-xs text-slate-500">Last run: {when(data.state.lastRunAt)}{summary ? ` · checked ${summary.swept ?? 0} changed records, created ${summary.created ?? 0}, reversed ${summary.reversed ?? 0}, posted ${summary.posted ?? 0}, failed ${summary.failed ?? 0}` : ''}</p>
@@ -143,21 +143,21 @@ export default function PostingPanel() {
 
       {data.queue.failing.length ? (
         <div className="border-t border-slate-100">
-          <div className="flex items-center justify-between px-5 py-3">
-            <p className="text-sm font-bold text-slate-800">Needs attention</p>
+          <div className="flex items-center justify-between px-4 py-2">
+            <p className="text-[13px] font-semibold text-slate-800">Needs attention</p>
             {canManage ? <Button variant="ghost" icon={<RotateCcw className="h-4 w-4" />} disabled={busy} onClick={() => call('Failed items queued again.', () => api.post('/finance-hub/posting/queue/retry-failed'))}>Retry all failed</Button> : null}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2">Source</th><th className="px-4 py-2">Problem</th><th className="px-4 py-2">Tries</th><th className="px-4 py-2">Status</th><th className="px-4 py-2" /></tr></thead>
+            <table className="w-full min-w-[760px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">Source</th><th className="px-3 py-2">Problem</th><th className="px-3 py-2">Tries</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {data.queue.failing.map((item) => (
                   <tr key={item.id}>
-                    <td className="px-4 py-2 text-xs">{enumLabel(item.sourceType)}<span className="block font-mono text-[11px] text-slate-400">{item.sourceId.slice(0, 12)}</span></td>
-                    <td className="max-w-[420px] px-4 py-2 text-xs text-red-700">{item.lastError}</td>
-                    <td className="px-4 py-2 text-xs">{item.attempts}</td>
-                    <td className="px-4 py-2"><Badge tone={item.status === 'FAILED' ? 'red' : 'amber'}>{item.status === 'FAILED' ? 'Failed' : 'Will retry'}</Badge></td>
-                    <td className="px-4 py-2 text-right">{canManage ? <Button variant="ghost" disabled={busy} onClick={() => call('Queued again.', () => api.post(`/finance-hub/posting/queue/${item.id}/retry`))}>Retry</Button> : null}</td>
+                    <td className="px-3 py-2 text-xs">{enumLabel(item.sourceType)}<span className="block font-mono text-[11px] text-slate-400">{item.sourceId.slice(0, 12)}</span></td>
+                    <td className="max-w-[420px] px-3 py-2 text-xs text-red-700">{item.lastError}</td>
+                    <td className="px-3 py-2 text-xs">{item.attempts}</td>
+                    <td className="px-3 py-2"><Badge tone={item.status === 'FAILED' ? 'red' : 'amber'}>{item.status === 'FAILED' ? 'Failed' : 'Will retry'}</Badge></td>
+                    <td className="px-3 py-2 text-right">{canManage ? <Button variant="ghost" disabled={busy} onClick={() => call('Queued again.', () => api.post(`/finance-hub/posting/queue/${item.id}/retry`))}>Retry</Button> : null}</td>
                   </tr>
                 ))}
               </tbody>
@@ -168,9 +168,9 @@ export default function PostingPanel() {
 
       {modeChange ? (
         <Modal title={`Switch automatic posting to ${modeChange}`} subtitle={MODE_HELP[modeChange]} onClose={() => { if (!busy) setModeChange(null); }}>
-          <form onSubmit={confirmMode} className="space-y-4 p-5 sm:p-7">
-            {modeChange !== 'OFF' && !data.state.lastSweepAt ? <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">First run: every existing record from the books begin date will be processed. Run Preview first and make sure bank accounts and payment methods are mapped.</p> : null}
-            {modeChange === 'LIVE' && data.autoDrafts ? <p className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600">{data.autoDrafts} automatic drafts will be posted on the next run.</p> : null}
+          <form onSubmit={confirmMode} className="space-y-3 p-4">
+            {modeChange !== 'OFF' && !data.state.lastSweepAt ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">First run: every existing record from the books begin date will be processed. Run Preview first and make sure bank accounts and payment methods are mapped.</p> : null}
+            {modeChange === 'LIVE' && data.autoDrafts ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{data.autoDrafts} automatic drafts will be posted on the next run.</p> : null}
             <Field label={modeChange === 'LIVE' ? 'Reason *' : 'Reason'}><textarea value={reason} onChange={(event) => setReason(event.target.value)} className={`${inputClass} min-h-20`} maxLength={500} required={modeChange === 'LIVE'} placeholder="e.g. CA reviewed the shadow drafts for October" /></Field>
             <ModalFooter><Button onClick={() => setModeChange(null)} disabled={busy}>Cancel</Button><Button type="submit" variant={modeChange === 'LIVE' ? 'primary' : 'secondary'} busy={busy}>Switch to {modeChange}</Button></ModalFooter>
           </form>
@@ -179,12 +179,12 @@ export default function PostingPanel() {
 
       {preview ? (
         <Modal title="Posting preview" subtitle="Dry run on the latest records of each source. Nothing was saved." onClose={() => setPreview(null)} wide>
-          <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5 sm:p-7">
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto p-4">
             {preview.report.map((source) => (
-              <div key={source.sourceType} className="rounded-xl border border-slate-200">
-                <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-800">{enumLabel(source.sourceType)} · {source.sampled} record(s)</p>
+              <div key={source.sourceType} className="rounded-lg border border-slate-200">
+                <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-800">{enumLabel(source.sourceType)} · {source.sampled} record(s)</p>
                 {source.records.length ? source.records.map((record) => (
-                  <div key={record.sourceId} className="border-b border-slate-100 px-4 py-3 last:border-b-0">
+                  <div key={record.sourceId} className="border-b border-slate-100 px-3 py-2 last:border-b-0">
                     {!record.ok ? <p className="text-xs text-red-700">{record.sourceId.slice(0, 12)}: {record.error}</p> : record.vouchers?.length ? record.vouchers.map((voucher) => (
                       <div key={voucher.key} className="mb-2 text-xs">
                         <p className="font-semibold text-slate-800">{enumLabel(voucher.type)} · {voucher.date} · {formatInr(voucher.total)} <span className="font-mono text-slate-400">{voucher.key}</span></p>
@@ -194,11 +194,11 @@ export default function PostingPanel() {
                       </div>
                     )) : <p className="text-xs text-slate-400">{record.sourceId.slice(0, 12)}: nothing to post (draft, unpaid, before books begin, or not money).</p>}
                   </div>
-                )) : <p className="px-4 py-3 text-xs text-slate-400">No records.</p>}
+                )) : <p className="px-3 py-2 text-xs text-slate-400">No records.</p>}
               </div>
             ))}
           </div>
-          <div className="px-5 pb-5 sm:px-7"><ModalFooter><Button onClick={() => setPreview(null)}>Close</Button></ModalFooter></div>
+          <div className="px-4 pb-4"><ModalFooter><Button onClick={() => setPreview(null)}>Close</Button></ModalFooter></div>
         </Modal>
       ) : null}
     </Panel>

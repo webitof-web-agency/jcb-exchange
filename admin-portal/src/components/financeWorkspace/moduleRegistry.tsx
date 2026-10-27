@@ -121,7 +121,7 @@ const DepreciationRuns = () => <PeriodicRunPanel kind="depreciation" />;
 const TdsModule = () => <WithholdingModule kind="TDS" />;
 const TcsModule = () => <WithholdingModule kind="TCS" />;
 const TallyExport = () => <DownloadReportsModule tallyOnly />;
-const AlertsAndApprovals = () => <div className="space-y-4"><AlertsPanel /><PendingApprovals /></div>;
+const AlertsAndApprovals = () => <div className="space-y-3"><AlertsPanel /><PendingApprovals /></div>;
 const CustomerDues = () => <DuesModule side="RECEIVABLE" />;
 const SupplierPayables = () => <DuesModule side="PAYABLE" />;
 const ConsignmentDeals = () => <DealTermsListModule kind="consignment" />;

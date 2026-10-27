@@ -9,7 +9,7 @@ import { apiErrorMessage, formatInr, useFinanceWorkspaceAccess } from '@/lib/fin
 import { loadChart } from './ChartOfAccountsModule';
 import { optionalChoices } from './ledgerLookups';
 import { loadFinancialYears } from './FinancialYearsModule';
-import { Badge, Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, tableHeadClass } from './ui';
+import { Badge, Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass } from './ui';
 import { useResource } from './useResource';
 
 type Line = { key: string; accountId: string; partyId: string; billRef: string; billDate: string; dueDate: string; debit: string; credit: string };
@@ -145,8 +145,8 @@ export default function OpeningBalancesModule() {
       {locked ? <ReadOnlyNotice>{opening.data?.finalized ? 'Opening balances for this year are finalised.' : 'This year is closed.'}</ReadOnlyNotice> : !canEdit ? <ReadOnlyNotice>Editing needs “Create & Edit Draft Vouchers”.</ReadOnlyNotice> : null}
       {lines.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-3 py-2.5">Ledger</th><th className="px-3 py-2.5">Party</th><th className="px-3 py-2.5">Bill ref.</th><th className="px-3 py-2.5">Bill date</th><th className="px-3 py-2.5">Due date</th><th className="px-3 py-2.5 text-right">Debit</th><th className="px-3 py-2.5 text-right">Credit</th><th className="px-3 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[1080px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Bill ref.</th><th className="px-3 py-2">Bill date</th><th className="px-3 py-2">Due date</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {lines.map((line) => {
                 const account = accountsById.get(line.accountId);
@@ -154,10 +154,10 @@ export default function OpeningBalancesModule() {
                 return (
                   <tr key={line.key}>
                     <td className="w-72 px-3 py-2">
-                      <SearchableSelect options={accountOptions} value={line.accountId} disabled={!editable} onChange={(option) => update(line.key, { accountId: String(option.id) })} placeholder="Choose ledger" size="sm" />
+                      <SearchableSelect buttonClassName={selectButtonClass} options={accountOptions} value={line.accountId} disabled={!editable} onChange={(option) => update(line.key, { accountId: String(option.id) })} placeholder="Choose ledger" size="sm" />
                     </td>
                     <td className="w-60 px-3 py-2">
-                      <SearchableSelect options={optionalChoices(partyOptions, line.partyId)} value={line.partyId} disabled={!editable} highlighted={needsParty && !line.partyId} onChange={(option) => update(line.key, { partyId: String(option.id) })} placeholder={needsParty ? 'Party required' : 'No party'} size="sm" />
+                      <SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(partyOptions, line.partyId)} value={line.partyId} disabled={!editable} highlighted={needsParty && !line.partyId} onChange={(option) => update(line.key, { partyId: String(option.id) })} placeholder={needsParty ? 'Party required' : 'No party'} size="sm" />
                     </td>
                     <td className="px-3 py-2"><input value={line.billRef} disabled={!editable || !line.partyId} onChange={(event) => update(line.key, { billRef: event.target.value.toUpperCase() })} className={`${inputClass} py-2`} maxLength={60} /></td>
                     <td className="px-3 py-2"><input type="date" value={line.billDate} disabled={!editable || !line.partyId} onChange={(event) => update(line.key, { billDate: event.target.value })} className={`${inputClass} py-2`} /></td>
@@ -169,17 +169,17 @@ export default function OpeningBalancesModule() {
                 );
               })}
             </tbody>
-            <tfoot className="bg-slate-50 text-sm font-bold text-slate-900">
-              <tr><td className="px-3 py-3" colSpan={5}>Total</td><td className="px-3 py-3 text-right">{formatInr(totals.debit)}</td><td className="px-3 py-3 text-right">{formatInr(totals.credit)}</td><td /></tr>
+            <tfoot className="bg-slate-50 text-[13px] font-semibold text-slate-900">
+              <tr><td className="px-3 py-2" colSpan={5}>Total</td><td className="px-3 py-2 text-right">{formatInr(totals.debit)}</td><td className="px-3 py-2 text-right">{formatInr(totals.credit)}</td><td /></tr>
             </tfoot>
           </table>
         </div>
       ) : <EmptyState title="No opening balances entered" description="Add a line per bank/cash ledger, one per customer or seller bill outstanding, advances, loans and capital." action={editable ? <Button variant="primary" onClick={() => year && setDraft({ yearId: year.id, lines: [newLine()] })}>Add first line</Button> : undefined} />}
 
-      <div className="flex flex-col gap-2 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-col gap-2 border-t border-slate-100 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-[13px]">
           <span className="text-slate-500">Difference (debit − credit):</span>
-          <span className={`font-bold ${totals.difference === 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatInr(totals.difference)}</span>
+          <span className={`font-semibold ${totals.difference === 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatInr(totals.difference)}</span>
           {totals.difference === 0 ? <Badge tone="green">Balanced</Badge> : <Badge tone="red">Not balanced</Badge>}
           {dirty ? <Badge tone="amber">Unsaved changes</Badge> : null}
         </div>
@@ -194,9 +194,9 @@ export default function OpeningBalancesModule() {
 
       {prompt ? (
         <Modal title={prompt === 'finalize' ? 'Finalise opening balances' : 'Reopen opening balances'} subtitle={prompt === 'finalize' ? 'Posts the opening voucher into the books. To change it later, reopen (which reverses it).' : 'The opening voucher is reversed and the grid becomes editable. Recorded in the audit trail.'} onClose={() => { if (!busy) setPrompt(null); }}>
-          <form onSubmit={submitPrompt} className="space-y-4 p-5 sm:p-7">
+          <form onSubmit={submitPrompt} className="space-y-3 p-4">
             {prompt === 'finalize' ? (
-              <p className="text-sm text-slate-700">Total debit {formatInr(totals.debit)} = total credit {formatInr(totals.credit)} across {lines.length} lines.</p>
+              <p className="text-[13px] text-slate-700">Total debit {formatInr(totals.debit)} = total credit {formatInr(totals.credit)} across {lines.length} lines.</p>
             ) : (
               <Field label="Reason *"><textarea value={reason} onChange={(event) => setReason(event.target.value)} className={`${inputClass} min-h-20`} maxLength={500} required /></Field>
             )}

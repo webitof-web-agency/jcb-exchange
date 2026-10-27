@@ -648,10 +648,11 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
       }
 
       // The Sold Vehicle record itself is created from the Accounts form the user is sent to next
-      // (it links back to this lead on save). An existing record for the machine is linked now.
+      // (it links back to this lead on save). An existing record for the machine is linked now,
+      // unless it is locked: that is an earlier, completed sale, and this deal gets its own draft.
       if (soldListing && !access.isPartner && !resolvedSellAccountId) {
-        const existing = await tx.sellAccount.findUnique({ where: { listingId: soldListing.id }, select: { id: true, deletedAt: true } });
-        if (existing && !existing.deletedAt) resolvedSellAccountId = existing.id;
+        const existing = await tx.sellAccount.findUnique({ where: { listingId: soldListing.id }, select: { id: true, deletedAt: true, isLocked: true } });
+        if (existing && !existing.deletedAt && !existing.isLocked) resolvedSellAccountId = existing.id;
       }
 
       // Other open enquiries on a machine that is now sold need a different offer.

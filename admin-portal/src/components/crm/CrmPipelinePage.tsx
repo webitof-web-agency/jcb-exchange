@@ -42,6 +42,7 @@ import {
   label,
   LEAD_TYPE_LABELS,
   leadHref,
+  leadWhatsAppMessage,
   phoneLinks,
   relative,
   requirementSummary,
@@ -501,7 +502,7 @@ function Pipeline() {
                         lead.nextFollowUpAt &&
                         !overdue &&
                         new Date(lead.nextFollowUpAt).toDateString() === new Date(now).toDateString();
-                      const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber);
+                      const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
                       const flow = STAGE_FLOW[lead.status] || {};
                       const hasAlternateFlow = lead.status === 'NEGOTIATION' || lead.status === 'INSPECTION_SCHEDULED';
 

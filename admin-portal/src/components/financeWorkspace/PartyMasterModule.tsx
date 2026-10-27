@@ -1,10 +1,11 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Search, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, RefreshCw, Search, UserPlus } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
-import { apiErrorDetails, apiErrorMessage, enumLabel, formatInr, isConflictError, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
+import { apiErrorDetails, apiErrorMessage, enumLabel, formatInr, isConflictError, useFinanceWorkspaceAccess, useUrlFilters } from '@/lib/financeWorkspaceClient';
+import { exportAllPages } from './exportRows';
 import { drCrAmount, PartyStatementModal, type PartyRef } from './receivablesShared';
 import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, tableHeadClass, Toggle } from './ui';
 import { useResource } from './useResource';
@@ -36,10 +37,13 @@ const typeTone: Record<PartyType, 'blue' | 'green' | 'violet' | 'amber' | 'slate
 export default function PartyMasterModule({ types, title }: { types: PartyType[]; title: string }) {
   const access = useFinanceWorkspaceAccess();
   const canManage = access.can(['fh.parties.manage']);
-  const [query, setQuery] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
-  const [page, setPage] = useState(1);
+  const [applied, setApplied] = useUrlFilters({ q: '', status: 'active', page: '1' });
+  const [query, setQuery] = useState(applied.q);
+  const submittedQuery = applied.q;
+  const status = applied.status as 'active' | 'inactive' | 'all';
+  const page = Math.max(Number(applied.page) || 1, 1);
+  const setPage = (next: number) => setApplied({ ...applied, page: String(next) });
+  const [exporting, setExporting] = useState(false);
   const parties = useResource(
     async () => (await api.get('/finance-hub/parties', { params: { types: types.join(','), q: submittedQuery, status, page, pageSize: 25 } })).data as PartyList,
     `parties-${types.join(',')}-${submittedQuery}-${status}-${page}`,
@@ -52,6 +56,34 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
   const [busy, setBusy] = useState(false);
 
   const totalPages = parties.data ? Math.max(Math.ceil(parties.data.total / parties.data.pageSize), 1) : 1;
+
+  // Contact and tax details with the ledger balance; bank account numbers are left out of the file.
+  const exportCsv = async () => {
+    setExporting(true);
+    const balanceOf = (id: string) => balances.data?.[id];
+    await exportAllPages<Party>(
+      async (pageNo, pageSize) => { const data = (await api.get('/finance-hub/parties', { params: { types: types.join(','), q: submittedQuery, status, page: pageNo, pageSize } })).data as PartyList; return { rows: data.parties, total: data.total }; },
+      [
+        { header: 'Code', value: (row) => row.code },
+        { header: 'Name', value: (row) => row.name },
+        { header: 'Types', value: (row) => row.types.map(enumLabel).join(' / ') },
+        { header: 'Mobile', value: (row) => row.mobile ?? '' },
+        { header: 'Email', value: (row) => row.email ?? '' },
+        { header: 'GSTIN', value: (row) => row.gstin ?? '' },
+        { header: 'PAN', value: (row) => row.pan ?? '' },
+        { header: 'City', value: (row) => row.city ?? '' },
+        { header: 'State', value: (row) => row.state ?? '' },
+        { header: 'TDS section', value: (row) => row.tdsSection ?? '' },
+        { header: 'Receivable', value: (row) => balanceOf(row.id)?.receivable ?? '' },
+        { header: 'Payable', value: (row) => balanceOf(row.id)?.payable ?? '' },
+        { header: 'Advances', value: (row) => balanceOf(row.id)?.advances ?? '' },
+        { header: 'Net (Dr + / Cr -)', value: (row) => balanceOf(row.id)?.net ?? '' },
+        { header: 'Active', value: (row) => (row.isActive ? 'Yes' : 'No') },
+      ],
+      title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    );
+    setExporting(false);
+  };
 
   const openEdit = async (id: string) => {
     try {
@@ -115,20 +147,25 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
     <Panel
       title={title}
       description="Party master with ledger balances (posted entries). Dr = the party owes us, Cr = we owe the party. Open a statement for every entry."
-      actions={canManage ? (
+      actions={(
         <>
-          <Button icon={<RefreshCw className="h-4 w-4" />} busy={busy && !form} onClick={() => runSync(false)}>Sync from existing records</Button>
-          <Button variant="primary" icon={<UserPlus className="h-4 w-4" />} onClick={() => { setDuplicates([]); setForm(emptyForm([types[0]!])); }}>Add party</Button>
+          <Button icon={<FileSpreadsheet />} busy={exporting} onClick={() => void exportCsv()}>Export CSV</Button>
+          {canManage ? (
+            <>
+              <Button icon={<RefreshCw className="h-4 w-4" />} busy={busy && !form} onClick={() => runSync(false)}>Sync from existing records</Button>
+              <Button variant="primary" icon={<UserPlus className="h-4 w-4" />} onClick={() => { setDuplicates([]); setForm(emptyForm([types[0]!])); }}>Add party</Button>
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     >
       {!canManage ? <ReadOnlyNotice>Adding or editing parties needs “Manage Parties”. Bank account numbers are masked.</ReadOnlyNotice> : null}
-      <form onSubmit={(event) => { event.preventDefault(); setPage(1); setSubmittedQuery(query.trim()); }} className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row">
+      <form onSubmit={(event) => { event.preventDefault(); setApplied({ ...applied, q: query.trim(), page: '1' }); }} className="flex flex-col gap-3 border-b border-slate-100 p-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, code, mobile, GSTIN or city…" className={`${inputClass} pl-9`} />
         </div>
-        <select value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as typeof status); }} className={`${inputClass} sm:w-40`} aria-label="Status">
+        <select value={status} onChange={(event) => setApplied({ ...applied, status: event.target.value, page: '1' })} className={`${inputClass} sm:w-40`} aria-label="Status">
           <option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option>
         </select>
         <Button type="submit">Search</Button>
@@ -139,8 +176,8 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Types</th><th className="px-4 py-2.5">Mobile</th><th className="px-4 py-2.5">GSTIN</th><th className="px-4 py-2.5">City / State</th><th className="px-4 py-2.5">Credit</th><th className="px-4 py-2.5">Linked records</th><th className="px-4 py-2.5 text-right">Balance</th><th className="px-4 py-2.5" /></tr></thead>
+            <table className="w-full min-w-[860px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">Code</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Types</th><th className="px-3 py-2">Mobile</th><th className="px-3 py-2">GSTIN</th><th className="px-3 py-2">City / State</th><th className="px-3 py-2">Credit</th><th className="px-3 py-2">Linked records</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {parties.data.parties.map((party) => (
                   <tr key={party.id} className={party.isActive ? '' : 'opacity-60'}>
@@ -159,7 +196,7 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
             <span>{parties.data.total} parties</span>
             <span className="flex items-center gap-2">
               <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)} icon={<ChevronLeft className="h-4 w-4" />}>Prev</Button>
@@ -173,14 +210,14 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
       {statementFor ? <PartyStatementModal party={statementFor} onClose={() => setStatementFor(null)} /> : null}
       {form ? (
         <Modal title={form.id ? `Party: ${form.name}` : 'Add party'} subtitle="GSTIN fills PAN and state automatically." onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={(event) => save(event)} className="p-5 sm:p-7">
+          <form onSubmit={(event) => save(event)} className="p-4">
             <fieldset disabled={!canManage}>
-              <div className="mb-4 flex flex-wrap gap-2">
+              <div className="mb-3 flex flex-wrap gap-2">
                 {PARTY_TYPES.map((type) => (
-                  <button key={type} type="button" onClick={() => toggleType(type)} className={`rounded-full border px-3 py-1 text-xs font-bold transition ${form.types.includes(type) ? 'border-amber-300 bg-amber-50 text-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{enumLabel(type)}</button>
+                  <button key={type} type="button" onClick={() => toggleType(type)} className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${form.types.includes(type) ? 'border-amber-300 bg-amber-50 text-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{enumLabel(type)}</button>
                 ))}
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-3">
                 <Field label="Name *" wide><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={160} required /></Field>
                 <Field label="Mobile"><input value={form.mobile ?? ''} onChange={(event) => setForm({ ...form, mobile: event.target.value })} className={inputClass} maxLength={15} inputMode="tel" /></Field>
                 <Field label="Alternate mobile"><input value={form.altMobile ?? ''} onChange={(event) => setForm({ ...form, altMobile: event.target.value })} className={inputClass} maxLength={15} inputMode="tel" /></Field>
@@ -203,8 +240,8 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
               </div>
             </fieldset>
             {duplicates.length ? (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                <p className="font-bold">Possible duplicates</p>
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <p className="font-semibold">Possible duplicates</p>
                 {duplicates.map((item) => <p key={item.id}>{item.code} · {item.name} · {item.mobile ?? ''} {item.gstin ?? ''}</p>)}
               </div>
             ) : null}
@@ -219,15 +256,15 @@ export default function PartyMasterModule({ types, title }: { types: PartyType[]
 
       {sync ? (
         <Modal title={sync.apply ? 'Parties synced' : 'Sync preview'} subtitle="Reads partners and Sold Vehicles sellers, purchasers and brokers. Matches by GSTIN, then mobile. Source records are never changed." onClose={() => { if (!busy) setSync(null); }}>
-          <div className="p-5 sm:p-7">
+          <div className="p-4">
             <div className="grid gap-3 sm:grid-cols-3">
               {[['Records read', sync.candidates], ['New parties', sync.newParties], ['Existing parties updated', sync.updatedParties], ['New links', sync.newLinks], ['Already linked', sync.alreadyLinked], ['Name-only matches', sync.nameOnlyMatches]].map(([label, value]) => (
-                <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-xl font-bold text-slate-900">{value}</p></div>
+                <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[18px] font-semibold text-slate-900">{value}</p></div>
               ))}
             </div>
             {sync.nameOnlyMatches ? <p className="mt-3 text-xs text-amber-700">Name-only matches have no mobile or GSTIN — review those parties after syncing.</p> : null}
             {!sync.apply && sync.sample.length ? (
-              <div className="mt-4 max-h-48 overflow-y-auto rounded-xl border border-slate-200 text-xs">
+              <div className="mt-3 max-h-48 overflow-y-auto rounded-lg border border-slate-200 text-xs">
                 {sync.sample.map((item) => <p key={`${item.name}-${item.mobile}`} className="border-b border-slate-100 px-3 py-2">{item.name} · {item.mobile ?? 'no mobile'} · {item.types.map(enumLabel).join(', ')} · {item.records} record(s)</p>)}
               </div>
             ) : null}

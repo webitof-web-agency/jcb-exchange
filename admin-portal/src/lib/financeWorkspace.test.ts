@@ -4,9 +4,12 @@ import test from 'node:test';
 import { FINANCE_WORKSPACE_PERMISSION_IDS } from './adminPermissionCatalog';
 import {
   FINANCE_WORKSPACE_VIEW_PERMISSIONS,
+  financeLegacyLinks,
+  financeModulePath,
   financeWorkspaceGroups,
   financeWorkspaceModules,
   getVisibleFinanceWorkspaceGroups,
+  matchFinanceModulePath,
 } from './financeWorkspace';
 
 test('workspace menu has the 14 requested groups with unique module keys', () => {
@@ -38,4 +41,21 @@ test('visible groups follow the granted keys; payroll stays hidden from an accou
   assert.equal(accountant.includes('payroll'), false);
   assert.equal(getVisibleFinanceWorkspaceGroups([], true).length, 14);
   assert.equal(getVisibleFinanceWorkspaceGroups(['ALL_ACCESS'], false).length, 14);
+});
+
+test('every module has its own page path that resolves back to the module', () => {
+  financeWorkspaceModules.forEach((module) => {
+    const path = financeModulePath('/employee', module.key);
+    assert.equal(path, `/employee/finance/${module.groupKey}/${module.key}`);
+    assert.equal(matchFinanceModulePath(path)?.module.key, module.key);
+  });
+  assert.equal(financeModulePath('/admin', 'master-general-ledger', { accountId: 'a1', from: '2026-04-01', to: undefined }), '/admin/finance/accounting-books/master-general-ledger?accountId=a1&from=2026-04-01');
+  assert.equal(financeModulePath('/admin', 'unknown-key'), '/admin/finance/workspace');
+});
+
+test('module paths do not shadow the older finance pages or cross groups', () => {
+  assert.equal(matchFinanceModulePath('/admin/finance/expenses/abc'), null);
+  assert.equal(matchFinanceModulePath('/admin/finance/workspace'), null);
+  assert.equal(matchFinanceModulePath('/admin/finance/payroll/day-book'), null);
+  financeLegacyLinks.forEach((link) => assert.ok(financeWorkspaceGroups.some((group) => group.key === link.groupKey)));
 });

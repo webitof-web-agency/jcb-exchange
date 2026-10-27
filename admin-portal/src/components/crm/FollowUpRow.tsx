@@ -20,6 +20,7 @@ import {
   LEAD_TYPE_LABELS,
   leadHref,
   OUTCOME_LABELS,
+  leadWhatsAppMessage,
   phoneLinks,
   relative,
   StatusBadge,
@@ -48,7 +49,7 @@ export function FollowUpRow({
     open &&
     !overdue &&
     new Date(followUp.dueAt).toDateString() === new Date(now).toDateString();
-  const links = phoneLinks(followUp.contact?.mobile, followUp.contact?.whatsappNumber);
+  const links = phoneLinks(followUp.contact?.mobile, followUp.contact?.whatsappNumber, leadWhatsAppMessage(followUp.contact?.name, followUp.lead));
 
   const copyPhone = () => {
     if (!followUp.contact?.mobile) return;

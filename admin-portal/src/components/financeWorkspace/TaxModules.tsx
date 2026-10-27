@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { isCashBank, todayIso, useLedgerLookups } from './ledgerLookups';
-import { Badge, Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -70,26 +70,26 @@ export function GstDashboardModule() {
   };
   return (
     <Panel title="GST dashboard" description="Output tax, input tax credit and cash payable for a return period, straight from the books. Filing on the GST portal stays manual (portal access needs a GSP)." actions={canPost && data?.setOffPreview.uses.length ? <Button variant="primary" busy={busy} onClick={() => void postSetOff()}>Post set-off</Button> : null}>
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4"><MonthPicker value={month} onChange={setMonth} /></div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3"><MonthPicker value={month} onChange={setMonth} /></div>
       {summary.loading ? <LoadingState /> : summary.error || !data ? <ErrorBanner message={summary.error || 'Could not load.'} schemaMissing={summary.schemaMissing} /> : (
         <>
-          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Outward taxable value</p><p className="text-base font-bold">{formatInr(data.gstr3b.outwardTaxable.taxable)}</p><p className="text-[11px] text-slate-400">{data.gstr3b.outwardTaxable.count} invoices / notes</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Output tax</p><p className="text-base font-bold">{formatInr(sumTax(data.gstr3b.outwardTaxable))}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Input tax credit</p><p className="text-base font-bold">{formatInr(sumTax(data.gstr3b.itc.net))}</p>{data.gstr3b.itc.ineligible ? <p className="text-[11px] text-amber-700">{formatInr(data.gstr3b.itc.ineligible)} ineligible</p> : null}</div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Reverse charge payable</p><p className="text-base font-bold">{formatInr(data.gstr3b.inwardReverseCharge.liability)}</p></div>
-            <div className="rounded-xl bg-slate-900 p-3 text-white"><p className="text-[11px] uppercase tracking-wide text-slate-300">Cash payable after set-off</p><p className="text-base font-bold">{formatInr(sumTax(data.setOffPreview.cashPayable) + data.setOffPreview.rcmCash)}</p><p className="text-[11px] text-slate-400">Credit carried forward {formatInr(sumTax(data.setOffPreview.creditCarriedForward))}</p></div>
+          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Outward taxable value</p><p className="text-[15px] font-semibold">{formatInr(data.gstr3b.outwardTaxable.taxable)}</p><p className="text-[11px] text-slate-400">{data.gstr3b.outwardTaxable.count} invoices / notes</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Output tax</p><p className="text-[15px] font-semibold">{formatInr(sumTax(data.gstr3b.outwardTaxable))}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Input tax credit</p><p className="text-[15px] font-semibold">{formatInr(sumTax(data.gstr3b.itc.net))}</p>{data.gstr3b.itc.ineligible ? <p className="text-[11px] text-amber-700">{formatInr(data.gstr3b.itc.ineligible)} ineligible</p> : null}</div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Reverse charge payable</p><p className="text-[15px] font-semibold">{formatInr(data.gstr3b.inwardReverseCharge.liability)}</p></div>
+            <div className="rounded-lg bg-slate-900 p-3 text-white"><p className="text-[11px] uppercase tracking-wide text-slate-300">Cash payable after set-off</p><p className="text-[15px] font-semibold">{formatInr(sumTax(data.setOffPreview.cashPayable) + data.setOffPreview.rcmCash)}</p><p className="text-[11px] text-slate-400">Credit carried forward {formatInr(sumTax(data.setOffPreview.creditCarriedForward))}</p></div>
           </div>
-          <div className="grid gap-4 p-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-semibold">Filing readiness</p>
-              <ul className="space-y-2 text-sm">
+          <div className="grid gap-3 p-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="mb-2 text-[13px] font-semibold">Filing readiness</p>
+              <ul className="space-y-2 text-[13px]">
                 {data.readiness.map((item) => <li key={item.check} className="flex items-start justify-between gap-3"><span>{item.check}</span><Badge tone={item.ok ? 'green' : 'amber'}>{item.ok ? (item.count ? `${item.count} ✓` : 'OK') : `${item.count} to check`}</Badge></li>)}
                 <li className="flex items-start justify-between gap-3"><span>Registers agree with the GST ledgers</span><Badge tone={tiesOut ? 'green' : 'red'}>{tiesOut ? 'Agree' : 'Difference'}</Badge></li>
               </ul>
             </div>
-            <div className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-semibold">Ledger balances at month end</p>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="mb-2 text-[13px] font-semibold">Ledger balances at month end</p>
               <table className="w-full text-xs">
                 <thead className="text-[11px] uppercase text-slate-500"><tr><th className="py-1 text-left" /><th className="py-1 pl-3 text-right">IGST</th><th className="py-1 pl-3 text-right">CGST</th><th className="py-1 pl-3 text-right">SGST</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
@@ -120,10 +120,10 @@ export function GstRegisterModule() {
   return (
     <Panel title="Sales & purchase GST register" description="Every posted invoice, bill and note with GST, including automatic entries (Sold Vehicles under the margin scheme, Prime, listings, brokerage)." actions={<Button icon={<Download className="h-4 w-4" />} disabled={!rows.length} onClick={exportCsv}>CSV</Button>}>
       <Tabs<RegisterTab> tabs={[{ key: 'SALES', label: 'Sales (outward)' }, { key: 'PURCHASES', label: 'Purchases (inward)' }]} active={tab} onChange={setTab} />
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4"><MonthPicker value={month} onChange={setMonth} />{register.data ? <span className="text-sm text-slate-600">Taxable {formatInr(register.data.totals.taxable)} · Tax {formatInr(register.data.totals.tax)}{tab === 'PURCHASES' && register.data.totals.ineligibleTax ? ` · Ineligible ${formatInr(register.data.totals.ineligibleTax)}` : ''}</span> : null}</div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3"><MonthPicker value={month} onChange={setMonth} />{register.data ? <span className="text-[13px] text-slate-600">Taxable {formatInr(register.data.totals.taxable)} · Tax {formatInr(register.data.totals.tax)}{tab === 'PURCHASES' && register.data.totals.ineligibleTax ? ` · Ineligible ${formatInr(register.data.totals.ineligibleTax)}` : ''}</span> : null}</div>
       {register.loading ? <LoadingState /> : register.error ? <ErrorBanner message={register.error} schemaMissing={register.schemaMissing} /> : !rows.length ? <EmptyState title="No GST entries in this period" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-left text-sm">
+          <table className="w-full min-w-[1100px] text-left text-[13px]">
             <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Invoice</th><th className="px-3 py-2">Party / GSTIN</th><th className="px-3 py-2">{tab === 'SALES' ? 'Section' : 'Type'}</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">IGST</th><th className="px-3 py-2 text-right">CGST</th><th className="px-3 py-2 text-right">SGST</th><th className="px-3 py-2 text-right">Value</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
@@ -186,21 +186,21 @@ export function GstReturnsModule() {
   return (
     <Panel title="GST returns & reconciliation" description="Working papers for GSTR-1 and GSTR-3B from the books, and GSTR-2B matching. File the returns on the GST portal.">
       <Tabs<ReturnsTab> tabs={[{ key: 'gstr3b', label: 'GSTR-3B' }, { key: 'gstr1', label: 'GSTR-1' }, { key: '2b', label: 'GSTR-2B vs books' }]} active={tab} onChange={setTab} />
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
         <MonthPicker value={month} onChange={setMonth} />
-        {tab === '2b' && canUpload ? <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300"><Upload className="h-4 w-4" />Upload GSTR-2B (JSON / CSV)<input type="file" accept=".json,.csv,application/json,text/csv" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} /></label> : null}
+        {tab === '2b' && canUpload ? <label className="inline-flex cursor-pointer items-center h-8 gap-1.5 rounded-lg bg-amber-400 px-3 text-[13px] font-semibold text-slate-950 hover:bg-amber-300"><Upload className="h-4 w-4" />Upload GSTR-2B (JSON / CSV)<input type="file" accept=".json,.csv,application/json,text/csv" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} /></label> : null}
       </div>
       {tab === '2b' ? (
         recon.loading ? <LoadingState /> : recon.error || !recon.data ? <ErrorBanner message={recon.error || 'Could not load.'} schemaMissing={recon.schemaMissing} /> : !recon.data.uploaded ? <EmptyState title="No GSTR-2B uploaded for this period" description="Download GSTR-2B (JSON) from the GST portal → Returns → GSTR-2B, and upload it here." /> : (
           <>
-            <div className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-              {[['Matched', recon.data.summary.matched], ['Amount differs', recon.data.summary.mismatch], ['Only in 2B', recon.data.summary.onlyIn2b], ['Only in books', recon.data.summary.onlyInBooks]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-base font-bold">{value}</p></div>)}
-              <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">ITC in 2B</p><p className="text-base font-bold">{formatInr(recon.data.summary.itcIn2b)}</p></div>
-              <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">ITC in books (month)</p><p className="text-base font-bold">{formatInr(recon.data.summary.itcInBooks)}</p></div>
+            <div className="grid gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
+              {[['Matched', recon.data.summary.matched], ['Amount differs', recon.data.summary.mismatch], ['Only in 2B', recon.data.summary.onlyIn2b], ['Only in books', recon.data.summary.onlyInBooks]].map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold">{value}</p></div>)}
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">ITC in 2B</p><p className="text-[15px] font-semibold">{formatInr(recon.data.summary.itcIn2b)}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">ITC in books (month)</p><p className="text-[15px] font-semibold">{formatInr(recon.data.summary.itcInBooks)}</p></div>
             </div>
-            <div className="px-4 pb-2"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All rows</option>{Object.keys(reconTone).map((status) => <option key={status} value={status}>{enumLabel(status)}</option>)}</select></div>
+            <div className="px-3 pb-2"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All rows</option>{Object.keys(reconTone).map((status) => <option key={status} value={status}>{enumLabel(status)}</option>)}</select></div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
+              <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className={tableHeadClass}><tr><th className="px-3 py-2">Status</th><th className="px-3 py-2">Supplier / GSTIN</th><th className="px-3 py-2">Invoice</th><th className="px-3 py-2 text-right">Tax in books</th><th className="px-3 py-2 text-right">Tax in 2B</th><th className="px-3 py-2 text-right">Difference</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {recon.data.results.filter((row) => !statusFilter || row.status === statusFilter).map((row, index) => (
@@ -219,8 +219,8 @@ export function GstReturnsModule() {
           </>
         )
       ) : summary.loading ? <LoadingState /> : summary.error || !data ? <ErrorBanner message={summary.error || 'Could not load.'} schemaMissing={summary.schemaMissing} /> : tab === 'gstr3b' ? (
-        <div className="overflow-x-auto p-4">
-          <table className="w-full min-w-[760px] text-left text-sm">
+        <div className="overflow-x-auto p-3">
+          <table className="w-full min-w-[760px] text-left text-[13px]">
             <thead className={tableHeadClass}><tr><th className="px-3 py-2">Table</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">IGST</th><th className="px-3 py-2 text-right">CGST</th><th className="px-3 py-2 text-right">SGST</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               <tr><td className="px-3 py-2">3.1(a) Outward taxable supplies</td><td className="px-3 py-2 text-right">{formatInr(data.gstr3b.outwardTaxable.taxable)}</td><TaxCells tax={data.gstr3b.outwardTaxable} /></tr>
@@ -231,21 +231,21 @@ export function GstReturnsModule() {
               <tr className="font-semibold"><td className="px-3 py-2">4(C) Net ITC available</td><td /><TaxCells tax={data.gstr3b.itc.net} /></tr>
               <tr className="bg-slate-50 text-xs"><td className="px-3 py-2">Books vs output ledgers (difference)</td><td /><TaxCells tax={data.ledger.outputDifference} /></tr>
               <tr className="bg-slate-50 text-xs"><td className="px-3 py-2">Books vs input ledgers (difference)</td><td /><TaxCells tax={data.ledger.inputDifference} /></tr>
-              <tr className="font-bold"><td className="px-3 py-2">6.1 Tax payable in cash (after set-off) + RCM {formatInr(data.setOffPreview.rcmCash)}</td><td /><TaxCells tax={data.setOffPreview.cashPayable} /></tr>
+              <tr className="font-semibold"><td className="px-3 py-2">6.1 Tax payable in cash (after set-off) + RCM {formatInr(data.setOffPreview.rcmCash)}</td><td /><TaxCells tax={data.setOffPreview.cashPayable} /></tr>
             </tbody>
           </table>
           <p className="mt-3 text-xs text-slate-500">A difference means a manual journal touched a GST ledger, or a document was cancelled in a later month. Open the GST ledgers in Master General Ledger to see the entries.</p>
         </div>
       ) : (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
+        <div className="grid gap-3 p-3 lg:grid-cols-2">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</p>
-            <table className="w-full text-sm"><thead className={tableHeadClass}><tr><th className="px-3 py-2">Section</th><th className="px-3 py-2 text-right">Docs</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">Tax</th></tr></thead>
+            <table className="w-full text-[13px]"><thead className={tableHeadClass}><tr><th className="px-3 py-2">Section</th><th className="px-3 py-2 text-right">Docs</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">Tax</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{data.gstr1.sections.map((row) => <tr key={row.section}><td className="px-3 py-2 font-semibold">{row.section}</td><td className="px-3 py-2 text-right">{row.count}</td><td className="px-3 py-2 text-right">{formatInr(row.taxable)}</td><td className="px-3 py-2 text-right">{formatInr(sumTax(row))}</td></tr>)}</tbody></table>
           </div>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">HSN / SAC summary</p>
-            <table className="w-full text-sm"><thead className={tableHeadClass}><tr><th className="px-3 py-2">HSN / SAC</th><th className="px-3 py-2 text-right">Rate</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">Tax</th></tr></thead>
+            <table className="w-full text-[13px]"><thead className={tableHeadClass}><tr><th className="px-3 py-2">HSN / SAC</th><th className="px-3 py-2 text-right">Rate</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">Tax</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{data.gstr1.hsn.map((row) => <tr key={`${row.hsn}-${row.rate}`}><td className="px-3 py-2 font-mono text-xs">{row.hsn || '—'}</td><td className="px-3 py-2 text-right">{row.rate}%</td><td className="px-3 py-2 text-right">{formatInr(row.taxable)}</td><td className="px-3 py-2 text-right">{formatInr(row.tax)}</td></tr>)}</tbody></table>
           </div>
         </div>
@@ -261,10 +261,10 @@ export function InputTaxCreditModule() {
   const data = summary.data;
   return (
     <Panel title="Input tax credit" description="Credit from purchase bills and automatic entries, credit lost on ineligible items (added to cost), and what remains in the input ledgers after set-off.">
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4"><MonthPicker value={month} onChange={setMonth} /></div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3"><MonthPicker value={month} onChange={setMonth} /></div>
       {summary.loading ? <LoadingState /> : summary.error || !data ? <ErrorBanner message={summary.error || 'Could not load.'} schemaMissing={summary.schemaMissing} /> : (
-        <div className="overflow-x-auto p-4">
-          <table className="w-full min-w-[720px] text-left text-sm">
+        <div className="overflow-x-auto p-3">
+          <table className="w-full min-w-[720px] text-left text-[13px]">
             <thead className={tableHeadClass}><tr><th className="px-3 py-2" /><th className="px-3 py-2 text-right">IGST</th><th className="px-3 py-2 text-right">CGST</th><th className="px-3 py-2 text-right">SGST</th><th className="px-3 py-2 text-right">Total</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               <tr><td className="px-3 py-2">Eligible ITC on bills this month ({data.gstr3b.itc.other.count})</td><TaxCells tax={data.gstr3b.itc.other} /><td className="px-3 py-2 text-right font-semibold">{formatInr(sumTax(data.gstr3b.itc.other))}</td></tr>
@@ -311,10 +311,10 @@ export function EInvoiceModule() {
   };
   return (
     <Panel title="E-invoice / e-way bill" description="Record the IRN, acknowledgement and e-way bill for each sales invoice. Generate them on the IRP / e-way bill portals (API integration needs GSP credentials and is off).">
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4"><MonthPicker value={month} onChange={setMonth} /></div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3"><MonthPicker value={month} onChange={setMonth} /></div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No sales invoices in this period" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[960px] text-left text-[13px]">
             <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Invoice</th><th className="px-3 py-2">Buyer</th><th className="px-3 py-2 text-right">Value</th><th className="px-3 py-2">E-invoice</th><th className="px-3 py-2">E-way bill</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((row) => (
@@ -334,8 +334,8 @@ export function EInvoiceModule() {
       )}
       {editing ? (
         <Modal title={`Invoice ${editing.invoiceNo}`} subtitle={`${editing.partyName ?? ''} · ${formatInr(editing.invoiceValue)}`} onClose={() => { if (!busy) setEditing(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="IRN" wide><input value={form.irn} onChange={(event) => setForm({ ...form, irn: event.target.value.trim() })} className={`${inputClass} font-mono text-xs`} maxLength={64} /></Field>
               <Field label="Ack number"><input value={form.ackNo} onChange={(event) => setForm({ ...form, ackNo: event.target.value })} className={inputClass} maxLength={30} /></Field>
               <Field label="Ack date"><input type="date" value={form.ackDate} onChange={(event) => setForm({ ...form, ackDate: event.target.value })} className={inputClass} /></Field>
@@ -368,26 +368,26 @@ export function WithholdingModule({ kind }: { kind: 'TDS' | 'TCS' }) {
   return (
     <Panel title={kind === 'TDS' ? 'TDS management' : 'TCS management'} description={kind === 'TDS' ? 'TDS deducted on bills and settlements (payable, deposit with challan ITNS 281 by the 7th), and TDS deducted by customers on our income (receivable, claim in the return / Form 26AS).' : 'TCS collected on sales (payable) and TCS collected from us (receivable). Entries come from vouchers on the TCS ledgers.'} actions={<Button icon={<Download className="h-4 w-4" />} disabled={!data?.rows.length} onClick={exportCsv}>CSV</Button>}>
       <Tabs<WithholdingTab> tabs={[{ key: 'PAYABLE', label: `${kind} payable (${word} by us)` }, { key: 'RECEIVABLE', label: `${kind} receivable (${word} from us)` }]} active={tab} onChange={setTab} />
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[160px_160px]">
+      <div className="grid gap-3 border-b border-slate-100 p-3 sm:grid-cols-[160px_160px]">
         <Field label="From"><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={inputClass} /></Field>
         <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={inputClass} /></Field>
       </div>
       {register.loading ? <LoadingState /> : register.error || !data ? <ErrorBanner message={register.error || 'Could not load.'} schemaMissing={register.schemaMissing} /> : (
         <>
-          <div className="grid gap-3 p-4 sm:grid-cols-3">
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Opening</p><p className="text-base font-bold">{formatInr(data.opening)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{tab === 'PAYABLE' ? 'Still to deposit' : 'To claim'}</p><p className="text-base font-bold">{formatInr(data.closing)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Ledger</p><p className="text-sm font-semibold">{data.account.code} · {data.account.name}</p></div>
+          <div className="grid gap-3 p-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Opening</p><p className="text-[15px] font-semibold">{formatInr(data.opening)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{tab === 'PAYABLE' ? 'Still to deposit' : 'To claim'}</p><p className="text-[15px] font-semibold">{formatInr(data.closing)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Ledger</p><p className="text-[13px] font-semibold">{data.account.code} · {data.account.name}</p></div>
           </div>
           {data.sections.length ? (
-            <div className="overflow-x-auto px-4">
-              <table className="w-full text-sm"><thead className={tableHeadClass}><tr><th className="px-3 py-2">Section</th><th className="px-3 py-2 text-right">Parties</th><th className="px-3 py-2 text-right">{enumLabel(word)}</th><th className="px-3 py-2 text-right">Deposited / adjusted</th><th className="px-3 py-2 text-right">Balance</th></tr></thead>
+            <div className="overflow-x-auto px-3">
+              <table className="w-full text-[13px]"><thead className={tableHeadClass}><tr><th className="px-3 py-2">Section</th><th className="px-3 py-2 text-right">Parties</th><th className="px-3 py-2 text-right">{enumLabel(word)}</th><th className="px-3 py-2 text-right">Deposited / adjusted</th><th className="px-3 py-2 text-right">Balance</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{data.sections.map((row) => <tr key={row.section}><td className="px-3 py-2 font-semibold">{row.section}</td><td className="px-3 py-2 text-right">{row.parties}</td><td className="px-3 py-2 text-right">{formatInr(row.deducted)}</td><td className="px-3 py-2 text-right">{formatInr(row.deposited)}</td><td className="px-3 py-2 text-right font-semibold">{formatInr(row.balance)}</td></tr>)}</tbody></table>
             </div>
           ) : null}
           {!data.rows.length ? <EmptyState title="No entries in this period" /> : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-[13px]">
                 <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Section</th><th className="px-3 py-2">Party / PAN</th><th className="px-3 py-2">Entry</th><th className="px-3 py-2 text-right">Amount</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.rows.map((row) => (
@@ -451,11 +451,11 @@ export function ChallansModule({ fixedTypes }: { fixedTypes?: string[] }) {
   };
   return (
     <Panel title="Tax payments & challans" description="Record each tax paid with its challan / CIN / CPIN. The payment voucher clears the liability (GST output, TDS payable, PT/PF/ESI payable) or builds advance tax; interest and late fee go to Interest & Penalty." actions={canPost ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} disabled={!banks.length} onClick={() => setForm({ taxType: fixedTypes?.[0] ?? 'GST', period: thisMonth(), challanNo: '', bsrCode: '', date: todayIso(), bankAccountId: banks[0]?.id ?? '', otherAccountId: '', proofUrl: '', notes: '', breakdown: {} })}>Record challan</Button> : null}>
-      {!fixedTypes ? <div className="border-b border-slate-100 p-4"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All taxes</option>{TAX_TYPES.map((type) => <option key={type} value={type}>{enumLabel(type)}</option>)}</select></div> : null}
+      {!fixedTypes ? <div className="border-b border-slate-100 p-3"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All taxes</option>{TAX_TYPES.map((type) => <option key={type} value={type}>{enumLabel(type)}</option>)}</select></div> : null}
       {!canPost ? <ReadOnlyNotice>Recording challans needs “Post Vouchers”.</ReadOnlyNotice> : null}
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !rows.length ? <EmptyState title="No challans recorded" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-[13px]">
             <thead className={tableHeadClass}><tr><th className="px-3 py-2">Paid on</th><th className="px-3 py-2">Tax</th><th className="px-3 py-2">Period</th><th className="px-3 py-2">Challan</th><th className="px-3 py-2">Breakdown</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Voucher</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
@@ -475,20 +475,20 @@ export function ChallansModule({ fixedTypes }: { fixedTypes?: string[] }) {
       )}
       {form ? (
         <Modal title="Record tax challan" onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-4">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-4">
               <Field label="Tax"><select value={form.taxType} onChange={(event) => setForm({ ...form, taxType: event.target.value, breakdown: {} })} className={inputClass}>{(fixedTypes ?? TAX_TYPES).map((type) => <option key={type} value={type}>{enumLabel(type)}</option>)}</select></Field>
               <Field label="Period *" hint="Month (YYYY-MM), quarter or FY"><input value={form.period} onChange={(event) => setForm({ ...form, period: event.target.value })} className={inputClass} maxLength={20} required /></Field>
               <Field label="Challan / CIN / CPIN *"><input value={form.challanNo} onChange={(event) => setForm({ ...form, challanNo: event.target.value.toUpperCase() })} className={inputClass} maxLength={40} required /></Field>
               <Field label="BSR code"><input value={form.bsrCode} onChange={(event) => setForm({ ...form, bsrCode: event.target.value })} className={inputClass} maxLength={10} /></Field>
               <Field label="Paid on *"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} required /></Field>
-              <Field label="Paid from *" wide><SearchableSelect options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder="Bank account" /></Field>
-              {form.taxType === 'OTHER' ? <Field label="Ledger it clears *"><SearchableSelect options={ledgers} value={form.otherAccountId} onChange={(option) => setForm({ ...form, otherAccountId: String(option.id) })} placeholder="Ledger" /></Field> : <div />}
+              <Field label="Paid from *" wide><SearchableSelect buttonClassName={selectButtonClass} options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder="Bank account" /></Field>
+              {form.taxType === 'OTHER' ? <Field label="Ledger it clears *"><SearchableSelect buttonClassName={selectButtonClass} options={ledgers} value={form.otherAccountId} onChange={(option) => setForm({ ...form, otherAccountId: String(option.id) })} placeholder="Ledger" /></Field> : <div />}
               {fields.map(([key, label]) => <Field key={key} label={label}><input type="number" min={0} step="0.01" value={form.breakdown[key] ?? ''} onChange={(event) => setForm({ ...form, breakdown: { ...form.breakdown, [key]: event.target.value } })} className={inputClass} /></Field>)}
               <Field label="Challan link" wide><input value={form.proofUrl} onChange={(event) => setForm({ ...form, proofUrl: event.target.value })} className={inputClass} maxLength={500} placeholder="https://" /></Field>
               <Field label="Notes" wide><input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className={inputClass} maxLength={1000} /></Field>
             </div>
-            <p className="mt-4 text-right text-base font-bold">Total {formatInr(total)}</p>
+            <p className="mt-3 text-right text-[15px] font-semibold">Total {formatInr(total)}</p>
             <ModalFooter><Button onClick={() => setForm(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="primary" busy={busy} disabled={!form.challanNo || !form.bankAccountId || total <= 0}>Record &amp; post</Button></ModalFooter>
           </form>
         </Modal>
@@ -531,24 +531,24 @@ export function IncomeTaxModule() {
     <Panel title="Income tax & provisions" description="Book the tax provision (Dr Income Tax Expense, Cr Provision for Income Tax), pay advance tax with a challan, and track TDS deducted by customers. Keep assessment documents in the Document Vault." actions={canPost ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setProvision({ date: todayIso(), amount: '', narration: '' })}>Book provision</Button> : null}>
       {data.loading ? <LoadingState /> : data.error || !data.data ? <ErrorBanner message={data.error || 'Could not load.'} schemaMissing={data.schemaMissing} /> : (
         <>
-          <div className="grid gap-3 p-4 sm:grid-cols-4">
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Provision for income tax</p><p className="text-base font-bold">{formatInr(data.data.provision)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Advance tax paid</p><p className="text-base font-bold">{formatInr(data.data.advanceTax)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">TDS receivable</p><p className="text-base font-bold">{formatInr(data.data.tdsReceivable)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Tax expense this year</p><p className="text-base font-bold">{formatInr(data.data.expenseThisYear)}</p></div>
+          <div className="grid gap-3 p-3 sm:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Provision for income tax</p><p className="text-[15px] font-semibold">{formatInr(data.data.provision)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Advance tax paid</p><p className="text-[15px] font-semibold">{formatInr(data.data.advanceTax)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">TDS receivable</p><p className="text-[15px] font-semibold">{formatInr(data.data.tdsReceivable)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Tax expense this year</p><p className="text-[15px] font-semibold">{formatInr(data.data.expenseThisYear)}</p></div>
           </div>
-          <div className="grid gap-4 p-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-semibold">Advance tax instalments (s.211)</p>
+          <div className="grid gap-3 p-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="mb-2 text-[13px] font-semibold">Advance tax instalments (s.211)</p>
               <Field label="Estimated tax for the year"><input type="number" min={0} step="1" value={estimate} onChange={(event) => setEstimate(event.target.value)} className={inputClass} /></Field>
-              <table className="mt-3 w-full text-sm"><thead className="text-[11px] uppercase text-slate-500"><tr><th className="py-1 text-left">Due by</th><th className="py-1 text-right">Cumulative</th><th className="py-1 text-right">Still to pay</th></tr></thead>
+              <table className="mt-3 w-full text-[13px]"><thead className="text-[11px] uppercase text-slate-500"><tr><th className="py-1 text-left">Due by</th><th className="py-1 text-right">Cumulative</th><th className="py-1 text-right">Still to pay</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{INSTALMENTS.map(([due, percent]) => <tr key={due}><td className="py-1.5">{due} ({percent}%)</td><td className="py-1.5 text-right">{formatInr((estimated * percent) / 100)}</td><td className="py-1.5 text-right font-semibold">{formatInr(Math.max((estimated * percent) / 100 - paid, 0))}</td></tr>)}</tbody></table>
               <p className="mt-2 text-xs text-slate-500">Paid so far counts advance tax and TDS receivable. Record payments under Tax Payments & Challans (type Advance tax).</p>
             </div>
-            <div className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-semibold">Provisions and payments</p>
-              {!data.data.provisions.length && !data.data.challans.length ? <p className="text-sm text-slate-500">None yet.</p> : (
-                <table className="w-full text-sm"><tbody className="divide-y divide-slate-100">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="mb-2 text-[13px] font-semibold">Provisions and payments</p>
+              {!data.data.provisions.length && !data.data.challans.length ? <p className="text-[13px] text-slate-500">None yet.</p> : (
+                <table className="w-full text-[13px]"><tbody className="divide-y divide-slate-100">
                   {data.data.provisions.map((voucher) => <tr key={voucher.id}><td className="py-1.5">{formatDate(voucher.date)}</td><td className="py-1.5 text-xs">{voucher.narration}<span className="block font-mono text-slate-400">{voucher.number}</span></td><td className="py-1.5 text-right">{formatInr(voucher.totalAmount)}</td></tr>)}
                   {data.data.challans.map((challan) => <tr key={challan.id}><td className="py-1.5">{formatDate(challan.date)}</td><td className="py-1.5 text-xs">{enumLabel(challan.taxType)} {challan.period}<span className="block font-mono text-slate-400">{challan.challanNo}</span></td><td className="py-1.5 text-right">{formatInr(challan.total)}</td></tr>)}
                 </tbody></table>
@@ -559,8 +559,8 @@ export function IncomeTaxModule() {
       )}
       {provision ? (
         <Modal title="Book income tax provision" subtitle="A negative amount reverses an excess provision." onClose={() => { if (!busy) setProvision(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Date *"><input type="date" value={provision.date} onChange={(event) => setProvision({ ...provision, date: event.target.value })} className={inputClass} required /></Field>
               <Field label="Amount *"><input type="number" step="0.01" value={provision.amount} onChange={(event) => setProvision({ ...provision, amount: event.target.value })} className={inputClass} required /></Field>
               <Field label="Narration" wide><input value={provision.narration} onChange={(event) => setProvision({ ...provision, narration: event.target.value })} className={inputClass} maxLength={500} placeholder="e.g. Provision for FY 2026-27, Q2" /></Field>

@@ -2,12 +2,11 @@
 
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { Archive, Download, ExternalLink, FileUp, Plus, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { uploadFileToServer } from '@/lib/fileUpload';
-import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
+import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceHref, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { createSecureDocumentPreviewUrl } from '@/lib/secureDownload';
 import { todayIso } from './ledgerLookups';
 import { AlertsPanel } from './ReportModules';
@@ -18,10 +17,6 @@ import VoucherDetail from './VoucherDetail';
 type Year = { id: string; label: string; status: string; isCurrent: boolean; periods: Array<{ id: string; label: string; status: 'OPEN' | 'SOFT_CLOSED' | 'LOCKED'; startDate: string; endDate: string }> };
 const useYears = () => useResource(async () => (await api.get('/finance-hub/financial-years')).data.years as Year[], 'ca-years');
 const periodTone = { OPEN: 'amber', SOFT_CLOSED: 'blue', LOCKED: 'green' } as const;
-const useModuleHref = () => {
-  const pathname = usePathname();
-  return (key: string) => `${pathname}?module=${key}`;
-};
 const fyStart = () => {
   const today = todayIso();
   return `${Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 4 ? 1 : 0)}-04-01`;
@@ -58,22 +53,22 @@ type CaDashboard = { year: { label: string; status: string } | null; months: Arr
 
 /** Closing progress, open queries, review status, documents and recent activity for the CA. */
 export function CaDashboardModule() {
-  const href = useModuleHref();
+  const href = useFinanceHref();
   const data = useResource(async () => (await api.get('/finance-hub/ca/dashboard')).data as CaDashboard, 'ca-dashboard');
   const d = data.data;
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Panel title="CA dashboard" description={d?.year ? `Financial year ${d.year.label} (${enumLabel(d.year.status)}).` : 'Closing progress and audit activity.'}>
         {data.loading ? <LoadingState /> : data.error || !d ? <ErrorBanner message={data.error || 'Could not load.'} schemaMissing={data.schemaMissing} /> : (
           <>
-            <div className="grid gap-3 p-4 sm:grid-cols-4">
-              <Link href={href('ca-queries-checklist')} className="rounded-xl bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Open queries</p><p className="text-lg font-bold">{d.queries.open}</p>{d.queries.overdue ? <p className="text-[11px] font-semibold text-red-700">{d.queries.overdue} overdue</p> : null}</Link>
-              <Link href={href('accounting-review')} className="rounded-xl bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Reviewed / flagged</p><p className="text-lg font-bold">{d.reviews.REVIEWED ?? 0} / {d.reviews.FLAGGED ?? 0}</p></Link>
-              <Link href={href('document-vault')} className="rounded-xl bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Documents</p><p className="text-lg font-bold">{d.documents}</p></Link>
-              <Link href={href('monthly-closing')} className="rounded-xl bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Months closed</p><p className="text-lg font-bold">{d.months.filter((month) => month.status !== 'OPEN').length} / {d.months.length}</p></Link>
+            <div className="grid gap-3 p-3 sm:grid-cols-4">
+              <Link href={href('ca-queries-checklist')} className="rounded-lg bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Open queries</p><p className="text-[15px] font-semibold">{d.queries.open}</p>{d.queries.overdue ? <p className="text-[11px] font-semibold text-red-700">{d.queries.overdue} overdue</p> : null}</Link>
+              <Link href={href('accounting-review')} className="rounded-lg bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Reviewed / flagged</p><p className="text-[15px] font-semibold">{d.reviews.REVIEWED ?? 0} / {d.reviews.FLAGGED ?? 0}</p></Link>
+              <Link href={href('document-vault')} className="rounded-lg bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Documents</p><p className="text-[15px] font-semibold">{d.documents}</p></Link>
+              <Link href={href('monthly-closing')} className="rounded-lg bg-slate-50 p-3 hover:bg-amber-50"><p className="text-[11px] uppercase tracking-wide text-slate-500">Months closed</p><p className="text-[15px] font-semibold">{d.months.filter((month) => month.status !== 'OPEN').length} / {d.months.length}</p></Link>
             </div>
-            <div className="grid grid-cols-3 gap-2 px-4 pb-4 sm:grid-cols-6 lg:grid-cols-12">
-              {d.months.map((month) => <div key={month.id} className={`rounded-lg border p-2 text-center text-xs ${month.past && month.status === 'OPEN' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}><p className="font-semibold">{month.label}</p><Badge tone={periodTone[month.status]}>{enumLabel(month.status)}</Badge>{month.signedOff ? <p className="mt-1 text-[10px] text-emerald-700">Signed off</p> : null}</div>)}
+            <div className="grid grid-cols-3 gap-2 px-3 pb-4 sm:grid-cols-6 lg:grid-cols-12">
+              {d.months.map((month) => <div key={month.id} className={`rounded-lg border p-2 text-center text-xs ${month.past && month.status === 'OPEN' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}><p className="font-semibold">{month.label}</p><Badge tone={periodTone[month.status]}>{enumLabel(month.status)}</Badge>{month.signedOff ? <p className="mt-1 text-[11px] text-emerald-700">Signed off</p> : null}</div>)}
             </div>
           </>
         )}
@@ -81,7 +76,7 @@ export function CaDashboardModule() {
       <AlertsPanel />
       {d?.recent.length ? (
         <Panel title="Recent activity">
-          <ul className="divide-y divide-slate-100 text-sm">{d.recent.map((item) => <li key={item.id} className="flex justify-between gap-3 px-4 py-2"><span>{enumLabel(item.action)} · {item.entityType.replace(/^Fin/, '')}</span><span className="text-xs text-slate-500">{item.actor ?? 'System'} · {new Date(item.createdAt).toLocaleString('en-IN')}</span></li>)}</ul>
+          <ul className="divide-y divide-slate-100 text-[13px]">{d.recent.map((item) => <li key={item.id} className="flex justify-between gap-3 px-3 py-2"><span>{enumLabel(item.action)} · {item.entityType.replace(/^Fin/, '')}</span><span className="text-xs text-slate-500">{item.actor ?? 'System'} · {new Date(item.createdAt).toLocaleString('en-IN')}</span></li>)}</ul>
         </Panel>
       ) : null}
     </div>
@@ -132,16 +127,16 @@ export function DocumentVaultModule() {
   };
   return (
     <Panel title="Document vault" description="Keep returns, challans, statements, agreements and audit papers in one place. Files are stored privately; replacing a file keeps the earlier version in the archive." actions={canAdd ? <Button variant="primary" icon={<FileUp className="h-4 w-4" />} onClick={() => setForm({ title: '', category: 'OTHER', financialYear: '', period: '', link: '', file: null, expiresAt: '', tags: '', notes: '', previousId: null })}>Add document</Button> : null}>
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_200px_140px_auto]">
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[1fr_200px_140px_auto]">
         <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} className={inputClass} placeholder="Search title, file or tag" />
         <select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })} className={inputClass}><option value="">All categories</option>{CATEGORIES.map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select>
         <input value={filters.financialYear} onChange={(event) => setFilters({ ...filters, financialYear: event.target.value })} className={inputClass} placeholder="FY e.g. 2026-27" />
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={filters.archived} onChange={(event) => setFilters({ ...filters, archived: event.target.checked })} className="h-4 w-4 accent-amber-500" />Archive</label>
+        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={filters.archived} onChange={(event) => setFilters({ ...filters, archived: event.target.checked })} className="h-4 w-4 accent-amber-500" />Archive</label>
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No documents" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Document</th><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5">Year / period</th><th className="px-4 py-2.5">Added</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[900px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Document</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Year / period</th><th className="px-3 py-2">Added</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((doc) => (
                 <tr key={doc.id}>
@@ -162,14 +157,14 @@ export function DocumentVaultModule() {
       )}
       {form ? (
         <Modal title={form.previousId ? 'Upload a new version' : 'Add document'} onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Title *" wide><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className={inputClass} maxLength={200} required /></Field>
               <Field label="Category"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={inputClass}>{CATEGORIES.map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select></Field>
               <Field label="Financial year"><input value={form.financialYear} onChange={(event) => setForm({ ...form, financialYear: event.target.value })} className={inputClass} placeholder="2026-27" maxLength={20} /></Field>
               <Field label="Month"><input type="month" value={form.period} onChange={(event) => setForm({ ...form, period: event.target.value })} className={inputClass} /></Field>
               <Field label="Valid till"><input type="date" value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} className={inputClass} /></Field>
-              <Field label="File (PDF / image, up to 5 MB)" wide><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" onChange={(event) => setForm({ ...form, file: event.target.files?.[0] ?? null })} className="block w-full text-sm" /></Field>
+              <Field label="File (PDF / image, up to 5 MB)" wide><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" onChange={(event) => setForm({ ...form, file: event.target.files?.[0] ?? null })} className="block w-full text-[13px]" /></Field>
               <Field label="…or a link" wide hint="Google Drive / portal link if the file is stored elsewhere."><input value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} className={inputClass} placeholder="https://" maxLength={1000} /></Field>
               <Field label="Tags" wide hint="Comma separated"><input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} className={inputClass} /></Field>
               <Field label="Notes" wide><input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className={inputClass} maxLength={1000} /></Field>
@@ -189,7 +184,7 @@ export function MonthlyClosingModule() {
   const access = useFinanceWorkspaceAccess();
   const canClose = access.can(['fh.period.lock', 'fh.ca.manage']);
   const canLock = access.can(['fh.period.lock']);
-  const href = useModuleHref();
+  const href = useFinanceHref();
   const years = useYears();
   const [periodId, setPeriodId] = useState('');
   const allPeriods = (years.data ?? []).flatMap((year) => year.periods.map((period) => ({ ...period, year: year.label })));
@@ -215,17 +210,17 @@ export function MonthlyClosingModule() {
   const toggle = (key: string, done: boolean) => close && void act(() => api.put(`/finance-hub/ca/monthly-close/${close.period.id}`, { items: [{ key, done }] }), done ? 'Ticked.' : 'Unticked.');
   return (
     <Panel title="Monthly closing" description="Work through the checks, tick the checklist, sign off, then soft-close the month (only period managers can post into it) and lock it once the CA agrees.">
-      <div className="border-b border-slate-100 p-4"><Field label="Month"><select value={chosen} onChange={(event) => setPeriodId(event.target.value)} className={`${inputClass} max-w-xs`}>{allPeriods.map((period) => <option key={period.id} value={period.id}>{period.label} ({period.year}) · {enumLabel(period.status)}</option>)}</select></Field></div>
+      <div className="border-b border-slate-100 p-3"><Field label="Month"><select value={chosen} onChange={(event) => setPeriodId(event.target.value)} className={`${inputClass} max-w-xs`}>{allPeriods.map((period) => <option key={period.id} value={period.id}>{period.label} ({period.year}) · {enumLabel(period.status)}</option>)}</select></Field></div>
       {data.loading || years.loading ? <LoadingState /> : data.error || !close ? <ErrorBanner message={data.error || 'Choose a month.'} schemaMissing={data.schemaMissing} /> : (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200">
-            <p className="px-4 pt-3 text-sm font-semibold">Automatic checks</p>
-            <ul className="divide-y divide-slate-100">{close.checks.map((check) => <li key={check.key}><Link href={href(check.module)} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-amber-50/40"><span>{check.label}</span><Badge tone={check.ok ? 'green' : 'amber'}>{check.ok ? 'OK' : check.detail}</Badge></Link></li>)}</ul>
+        <div className="grid gap-3 p-3 lg:grid-cols-2">
+          <div className="rounded-lg border border-slate-200">
+            <p className="px-3 pt-3 text-[13px] font-semibold">Automatic checks</p>
+            <ul className="divide-y divide-slate-100">{close.checks.map((check) => <li key={check.key}><Link href={href(check.module)} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] hover:bg-amber-50/40"><span>{check.label}</span><Badge tone={check.ok ? 'green' : 'amber'}>{check.ok ? 'OK' : check.detail}</Badge></Link></li>)}</ul>
           </div>
-          <div className="rounded-xl border border-slate-200">
-            <p className="px-4 pt-3 text-sm font-semibold">Checklist</p>
-            <ul className="divide-y divide-slate-100">{close.items.map((item) => <li key={item.key} className="flex items-start gap-3 px-4 py-2 text-sm"><input type="checkbox" checked={item.done} disabled={!canClose || busy || Boolean(close.signedOff)} onChange={(event) => toggle(item.key, event.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" /><span className="flex-1">{item.label}{item.done ? <span className="block text-[11px] text-slate-500">{item.doneBy ?? ''} · {item.doneAt ? new Date(item.doneAt).toLocaleDateString('en-IN') : ''}</span> : null}</span></li>)}</ul>
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 p-4">
+          <div className="rounded-lg border border-slate-200">
+            <p className="px-3 pt-3 text-[13px] font-semibold">Checklist</p>
+            <ul className="divide-y divide-slate-100">{close.items.map((item) => <li key={item.key} className="flex items-start gap-3 px-3 py-2 text-[13px]"><input type="checkbox" checked={item.done} disabled={!canClose || busy || Boolean(close.signedOff)} onChange={(event) => toggle(item.key, event.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" /><span className="flex-1">{item.label}{item.done ? <span className="block text-[11px] text-slate-500">{item.doneBy ?? ''} · {item.doneAt ? new Date(item.doneAt).toLocaleDateString('en-IN') : ''}</span> : null}</span></li>)}</ul>
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 p-3">
               <Badge tone={periodTone[close.period.status]}>{enumLabel(close.period.status)}</Badge>
               {close.signedOff ? <span className="text-xs text-emerald-700">Signed off by {close.signedOff.by ?? '—'} on {new Date(close.signedOff.at).toLocaleDateString('en-IN')}</span> : null}
               <span className="flex-1" />
@@ -270,25 +265,25 @@ export function YearClosingModule() {
   const y = data.data;
   return (
     <Panel title="Financial year closing" description="After every month is soft-closed and the accounts are final: close the year to move its profit to Retained Earnings and start the next year's profit & loss at zero. Balance-sheet ledgers carry forward automatically.">
-      <div className="border-b border-slate-100 p-4"><Field label="Financial year"><select value={chosen} onChange={(event) => setYearId(event.target.value)} className={`${inputClass} max-w-xs`}>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.label}{year.isCurrent ? ' (current)' : ''}</option>)}</select></Field></div>
+      <div className="border-b border-slate-100 p-3"><Field label="Financial year"><select value={chosen} onChange={(event) => setYearId(event.target.value)} className={`${inputClass} max-w-xs`}>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.label}{year.isCurrent ? ' (current)' : ''}</option>)}</select></Field></div>
       {data.loading ? <LoadingState /> : data.error || !y ? <ErrorBanner message={data.error || 'Choose a year.'} schemaMissing={data.schemaMissing} /> : (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-sm font-semibold">Profit for {y.year.label}</p>
-            <p className={`text-2xl font-bold ${y.profit < 0 ? 'text-red-700' : ''}`}>{formatInr(y.profit)}</p>
-            <ul className="mt-3 space-y-2 text-sm">{y.gates.map((gate) => <li key={gate.key} className="flex justify-between gap-3"><span>{gate.label}</span><Badge tone={gate.ok ? 'green' : 'amber'}>{gate.ok ? 'OK' : gate.detail}</Badge></li>)}</ul>
+        <div className="grid gap-3 p-3 lg:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 p-3">
+            <p className="text-[13px] font-semibold">Profit for {y.year.label}</p>
+            <p className={`text-[18px] font-semibold ${y.profit < 0 ? 'text-red-700' : ''}`}>{formatInr(y.profit)}</p>
+            <ul className="mt-3 space-y-2 text-[13px]">{y.gates.map((gate) => <li key={gate.key} className="flex justify-between gap-3"><span>{gate.label}</span><Badge tone={gate.ok ? 'green' : 'amber'}>{gate.ok ? 'OK' : gate.detail}</Badge></li>)}</ul>
           </div>
-          <div className="rounded-xl border border-slate-200 p-4">
+          <div className="rounded-lg border border-slate-200 p-3">
             {y.close ? (
               <>
                 <Badge tone="green">Closed {new Date(y.close.at).toLocaleDateString('en-IN')}</Badge>
-                <p className="mt-2 text-sm">{formatInr(y.close.profit)} transferred to Retained Earnings by {y.close.voucher ? <button type="button" onClick={() => setOpenVoucher(y.close!.voucher!.id)} className="font-mono text-blue-700 hover:underline">{y.close.voucher.number}</button> : 'the closing journal'}.</p>
-                {canClose ? <div className="mt-4"><Button variant="danger" busy={busy} onClick={() => { const reason = window.prompt('Reason for reopening the year (the closing journal will be reversed):'); if (reason?.trim()) void act(() => api.post(`/finance-hub/ca/year-close/${y.year.id}/reopen`, { reason }), 'Year reopened.'); }}>Reopen year</Button></div> : null}
+                <p className="mt-2 text-[13px]">{formatInr(y.close.profit)} transferred to Retained Earnings by {y.close.voucher ? <button type="button" onClick={() => setOpenVoucher(y.close!.voucher!.id)} className="font-mono text-blue-700 hover:underline">{y.close.voucher.number}</button> : 'the closing journal'}.</p>
+                {canClose ? <div className="mt-3"><Button variant="danger" busy={busy} onClick={() => { const reason = window.prompt('Reason for reopening the year (the closing journal will be reversed):'); if (reason?.trim()) void act(() => api.post(`/finance-hub/ca/year-close/${y.year.id}/reopen`, { reason }), 'Year reopened.'); }}>Reopen year</Button></div> : null}
               </>
             ) : (
               <>
-                <p className="text-sm text-slate-600">Closing posts one journal dated {formatDate(y.year.endDate)}: every income and expense ledger is reversed into Retained Earnings. Lock March afterwards.</p>
-                {canClose ? <div className="mt-4"><Button variant="primary" busy={busy} disabled={y.gates.some((gate) => !gate.ok)} onClick={() => { if (window.confirm(`Close ${y.year.label} and transfer ${formatInr(y.profit)} to Retained Earnings?`)) void act(() => api.post(`/finance-hub/ca/year-close/${y.year.id}`), 'Year closed:'); }}>Close the year</Button></div> : <ReadOnlyNotice>Closing the year needs “Lock Periods”.</ReadOnlyNotice>}
+                <p className="text-[13px] text-slate-600">Closing posts one journal dated {formatDate(y.year.endDate)}: every income and expense ledger is reversed into Retained Earnings. Lock March afterwards.</p>
+                {canClose ? <div className="mt-3"><Button variant="primary" busy={busy} disabled={y.gates.some((gate) => !gate.ok)} onClick={() => { if (window.confirm(`Close ${y.year.label} and transfer ${formatInr(y.profit)} to Retained Earnings?`)) void act(() => api.post(`/finance-hub/ca/year-close/${y.year.id}`), 'Year closed:'); }}>Close the year</Button></div> : <ReadOnlyNotice>Closing the year needs “Lock Periods”.</ReadOnlyNotice>}
               </>
             )}
           </div>
@@ -331,11 +326,11 @@ export function CaQueriesModule() {
   };
   return (
     <Panel title="CA queries & checklist" description="Questions from the CA or auditor, the replies with evidence, and their status. Flags from Accounting Review arrive here linked to the voucher." actions={canWrite ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ title: '', description: '', category: '', priority: 'NORMAL', dueDate: '' })}>Raise query</Button> : null}>
-      <div className="border-b border-slate-100 p-4"><select value={status} onChange={(event) => setStatus(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All queries</option>{(['OPEN', 'ANSWERED', 'CLOSED'] as const).map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select></div>
+      <div className="border-b border-slate-100 p-3"><select value={status} onChange={(event) => setStatus(event.target.value)} className={`${inputClass} max-w-xs`}><option value="">All queries</option>{(['OPEN', 'ANSWERED', 'CLOSED'] as const).map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select></div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No queries" /> : (
         <ul className="divide-y divide-slate-100">
           {list.data.map((item) => (
-            <li key={item.id} className="p-4">
+            <li key={item.id} className="p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={queryTone[item.status]}>{enumLabel(item.status)}</Badge>
                 {item.priority === 'HIGH' ? <Badge tone="red">High</Badge> : null}
@@ -343,9 +338,9 @@ export function CaQueriesModule() {
                 <span className="font-semibold">{item.title}</span>
                 <span className="ml-auto text-xs text-slate-500">{item.raisedBy ?? '—'} · {formatDate(item.createdAt)}{item.dueDate ? ` · due ${formatDate(item.dueDate)}` : ''}</span>
               </div>
-              <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{item.description}</p>
+              <p className="mt-1 whitespace-pre-line text-[13px] text-slate-700">{item.description}</p>
               {item.entityType === 'FinVoucher' && item.entityId ? <button type="button" onClick={() => setOpenVoucher(item.entityId)} className="mt-1 text-xs font-semibold text-blue-700 hover:underline">Open the voucher</button> : null}
-              {item.responses.length ? <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">{item.responses.map((response, index) => <li key={index} className="text-sm"><span className="text-xs text-slate-500">{response.byName ?? '—'} · {new Date(response.at).toLocaleString('en-IN')}</span><p className="whitespace-pre-line">{response.text}</p>{response.fileUrl ? <a href={response.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-700 hover:underline">evidence</a> : null}</li>)}</ul> : null}
+              {item.responses.length ? <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">{item.responses.map((response, index) => <li key={index} className="text-[13px]"><span className="text-xs text-slate-500">{response.byName ?? '—'} · {new Date(response.at).toLocaleString('en-IN')}</span><p className="whitespace-pre-line">{response.text}</p>{response.fileUrl ? <a href={response.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-700 hover:underline">evidence</a> : null}</li>)}</ul> : null}
               <div className="mt-2 flex gap-2">
                 {item.status !== 'CLOSED' && canWrite ? <Button variant="ghost" onClick={() => { setReplying(item); setReply({ text: '', fileUrl: '' }); }}>Reply</Button> : null}
                 {item.status !== 'CLOSED' && canClose ? <Button variant="ghost" busy={busy} onClick={() => void act(() => api.post(`/finance-hub/ca/queries/${item.id}/close`, {}), 'Closed.')}>Close</Button> : null}
@@ -357,8 +352,8 @@ export function CaQueriesModule() {
       )}
       {form ? (
         <Modal title="Raise a query" onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={(event) => { event.preventDefault(); void act(() => api.post('/finance-hub/ca/queries', { ...form, dueDate: form.dueDate || null, category: form.category || null }), 'Query raised.').then((ok) => { if (ok) setForm(null); }); }} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={(event) => { event.preventDefault(); void act(() => api.post('/finance-hub/ca/queries', { ...form, dueDate: form.dueDate || null, category: form.category || null }), 'Query raised.').then((ok) => { if (ok) setForm(null); }); }} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Title *" wide><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className={inputClass} maxLength={200} required /></Field>
               <Field label="Question *" wide><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={`${inputClass} min-h-[100px]`} maxLength={4000} required /></Field>
               <Field label="Category"><input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={inputClass} maxLength={60} placeholder="GST, TDS, fixed assets…" /></Field>
@@ -371,7 +366,7 @@ export function CaQueriesModule() {
       ) : null}
       {replying ? (
         <Modal title={`Reply: ${replying.title}`} onClose={() => { if (!busy) setReplying(null); }}>
-          <form onSubmit={(event) => { event.preventDefault(); void act(() => api.post(`/finance-hub/ca/queries/${replying.id}/reply`, { ...reply, fileUrl: reply.fileUrl || null }), 'Reply sent.').then((ok) => { if (ok) setReplying(null); }); }} className="p-5 sm:p-7">
+          <form onSubmit={(event) => { event.preventDefault(); void act(() => api.post(`/finance-hub/ca/queries/${replying.id}/reply`, { ...reply, fileUrl: reply.fileUrl || null }), 'Reply sent.').then((ok) => { if (ok) setReplying(null); }); }} className="p-4">
             <Field label="Reply *"><textarea value={reply.text} onChange={(event) => setReply({ ...reply, text: event.target.value })} className={`${inputClass} min-h-[100px]`} maxLength={4000} required /></Field>
             <div className="mt-3"><Field label="Evidence link" hint="Add the file to the Document Vault and paste its link, or any https link."><input value={reply.fileUrl} onChange={(event) => setReply({ ...reply, fileUrl: event.target.value })} className={inputClass} maxLength={1000} /></Field></div>
             <ModalFooter><Button onClick={() => setReplying(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="primary" busy={busy} disabled={!reply.text.trim()}>Send</Button></ModalFooter>
@@ -407,18 +402,18 @@ export function AccountingReviewModule() {
   const counts = list.data?.counts;
   return (
     <Panel title="Accounting review" description="Posted vouchers for the CA to check. Self-approved entries (same maker and poster) are highlighted.">
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-5">
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-5">
         <input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} className={inputClass} aria-label="From" />
         <input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} className={inputClass} aria-label="To" />
         <select value={filters.scope} onChange={(event) => setFilters({ ...filters, scope: event.target.value })} className={inputClass}><option value="manual">Manual vouchers</option><option value="suspense">Touching Suspense</option><option value="all">All vouchers</option></select>
         <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className={inputClass}><option value="pending">Not reviewed</option><option value="flagged">Flagged</option><option value="">All</option></select>
         <input type="number" min={0} value={filters.minAmount} onChange={(event) => setFilters({ ...filters, minAmount: event.target.value })} className={inputClass} placeholder="Min amount" />
       </div>
-      {counts ? <p className="px-4 pt-3 text-sm text-slate-600">{counts.total} vouchers · {counts.reviewed} reviewed · {counts.flagged} flagged · {counts.pending} to review</p> : null}
+      {counts ? <p className="px-3 pt-3 text-[13px] text-slate-600">{counts.total} vouchers · {counts.reviewed} reviewed · {counts.flagged} flagged · {counts.pending} to review</p> : null}
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.rows.length ? <EmptyState title="Nothing to review" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Voucher</th><th className="px-4 py-2.5">Narration</th><th className="px-4 py-2.5">Made / posted by</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Review</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2">Made / posted by</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Review</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.rows.map((row) => (
                 <tr key={row.id} className={row.selfApproved ? 'bg-amber-50/40' : ''}>
@@ -468,18 +463,18 @@ export function ImportTransactionsModule() {
   return (
     <Panel title="Import transactions" description="Upload vouchers as CSV: one row per line, rows with the same ref form one voucher (ledgers by code, parties by code or name). Check first; importing creates drafts, or posted vouchers if you tick post. A voucher imported before is skipped." actions={<Button icon={<Download className="h-4 w-4" />} onClick={template}>Template</Button>}>
       {!canImport ? <ReadOnlyNotice>Imports need “Manage Imports”.</ReadOnlyNotice> : (
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold"><Upload className="h-4 w-4" />{file ? `${file.name} (${file.rows.length} rows)` : 'Choose CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={async (event) => { const chosen = event.target.files?.[0]; if (chosen) { setFile({ name: chosen.name, rows: parseCsv(await chosen.text()).map((row) => ({ ...row, costCentre: row.costcentre ?? '', lineNarration: row.linenarration ?? '' })) }); setResult(null); } }} /></label>
-          {canPost ? <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={post} onChange={(event) => setPost(event.target.checked)} className="h-4 w-4 accent-amber-500" />Post (approval policy applies)</label> : null}
+        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
+          <label className="inline-flex cursor-pointer items-center h-8 gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium"><Upload className="h-4 w-4" />{file ? `${file.name} (${file.rows.length} rows)` : 'Choose CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={async (event) => { const chosen = event.target.files?.[0]; if (chosen) { setFile({ name: chosen.name, rows: parseCsv(await chosen.text()).map((row) => ({ ...row, costCentre: row.costcentre ?? '', lineNarration: row.linenarration ?? '' })) }); setResult(null); } }} /></label>
+          {canPost ? <label className="flex items-center gap-2 pb-2 text-[13px]"><input type="checkbox" checked={post} onChange={(event) => setPost(event.target.checked)} className="h-4 w-4 accent-amber-500" />Post (approval policy applies)</label> : null}
           <Button busy={busy} disabled={!file} onClick={() => void run(true)}>Check</Button>
           <Button variant="primary" busy={busy} disabled={!file || !result?.dryRun || !result.ok} onClick={() => void run(false)}>Import {result?.dryRun ? result.ok : ''} vouchers</Button>
         </div>
       )}
       {result ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2">Ref</th><th className="px-4 py-2">Result</th><th className="px-4 py-2">Details</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{result.results.map((row) => <tr key={row.ref}><td className="px-4 py-2 font-mono text-xs">{row.ref}</td><td className="px-4 py-2"><Badge tone={row.ok ? 'green' : row.duplicate ? 'slate' : 'red'}>{row.ok ? (result.dryRun ? 'Ready' : enumLabel(row.status ?? 'DRAFT')) : row.duplicate ? 'Duplicate' : 'Error'}</Badge></td><td className="px-4 py-2 text-xs">{row.number ?? ''}{row.errors.join(' · ')}</td></tr>)}</tbody>
+          <table className="w-full text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Ref</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Details</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{result.results.map((row) => <tr key={row.ref}><td className="px-3 py-2 font-mono text-xs">{row.ref}</td><td className="px-3 py-2"><Badge tone={row.ok ? 'green' : row.duplicate ? 'slate' : 'red'}>{row.ok ? (result.dryRun ? 'Ready' : enumLabel(row.status ?? 'DRAFT')) : row.duplicate ? 'Duplicate' : 'Error'}</Badge></td><td className="px-3 py-2 text-xs">{row.number ?? ''}{row.errors.join(' · ')}</td></tr>)}</tbody>
           </table>
         </div>
       ) : <EmptyState title="Choose a CSV to check" description="Columns: ref, date, type (JOURNAL / PAYMENT / RECEIPT / CONTRA / ADJUSTMENT), account, party, costCentre, debit, credit, narration, reference." />}
@@ -491,7 +486,7 @@ export function ImportTransactionsModule() {
 export function ImportOpeningBalancesModule() {
   const access = useFinanceWorkspaceAccess();
   const canImport = access.can(['fh.import.manage']);
-  const href = useModuleHref();
+  const href = useFinanceHref();
   const years = useYears();
   const [yearId, setYearId] = useState('');
   const chosen = yearId || years.data?.find((year) => year.isCurrent)?.id || '';
@@ -513,18 +508,18 @@ export function ImportOpeningBalancesModule() {
     }
   };
   return (
-    <Panel title="Import opening balances" description="Ledger balances on the first day of the year (and party-wise bills). The import fills the opening-balance draft; finalise it on Opening Balances once debit = credit." actions={<><Button icon={<Download className="h-4 w-4" />} onClick={() => saveFile('opening-balances-template.csv', '﻿account,party,debit,credit,billRef,billDate,dueDate,note\n1350,,25000,,,,,Cash in hand\n1221,P-000001,118000,,INV-77,15-03-2026,14-04-2026,\n3100,,,143000,,,,Capital\n', 'text/csv')}>Template</Button><Link href={href('opening-balances')} className="text-sm font-semibold text-blue-700 hover:underline">Opening balances →</Link></>}>
+    <Panel title="Import opening balances" description="Ledger balances on the first day of the year (and party-wise bills). The import fills the opening-balance draft; finalise it on Opening Balances once debit = credit." actions={<><Button icon={<Download className="h-4 w-4" />} onClick={() => saveFile('opening-balances-template.csv', '﻿account,party,debit,credit,billRef,billDate,dueDate,note\n1350,,25000,,,,,Cash in hand\n1221,P-000001,118000,,INV-77,15-03-2026,14-04-2026,\n3100,,,143000,,,,Capital\n', 'text/csv')}>Template</Button><Link href={href('opening-balances')} className="text-[13px] font-semibold text-blue-700 hover:underline">Opening balances →</Link></>}>
       {!canImport ? <ReadOnlyNotice>Imports need “Manage Imports”.</ReadOnlyNotice> : (
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
+        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
           <Field label="Financial year"><select value={chosen} onChange={(event) => setYearId(event.target.value)} className={inputClass}>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></Field>
           <Field label="Existing lines"><select value={mode} onChange={(event) => setMode(event.target.value as 'merge' | 'replace')} className={inputClass}><option value="merge">Keep, update matching</option><option value="replace">Replace all</option></select></Field>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold"><Upload className="h-4 w-4" />{file ? `${file.name} (${file.rows.length})` : 'Choose CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={async (event) => { const chosenFile = event.target.files?.[0]; if (chosenFile) { setFile({ name: chosenFile.name, rows: parseCsv(await chosenFile.text()) }); setResult(null); } }} /></label>
+          <label className="inline-flex cursor-pointer items-center h-8 gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium"><Upload className="h-4 w-4" />{file ? `${file.name} (${file.rows.length})` : 'Choose CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={async (event) => { const chosenFile = event.target.files?.[0]; if (chosenFile) { setFile({ name: chosenFile.name, rows: parseCsv(await chosenFile.text()) }); setResult(null); } }} /></label>
           <Button busy={busy} disabled={!file || !chosen} onClick={() => void run(true)}>Check</Button>
           <Button variant="primary" busy={busy} disabled={!file || !result?.dryRun || result.errors.length > 0} onClick={() => void run(false)}>Save to draft</Button>
         </div>
       )}
       {result ? (
-        <div className="p-4 text-sm">
+        <div className="p-3 text-[13px]">
           <p>Lines {result.lines} · Debit {formatInr(result.totals.debit)} · Credit {formatInr(result.totals.credit)} · <span className={result.totals.difference ? 'font-semibold text-red-700' : 'text-emerald-700'}>Difference {formatInr(result.totals.difference)}</span></p>
           {result.errors.length ? <ul className="mt-2 list-disc pl-5 text-red-700">{result.errors.map((error) => <li key={`${error.row}-${error.error}`}>Row {error.row}: {error.error}</li>)}</ul> : null}
         </div>
@@ -562,14 +557,14 @@ export function DownloadReportsModule({ tallyOnly = false }: { tallyOnly?: boole
   };
   return (
     <Panel title={tallyOnly ? 'Tally / accounting export' : 'Download reports'} description={tallyOnly ? 'Tally Prime XML with ledger masters and the period’s posted vouchers. In Tally: Gateway → Import → Masters, then Transactions. Party lines become party ledgers under Sundry Debtors / Creditors.' : 'CSV files for the CA, auditors or spreadsheets. Each download is recorded in the audit trail.'}>
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
         <Field label="From"><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={inputClass} /></Field>
         <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={inputClass} /></Field>
       </div>
       {!canExport ? <ReadOnlyNotice>Downloads need “Export Data” or “Export Reports”.</ReadOnlyNotice> : (
-        <div className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">
           {(tallyOnly ? [{ kind: 'tally', label: 'Tally Prime XML', hint: 'Masters + vouchers' }, { kind: 'chart-of-accounts', label: 'Chart of accounts (CSV)', hint: 'For mapping ledgers' }, { kind: 'day-book', label: 'Day book (CSV)', hint: 'For other software' }] : [...EXPORTS, { kind: 'tally', label: 'Tally Prime XML', hint: 'Masters + vouchers' }]).map((item) => (
-            <div key={item.kind} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+            <div key={item.kind} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
               <div><p className="font-semibold">{item.label}</p><p className="text-xs text-slate-500">{item.hint}</p></div>
               <Button icon={<Download className="h-4 w-4" />} busy={busy === item.kind} onClick={() => void download(item.kind)}>Download</Button>
             </div>
@@ -582,7 +577,7 @@ export function DownloadReportsModule({ tallyOnly = false }: { tallyOnly?: boole
 
 /** Hub linking every import and export screen. */
 export function ImportExportHubModule() {
-  const href = useModuleHref();
+  const href = useFinanceHref();
   const cards: Array<[string, string, string]> = [
     ['import-bank-statements', 'Bank statements', 'Upload on the Expenses page; reconcile in Banking'],
     ['import-opening-balances', 'Opening balances', 'Ledger and party balances from a sheet'],
@@ -593,7 +588,7 @@ export function ImportExportHubModule() {
   ];
   return (
     <Panel title="Import / export" description="Bring data in with a check-first step, and take reports out for the CA or Tally.">
-      <div className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">{cards.map(([key, label, hint]) => <Link key={key} href={href(key)} className="rounded-xl border border-slate-200 p-4 hover:border-amber-300 hover:bg-amber-50/40"><p className="font-semibold">{label}</p><p className="text-xs text-slate-500">{hint}</p></Link>)}</div>
+      <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">{cards.map(([key, label, hint]) => <Link key={key} href={href(key)} className="rounded-lg border border-slate-200 p-3 hover:border-amber-300 hover:bg-amber-50/40"><p className="font-semibold">{label}</p><p className="text-xs text-slate-500">{hint}</p></Link>)}</div>
     </Panel>
   );
 }
@@ -612,8 +607,8 @@ export function UploadHistoryModule() {
       {data.loading ? <LoadingState /> : data.error || !data.data ? <ErrorBanner message={data.error || 'Could not load.'} schemaMissing={data.schemaMissing} /> : tab === 'imports' ? (
         !data.data.imports.length ? <EmptyState title="No imports yet" /> : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">When</th><th className="px-4 py-2.5">Kind</th><th className="px-4 py-2.5">File</th><th className="px-4 py-2.5 text-right">Rows</th><th className="px-4 py-2.5 text-right">Created</th><th className="px-4 py-2.5 text-right">Failed</th><th className="px-4 py-2.5">By</th></tr></thead>
+            <table className="w-full min-w-[860px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">When</th><th className="px-3 py-2">Kind</th><th className="px-3 py-2">File</th><th className="px-3 py-2 text-right">Rows</th><th className="px-3 py-2 text-right">Created</th><th className="px-3 py-2 text-right">Failed</th><th className="px-3 py-2">By</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {data.data.imports.map((item) => (
                   <tr key={`${item.source}-${item.id}`}>
@@ -631,11 +626,11 @@ export function UploadHistoryModule() {
           </div>
         )
       ) : !data.data.exports.length ? <EmptyState title="No downloads yet" /> : (
-        <ul className="divide-y divide-slate-100 text-sm">{data.data.exports.map((item) => <li key={item.id} className="flex justify-between gap-3 px-4 py-2"><span>{enumLabel(item.kind)}</span><span className="text-xs text-slate-500">{item.by ?? '—'} · {new Date(item.at).toLocaleString('en-IN')}</span></li>)}</ul>
+        <ul className="divide-y divide-slate-100 text-[13px]">{data.data.exports.map((item) => <li key={item.id} className="flex justify-between gap-3 px-3 py-2"><span>{enumLabel(item.kind)}</span><span className="text-xs text-slate-500">{item.by ?? '—'} · {new Date(item.at).toLocaleString('en-IN')}</span></li>)}</ul>
       )}
       {errorsOf ? (
         <Modal title="Import errors" subtitle={errorsOf.fileName ?? undefined} onClose={() => setErrorsOf(null)}>
-          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap p-5 text-xs">{JSON.stringify(errorsOf.errors, null, 2)}</pre>
+          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap p-4 text-xs">{JSON.stringify(errorsOf.errors, null, 2)}</pre>
           <ModalFooter><Button onClick={() => setErrorsOf(null)}>Close</Button></ModalFooter>
         </Modal>
       ) : null}

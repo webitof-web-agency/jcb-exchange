@@ -4,9 +4,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -16,13 +13,11 @@ import {
   FileSpreadsheet,
   FileText,
   Landmark,
-  Loader2,
   Pencil,
   Plus,
   Search,
   Trash2,
   Upload,
-  WalletCards,
   X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -36,6 +31,9 @@ import { buildPaginationItems } from '@/lib/paginationUtils';
 import BrandLoader from '@/components/ui/BrandLoader';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { useAuthStore } from '@/store/authStore';
+import { useRequestedNew } from '@/lib/financeWorkspaceClient';
+import FinancePageHeader from '@/components/financeWorkspace/FinancePageHeader';
+import { Badge, Button, buttonLinkClass, DatePresets, Field, inputClass, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
 
 type FinanceType = 'DEBIT' | 'CREDIT';
 type PaymentMethod = 'CASH' | 'UPI' | 'NEFT' | 'RTGS' | 'IMPS' | 'BANK_TRANSFER' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'CHEQUE' | 'OTHER';
@@ -114,7 +112,7 @@ const defaultCategories = [
   'Imported / Uncategorized',
 ];
 
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/20';
+const PAGE_SIZES = [25, 50, 100];
 
 const localDate = () => {
   const date = new Date();
@@ -164,38 +162,6 @@ const errorMessage = (error: unknown, fallback: string) => {
 };
 
 const importRowValue = (row: Record<string, string>, keys: string[]) => keys.map((key) => row[key]).find((value) => value !== undefined && value !== '') || '';
-
-function Field({ label: fieldLabel, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
-  const required = fieldLabel.endsWith('*');
-  return (
-    <div className={wide ? 'md:col-span-2' : ''}>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-        {required ? fieldLabel.slice(0, -1).trim() : fieldLabel}
-        {required ? <span className="ml-1 text-red-500">*</span> : null}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function Modal({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 sm:p-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="my-auto w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4 sm:px-7">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-            {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
-          </div>
-          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function SelectField({
   value,
@@ -268,18 +234,18 @@ function SelectField({
             toggleOpen();
           }
         }}
-        className={`flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border bg-slate-50 px-3 py-2.5 text-left text-sm outline-none transition-all duration-150 focus:ring-2 focus:ring-amber-400/20 ${isOpen ? 'border-amber-400 bg-white shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-white'}`}
+        className={`flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-slate-50 px-2.5 text-left text-[13px] outline-none transition focus:ring-2 focus:ring-amber-400/20 ${isOpen ? 'border-amber-400 bg-white' : 'border-slate-200 hover:border-slate-300 hover:bg-white'}`}
       >
         <span className={`truncate ${selectedOption?.value ? 'text-slate-900' : 'text-slate-500'}`}>{selectedOption?.label || placeholder || 'Select option'}</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen ? (
-        <div className="absolute left-0 top-full z-[90] mt-2 max-h-72 min-w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)]">
+        <div className="absolute left-0 top-full z-[90] mt-1 max-h-72 min-w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
           {searchable ? (
-            <div className="sticky top-0 z-10 bg-white pb-1.5">
+            <div className="sticky top-0 z-10 bg-white pb-1">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="search"
                   value={searchQuery}
@@ -287,7 +253,7 @@ function SelectField({
                   placeholder="Search options..."
                   aria-label="Search options"
                   autoFocus
-                  className="w-full rounded-xl bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-100"
+                  className="h-8 w-full rounded-md bg-slate-50 pl-8 pr-2 text-[13px] text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-100"
                 />
               </div>
             </div>
@@ -303,13 +269,13 @@ function SelectField({
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => { onChange(option.value); close(); }}
-                  className={`flex min-h-[42px] w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm transition-colors duration-150 ${isSelected ? 'bg-amber-50 font-bold text-slate-950' : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'}`}
+                  className={`flex h-8 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-[13px] transition-colors duration-150 ${isSelected ? 'bg-amber-50 font-medium text-slate-950' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'}`}
                 >
                   <span className="truncate">{option.label}</span>
-                  {isSelected ? <Check className="h-4 w-4 shrink-0 text-amber-600" /> : null}
+                  {isSelected ? <Check className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
                 </button>
               );
-            }) : <p className="px-3 py-2.5 text-sm text-slate-500">No matching options</p>}
+            }) : <p className="px-2.5 py-2 text-[13px] text-slate-500">No matching options</p>}
           </div>
         </div>
       ) : null}
@@ -346,20 +312,7 @@ export default function ExpensesPage() {
   const [toFilter, setToFilter] = useState('');
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [openPageSizeDropdown, setOpenPageSizeDropdown] = useState(false);
-
-  useEffect(() => {
-    if (!openPageSizeDropdown) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.rows-per-page-dropdown-container')) {
-        setOpenPageSizeDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [openPageSizeDropdown]);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -392,7 +345,8 @@ export default function ExpensesPage() {
     [currentPageForView, totalPages]
   );
 
-  const [formOpen, setFormOpen] = useState(false);
+  const requestedNew = useRequestedNew(canCreate ? ['1'] : []);
+  const [formOpen, setFormOpen] = useState(Boolean(requestedNew));
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [form, setForm] = useState<FinanceForm>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -601,355 +555,228 @@ export default function ExpensesPage() {
   if (!hasHydrated || loading) return <BrandLoader variant="section" size="md" bg="light" />;
 
   if (!canRead) {
-    return <div className="m-6 rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">You do not have permission to access expenses.</div>;
+    return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-[13px] font-medium text-red-700">You do not have permission to access expenses.</div>;
   }
 
+  const hasFilters = Boolean(query || typeFilter || methodFilter || categoryFilter || fromFilter || toFilter);
+  const kpis: Array<[string, string, string]> = [
+    ['Total debit', moneyLabel(summary.debit), 'text-red-700'],
+    ['Total credit', moneyLabel(summary.credit), 'text-emerald-700'],
+    ['Net movement', moneyLabel(summary.net), summary.net >= 0 ? 'text-emerald-700' : 'text-red-700'],
+    ['Records', String(totalItems), 'text-slate-900'],
+  ];
+
   return (
-    <div className="space-y-4">
-      {error ? <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button type="button" onClick={() => void loadTransactions(false)} className="font-semibold underline">Retry</button></div> : null}
-
-      {/* 1. 3 Summary Cards at the very TOP */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-red-100 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Total debit</span>
-            <ArrowUpRight className="h-5 w-5 text-red-500" />
-          </div>
-          <p className="mt-2 text-xl font-bold text-red-600">{moneyLabel(summary.debit)}</p>
-        </div>
-        <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Total credit</span>
-            <ArrowDownLeft className="h-5 w-5 text-emerald-500" />
-          </div>
-          <p className="mt-2 text-xl font-bold text-emerald-600">{moneyLabel(summary.credit)}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Net movement</span>
-            <WalletCards className="h-5 w-5 text-amber-500" />
-          </div>
-          <p className={`mt-2 text-xl font-bold ${summary.net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            {moneyLabel(summary.net)}
-          </p>
-        </div>
-      </div>
-
-      {/* 2. Main Table Card with Clean 2-Row Aligned Header */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* Row 1: Search, Category/Method Filters & Action Buttons */}
-        <div className="flex flex-col gap-3.5 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center flex-1 min-w-0">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-64 lg:w-72 shrink-0">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search name, narration, UTR..."
-                className={`${inputClass} pl-9 text-xs py-2 w-full`}
-              />
-            </div>
-
-            {/* Select Filters: Grid on small mobile screens, flex on sm+ */}
-            <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto sm:items-center">
-              <SelectField
-                value={typeFilter}
-                onChange={setTypeFilter}
-                placeholder="All types"
-                className="w-full sm:w-[125px]"
-                options={[
-                  { value: 'DEBIT', label: 'Debit' },
-                  { value: 'CREDIT', label: 'Credit' },
-                ]}
-              />
-
-              <SelectField
-                value={methodFilter}
-                onChange={setMethodFilter}
-                placeholder="All methods"
-                className="w-full sm:w-[145px]"
-                searchable
-                options={paymentMethods}
-              />
-
-              <SelectField
-                value={categoryFilter}
-                onChange={setCategoryFilter}
-                placeholder="All categories"
-                className="col-span-2 w-full sm:col-span-1 sm:w-[160px]"
-                searchable
-                options={categories.map((item) => ({ value: item, label: item }))}
-              />
-            </div>
-          </div>
-
-          {/* Action Buttons: Import, Export, + Add */}
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 lg:pt-0 border-t border-slate-100 lg:border-t-0">
-            {canImport ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setImportError('');
-                  setImportOpen(true);
-                }}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 sm:py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-amber-400 hover:text-slate-900 cursor-pointer"
-              >
-                <Upload className="h-4 w-4 text-slate-500" />
-                <span>Import</span>
-              </button>
-            ) : null}
-
+    <div className="space-y-3 tabular-nums">
+      <FinancePageHeader
+        page={{ href: pathname, label: 'Expenses & Transactions', group: 'Expenses & Assets' }}
+        actions={(
+          <>
+            {canImport ? <Button icon={<Upload />} onClick={() => { setImportError(''); setImportOpen(true); }}>Import</Button> : null}
             {canExport ? (
               <PortalActionDropdown
                 align="right"
-                trigger={
-                  <div className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 sm:py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-amber-400 hover:text-slate-900 cursor-pointer">
-                    <Download className="h-4 w-4 text-amber-600" />
-                    <span>Export</span>
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-                  </div>
-                }
+                trigger={<span className={buttonLinkClass('secondary')}><Download className="h-3.5 w-3.5 text-amber-600" />Export<ChevronDown className="h-3.5 w-3.5 text-slate-400" /></span>}
                 items={[
-                  {
-                    label: 'Export as CSV (.csv)',
-                    icon: <Download className="h-4 w-4 text-slate-600" />,
-                    onClick: () => exportTransactions('csv'),
-                  },
-                  {
-                    label: 'Export as Excel (.xls)',
-                    icon: <FileSpreadsheet className="h-4 w-4 text-emerald-600" />,
-                    onClick: () => exportTransactions('xls'),
-                  },
+                  { label: 'Export as CSV (.csv)', icon: <Download className="h-4 w-4 text-slate-600" />, onClick: () => exportTransactions('csv') },
+                  { label: 'Export as Excel (.xls)', icon: <FileSpreadsheet className="h-4 w-4 text-emerald-600" />, onClick: () => exportTransactions('xls') },
                 ]}
               />
             ) : null}
+            {canCreate ? <Button variant="primary" icon={<Plus />} onClick={openCreate}>Add transaction</Button> : null}
+          </>
+        )}
+      />
 
-            {canCreate ? (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-950 shadow-xs transition hover:bg-amber-300 cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Add</span>
-              </button>
+      {error ? <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700"><span>{error}</span><button type="button" onClick={() => void loadTransactions(false)} className="font-medium underline">Retry</button></div> : null}
+
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 lg:grid-cols-4">
+        {kpis.map(([title, value, tone]) => (
+          <div key={title} className="bg-white px-3 py-2.5">
+            <p className="text-[11px] font-medium text-slate-500">{title}</p>
+            <p className={`mt-0.5 truncate text-[15px] font-semibold ${tone}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, narration, UTR…" className={`${inputClass} pl-8`} />
+          </div>
+          <SelectField value={typeFilter} onChange={setTypeFilter} placeholder="All types" className="w-[calc(50%-4px)] sm:w-28" options={[{ value: 'DEBIT', label: 'Debit' }, { value: 'CREDIT', label: 'Credit' }]} />
+          <SelectField value={methodFilter} onChange={setMethodFilter} placeholder="All methods" className="w-[calc(50%-4px)] sm:w-36" searchable options={paymentMethods} />
+          <SelectField value={categoryFilter} onChange={setCategoryFilter} placeholder="All categories" className="w-full sm:w-44" searchable options={categories.map((item) => ({ value: item, label: item }))} />
+          <div className="flex w-full items-center gap-1.5 sm:w-auto">
+            <input type="date" value={fromFilter} onChange={(event) => setFromFilter(event.target.value)} className={`${inputClass} sm:w-[136px]`} aria-label="From date" />
+            <span className="text-[12px] text-slate-400">to</span>
+            <input type="date" value={toFilter} onChange={(event) => setToFilter(event.target.value)} className={`${inputClass} sm:w-[136px]`} aria-label="To date" />
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <DatePresets from={fromFilter} to={toFilter} onSelect={(range) => { setFromFilter(range.from); setToFilter(range.to); }} />
+            {hasFilters ? (
+              <button type="button" onClick={() => { setQuery(''); setTypeFilter(''); setMethodFilter(''); setCategoryFilter(''); setFromFilter(''); setToFilter(''); }} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-red-600 hover:bg-red-50"><X className="h-3.5 w-3.5" />Clear</button>
             ) : null}
           </div>
         </div>
 
-        {/* Row 2: Date Range Filter Sub-Bar & Record Count */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 shrink-0">Date range</span>
-            <div className="flex items-center gap-1.5 flex-1 min-w-[240px] sm:min-w-0 sm:flex-none">
-              <div className="relative flex-1 sm:w-[135px]">
-                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={fromFilter}
-                  onChange={(event) => setFromFilter(event.target.value)}
-                  className={`${inputClass} pl-9 text-xs py-1.5 w-full bg-white`}
-                  aria-label="From date"
-                />
-              </div>
-              <span className="text-xs text-slate-400 font-medium shrink-0">to</span>
-              <div className="relative flex-1 sm:w-[135px]">
-                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={toFilter}
-                  onChange={(event) => setToFilter(event.target.value)}
-                  className={`${inputClass} pl-9 text-xs py-1.5 w-full bg-white`}
-                  aria-label="To date"
-                />
-              </div>
-            </div>
-
-            {(query || typeFilter || methodFilter || categoryFilter || fromFilter || toFilter) ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  setTypeFilter('');
-                  setMethodFilter('');
-                  setCategoryFilter('');
-                  setFromFilter('');
-                  setToFilter('');
-                }}
-                className="rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 transition cursor-pointer shrink-0"
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-
-          <span className="text-xs font-medium text-slate-500 self-end sm:self-auto">
-            {totalItems} record{totalItems === 1 ? '' : 's'}
-          </span>
-        </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1050px] text-left text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Amount</th>
-                  <th className="px-4 py-3 font-semibold">Name</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Method</th>
-                  <th className="px-4 py-3 font-semibold">Narration</th>
-                  <th className="px-4 py-3 font-semibold">Balance</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedTransactions.map((transaction) => {
-                  const actions = [
-                    { label: 'View Details', icon: <Eye className="h-4 w-4 text-blue-600" />, onClick: () => router.push(`${pathname}/${transaction.id}`) },
-                    canUpdate ? { label: 'Edit Transaction', icon: <Pencil className="h-4 w-4 text-amber-600" />, onClick: () => openEdit(transaction) } : null,
-                    canDelete ? { label: 'Delete Transaction', icon: <Trash2 className="h-4 w-4 text-red-500" />, onClick: () => void deleteTransaction(transaction), variant: 'danger' as const } : null,
-                  ].filter(Boolean) as Array<{ label: string; icon: React.ReactNode; onClick: () => void; variant?: 'danger' }>;
-                  return (
-                    <tr
-                      key={transaction.id}
-                      onClick={() => router.push(`${pathname}/${transaction.id}`)}
-                      className="transition hover:bg-amber-50/40 cursor-pointer"
-                    >
-                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{dateLabel(transaction.transactionDate)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${transaction.type === 'DEBIT' ? 'bg-red-50 text-red-700' : transaction.type === 'CREDIT' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                          {label(transaction.type)}
-                        </span>
-                      </td>
-                      <td className={`whitespace-nowrap px-4 py-3 font-bold ${transaction.type === 'DEBIT' ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {transaction.type === 'DEBIT' ? '-' : '+'}{moneyLabel(transaction.amount)}
-                      </td>
-                      <td className="max-w-[160px] truncate px-4 py-3 font-semibold text-slate-800 hover:text-amber-600 transition" title={transaction.name}>{transaction.name}</td>
-                      <td className="max-w-[150px] truncate px-4 py-3 text-slate-600" title={transaction.category}>{transaction.category}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{label(transaction.paymentMethod)}</td>
-                      <td className="max-w-[280px] truncate px-4 py-3 text-slate-600" title={transaction.narration}>{transaction.narration}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{moneyLabel(transaction.balance)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div onClick={(e) => e.stopPropagation()}>
-                          {actions.length ? <PortalActionDropdown align="right" items={actions} /> : <span className="text-xs text-slate-400">—</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!paginatedTransactions.length ? (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-16 text-center">
-                      <FileText className="mx-auto h-10 w-10 text-slate-300" />
-                      <p className="mt-3 font-semibold text-slate-700">No transactions found</p>
-                      <p className="mt-1 text-sm text-slate-500">Add a transaction or import a bank statement to begin.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-left text-[13px]">
+            <thead className={tableHeadClass}>
+              <tr>
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium">Type</th>
+                <th className="px-3 py-2 font-medium">Name</th>
+                <th className="px-3 py-2 font-medium">Category</th>
+                <th className="px-3 py-2 font-medium">Method</th>
+                <th className="px-3 py-2 font-medium">Narration</th>
+                <th className="px-3 py-2 text-right font-medium">Amount</th>
+                <th className="px-3 py-2 text-right font-medium">Balance</th>
+                <th className="w-12 px-3 py-2" aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedTransactions.map((transaction) => {
+                const actions = [
+                  { label: 'View details', icon: <Eye className="h-4 w-4 text-blue-600" />, onClick: () => router.push(`${pathname}/${transaction.id}`) },
+                  canUpdate ? { label: 'Edit transaction', icon: <Pencil className="h-4 w-4 text-amber-600" />, onClick: () => openEdit(transaction) } : null,
+                  canDelete ? { label: 'Delete transaction', icon: <Trash2 className="h-4 w-4 text-red-500" />, onClick: () => void deleteTransaction(transaction), variant: 'danger' as const } : null,
+                ].filter(Boolean) as Array<{ label: string; icon: React.ReactNode; onClick: () => void; variant?: 'danger' }>;
+                const debit = transaction.type === 'DEBIT';
+                return (
+                  <tr key={transaction.id} onClick={() => router.push(`${pathname}/${transaction.id}`)} className="h-9 cursor-pointer transition hover:bg-amber-50/40">
+                    <td className="whitespace-nowrap px-3 text-slate-700">{dateLabel(transaction.transactionDate)}</td>
+                    <td className="px-3"><Badge tone={debit ? 'red' : 'green'}>{label(transaction.type)}</Badge>{transaction.source === 'IMPORT' ? <span className="ml-1 text-[11px] text-blue-600">Imported</span> : null}</td>
+                    <td className="max-w-[180px] truncate px-3 font-medium text-slate-900" title={transaction.name}>{transaction.name}</td>
+                    <td className="max-w-[150px] truncate px-3 text-slate-600" title={transaction.category}>{transaction.category}</td>
+                    <td className="whitespace-nowrap px-3 text-slate-600">{label(transaction.paymentMethod)}</td>
+                    <td className="max-w-[300px] truncate px-3 text-slate-600" title={transaction.narration}>{transaction.narration}</td>
+                    <td className={`whitespace-nowrap px-3 text-right font-semibold ${debit ? 'text-red-700' : 'text-emerald-700'}`}>{debit ? '−' : '+'}{moneyLabel(transaction.amount)}</td>
+                    <td className="whitespace-nowrap px-3 text-right text-slate-600">{moneyLabel(transaction.balance)}</td>
+                    <td className="px-3 text-right">
+                      <div onClick={(event) => event.stopPropagation()}>
+                        {actions.length ? <PortalActionDropdown align="right" items={actions} /> : <span className="text-[12px] text-slate-400">—</span>}
+                      </div>
                     </td>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
+                );
+              })}
+              {!paginatedTransactions.length ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-10 text-center">
+                    <FileText className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-2 text-[13px] font-medium text-slate-700">No transactions found</p>
+                    <p className="mt-0.5 text-[12px] text-slate-500">{hasFilters ? 'Nothing matches these filters.' : 'Add a transaction or import a bank statement to begin.'}</p>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-slate-100 px-3 py-2 text-[12px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <span><span className="font-medium text-slate-900">{startItemIndex}–{endItemIndex}</span> of <span className="font-medium text-slate-900">{totalItems}</span></span>
+            <label className="flex items-center gap-1.5">
+              Rows
+              <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setCurrentPage(1); }} className="h-7 rounded-md border border-slate-200 bg-white px-1.5 text-[12px] text-slate-900 outline-none focus:border-amber-400">
+                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
           </div>
+          <div className="flex items-center justify-center gap-1 sm:justify-end">
+            <button type="button" onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} disabled={currentPageForView === 1} className="inline-flex h-7 items-center rounded-md px-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="h-4 w-4" /></button>
+            {paginationItems.map((item, index) => (typeof item === 'number' ? (
+              <button key={item} type="button" onClick={() => setCurrentPage(item)} className={`h-7 min-w-7 rounded-md px-1.5 text-[12px] font-medium transition ${currentPageForView === item ? 'bg-amber-400 text-slate-950' : 'text-slate-600 hover:bg-slate-100'}`}>{item}</button>
+            ) : <span key={`ellipsis-${index}`} className="px-1 text-slate-400">…</span>))}
+            <button type="button" onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))} disabled={currentPageForView === totalPages || totalPages === 1} className="inline-flex h-7 items-center rounded-md px-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next page"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+      </section>
 
-          <div className="flex flex-col gap-4 border-t border-gray-100 bg-white px-6 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-medium text-gray-500 sm:justify-start">
-              <div>
-                Showing <span className="font-bold text-gray-900">{startItemIndex}</span> to{' '}
-                <span className="font-bold text-gray-900">{endItemIndex}</span> of{' '}
-                <span className="font-bold text-gray-900">{totalItems}</span> records
-              </div>
+      {formOpen ? (
+        <Modal title={editing ? 'Edit transaction' : 'Add transaction'} subtitle="Keep the entry clear enough for later reconciliation and export." onClose={() => { if (!saving) setFormOpen(false); }}>
+          <form onSubmit={submitForm} className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Transaction date *"><input type="date" value={form.transactionDate} onChange={(event) => updateForm('transactionDate', event.target.value)} className={inputClass} required /></Field>
+              <Field label="Debit / Credit *"><SelectField value={form.type} onChange={(value) => updateForm('type', value)} options={[{ value: 'DEBIT', label: 'Debit / Expense' }, { value: 'CREDIT', label: 'Credit / Income' }]} /></Field>
+              <Field label="Amount *"><input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => updateForm('amount', event.target.value)} className={inputClass} placeholder="0.00" required /></Field>
+              <Field label="Closing balance"><input type="number" step="0.01" value={form.balance} onChange={(event) => updateForm('balance', event.target.value)} className={inputClass} placeholder="Optional" /></Field>
+              <Field label="Bank name *"><input value={form.accountName} onChange={(event) => updateForm('accountName', event.target.value)} className={`${inputClass} uppercase`} placeholder="HDFC BANK" required /></Field>
+              <Field label="Name / party *"><input value={form.name} onChange={(event) => updateForm('name', event.target.value)} className={inputClass} placeholder="Vendor, customer or employee" required /></Field>
+              <Field label="Category"><SelectField value={form.category} onChange={(value) => updateForm('category', value)} searchable options={categories.map((item) => ({ value: item, label: item }))} /></Field>
+              <Field label="Payment method"><SelectField value={form.paymentMethod} onChange={(value) => updateForm('paymentMethod', value)} searchable options={paymentMethods} /></Field>
+              <Field label="Invoice number"><input value={form.invoiceNumber} onChange={(event) => updateForm('invoiceNumber', event.target.value)} className={inputClass} /></Field>
+              <Field label="Narration *" wide><textarea value={form.narration} onChange={(event) => updateForm('narration', event.target.value)} className={`${inputClass} min-h-16 resize-y`} placeholder="Why was this transaction made?" required /></Field>
+              <Field label="UTR / reference"><input value={form.reference} onChange={(event) => updateForm('reference', event.target.value)} className={inputClass} /></Field>
+              <Field label="Notes" wide><textarea value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} className={`${inputClass} min-h-16 resize-y`} placeholder="Optional internal note" /></Field>
+              <Field label="Cheque number"><input value={form.chequeNumber} onChange={(event) => updateForm('chequeNumber', event.target.value)} className={inputClass} /></Field>
+            </div>
+            <ModalFooter>
+              <Button onClick={() => setFormOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="submit" variant="primary" busy={saving} icon={<Plus />}>{editing ? 'Update transaction' : 'Save transaction'}</Button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      ) : null}
 
-              <div className="flex items-center gap-2">
-                <span>Rows per page:</span>
-                <div className="relative rows-per-page-dropdown-container">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setOpenPageSizeDropdown((prev) => !prev);
-                    }}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-800 shadow-2xs transition hover:bg-gray-50 focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                  >
-                    <span>{pageSize}</span>
-                    <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-                  </button>
-
-                  {openPageSizeDropdown ? (
-                    <div className="absolute bottom-full left-0 z-50 mb-1.5 w-20 origin-bottom-left rounded-xl border border-gray-100 bg-white p-1 shadow-lg [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                      {[5, 10, 25, 50].map((size) => (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setPageSize(size);
-                            setCurrentPage(1);
-                            setOpenPageSizeDropdown(false);
-                          }}
-                          className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-gray-100 ${
-                            pageSize === size ? 'bg-[#FFC107]/20 font-extrabold text-gray-900' : 'font-medium text-gray-700'
-                          }`}
-                        >
-                          {size}
-                        </button>
+      {importOpen ? (
+        <Modal wide title="Import bank statement" subtitle="CSV/TSV import supports date, narration, debit, credit, balance and reference columns." onClose={() => { if (!importing) setImportOpen(false); }}>
+          <form onSubmit={submitImport} className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Bank name"><input value={importMeta.bankName} onChange={(event) => updateImportMeta('bankName', event.target.value)} className={`${inputClass} uppercase`} placeholder="HDFC BANK" /></Field>
+              <Field label="Statement file *">
+                <label className={`${inputClass} flex cursor-pointer items-center gap-2`}>
+                  <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span className="min-w-0 flex-1 truncate text-slate-600">{importFile?.name || 'Choose CSV / TSV file'}</span>
+                  <input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" className="hidden" onChange={(event) => { void handleStatementFile(event.target.files?.[0]); event.target.value = ''; }} />
+                </label>
+              </Field>
+              <Field label="Statement from"><input type="date" value={importMeta.statementFrom} onChange={(event) => updateImportMeta('statementFrom', event.target.value)} className={inputClass} /></Field>
+              <Field label="Statement to"><input type="date" value={importMeta.statementTo} onChange={(event) => updateImportMeta('statementTo', event.target.value)} className={inputClass} /></Field>
+              <Field label="Opening balance"><input type="number" step="0.01" value={importMeta.openingBalance} onChange={(event) => updateImportMeta('openingBalance', event.target.value)} className={inputClass} /></Field>
+              <Field label="Closing balance"><input type="number" step="0.01" value={importMeta.closingBalance} onChange={(event) => updateImportMeta('closingBalance', event.target.value)} className={inputClass} /></Field>
+            </div>
+            {importError ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{importError}</div> : null}
+            {importRows.length ? (
+              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+                  <div><p className="text-[13px] font-semibold text-slate-900">Preview</p><p className="text-[12px] text-slate-500">{importRows.length} rows detected. Existing duplicate rows will be skipped.</p></div>
+                  <Badge tone="green">Ready</Badge>
+                </div>
+                <div className="max-h-64 overflow-auto">
+                  <table className="w-full min-w-[680px] text-left text-[12px]">
+                    <thead className={tableHeadClass}><tr><th className="px-3 py-1.5 font-medium">Date</th><th className="px-3 py-1.5 font-medium">Narration</th><th className="px-3 py-1.5 text-right font-medium">Debit</th><th className="px-3 py-1.5 text-right font-medium">Credit</th><th className="px-3 py-1.5 text-right font-medium">Balance</th><th className="px-3 py-1.5 font-medium">Reference</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importRows.slice(0, 25).map((row, index) => (
+                        <tr key={`${index}-${row.date || ''}`}>
+                          <td className="whitespace-nowrap px-3 py-1.5">{importRowValue(row, ['date', 'valueDate']) || '—'}</td>
+                          <td className="max-w-[260px] truncate px-3 py-1.5" title={importRowValue(row, ['narration'])}>{importRowValue(row, ['narration']) || '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-red-700">{importRowValue(row, ['withdrawal', 'debit']) || '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-emerald-700">{importRowValue(row, ['deposit', 'credit']) || '—'}</td>
+                          <td className="px-3 py-1.5 text-right">{importRowValue(row, ['closing balance', 'balance', 'available balance']) || '—'}</td>
+                          <td className="px-3 py-1.5">{importRowValue(row, ['reference']) || '—'}</td>
+                        </tr>
                       ))}
-                    </div>
-                  ) : null}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center justify-center gap-1 sm:justify-end">
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPageForView === 1}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Previous</span>
-              </button>
-
-              <div className="flex items-center gap-1 px-1">
-                {paginationItems.map((item, index) =>
-                  typeof item === 'number' ? (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setCurrentPage(item)}
-                      className={`h-8 w-8 rounded-lg text-xs font-bold transition ${
-                        currentPageForView === item ? 'bg-[#FFC107] text-black shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ) : (
-                    <span key={`ellipsis-${index}`} className="px-1 text-xs font-bold text-gray-400">
-                      ...
-                    </span>
-                  )
-                )}
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center">
+                <Landmark className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-2 text-[13px] font-medium text-slate-700">Select a bank statement to preview it here</p>
+                <p className="mt-0.5 text-[12px] text-slate-500">The first row must contain headings such as Date, Narration, Withdrawal, Deposit and Closing Balance.</p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                disabled={currentPageForView === totalPages || totalPages === 1}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span className="hidden sm:inline">Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </section>
-
-      {formOpen ? <Modal title={editing ? 'Edit Transaction' : 'Add Transaction'} subtitle="Keep the entry clear enough for later reconciliation and export." onClose={() => { if (!saving) setFormOpen(false); }}><form onSubmit={submitForm} className="max-h-[calc(100vh-10rem)] overflow-y-auto p-5 sm:p-7"><div className="grid gap-4 md:grid-cols-3"><Field label="Transaction date *"><input type="date" value={form.transactionDate} onChange={(event) => updateForm('transactionDate', event.target.value)} className={inputClass} required /></Field><Field label="Debit / Credit *"><SelectField value={form.type} onChange={(value) => updateForm('type', value)} options={[{ value: 'DEBIT', label: 'Debit / Expense' }, { value: 'CREDIT', label: 'Credit / Income' }]} /></Field><Field label="Amount *"><input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => updateForm('amount', event.target.value)} className={inputClass} placeholder="0.00" required /></Field><Field label="Closing balance"><input type="number" step="0.01" value={form.balance} onChange={(event) => updateForm('balance', event.target.value)} className={inputClass} placeholder="Optional" /></Field><Field label="Bank name *"><input value={form.accountName} onChange={(event) => updateForm('accountName', event.target.value)} className={`${inputClass} uppercase`} placeholder="HDFC BANK" required /></Field><Field label="Name / party *"><input value={form.name} onChange={(event) => updateForm('name', event.target.value)} className={inputClass} placeholder="Vendor, customer or employee" required /></Field><Field label="Category"><SelectField value={form.category} onChange={(value) => updateForm('category', value)} searchable options={categories.map((item) => ({ value: item, label: item }))} /></Field><Field label="Payment method"><SelectField value={form.paymentMethod} onChange={(value) => updateForm('paymentMethod', value)} searchable options={paymentMethods} /></Field><Field label="Narration *" wide><textarea value={form.narration} onChange={(event) => updateForm('narration', event.target.value)} className={`${inputClass} min-h-20 resize-y`} placeholder="Why was this transaction made?" required /></Field><Field label="UTR / reference"><input value={form.reference} onChange={(event) => updateForm('reference', event.target.value)} className={inputClass} /></Field><Field label="Cheque number"><input value={form.chequeNumber} onChange={(event) => updateForm('chequeNumber', event.target.value)} className={inputClass} /></Field><Field label="Invoice number"><input value={form.invoiceNumber} onChange={(event) => updateForm('invoiceNumber', event.target.value)} className={inputClass} /></Field><Field label="Notes" wide><textarea value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} className={`${inputClass} min-h-20 resize-y`} placeholder="Optional internal note" /></Field></div><div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setFormOpen(false)} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{editing ? 'Update Transaction' : 'Save Transaction'}</button></div></form></Modal> : null}
-
-      {importOpen ? <Modal title="Import Bank Statement" subtitle="CSV/TSV import supports date, narration, debit, credit, balance and reference columns." onClose={() => { if (!importing) setImportOpen(false); }}><form onSubmit={submitImport} className="max-h-[calc(100vh-10rem)] overflow-y-auto p-5 sm:p-7"><div className="grid gap-4 md:grid-cols-3"><Field label="Bank name"><input value={importMeta.bankName} onChange={(event) => updateImportMeta('bankName', event.target.value)} className={`${inputClass} uppercase`} placeholder="HDFC BANK" /></Field><Field label="Statement file *"><label className={`${inputClass} flex cursor-pointer items-center gap-2`}><FileSpreadsheet className="h-4 w-4 text-emerald-600" /><span className="min-w-0 flex-1 truncate text-slate-600">{importFile?.name || 'Choose CSV / TSV file'}</span><input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" className="hidden" onChange={(event) => { void handleStatementFile(event.target.files?.[0]); event.target.value = ''; }} /></label></Field><Field label="Statement from"><input type="date" value={importMeta.statementFrom} onChange={(event) => updateImportMeta('statementFrom', event.target.value)} className={inputClass} /></Field><Field label="Statement to"><input type="date" value={importMeta.statementTo} onChange={(event) => updateImportMeta('statementTo', event.target.value)} className={inputClass} /></Field><Field label="Opening balance"><input type="number" step="0.01" value={importMeta.openingBalance} onChange={(event) => updateImportMeta('openingBalance', event.target.value)} className={inputClass} /></Field><Field label="Closing balance"><input type="number" step="0.01" value={importMeta.closingBalance} onChange={(event) => updateImportMeta('closingBalance', event.target.value)} className={inputClass} /></Field></div>{importError ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{importError}</div> : null}{importRows.length ? <div className="mt-5 rounded-xl border border-slate-200"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><p className="text-sm font-bold text-slate-800">Preview</p><p className="text-xs text-slate-500">{importRows.length} rows detected. Existing duplicate rows will be skipped.</p></div><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Ready</span></div><div className="max-h-64 overflow-auto"><table className="w-full min-w-[680px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2">Debit</th><th className="px-3 py-2">Credit</th><th className="px-3 py-2">Balance</th><th className="px-3 py-2">Reference</th></tr></thead><tbody className="divide-y divide-slate-100">{importRows.slice(0, 25).map((row, index) => <tr key={`${index}-${row.date || ''}`}><td className="px-3 py-2">{importRowValue(row, ['date', 'valueDate']) || '—'}</td><td className="max-w-[260px] truncate px-3 py-2" title={importRowValue(row, ['narration'])}>{importRowValue(row, ['narration']) || '—'}</td><td className="px-3 py-2 text-red-600">{importRowValue(row, ['withdrawal', 'debit']) || '—'}</td><td className="px-3 py-2 text-emerald-600">{importRowValue(row, ['deposit', 'credit']) || '—'}</td><td className="px-3 py-2">{importRowValue(row, ['closing balance', 'balance', 'available balance']) || '—'}</td><td className="px-3 py-2">{importRowValue(row, ['reference']) || '—'}</td></tr>)}</tbody></table></div></div> : <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><Landmark className="mx-auto h-9 w-9 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">Select a bank statement to preview it here</p><p className="mt-1 text-xs text-slate-500">The first row must contain headings such as Date, Narration, Withdrawal, Deposit and Closing Balance.</p></div>}<div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setImportOpen(false)} disabled={importing} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button><button type="submit" disabled={importing || !importRows.length} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import {importRows.length ? `${importRows.length} Rows` : 'Statement'}</button></div></form></Modal> : null}
+            )}
+            <ModalFooter>
+              <Button onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+              <Button type="submit" variant="primary" busy={importing} disabled={!importRows.length} icon={<Upload />}>Import {importRows.length ? `${importRows.length} rows` : 'statement'}</Button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   );
 }

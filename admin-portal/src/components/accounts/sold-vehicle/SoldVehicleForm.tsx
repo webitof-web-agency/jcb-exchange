@@ -3,11 +3,12 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ArrowRight, Bookmark, Car, CheckCircle2, ClipboardCheck, FileText, Handshake, IndianRupee,
+  ArrowLeft, ArrowRight, Ban, Bookmark, Car, CheckCircle2, ClipboardCheck, Download, FileCheck2, FileText, Handshake, IndianRupee,
   Loader2, MessageCircle, MessageSquareText, Plus, Repeat, ShoppingCart, Trash2, Truck, Wallet, X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
@@ -34,6 +35,7 @@ import { getListingAccountPrefill } from '@/lib/listingAccountPrefill.mjs';
 import { getSellAccountPaymentBalances, getSellAccountPaymentsForSide } from '@/lib/sellAccountPaymentPresentation.mjs';
 import {
   applySourceTypeChange,
+  fillBlankFields,
   getListingDealParties,
   isOwnStockSource,
   JCB_EXCHANGE_BROKER,
@@ -199,28 +201,88 @@ const removeLocalRecord = (id: string) => {
 type CrmLeadForSoldVehicle = {
   customer?: { name?: string | null; mobile?: string | null; city?: string | null; state?: string | null } | null;
   wonAmount?: number | string | null;
+  wonSellAccountId?: string | null;
   activities?: Array<{ type: string; metadata?: Record<string, unknown> | null }>;
 };
 
 /** Customer, deal value and (for outside-inventory deals) the machine from a WON CRM lead. */
-const fetchLeadPrefill = async (leadId: string): Promise<Partial<SellAccountFormState>> => {
+const fetchLeadDeal = async (leadId: string): Promise<{ fill: Partial<SellAccountFormState>; wonSellAccountId: string | null }> => {
   try {
     const response = await api.get<{ lead?: CrmLeadForSoldVehicle }>(`/crm/leads/${encodeURIComponent(leadId)}`);
     const lead = response.data?.lead;
-    if (!lead) return {};
+    if (!lead) return { fill: {}, wonSellAccountId: null };
     const deal = lead.activities?.find((activity) => activity.type === 'STATUS_CHANGE' && activity.metadata?.to === 'WON' && activity.metadata?.soldVehicleMode)?.metadata;
     return {
-      purchaserName: lead.customer?.name || '',
-      purchaserNumber: String(lead.customer?.mobile || '').replace(/\D/g, '').slice(-10),
-      purchaserCity: lead.customer?.city || '',
-      purchaserState: lead.customer?.state || '',
-      ...(Number(lead.wonAmount) > 0 ? { sellAmount: Number(lead.wonAmount) } : {}),
-      ...(deal?.soldVehicleMode === 'OFF_INVENTORY' && deal.soldListingTitle ? { listingTitle: String(deal.soldListingTitle) } : {}),
+      fill: {
+        purchaserName: lead.customer?.name || '',
+        purchaserNumber: String(lead.customer?.mobile || '').replace(/\D/g, '').slice(-10),
+        purchaserCity: lead.customer?.city || '',
+        purchaserState: lead.customer?.state || '',
+        ...(Number(lead.wonAmount) > 0 ? { sellAmount: Number(lead.wonAmount) } : {}),
+        ...(deal?.soldVehicleMode === 'OFF_INVENTORY' && deal.soldListingTitle ? { listingTitle: String(deal.soldListingTitle) } : {}),
+      },
+      wonSellAccountId: lead.wonSellAccountId || null,
     };
   } catch {
     // The CRM lead is only a convenience prefill; the form still works without it.
-    return {};
+    return { fill: {}, wonSellAccountId: null };
   }
+};
+
+const fetchLeadPrefill = async (leadId: string) => (await fetchLeadDeal(leadId)).fill;
+
+/** Request body for creating / updating a Sold Vehicle from the form state. */
+const toSellAccountPayload = (form: SellAccountFormState, { isDraft, crmLeadId }: { isDraft: boolean; crmLeadId?: string }) => {
+  const breakdown = form.expenseBreakdown as SellAccountExpenseBreakdown;
+  return {
+    ...form,
+    isDraft,
+    ...(crmLeadId ? { crmLeadId } : {}),
+    sellDate: form.purchaserDate || form.sellDate,
+    sourceType: form.sourceType || null,
+    expenses: sumExpenseBreakdown(breakdown),
+    expenseBreakdown: breakdown,
+    purchaseExchangeValue: form.purchaseType === 'EXCHANGE' ? Number(form.purchaseExchangeValue || 0) : 0,
+    saleExchangeValue: form.saleType === 'EXCHANGE' ? Number(form.saleExchangeValue || 0) : 0,
+    documents: { ...(normalizeSellAccountDocuments(form) as SellAccountDocuments), kyc: form.kyc || createEmptySellAccountKyc() },
+    remarks: form.remarks || form.noteSheet || '',
+    gstRatePercent: GST_RATE_PERCENT,
+    payments: (form.payments || []).map((payment) => ({
+      side: payment.side,
+      amount: payment.amount,
+      paymentDate: payment.paymentDate,
+      method: payment.method,
+      reference: payment.reference || '',
+      note: payment.note || '',
+    })),
+  };
+};
+
+/** Vehicle, purchase side and pricing from the linked listing, plus its listed (seller) price. */
+const listingFormFill = (listing: Record<string, unknown>) => {
+  const prefill = getListingAccountPrefill(listing);
+  const parties = getListingDealParties(listing);
+  const fill: Partial<SellAccountFormState> = {
+    listingId: prefill.listingId,
+    listingTitle: prefill.listingTitle,
+    ownerName: prefill.ownerName,
+    ownerNumber: prefill.ownerNumber,
+    vehicleNumber: prefill.vehicleNumber,
+    chassisNumber: prefill.chassisNumber,
+    vehicleType: prefill.vehicleType,
+    brandName: prefill.brandName,
+    vehicleModel: prefill.vehicleModel,
+    sourceType: (parties.sourceType || '') as SellAccountSourceType | '',
+    sellerName: parties.sellerName,
+    sellerNumber: parties.sellerNumber,
+    sellerCity: parties.sellerCity,
+    sellerState: parties.sellerState,
+    brokerName: parties.brokerName,
+    brokerNumber: parties.brokerNumber,
+    ...(parties.purchaseAmount > 0 ? { purchaseAmount: parties.purchaseAmount } : {}),
+    ...(parties.expenseBreakdown ? { expenseBreakdown: parties.expenseBreakdown as SellAccountExpenseBreakdown } : {}),
+  };
+  return { fill, listedPrice: parties.listedPrice };
 };
 
 const initialPaymentDraft = (side: SellAccountPayment['side'] = 'PURCHASER_RECEIPT') => ({
@@ -229,8 +291,15 @@ const initialPaymentDraft = (side: SellAccountPayment['side'] = 'PURCHASER_RECEI
   paymentDate: todayInput(),
   method: 'BANK_TRANSFER' as SellAccountPayment['method'],
   reference: '',
+  drawnOn: '',
   note: '',
 });
+
+const RECEIPT_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  DRAFT: { label: 'Draft', className: 'border-amber-200 bg-amber-50 text-amber-800' },
+  ISSUED: { label: 'Real', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  CANCELLED: { label: 'Cancelled', className: 'border-gray-300 bg-gray-100 text-gray-500 line-through' },
+};
 
 export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const router = useRouter();
@@ -275,6 +344,8 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const [pendingReplacedDocuments, setPendingReplacedDocuments] = useState<SellAccountDocument[]>([]);
   const originalDocumentUrls = useRef<Set<string>>(new Set());
   const restoredVerificationPreviews = useRef(false);
+  // One automatic draft per CRM deal, even when the load effect runs twice.
+  const draftFromLead = useRef<Promise<string | null> | null>(null);
 
   const isPersisted = Boolean(existingRecord && !existingRecord.id.startsWith('DRAFT-SELL-'));
   const isEditing = Boolean(existingRecord);
@@ -320,9 +391,13 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     setExistingRecord((current) => current ? {
       ...current,
       payments: record.payments || [],
+      refunds: record.refunds || [],
       balanceAmount: record.balanceAmount,
       dealStatus: record.dealStatus,
       rtoStatusSnapshot: record.rtoStatusSnapshot,
+      cancelledAt: record.cancelledAt,
+      invoiceNumber: record.invoiceNumber,
+      invoiceGeneratedAt: record.invoiceGeneratedAt,
     } : current);
     setForm((current) => ({
       ...current,
@@ -359,53 +434,75 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             router.replace(`${listPath}/${encodeURIComponent(record.id)}`);
             return;
           }
-          if (!cancelled) applyRecord(record);
+          if (!leadIdParam) {
+            if (!cancelled) applyRecord(record);
+            return;
+          }
+          // Opened from a CRM deal closed as WON: fill whatever this record still has blank from the
+          // listing and the lead, without overwriting anything already entered.
+          const [listingResult, leadFill] = await Promise.all([
+            record.listingId
+              ? api.get<{ listing?: Record<string, unknown> }>(`/listings/${encodeURIComponent(record.listingId)}`).then((res) => res.data?.listing || null).catch(() => null)
+              : Promise.resolve(null),
+            fetchLeadPrefill(leadIdParam),
+          ]);
+          if (cancelled) return;
+          const listingFill = listingResult ? listingFormFill(listingResult) : null;
+          applyRecord(record);
+          if (listingFill) setListedPrice(listingFill.listedPrice);
+          setForm((current) => fillBlankFields(fillBlankFields(current, leadFill), listingFill?.fill || {}) as SellAccountFormState);
           return;
         }
 
+        const leadQuery = leadIdParam ? `?${new URLSearchParams({ leadId: leadIdParam }).toString()}` : '';
+        const openRecord = (id: string) => router.replace(`${listPath}/${encodeURIComponent(id)}/edit${leadQuery}`);
+        const leadDeal = leadIdParam ? await fetchLeadDeal(leadIdParam) : null;
+        if (leadDeal?.wonSellAccountId) {
+          openRecord(leadDeal.wonSellAccountId);
+          return;
+        }
+
+        let nextForm: SellAccountFormState = { ...createInitialSellAccountForm(), brokerName: JCB_EXCHANGE_BROKER.name, brokerNumber: JCB_EXCHANGE_BROKER.number };
+        let price = 0;
         if (listingIdParam) {
           const existing = await api.get<{ records?: SellAccountApiRecord[] }>('/recruitment/admin/sell-accounts')
             .then((response) => (response.data?.records || []).find((record) => String(record.listingId || '') === listingIdParam))
             .catch(() => undefined);
-          if (existing?.id) {
-            router.replace(`${listPath}/${encodeURIComponent(String(existing.id))}/edit`);
+          // A locked record is an earlier sale of this machine that is already closed. A new CRM deal
+          // starts its own draft (not linked to the listing) instead of landing on that locked record.
+          const startFreshFromLead = Boolean(leadIdParam && existing?.isLocked === true);
+          if (existing?.id && !startFreshFromLead) {
+            openRecord(String(existing.id));
             return;
           }
           const response = await api.get<{ listing?: Record<string, unknown> }>(`/listings/${encodeURIComponent(listingIdParam)}`);
           const listing = response.data?.listing;
           if (!listing) throw new Error('Listing not found.');
-          const prefill = getListingAccountPrefill(listing);
-          const parties = getListingDealParties(listing);
-          const leadFill = leadIdParam ? await fetchLeadPrefill(leadIdParam) : {};
+          const listingFill = listingFormFill(listing);
+          nextForm = { ...createInitialSellAccountForm(), ...listingFill.fill, ...(startFreshFromLead ? { listingId: null } : {}) };
+          price = listingFill.listedPrice;
+        }
+        nextForm = { ...nextForm, ...(leadDeal?.fill || {}) };
+
+        // Coming from a CRM deal closed as WON: save the prefilled record as a draft right away, so the
+        // deal is never lost if the page is left. It stays a draft until the form is completed and saved.
+        if (leadIdParam && canCreate) {
+          draftFromLead.current = draftFromLead.current || api.post<{ record?: SellAccountApiRecord }>(
+            '/recruitment/admin/sell-accounts',
+            { ...toSellAccountPayload(nextForm, { isDraft: true, crmLeadId: leadIdParam }), draftSavedAt: new Date().toISOString() },
+          ).then((response) => (response.data?.record?.id ? String(response.data.record.id) : null));
+          const draftId = await draftFromLead.current.catch(() => null);
           if (cancelled) return;
-          setListedPrice(parties.listedPrice);
-          setForm({
-            ...createInitialSellAccountForm(),
-            listingId: prefill.listingId,
-            listingTitle: prefill.listingTitle,
-            ownerName: prefill.ownerName,
-            ownerNumber: prefill.ownerNumber,
-            vehicleNumber: prefill.vehicleNumber,
-            chassisNumber: prefill.chassisNumber,
-            vehicleType: prefill.vehicleType,
-            brandName: prefill.brandName,
-            vehicleModel: prefill.vehicleModel,
-            sourceType: (parties.sourceType || '') as SellAccountSourceType | '',
-            sellerName: parties.sellerName,
-            sellerNumber: parties.sellerNumber,
-            sellerCity: parties.sellerCity,
-            sellerState: parties.sellerState,
-            brokerName: parties.brokerName,
-            brokerNumber: parties.brokerNumber,
-            ...leadFill,
-          });
-          return;
+          if (draftId) {
+            openRecord(draftId);
+            return;
+          }
+          toast.error('Could not save the draft automatically. Use Save Draft below.');
         }
 
-        const leadFill = leadIdParam ? await fetchLeadPrefill(leadIdParam) : {};
-        if (!cancelled) {
-          setForm({ ...createInitialSellAccountForm(), brokerName: JCB_EXCHANGE_BROKER.name, brokerNumber: JCB_EXCHANGE_BROKER.number, ...leadFill });
-        }
+        if (cancelled) return;
+        setListedPrice(price);
+        setForm(nextForm);
       } catch (error) {
         if (!cancelled) setLoadError(apiErrorMessage(error, error instanceof Error ? error.message : 'Unable to load this Sold Vehicle record.'));
       } finally {
@@ -414,7 +511,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     };
     void load();
     return () => { cancelled = true; };
-  }, [applyRecord, leadIdParam, listPath, listingIdParam, recordId, router]);
+  }, [applyRecord, canCreate, leadIdParam, listPath, listingIdParam, recordId, router]);
 
   useEffect(() => {
     if (loading || restoredVerificationPreviews.current) return;
@@ -464,7 +561,10 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     saleExchangeValue,
     purchaseExchangeValue,
     payments: form.payments,
-  }), [expenseTotal, form.payments, form.purchaseAmount, form.purchaserState, form.sellAmount, form.sellerState, purchaseExchangeValue, saleExchangeValue]);
+    refunds: existingRecord?.refunds || [],
+    cancelled: Boolean(existingRecord?.cancelledAt),
+  }), [existingRecord?.cancelledAt, existingRecord?.refunds, expenseTotal, form.payments, form.purchaseAmount, form.purchaserState, form.sellAmount, form.sellerState, purchaseExchangeValue, saleExchangeValue]);
+  const saleCancelled = Boolean(existingRecord?.cancelledAt);
   const paymentBalances = getSellAccountPaymentBalances(finance.payments);
   const visiblePaymentRows = useMemo(() => {
     const allPayments = form.payments || [];
@@ -479,6 +579,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     purchaserPaymentStatus: finance.payments.purchaserPaymentStatus,
     rtoStatus: form.rtoStatusSnapshot,
     rtoLinked: hasLinkedRto,
+    cancelled: saleCancelled,
   }) as SellAccountDealStatus;
   const dealStatusConfig = DEAL_STATUS_CONFIG[dealStatus] || DEAL_STATUS_CONFIG.OPEN;
   const DealStatusIcon = dealStatusConfig.icon;
@@ -683,7 +784,10 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       paymentDate: paymentDraft.paymentDate,
       method: paymentDraft.method,
       reference: paymentDraft.reference.trim(),
+      drawnOn: paymentDraft.drawnOn.trim(),
       note: paymentDraft.note.trim(),
+      // Customer receipts are drafts until converted; they do not count in the balance yet.
+      receiptStatus: paymentDraft.side === 'PURCHASER_RECEIPT' ? 'DRAFT' : 'ISSUED',
     };
     if (!isPersisted) {
       setForm((current) => ({ ...current, payments: [...(current.payments || []), entry] }));
@@ -700,7 +804,9 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       if (!response.data?.record) throw new Error('Payment was not returned by the server.');
       applyPaymentRecord(normalizeServerSellAccount(response.data.record));
       setPaymentDraft(initialPaymentDraft(paymentDraft.side));
-      toast.success('Payment added and balance updated.');
+      toast.success(entry.side === 'PURCHASER_RECEIPT'
+        ? 'Draft money receipt saved. Convert it to a real receipt once the money is confirmed.'
+        : 'Payment added and balance updated.');
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to add this payment.'));
     } finally {
@@ -728,9 +834,54 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       } catch {
         // The payment delete succeeded; keep the local ledger updated if refresh is temporarily unavailable.
       }
-      toast.success('Payment removed and balance reversed.');
+      toast.success(payment.side === 'PURCHASER_RECEIPT' ? 'Draft receipt removed.' : 'Payment removed and balance reversed.');
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to remove this payment.'));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+  const paymentPath = (payment: SellAccountPayment, suffix: string) =>
+    `/recruitment/admin/sell-accounts/${encodeURIComponent(existingRecord!.id)}/payments/${encodeURIComponent(payment.id!)}/${suffix}`;
+  const refreshAfterPaymentAction = (record?: SellAccountApiRecord) => {
+    if (record) applyPaymentRecord(normalizeServerSellAccount(record));
+  };
+  /** Draft → real money receipt: receipt number, PDF link, WhatsApp/SMS; Bill of Supply once fully paid. */
+  const issueReceipt = async (payment: SellAccountPayment) => {
+    if (busyAction || !payment.id || !isPersisted) return;
+    if (!window.confirm(`Convert this draft into a real money receipt for ${formatInr(payment.amount)}?\n\nA receipt number is assigned, the receipt is sent to the customer on WhatsApp/SMS and it is posted to the accounts. It cannot be deleted afterwards.`)) return;
+    setBusyAction('payment');
+    try {
+      const response = await api.post<{ record?: SellAccountApiRecord; delivery?: { anySent?: boolean } | null; finalDocument?: { alreadyIssued?: boolean } | null }>(paymentPath(payment, 'issue'), {});
+      refreshAfterPaymentAction(response.data?.record);
+      toast.success(response.data?.delivery?.anySent ? 'Real money receipt issued and sent to the customer.' : 'Real money receipt issued. WhatsApp/SMS could not be sent; use the send buttons to retry.');
+      if (response.data?.finalDocument && !response.data.finalDocument.alreadyIssued) toast.success('Full payment received: Bill of Supply generated and sent.');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Unable to convert this receipt.'));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+  const downloadReceipt = async (payment: SellAccountPayment) => {
+    if (!payment.id || !isPersisted) return;
+    try {
+      await downloadAuthedFile(paymentPath(payment, 'receipt'), `Money-Receipt-${payment.receiptNumber || 'DRAFT'}.pdf`);
+    } catch (error) {
+      toast.error(await readBlobErrorMessage(error, 'Unable to download the receipt.'));
+    }
+  };
+  /** A real receipt whose money never arrived (bounced cheque, failed transfer). */
+  const cancelReceipt = async (payment: SellAccountPayment) => {
+    if (busyAction || !payment.id || !isPersisted) return;
+    const reason = window.prompt(`Cancel real receipt ${payment.receiptNumber || ''} (${formatInr(payment.amount)})?\n\nUse this only when the money was NOT received (e.g. cheque bounced). Money that was received and is given back must be recorded as a refund.\n\nReason:`);
+    if (reason === null) return;
+    setBusyAction('payment');
+    try {
+      const response = await api.post<{ record?: SellAccountApiRecord }>(paymentPath(payment, 'cancel'), { reason });
+      refreshAfterPaymentAction(response.data?.record);
+      toast.success('Receipt cancelled and reversed in the accounts.');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Unable to cancel this receipt.'));
     } finally {
       setBusyAction(null);
     }
@@ -788,31 +939,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   };
 
   // ---- Save ----
-  const buildPayload = (isDraft: boolean) => {
-    const breakdown = form.expenseBreakdown as SellAccountExpenseBreakdown;
-    return {
-      ...form,
-      isDraft,
-      ...(leadIdParam ? { crmLeadId: leadIdParam } : {}),
-      sellDate: form.purchaserDate || form.sellDate,
-      sourceType: form.sourceType || null,
-      expenses: expenseTotal,
-      expenseBreakdown: breakdown,
-      purchaseExchangeValue,
-      saleExchangeValue,
-      documents: { ...documents, kyc: form.kyc || createEmptySellAccountKyc() },
-      remarks: form.remarks || form.noteSheet || '',
-      gstRatePercent: GST_RATE_PERCENT,
-      payments: (form.payments || []).map((payment) => ({
-        side: payment.side,
-        amount: payment.amount,
-        paymentDate: payment.paymentDate,
-        method: payment.method,
-        reference: payment.reference || '',
-        note: payment.note || '',
-      })),
-    };
-  };
+  const buildPayload = (isDraft: boolean) => toSellAccountPayload(form, { isDraft, crmLeadId: leadIdParam || undefined });
 
   const validate = () => {
     const nextErrors = getSellAccountValidationErrors({ ...form, dealStatus, sellDate: form.purchaserDate || form.sellDate }, { isEditing }) as unknown as Record<string, string>;
@@ -901,7 +1028,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     }
     if (guardBusy() || !validate()) return;
     if (finance.payments.purchaserPaymentStatus !== 'FULL') {
-      toast.info(`Full customer payment is required before starting RTO work. Balance: ${formatInr(finance.payments.purchaserBalance)}.`);
+      toast.info(`Full customer payment is required before starting RTO work. Balance: ${formatInr(finance.payments.purchaserBalance)}.${finance.payments.purchaserDraftPending > 0 ? ' Convert the draft receipts to real receipts first.' : ''}`);
       return;
     }
     setBusyAction('rto');
@@ -971,7 +1098,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             <p className="truncate text-xs font-medium text-gray-500">
               {vehicleName ? <span className="font-semibold text-amber-700">{vehicleName}</span> : 'Vehicle details'}
               {form.listingId ? <span> · linked to listing</span> : null}
-              {leadIdParam && !existingRecord ? <span> · from a CRM deal (customer and deal value filled in)</span> : null}
+              {leadIdParam ? <span> · from a CRM deal ({existingRecord ? 'blank fields filled from the deal and listing' : 'customer and deal value filled in'})</span> : null}
             </p>
             {form.listingId ? (
               <div className="mt-1">
@@ -1264,27 +1391,56 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               onChange={(option) => setPaymentDraft((current) => ({ ...current, method: String(option.id) as SellAccountPayment['method'] }))}
               className="w-full"
             />
-            <button type="button" disabled={busy} onClick={() => void addPayment()} className="inline-flex h-[34px] items-center justify-center gap-1 rounded-lg bg-gray-900 px-3 text-xs font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-3.5 w-3.5" />{busyAction === 'payment' ? 'Saving…' : 'Add'}</button>
-            <input type="text" disabled={busy} value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="UTR / cheque / receipt no." className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
-            <input type="text" disabled={busy} value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note (optional)" className={`${inputClass} ${inputBorder()} col-span-2 sm:col-span-3`} />
+            <button type="button" disabled={busy || (saleCancelled && paymentDraft.side === 'PURCHASER_RECEIPT')} onClick={() => void addPayment()} title={saleCancelled && paymentDraft.side === 'PURCHASER_RECEIPT' ? 'This sale is cancelled; refund instead' : undefined} className="inline-flex h-[34px] items-center justify-center gap-1 rounded-lg bg-gray-900 px-3 text-xs font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-3.5 w-3.5" />{busyAction === 'payment' ? 'Saving…' : 'Add'}</button>
+            <input type="text" disabled={busy} value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="UTR / cheque / txn no." className={`${inputClass} ${inputBorder()} col-span-2`} />
+            <input type="text" disabled={busy} value={paymentDraft.drawnOn} onChange={(event) => setPaymentDraft((current) => ({ ...current, drawnOn: event.target.value }))} placeholder="Drawn on (bank)" className={`${inputClass} ${inputBorder()} col-span-2`} />
+            <input type="text" disabled={busy} value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note (optional)" className={`${inputClass} ${inputBorder()} col-span-2`} />
           </div>
+          {paymentDraft.side === 'PURCHASER_RECEIPT' ? (
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              Customer payments are saved as <b>draft receipts</b>. Convert a draft to a <b>real money receipt</b> once the money is confirmed; only real receipts count in the balance and the accounts.
+            </p>
+          ) : null}
           {visiblePaymentRows.length ? (
             <div className="mt-2.5 overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full text-left text-xs">
                 <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                  <tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th><th className="px-2.5 py-2 text-right" /></tr>
+                  <tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th><th className="px-2.5 py-2">Receipt</th><th className="px-2.5 py-2 text-right" /></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {visiblePaymentRows.map(({ payment, index }) => (
-                    <tr key={payment.id || `${payment.paymentDate}-${index}`}>
-                      <td className="px-2.5 py-1.5 font-semibold text-gray-800">{payment.side === 'PURCHASER_RECEIPT' ? 'Customer' : 'Seller'}</td>
+                  {visiblePaymentRows.map(({ payment, index }) => {
+                    const isCustomerReceipt = payment.side === 'PURCHASER_RECEIPT';
+                    const receiptStatus = payment.receiptStatus || 'ISSUED';
+                    const badge = RECEIPT_STATUS_BADGE[receiptStatus] || RECEIPT_STATUS_BADGE.ISSUED;
+                    const canSaveAction = isPersisted && Boolean(payment.id);
+                    return (
+                    <tr key={payment.id || `${payment.paymentDate}-${index}`} className={receiptStatus === 'CANCELLED' ? 'opacity-60' : undefined}>
+                      <td className="px-2.5 py-1.5 font-semibold text-gray-800">{isCustomerReceipt ? 'Customer' : 'Seller'}</td>
                       <td className="px-2.5 py-1.5 font-bold tabular-nums text-gray-900">{formatInr(payment.amount)}</td>
                       <td className="px-2.5 py-1.5 text-gray-600">{formatDisplayDate(payment.paymentDate)}</td>
                       <td className="px-2.5 py-1.5 text-gray-600">{payment.method.replace('_', ' ')}</td>
-                      <td className="max-w-[140px] truncate px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}</td>
+                      <td className="max-w-[140px] truncate px-2.5 py-1.5 font-mono text-[11px] text-gray-500" title={[payment.reference, payment.drawnOn].filter(Boolean).join(' · ')}>{payment.reference || '—'}{payment.drawnOn ? ` · ${payment.drawnOn}` : ''}</td>
+                      <td className="px-2.5 py-1.5">
+                        {isCustomerReceipt ? (
+                          <span className="inline-flex flex-col gap-0.5">
+                            <span className={`w-fit rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${badge.className}`} title={payment.cancelReason || undefined}>{badge.label}</span>
+                            {payment.receiptNumber ? <span className="font-mono text-[10px] text-gray-500">{payment.receiptNumber}</span> : null}
+                          </span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-2.5 py-1.5 text-right">
                         <span className="inline-flex items-center gap-1">
-                          {payment.side === 'PURCHASER_RECEIPT' ? (
+                          {isCustomerReceipt && receiptStatus === 'DRAFT' && canSaveAction ? (
+                            <button type="button" disabled={busy || saleCancelled} onClick={() => void issueReceipt(payment)} className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50" title="Convert to real money receipt">
+                              <FileCheck2 className="h-3 w-3" />Make real
+                            </button>
+                          ) : null}
+                          {isCustomerReceipt && canSaveAction ? (
+                            <button type="button" onClick={() => void downloadReceipt(payment)} className="rounded-md p-1 text-gray-600 hover:bg-gray-100" title={receiptStatus === 'DRAFT' ? 'Download draft receipt (not valid)' : 'Download money receipt'} aria-label="Download money receipt">
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                          {isCustomerReceipt && receiptStatus === 'ISSUED' ? (
                             <>
                               <button type="button" disabled={busy || sendingReceiptKey === `${payment.id}-SMS`} onClick={() => sendPaymentReceipt(payment, 'SMS')} className="rounded-md p-1 text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by SMS" aria-label="Send customer money receipt by SMS">
                                 {sendingReceiptKey === `${payment.id}-SMS` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquareText className="h-3.5 w-3.5" />}
@@ -1292,13 +1448,20 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                               <button type="button" disabled={busy || sendingReceiptKey === `${payment.id}-WHATSAPP`} onClick={() => sendPaymentReceipt(payment, 'WHATSAPP')} className="rounded-md p-1 text-[#25D366] hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50" title="Send customer money receipt by WhatsApp" aria-label="Send customer money receipt by WhatsApp">
                                 {sendingReceiptKey === `${payment.id}-WHATSAPP` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
                               </button>
+                              {canSaveAction ? (
+                                <button type="button" disabled={busy} onClick={() => void cancelReceipt(payment)} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50" title="Cancel receipt (money not received)" aria-label="Cancel receipt"><Ban className="h-3.5 w-3.5" /></button>
+                              ) : null}
                             </>
                           ) : null}
-                          <button type="button" disabled={busy} onClick={() => void removePayment(index)} className="rounded-md p-1 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" title="Remove payment" aria-label="Remove payment"><Trash2 className="h-3.5 w-3.5" /></button>
+                          {/* A real money receipt is never deleted: cancel it or refund instead. */}
+                          {!isCustomerReceipt || receiptStatus === 'DRAFT' ? (
+                            <button type="button" disabled={busy} onClick={() => void removePayment(index)} className="rounded-md p-1 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" title={isCustomerReceipt ? 'Delete draft receipt' : 'Remove payment'} aria-label="Remove payment"><Trash2 className="h-3.5 w-3.5" /></button>
+                          ) : null}
                         </span>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1308,7 +1471,18 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
             <span>Customer balance: <b className="tabular-nums text-gray-900">{formatInr(paymentBalances.customer.amount)}</b></span>
             <span>Seller balance: <b className="tabular-nums text-gray-900">{formatInr(paymentBalances.seller.amount)}</b></span>
+            {finance.payments.purchaserDraftPending > 0 ? (
+              <span className="text-amber-700">Draft receipts (not counted yet): <b className="tabular-nums">{formatInr(finance.payments.purchaserDraftPending)}</b></span>
+            ) : null}
+            {finance.payments.purchaserRefunded > 0 ? (
+              <span>Refunded: <b className="tabular-nums text-gray-900">{formatInr(finance.payments.purchaserRefunded)}</b></span>
+            ) : null}
           </div>
+          {saleCancelled ? (
+            <p className="mt-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+              This sale is cancelled. Refunds are handled from the Sold Vehicle details page.
+            </p>
+          ) : null}
         </Section>
 
         {/* 6. Status & transfer */}

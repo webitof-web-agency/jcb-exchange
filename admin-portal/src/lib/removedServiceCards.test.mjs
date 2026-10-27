@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const readSource = (relativePath) => readFileSync(resolve(here, relativePath), 'utf8');
+// Normalised to LF: Windows checkouts use CRLF and the markers below are matched with "\n".
+const readSource = (relativePath) => readFileSync(resolve(here, relativePath), 'utf8').replace(/\r\n/g, '\n');
 
 test('vehicle transport overview does not render removed service cards', () => {
   const source = readSource('../components/vehicleTransport/VehicleTransportPage.tsx');

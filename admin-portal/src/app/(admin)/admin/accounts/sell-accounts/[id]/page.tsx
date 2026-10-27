@@ -5,8 +5,9 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, ClipboardCheck, Car, Copy, Download, Edit2, FileText, Handshake, IndianRupee,
-  Loader2, LockKeyhole, Phone, Receipt, Send, ShoppingCart, User, Wallet, AlertTriangle,
+  Loader2, LockKeyhole, Phone, Receipt, Send, ShoppingCart, Undo2, User, Wallet, AlertTriangle,
 } from 'lucide-react';
+import SellAccountRefundsCard from '@/components/accounts/sold-vehicle/SellAccountRefundsCard';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
@@ -16,7 +17,7 @@ import { getSourceTypeLabel, JCB_EXCHANGE_COMPANY_NAME } from '@/lib/soldVehicle
 import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
 import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
 import { hasAnyPermission } from '@/lib/permissionUtils';
-import { getAccountUpdatePermissions } from '@/lib/accountsPermissions';
+import { getAccountDeletePermissions, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
 import { useAuthStore } from '@/store/authStore';
 import BrandLoader from '@/components/ui/BrandLoader';
 import {
@@ -170,8 +171,11 @@ export default function SellAccountDetailView() {
   const listPath = `${portal}/accounts/sell-accounts`;
   const rtoBasePath = `${portal}/accounts/rto-work-status`;
   const currentUser = useAuthStore((state) => state.user);
-  const canUpdate = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN'
-    || hasAnyPermission(currentUser?.permissions || [], getAccountUpdatePermissions('sell-accounts'));
+  const isAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+  const canUpdate = isAdmin || hasAnyPermission(currentUser?.permissions || [], getAccountUpdatePermissions('sell-accounts'));
+  const canDelete = isAdmin || hasAnyPermission(currentUser?.permissions || [], getAccountDeletePermissions('sell-accounts'));
+  // Refund approval is a separate permission, not part of Sold Vehicles CRUD.
+  const canApproveRefund = isAdmin || hasAnyPermission(currentUser?.permissions || [], ['accounts.sell.refund.approve']);
 
   const [record, setRecord] = useState<SellAccountRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,6 +235,8 @@ export default function SellAccountDetailView() {
     saleExchangeValue,
     purchaseExchangeValue,
     payments: record.payments,
+    refunds: record.refunds,
+    cancelled: Boolean(record.cancelledAt),
   });
   const documents = normalizeSellAccountDocuments(record) as SellAccountDocuments;
   const rtoProgress = summarizeTransferTasks((record.rtoRecord?.taskStatuses || []).map((status) => ({ status })));
@@ -415,21 +421,32 @@ export default function SellAccountDetailView() {
           {(record.payments || []).length ? (
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full text-left text-xs">
-                <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th></tr></thead>
+                <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500"><tr><th className="px-2.5 py-2">Side</th><th className="px-2.5 py-2">Amount</th><th className="px-2.5 py-2">Date</th><th className="px-2.5 py-2">Method</th><th className="px-2.5 py-2">Ref.</th><th className="px-2.5 py-2">Receipt</th></tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {(record.payments || []).map((payment, index) => (
-                    <tr key={payment.id || index}>
+                    <tr key={payment.id || index} className={payment.receiptStatus === 'CANCELLED' ? 'opacity-60' : undefined}>
                       <td className="px-2.5 py-1.5 font-semibold">{payment.side === 'PURCHASER_RECEIPT' ? 'Customer' : 'Seller'}</td>
                       <td className="px-2.5 py-1.5 font-bold tabular-nums">{formatInr(payment.amount)}</td>
                       <td className="px-2.5 py-1.5">{formatDate(payment.paymentDate)}</td>
                       <td className="px-2.5 py-1.5">{payment.method.replace('_', ' ')}</td>
-                      <td className="px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}{payment.drawnOn ? ` · ${payment.drawnOn}` : ''}</td>
+                      <td className="px-2.5 py-1.5 text-[11px]">
+                        {payment.side !== 'PURCHASER_RECEIPT' ? '—'
+                          : payment.receiptStatus === 'DRAFT' ? <span className="font-bold text-amber-700">Draft</span>
+                            : payment.receiptStatus === 'CANCELLED' ? <span className="font-bold text-gray-500" title={payment.cancelReason || undefined}>Cancelled {payment.receiptNumber || ''}</span>
+                              : <span className="font-mono text-emerald-700">{payment.receiptNumber || 'Real'}</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : <p className="text-xs text-gray-500">No payments recorded.</p>}
+          {finance.payments.purchaserDraftPending > 0 ? (
+            <p className="mt-2 text-[11px] text-amber-700">
+              {formatInr(finance.payments.purchaserDraftPending)} is in draft receipts and is not counted yet. Convert them to real receipts from the Edit screen.
+            </p>
+          ) : null}
         </Card>
 
         {/* Invoice */}
@@ -470,11 +487,30 @@ export default function SellAccountDetailView() {
             </div>
           ) : (
             <p className="text-xs text-gray-500">
-              The invoice is generated automatically when the sale is completed from the RTO workspace (all transfer tasks done and full payment received).
+              The Bill of Supply (no GST charged) is generated automatically once real money receipts cover the full sale amount.
             </p>
           )}
         </Card>
       </div>
+
+      {!record.isDraft ? (
+        <Card
+          icon={<Undo2 className="h-4 w-4" />}
+          title="Refunds & Cancellation"
+          aside={finance.payments.purchaserRefunded > 0 ? <span className="text-[11px] font-bold text-gray-600">Refunded {formatInr(finance.payments.purchaserRefunded)}</span> : undefined}
+        >
+          <SellAccountRefundsCard
+            record={record}
+            refundable={finance.payments.purchaserRefundable}
+            onRecordChange={setRecord}
+            currentUserId={currentUser?.id}
+            isSuperAdmin={currentUser?.role === 'SUPER_ADMIN'}
+            canRequest={canUpdate}
+            canApprove={canApproveRefund}
+            canCancelSale={canDelete}
+          />
+        </Card>
+      ) : null}
 
       {/* Documents */}
       <Card icon={<FileText className="h-4 w-4" />} title="Deeds & Documents">

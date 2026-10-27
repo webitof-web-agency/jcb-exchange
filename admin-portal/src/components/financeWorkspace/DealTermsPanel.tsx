@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { optionalChoices, type PickerOption } from './ledgerLookups';
-import { Button, ErrorBanner, Field, inputClass, LoadingState } from './ui';
+import { Button, ErrorBanner, Field, inputClass, LoadingState, selectButtonClass } from './ui';
 import { useResource } from './useResource';
 
 export type DealTerms = {
@@ -61,13 +61,13 @@ function TermsForm({ initial, parties, canEdit, sale, purchase, onSaved }: { ini
   };
 
   const picker = (value: string, key: keyof typeof form, placeholder = '—') => (
-    <SearchableSelect options={optionalChoices(parties, value)} value={value} onChange={(option) => set({ [key]: String(option.id) })} placeholder={placeholder} disabled={!canEdit} />
+    <SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(parties, value)} value={value} onChange={(option) => set({ [key]: String(option.id) })} placeholder={placeholder} disabled={!canEdit} />
   );
 
   return (
-    <form onSubmit={save} className="space-y-5 p-5">
+    <form onSubmit={save} className="space-y-3 p-4">
       <p className="text-xs text-slate-500">These terms sit beside the Sold Vehicle record (which does not change) and drive extra ledger entries: brokerage, partner share and consignment. Parties are managed in Party Ledgers.</p>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-4">
         <Field label="Deal type">
           <select value={form.dealMode} onChange={(event) => set({ dealMode: event.target.value as DealTerms['dealMode'] })} className={inputClass} disabled={!canEdit}>
             <option value="OUTRIGHT">Outright (own stock)</option>
@@ -80,12 +80,12 @@ function TermsForm({ initial, parties, canEdit, sale, purchase, onSaved }: { ini
             <Field label="Our commission (incl. GST)" hint="Blank: sale price − agreed price.">
               <input type="number" min={0} step="0.01" value={form.consignmentCommission} onChange={(event) => set({ consignmentCommission: event.target.value })} className={inputClass} disabled={!canEdit} />
             </Field>
-            <div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="text-[11px] uppercase tracking-wide text-slate-500">Owed to owner</p><p className="font-bold">{formatInr(Math.max(sale - commission, 0))}</p><p className="text-[11px] text-slate-400">Sale {formatInr(sale)} − commission {formatInr(commission)}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3 text-[13px]"><p className="text-[11px] uppercase tracking-wide text-slate-500">Owed to owner</p><p className="font-semibold">{formatInr(Math.max(sale - commission, 0))}</p><p className="text-[11px] text-slate-400">Sale {formatInr(sale)} − commission {formatInr(commission)}</p></div>
           </>
         ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-4">
         <Field label="Broker / agent">{picker(form.brokerPartyId, 'brokerPartyId')}</Field>
         <Field label="Brokerage we pay"><input type="number" min={0} step="0.01" value={form.brokeragePayable} onChange={(event) => set({ brokeragePayable: event.target.value })} className={inputClass} disabled={!canEdit} /></Field>
         <Field label="Brokerage we earn (incl. GST)"><input type="number" min={0} step="0.01" value={form.brokerageReceivable} onChange={(event) => set({ brokerageReceivable: event.target.value })} className={inputClass} disabled={!canEdit} /></Field>

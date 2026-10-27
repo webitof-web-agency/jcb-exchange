@@ -92,8 +92,8 @@ export default function LedgerMastersModule() {
         <EmptyState title="Install the chart of accounts first" description="Accounting & Books → Chart of Accounts → Install default chart." />
       ) : tab === 'system' ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Role</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5">Used for</th></tr></thead>
+          <table className="w-full min-w-[640px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Role</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Used for</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {systemLedgers.map((account) => (
                 <tr key={account.id}>
@@ -108,10 +108,10 @@ export default function LedgerMastersModule() {
       ) : tab === 'categories' ? (
         categories.loading ? <LoadingState /> : (
           <>
-            <p className="px-5 pt-4 text-xs leading-5 text-slate-500">Each category on the existing Expenses & Transactions page maps to a ledger. “Book to ledger” uses this; unmapped categories are asked for at booking time.</p>
+            <p className="px-4 pt-3 text-xs leading-5 text-slate-500">Each category on the existing Expenses & Transactions page maps to a ledger. “Book to ledger” uses this; unmapped categories are asked for at booking time.</p>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5">Transactions</th><th className="px-4 py-2.5">Ledger</th></tr></thead>
+              <table className="w-full min-w-[640px] text-left text-[13px]">
+                <thead className={tableHeadClass}><tr><th className="px-3 py-2">Category</th><th className="px-3 py-2">Transactions</th><th className="px-3 py-2">Ledger</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {(categories.data ?? []).map((row) => (
                     <tr key={row.category}>
@@ -128,22 +128,22 @@ export default function LedgerMastersModule() {
                 </tbody>
               </table>
             </div>
-            {canManage ? <div className="flex justify-end border-t border-slate-100 p-4"><Button variant="primary" icon={<Save className="h-4 w-4" />} busy={busy} disabled={!Object.keys(categoryDraft).length} onClick={saveCategories}>Save mapping</Button></div> : null}
+            {canManage ? <div className="flex justify-end border-t border-slate-100 p-3"><Button variant="primary" icon={<Save className="h-4 w-4" />} busy={busy} disabled={!Object.keys(categoryDraft).length} onClick={saveCategories}>Save mapping</Button></div> : null}
           </>
         )
       ) : payments.loading ? <LoadingState /> : (
         <>
-          <p className="px-5 pt-4 text-xs leading-5 text-slate-500">Which bank, cash or gateway account each payment method lands in. Add bank accounts in Banking & Cash → Bank Accounts first. Bank reconciliation confirms the actual account later.</p>
+          <p className="px-4 pt-3 text-xs leading-5 text-slate-500">Which bank, cash or gateway account each payment method lands in. Add bank accounts in Banking & Cash → Bank Accounts first. Bank reconciliation confirms the actual account later.</p>
           {!payments.data?.accounts.length ? <EmptyState title="No bank or cash accounts yet" description="Create them in Banking & Cash → Bank Accounts. Cash in Hand comes with the default chart." /> : (
-            <div className="space-y-4 p-5">
+            <div className="space-y-3 p-4">
               {payments.data.sources.map((source) => (
-                <div key={source.source} className="rounded-xl border border-slate-200">
-                  <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-800">{source.label}</p>
-                  <div className="grid gap-3 p-4 md:grid-cols-2">
+                <div key={source.source} className="rounded-lg border border-slate-200">
+                  <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-800">{source.label}</p>
+                  <div className="grid gap-3 p-3 md:grid-cols-2">
                     {source.methods.map((method) => {
                       const value = paymentDraft[source.source]?.[method.method] ?? method.accountId ?? '';
                       return (
-                        <label key={method.method} className="flex items-center gap-3 text-sm">
+                        <label key={method.method} className="flex items-center gap-3 text-[13px]">
                           <span className="w-36 shrink-0 font-semibold text-slate-700">{enumLabel(method.method)}</span>
                           <select value={value} disabled={!canManage} onChange={(event) => setPaymentDraft({ ...paymentDraft, [source.source]: { ...paymentDraft[source.source], [method.method]: event.target.value } })} className={`${inputClass} py-2`}>
                             <option value="">Not set{method.suggestedAccountId ? ' (suggested below)' : ''}</option>

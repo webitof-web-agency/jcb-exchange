@@ -22,7 +22,9 @@ const dealSelect = {
   saleExchangeValue: true, saleExchangeVehicle: true, brokerName: true, expenses: true, expenseBreakdown: true, marginBasis: true, netProfitAfterGst: true,
   isDraft: true, deletedAt: true, isLocked: true, dealStatus: true, rtoStatusSnapshot: true, invoiceNumber: true, invoiceGeneratedAt: true,
   completedAt: true, sellerDate: true, purchaserDate: true, sellDate: true, createdAt: true, updatedAt: true,
-  payments: { select: { id: true, side: true, amount: true, paymentDate: true, method: true, reference: true, note: true }, orderBy: [{ paymentDate: 'asc' as const }, { createdAt: 'asc' as const }] },
+  cancelledAt: true, creditNoteNumber: true, creditNoteDate: true,
+  payments: { select: { id: true, side: true, amount: true, paymentDate: true, method: true, reference: true, note: true, receiptStatus: true }, orderBy: [{ paymentDate: 'asc' as const }, { createdAt: 'asc' as const }] },
+  refunds: { select: { id: true, status: true, amount: true, forfeitAmount: true, refundDate: true, paidAt: true, method: true, reference: true } },
 } satisfies Prisma.SellAccountSelect;
 
 type DealRecord = Prisma.SellAccountGetPayload<{ select: typeof dealSelect }>;
@@ -45,7 +47,9 @@ export const summarizeDeal = (deal: DealRecord, asOn: Date) => {
     sellAmount: sale,
     purchaseAmount: purchase,
     ...exchange,
-    payments: deal.payments.map((payment) => ({ side: payment.side, amount: num(payment.amount) })),
+    payments: deal.payments.map((payment) => ({ side: payment.side, amount: num(payment.amount), receiptStatus: payment.receiptStatus })),
+    refunds: deal.refunds.map((refund) => ({ status: refund.status, amount: num(refund.amount), forfeitAmount: num(refund.forfeitAmount) })),
+    cancelled: Boolean(deal.cancelledAt),
   });
   const soldBy = saleDate && saleDate <= asOn ? saleDate : null;
   const inStock = Boolean(!deal.isDraft && purchaseDate && purchaseDate <= asOn && !soldBy);
@@ -369,7 +373,7 @@ export const getReceiptsRegister = async (query: Record<string, unknown>) => {
   const [dealPayments, listingPayments, prime] = await Promise.all([
     !source || source === 'SELL_ACCOUNT'
       ? prisma.sellAccountPayment.findMany({
-          where: { side: 'PURCHASER_RECEIPT', ...(dateFilter ? { paymentDate: dateFilter } : {}), sellAccount: { deletedAt: null } },
+          where: { side: 'PURCHASER_RECEIPT', receiptStatus: 'ISSUED', ...(dateFilter ? { paymentDate: dateFilter } : {}), sellAccount: { deletedAt: null } },
           include: { sellAccount: { select: { id: true, recordNumber: true, vehicleNumber: true, listingTitle: true, brandName: true, vehicleModel: true, purchaserName: true, purchaserNumber: true } } },
           take: 5000,
         })

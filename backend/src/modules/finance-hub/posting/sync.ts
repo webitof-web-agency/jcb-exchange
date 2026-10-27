@@ -115,12 +115,15 @@ const validGstinOrNull = (value: string | null | undefined) => {
 const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId: string, context: SyncContext): Promise<DesiredVoucher[]> => {
   switch (sourceType) {
     case 'SELL_ACCOUNT': {
-      const deal = await tx.sellAccount.findUnique({ where: { id: sourceId }, include: { payments: { orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }] } } });
+      const deal = await tx.sellAccount.findUnique({
+        where: { id: sourceId },
+        include: { payments: { orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }] }, refunds: { orderBy: { createdAt: 'asc' } } },
+      });
       if (!deal || deal.isDraft || deal.deletedAt) return [];
       const ownStock = deal.sourceType === 'JCB_EXCHANGE';
       const hasSellerPayments = deal.payments.some((payment) => payment.side === 'SELLER_PAYMENT');
       const needsSeller = (!ownStock && Number(deal.purchaseAmount) > 0) || hasSellerPayments;
-      const needsPurchaser = Number(deal.sellAmount) > 0 || deal.payments.some((payment) => payment.side === 'PURCHASER_RECEIPT');
+      const needsPurchaser = Number(deal.sellAmount) > 0 || deal.payments.some((payment) => payment.side === 'PURCHASER_RECEIPT') || deal.refunds.length > 0;
       const seller: PartyCandidate = {
         linkType: 'SELL_ACCOUNT_SELLER',
         linkId: deal.id,
@@ -264,6 +267,7 @@ const toLineInputs = (lines: DesiredVoucher['lines']): VoucherLineInput[] =>
   }));
 
 const createSystemVoucher = async (tx: Tx, sourceType: string, sourceId: string, desired: DesiredVoucher, hash: string, mode: 'SHADOW' | 'LIVE') => {
+  if (desired.draft) mode = 'SHADOW';
   const lines = toLineInputs(desired.lines);
   const placed = await placeInOpenPeriod(tx, desired.date);
   const narration = placed.moved ? `${desired.narration} (belongs to ${desired.date.toISOString().slice(0, 10).split('-').reverse().join('-')}; that month is closed)` : desired.narration;
@@ -368,7 +372,7 @@ export const syncSource = async (sourceType: PostingSourceType, sourceId: string
         const current = existing.find((item) => item.sourceEvent === voucher.key && !matched.has(item.id));
         if (current && current.sourceHash === hash) {
           matched.add(current.id);
-          if (options.mode === 'LIVE' && current.status !== 'POSTED') {
+          if (options.mode === 'LIVE' && current.status !== 'POSTED' && !voucher.draft) {
             await postExistingDraft(tx, current);
             summary.posted += 1;
           } else {

@@ -34,7 +34,7 @@ const loadRtoWithRelations = (id: string) => prisma.vehicleRtoRecord.findUnique(
   where: { id },
   include: {
     sellAccount: {
-      include: { payments: true },
+      include: { payments: true, refunds: true },
     },
     listing: {
       select: {

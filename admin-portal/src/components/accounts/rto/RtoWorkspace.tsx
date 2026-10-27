@@ -803,7 +803,7 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
                 {sell ? (
                   <>
                     {sell.payments.purchaserPaymentStatus !== 'FULL' ? (
-                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-900">Customer balance {formatInr(sell.payments.purchaserBalance)} is pending. Record the payment on the Sold Vehicle page to complete the sale.</p>
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-900">Customer balance {formatInr(sell.payments.purchaserBalance)} is pending. Record the payment on the Sold Vehicle page and convert it to a real money receipt to complete the sale.</p>
                     ) : null}
                     {canUpdateSell && canUpdateRto && !isLocked ? (
                       <button type="button" disabled={!workspace!.canComplete} onClick={() => setCompleteOpen(true)} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">

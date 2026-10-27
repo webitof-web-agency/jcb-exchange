@@ -150,12 +150,12 @@ export default function ChartOfAccountsModule() {
     const groupAccounts = accounts.filter((account) => account.groupId === group.id && matches(account));
     return (
       <div key={group.id}>
-        <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2" style={{ paddingLeft: 16 + depth * 20 }}>
+        <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-2" style={{ paddingLeft: 16 + depth * 20 }}>
           <button type="button" onClick={() => setCollapsed((previous) => { const next = new Set(previous); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })} className="rounded p-0.5 text-slate-400 hover:bg-slate-200" aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
             <ChevronRight className={`h-4 w-4 transition ${isCollapsed ? '' : 'rotate-90'}`} />
           </button>
           <span className="font-mono text-xs text-slate-500">{group.code}</span>
-          <span className="text-sm font-bold text-slate-800">{group.name}</span>
+          <span className="text-[13px] font-semibold text-slate-800">{group.name}</span>
           {depth === 0 ? <Badge tone={natureTone[group.nature]}>{enumLabel(group.nature)}</Badge> : null}
           {group.reportLine ? <span className="hidden text-[11px] text-slate-400 md:inline">→ {group.reportLine}</span> : null}
           {canManage ? (
@@ -168,7 +168,7 @@ export default function ChartOfAccountsModule() {
         {isCollapsed ? null : (
           <>
             {groupAccounts.map((account) => (
-              <div key={account.id} className={`flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2 text-sm ${account.isActive ? '' : 'opacity-50'}`} style={{ paddingLeft: 44 + depth * 20 }}>
+              <div key={account.id} className={`flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 text-[13px] ${account.isActive ? '' : 'opacity-50'}`} style={{ paddingLeft: 44 + depth * 20 }}>
                 <span className="w-12 font-mono text-xs text-slate-500">{account.code}</span>
                 <span className="font-medium text-slate-900">{account.name}</span>
                 <span className="text-[11px] text-slate-400">{account.normalBalance}</span>
@@ -211,7 +211,7 @@ export default function ChartOfAccountsModule() {
         <EmptyState title="No chart of accounts yet" description="Install the default chart built for a used-equipment dealer: vehicle stock, debtors/creditors, GST input/output, TDS, payroll, clearing accounts and income/expense heads. You can preview it first; nothing is created until you confirm." action={canManage ? <Button variant="primary" busy={busy} onClick={previewInstall}>Preview default chart</Button> : undefined} />
       ) : (
         <>
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 border-b border-slate-100 p-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search code, ledger or system key…" className={`${inputClass} pl-9`} />
@@ -225,16 +225,16 @@ export default function ChartOfAccountsModule() {
 
       {install ? (
         <Modal title={install.dryRun ? 'Default chart preview' : 'Installed'} subtitle="Existing groups and ledgers are never changed. Only missing ones are added." onClose={() => { if (!busy) setInstall(null); }} wide>
-          <div className="p-5 sm:p-7">
+          <div className="p-4">
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Groups to add</p><p className="text-2xl font-bold text-slate-900">{install.groupsToCreate.length}</p></div>
-              <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Ledgers to add</p><p className="text-2xl font-bold text-slate-900">{install.accountsToCreate.length}</p></div>
-              <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Old category mappings</p><p className="text-2xl font-bold text-slate-900">{install.categoryMapsToCreate.length}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Groups to add</p><p className="text-[18px] font-semibold text-slate-900">{install.groupsToCreate.length}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Ledgers to add</p><p className="text-[18px] font-semibold text-slate-900">{install.accountsToCreate.length}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Old category mappings</p><p className="text-[18px] font-semibold text-slate-900">{install.categoryMapsToCreate.length}</p></div>
             </div>
-            {install.conflicts.length ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{install.conflicts.map((item) => <p key={item}>{item}</p>)}</div> : null}
-            <div className="mt-4 grid max-h-72 gap-4 overflow-y-auto text-xs text-slate-600 md:grid-cols-2">
-              <div><p className="mb-1 font-bold text-slate-800">Ledgers</p>{install.accountsToCreate.map((item) => <p key={item}>{item}</p>)}</div>
-              <div><p className="mb-1 font-bold text-slate-800">Groups</p>{install.groupsToCreate.map((item) => <p key={item}>{item}</p>)}<p className="mb-1 mt-3 font-bold text-slate-800">Expense categories → ledger</p>{install.categoryMapsToCreate.map((item) => <p key={item}>{item}</p>)}</div>
+            {install.conflicts.length ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{install.conflicts.map((item) => <p key={item}>{item}</p>)}</div> : null}
+            <div className="mt-3 grid max-h-72 gap-3 overflow-y-auto text-xs text-slate-600 md:grid-cols-2">
+              <div><p className="mb-1 font-semibold text-slate-800">Ledgers</p>{install.accountsToCreate.map((item) => <p key={item}>{item}</p>)}</div>
+              <div><p className="mb-1 font-semibold text-slate-800">Groups</p>{install.groupsToCreate.map((item) => <p key={item}>{item}</p>)}<p className="mb-1 mt-3 font-semibold text-slate-800">Expense categories → ledger</p>{install.categoryMapsToCreate.map((item) => <p key={item}>{item}</p>)}</div>
             </div>
             <ModalFooter>
               <Button onClick={() => setInstall(null)} disabled={busy}>Close</Button>
@@ -246,7 +246,7 @@ export default function ChartOfAccountsModule() {
 
       {groupForm ? (
         <Modal title={groupForm.id ? `Edit group ${groupForm.code}` : 'Add account group'} onClose={() => { if (!busy) setGroupForm(null); }}>
-          <form onSubmit={saveGroup} className="grid gap-4 p-5 sm:p-7 md:grid-cols-2">
+          <form onSubmit={saveGroup} className="grid gap-3 p-4 md:grid-cols-2">
             <Field label="Code *"><input value={groupForm.code} disabled={Boolean(groupForm.id)} onChange={(event) => setGroupForm({ ...groupForm, code: event.target.value.toUpperCase() })} className={`${inputClass} font-mono`} maxLength={12} required /></Field>
             <Field label="Name *"><input value={groupForm.name} onChange={(event) => setGroupForm({ ...groupForm, name: event.target.value })} className={inputClass} maxLength={120} required /></Field>
             <Field label="Nature *">
@@ -268,8 +268,8 @@ export default function ChartOfAccountsModule() {
 
       {accountForm ? (
         <Modal title={accountForm.id ? `Edit ledger ${accountForm.code}` : 'Add ledger'} subtitle={accountForm.isSystem ? 'System ledger: name, tax details and description can change; its role in automatic posting stays.' : undefined} onClose={() => { if (!busy) setAccountForm(null); }} wide>
-          <form onSubmit={saveAccount} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-3">
+          <form onSubmit={saveAccount} className="p-4">
+            <div className="grid gap-3 md:grid-cols-3">
               <Field label="Code *"><input value={accountForm.code} disabled={Boolean(accountForm.id)} onChange={(event) => setAccountForm({ ...accountForm, code: event.target.value.toUpperCase() })} className={`${inputClass} font-mono`} maxLength={12} required /></Field>
               <Field label="Ledger name *"><input value={accountForm.name} onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })} className={inputClass} maxLength={120} required /></Field>
               <Field label="Group *">
@@ -293,7 +293,7 @@ export default function ChartOfAccountsModule() {
               <Field label="Tally ledger name"><input value={accountForm.tallyName} onChange={(event) => setAccountForm({ ...accountForm, tallyName: event.target.value })} className={inputClass} maxLength={120} placeholder="Same as name" /></Field>
               <Field label="Description" wide><input value={accountForm.description} onChange={(event) => setAccountForm({ ...accountForm, description: event.target.value })} className={inputClass} maxLength={500} /></Field>
             </div>
-            <div className="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-3">
               <Toggle checked={accountForm.gstApplicable} onChange={(value) => setAccountForm({ ...accountForm, gstApplicable: value })} label="GST applicable" />
               <Toggle checked={accountForm.requiresParty} onChange={(value) => setAccountForm({ ...accountForm, requiresParty: value })} label="Party required on entries" />
               <Toggle checked={accountForm.requiresVehicle} onChange={(value) => setAccountForm({ ...accountForm, requiresVehicle: value })} label="Vehicle required on entries" />

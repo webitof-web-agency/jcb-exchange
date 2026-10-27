@@ -91,6 +91,7 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
         { id: 'accounts.sell.update', label: 'Edit Sold Vehicles' },
         { id: 'accounts.sell.delete', label: 'Delete Sold Vehicles' },
         { id: 'accounts.sell.export', label: 'Export Sold Vehicles' },
+        { id: 'accounts.sell.refund.approve', label: 'Approve & Pay Sold Vehicle Refunds' },
       ],
     },
     {

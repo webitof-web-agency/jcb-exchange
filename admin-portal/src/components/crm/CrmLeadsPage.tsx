@@ -37,6 +37,7 @@ import {
   LEAD_TYPE_LABELS,
   leadHref,
   PageHeader,
+  leadWhatsAppMessage,
   phoneLinks,
   PriorityBadge,
   relative,
@@ -423,7 +424,7 @@ function Leads() {
                 {items.map((lead) => {
                   const overdue = lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() < now;
                   const open = lead.status !== 'WON' && lead.status !== 'LOST';
-                  const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber);
+                  const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
 
                   return (
                     <tr

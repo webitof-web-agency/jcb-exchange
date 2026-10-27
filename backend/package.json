@@ -14,7 +14,8 @@
     "media:migrate": "tsx scripts/migrate-local-uploads-to-drive.ts",
     "branding:storage": "tsx scripts/check-branding-storage.ts",
     "seed:blogs": "tsx scripts/seed-blog-posts.ts",
-    "seed:listings": "tsx scripts/seed-listings.ts"
+    "seed:listings": "tsx scripts/seed-listings.ts",
+    "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts"
   },
   "keywords": [],
   "author": "",

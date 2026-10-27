@@ -3,13 +3,14 @@
 import { FormEvent, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
-import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
+import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess, useUrlFilters } from '@/lib/financeWorkspaceClient';
 import { isCashBank, optionalChoices, todayIso, useLedgerLookups } from './ledgerLookups';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, DatePresets, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
+import { exportAllPages } from './exportRows';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -34,32 +35,57 @@ export function ExpenseRegisterModule() {
   const pathname = usePathname();
   const prefix = pathname.startsWith('/admin') ? '/admin' : '/employee';
   const { options } = useAccountOptions(expenseFilter);
-  const [filters, setFilters] = useState({ from: fyStart(), to: todayIso(), accountId: '', q: '' });
-  const [applied, setApplied] = useState(filters);
-  const [page, setPage] = useState(1);
-  const register = useResource(async () => (await api.get('/finance-hub/expenses/register', { params: { ...applied, accountId: applied.accountId || undefined, q: applied.q || undefined, page, pageSize: 50 } })).data as Register, `expense-register-${JSON.stringify(applied)}-${page}`);
+  const [applied, setApplied] = useUrlFilters({ from: fyStart(), to: todayIso(), accountId: '', q: '', page: '1' });
+  const { page: pageParam, ...criteria } = applied;
+  const [filters, setFilters] = useState(criteria);
+  const page = Math.max(Number(pageParam) || 1, 1);
+  const setPage = (next: number) => setApplied({ ...applied, page: String(next) });
+  const run = (next: typeof filters) => { setFilters(next); setApplied({ ...next, page: '1' }); };
+  const registerParams = (pageNo: number, pageSize: number) => ({ ...criteria, accountId: criteria.accountId || undefined, q: criteria.q || undefined, page: pageNo, pageSize });
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    setExporting(true);
+    await exportAllPages<RegisterRow>(
+      async (pageNo, pageSize) => { const result = (await api.get('/finance-hub/expenses/register', { params: registerParams(pageNo, pageSize) })).data as Register; return { rows: result.rows, total: result.total }; },
+      [
+        { header: 'Date', value: (row) => formatDate(row.date) },
+        { header: 'Voucher', value: (row) => row.voucherNumber ?? '' },
+        { header: 'Source', value: (row) => (row.source ? enumLabel(row.source) : enumLabel(row.voucherType)) },
+        { header: 'Ledger', value: (row) => row.account },
+        { header: 'Narration', value: (row) => row.narration },
+        { header: 'Party', value: (row) => row.party ?? '' },
+        { header: 'Cost centre', value: (row) => row.costCentre ?? '' },
+        { header: 'Reference', value: (row) => row.reference ?? '' },
+        { header: 'Amount', value: (row) => row.amount },
+      ],
+      'expense-register',
+    );
+    setExporting(false);
+  };
+  const register = useResource(async () => (await api.get('/finance-hub/expenses/register', { params: registerParams(page, 50) })).data as Register, `expense-register-${JSON.stringify(applied)}-${page}`);
   const [openVoucher, setOpenVoucher] = useState<string | null>(null);
   const pages = register.data ? Math.max(Math.ceil(register.data.total / register.data.pageSize), 1) : 1;
   return (
-    <Panel title="Expense register" description="All posted expenses from the books: purchase bills, payment vouchers, automatic entries, depreciation and Expenses-page entries once their posting is switched on." actions={<Link href={`${prefix}/finance/expenses`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open Expenses page</Link>}>
-      <form onSubmit={(event) => { event.preventDefault(); setPage(1); setApplied(filters); }} className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[150px_150px_1.4fr_1fr_auto] md:items-end">
+    <Panel title="Expense register" description="All posted expenses from the books: purchase bills, payment vouchers, automatic entries, depreciation and Expenses-page entries once their posting is switched on." actions={<><Button icon={<FileSpreadsheet />} busy={exporting} onClick={() => void exportCsv()}>Export CSV</Button><Link href={`${prefix}/finance/expenses`} className="inline-flex items-center h-8 gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 hover:bg-slate-50">Open Expenses page</Link></>}>
+      <form onSubmit={(event) => { event.preventDefault(); run(filters); }} className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[150px_150px_1.4fr_1fr_auto] md:items-end">
         <Field label="From"><input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} className={inputClass} /></Field>
         <Field label="To"><input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} className={inputClass} /></Field>
-        <Field label="Ledger"><SearchableSelect options={[{ id: '', name: 'All expense ledgers' }, ...options]} value={filters.accountId} onChange={(option) => setFilters({ ...filters, accountId: String(option.id) })} placeholder="All expense ledgers" /></Field>
+        <Field label="Ledger"><SearchableSelect buttonClassName={selectButtonClass} options={[{ id: '', name: 'All expense ledgers' }, ...options]} value={filters.accountId} onChange={(option) => setFilters({ ...filters, accountId: String(option.id) })} placeholder="All expense ledgers" /></Field>
         <Field label="Search"><input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} className={inputClass} placeholder="Narration, voucher, reference" /></Field>
         <Button type="submit">Apply</Button>
+        <div className="md:col-span-5"><DatePresets from={filters.from} to={filters.to} onSelect={(range) => run({ ...filters, ...range })} /></div>
       </form>
       {register.loading ? <LoadingState /> : register.error || !register.data ? <ErrorBanner message={register.error || 'Could not load.'} schemaMissing={register.schemaMissing} /> : (
         <>
-          <div className="flex flex-wrap gap-2 p-4">
-            <span className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-bold text-white">Total {formatInr(register.data.grandTotal)}</span>
-            {register.data.ledgers.slice(0, 10).map((ledger) => <button key={ledger.accountId} type="button" onClick={() => { const next = { ...filters, accountId: ledger.accountId }; setFilters(next); setApplied(next); setPage(1); }} className="rounded-xl bg-slate-50 px-3 py-2 text-left text-xs hover:bg-amber-50"><span className="font-mono text-slate-500">{ledger.code}</span> {ledger.name}<span className="block font-semibold text-slate-900">{formatInr(ledger.amount)}</span></button>)}
+          <div className="flex flex-wrap gap-2 p-3">
+            <span className="rounded-lg bg-slate-900 px-3 py-2 text-[13px] font-semibold text-white">Total {formatInr(register.data.grandTotal)}</span>
+            {register.data.ledgers.slice(0, 10).map((ledger) => <button key={ledger.accountId} type="button" onClick={() => run({ ...filters, accountId: ledger.accountId })} className="rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-amber-50"><span className="font-mono text-slate-500">{ledger.code}</span> {ledger.name}<span className="block font-semibold text-slate-900">{formatInr(ledger.amount)}</span></button>)}
           </div>
           {!register.data.rows.length ? <EmptyState title="No expenses in this period" /> : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left text-sm">
-                  <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Voucher</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5">Narration</th><th className="px-4 py-2.5">Party / centre</th><th className="px-4 py-2.5 text-right">Amount</th></tr></thead>
+                <table className="w-full min-w-[980px] text-left text-[13px]">
+                  <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2">Party / centre</th><th className="px-3 py-2 text-right">Amount</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {register.data.rows.map((row) => (
                       <tr key={row.id} onClick={() => setOpenVoucher(row.voucherId)} className="cursor-pointer hover:bg-amber-50/40">
@@ -74,7 +100,7 @@ export function ExpenseRegisterModule() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+              <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
                 <span>{register.data.total} entries</span>
                 <span className="flex items-center gap-2"><Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)} icon={<ChevronLeft className="h-4 w-4" />}>Prev</Button>Page {page} of {pages}<Button variant="ghost" disabled={page >= pages} onClick={() => setPage(page + 1)} icon={<ChevronRight className="h-4 w-4" />}>Next</Button></span>
               </div>
@@ -148,8 +174,8 @@ export function RecurringExpensesModule() {
     >
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No recurring expenses" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Name</th><th className="px-4 py-2.5">Creates</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5">Every</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Next</th><th className="px-4 py-2.5">Last runs</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Creates</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Every</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Next</th><th className="px-3 py-2">Last runs</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((item) => (
                 <tr key={item.id} className={item.isActive ? '' : 'opacity-60'}>
@@ -169,21 +195,21 @@ export function RecurringExpensesModule() {
       )}
       {form ? (
         <Modal title={form.id ? 'Edit recurring expense' : 'Add recurring expense'} onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Name *" wide><input value={form.name ?? ''} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={160} required /></Field>
               <Field label="Each period creates">
                 <select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value as Recurring['mode'] })} className={inputClass}><option value="ACCRUAL">Draft accrual journal</option><option value="BILL">Draft purchase bill</option></select>
               </Field>
-              <Field label={form.mode === 'BILL' ? 'Supplier *' : 'Supplier (optional)'}><SearchableSelect options={optionalChoices(lookups.partyOptions, form.partyId ?? '')} value={form.partyId ?? ''} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="—" /></Field>
-              <Field label="Expense ledger *" wide><SearchableSelect options={options} value={form.accountId ?? ''} onChange={(option) => setForm({ ...form, accountId: String(option.id) })} placeholder="Choose ledger" /></Field>
+              <Field label={form.mode === 'BILL' ? 'Supplier *' : 'Supplier (optional)'}><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.partyOptions, form.partyId ?? '')} value={form.partyId ?? ''} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="—" /></Field>
+              <Field label="Expense ledger *" wide><SearchableSelect buttonClassName={selectButtonClass} options={options} value={form.accountId ?? ''} onChange={(option) => setForm({ ...form, accountId: String(option.id) })} placeholder="Choose ledger" /></Field>
               <Field label={form.mode === 'BILL' ? 'Taxable amount *' : 'Amount *'}><input type="number" min={0} step="0.01" value={form.amountText} onChange={(event) => setForm({ ...form, amountText: event.target.value })} className={inputClass} required /></Field>
               {form.mode === 'BILL' ? <Field label="GST %"><input type="number" min={0} max={28} step="0.25" value={form.gstText} onChange={(event) => setForm({ ...form, gstText: event.target.value })} className={inputClass} /></Field> : <div />}
               <Field label="Every"><select value={form.frequency} onChange={(event) => setForm({ ...form, frequency: event.target.value })} className={inputClass}>{FREQUENCIES.map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select></Field>
               <Field label="On day of month"><input type="number" min={1} max={31} value={form.dayOfMonth ?? 1} onChange={(event) => setForm({ ...form, dayOfMonth: Number(event.target.value) })} className={inputClass} /></Field>
               <Field label="Start *"><input type="date" value={form.startDate ?? ''} onChange={(event) => setForm({ ...form, startDate: event.target.value })} className={inputClass} required /></Field>
               <Field label="End (optional)"><input type="date" value={form.endDate ?? ''} onChange={(event) => setForm({ ...form, endDate: event.target.value })} className={inputClass} /></Field>
-              <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={form.isActive ?? true} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />Active</label>
+              <label className="flex items-center gap-2 text-[13px] text-slate-600"><input type="checkbox" checked={form.isActive ?? true} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />Active</label>
             </div>
             <ModalFooter>
               <Button onClick={() => setForm(null)} disabled={busy}>Cancel</Button>
@@ -233,14 +259,14 @@ export function ReimbursementsModule() {
   const totals = (list.data ?? []).reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] ?? 0) + item.amount }), {} as Record<string, number>);
   return (
     <Panel title="Employee reimbursements" description="Claims for expenses paid by staff. Approval (by someone else) books the expense against Reimbursements Payable; payment clears it." actions={canSubmit ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ partyId: '', date: todayIso(), accountId: '', amount: '', description: '', receiptUrl: '' })}>New claim</Button> : null}>
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-5">
+      <div className="grid gap-3 border-b border-slate-100 p-3 sm:grid-cols-5">
         <select value={status} onChange={(event) => setStatus(event.target.value)} className={inputClass} aria-label="Status"><option value="">All claims</option>{(['SUBMITTED', 'APPROVED', 'PAID', 'REJECTED'] as const).map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}</select>
-        {(['SUBMITTED', 'APPROVED', 'PAID', 'REJECTED'] as const).map((item) => <div key={item} className="rounded-xl bg-slate-50 px-3 py-2"><p className="text-[11px] uppercase tracking-wide text-slate-500">{enumLabel(item)}</p><p className="text-sm font-bold">{formatInr(totals[item] ?? 0)}</p></div>)}
+        {(['SUBMITTED', 'APPROVED', 'PAID', 'REJECTED'] as const).map((item) => <div key={item} className="rounded-lg bg-slate-50 px-3 py-2"><p className="text-[11px] uppercase tracking-wide text-slate-500">{enumLabel(item)}</p><p className="text-[13px] font-semibold">{formatInr(totals[item] ?? 0)}</p></div>)}
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No claims" description="Employees must be parties of type Employee (Party Ledgers)." /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Expense</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Employee</th><th className="px-3 py-2">Expense</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((item) => (
                 <tr key={item.id}>
@@ -261,12 +287,12 @@ export function ReimbursementsModule() {
       )}
       {form ? (
         <Modal title="New reimbursement claim" onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={(event) => { event.preventDefault(); void run(() => api.post('/finance-hub/expenses/reimbursements', form), 'Claim submitted for approval.').then((ok) => { if (ok) setForm(null); }); }} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Employee *" wide><SearchableSelect options={optionalChoices(employees, form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Party of type Employee" /></Field>
+          <form onSubmit={(event) => { event.preventDefault(); void run(() => api.post('/finance-hub/expenses/reimbursements', form), 'Claim submitted for approval.').then((ok) => { if (ok) setForm(null); }); }} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Employee *" wide><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(employees, form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Party of type Employee" /></Field>
               <Field label="Expense date *"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} required /></Field>
               <Field label="Amount *"><input type="number" min={0} step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} className={inputClass} required /></Field>
-              <Field label="Expense ledger *" wide><SearchableSelect options={options} value={form.accountId} onChange={(option) => setForm({ ...form, accountId: String(option.id) })} placeholder="e.g. Travelling, Staff Welfare" /></Field>
+              <Field label="Expense ledger *" wide><SearchableSelect buttonClassName={selectButtonClass} options={options} value={form.accountId} onChange={(option) => setForm({ ...form, accountId: String(option.id) })} placeholder="e.g. Travelling, Staff Welfare" /></Field>
               <Field label="Description *" wide><input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={inputClass} maxLength={1000} required /></Field>
               <Field label="Receipt link" wide hint="Upload the bill to Drive / document vault and paste the link."><input value={form.receiptUrl} onChange={(event) => setForm({ ...form, receiptUrl: event.target.value })} className={inputClass} maxLength={500} placeholder="https://" /></Field>
             </div>
@@ -276,9 +302,9 @@ export function ReimbursementsModule() {
       ) : null}
       {paying ? (
         <Modal title={`Pay ${paying.party?.name}`} subtitle={formatInr(paying.amount)} onClose={() => { if (!busy) setPaying(null); }}>
-          <div className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Paid from *" wide><SearchableSelect options={banks} value={payForm.bankAccountId} onChange={(option) => setPayForm({ ...payForm, bankAccountId: String(option.id) })} placeholder="Bank / cash" /></Field>
+          <div className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Paid from *" wide><SearchableSelect buttonClassName={selectButtonClass} options={banks} value={payForm.bankAccountId} onChange={(option) => setPayForm({ ...payForm, bankAccountId: String(option.id) })} placeholder="Bank / cash" /></Field>
               <Field label="Date"><input type="date" value={payForm.date} onChange={(event) => setPayForm({ ...payForm, date: event.target.value })} className={inputClass} /></Field>
               <Field label="Reference / UTR"><input value={payForm.reference} onChange={(event) => setPayForm({ ...payForm, reference: event.target.value })} className={inputClass} maxLength={80} /></Field>
             </div>
@@ -353,16 +379,16 @@ export function FixedAssetsModule() {
 
   return (
     <Panel title="Fixed assets" description="Register of computers, furniture, vehicles and equipment. The purchase is booked by its bill; the register holds the depreciation basis. Accumulated depreciation = before the books + posted monthly runs." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} disabled={!assetLedgers.length} onClick={() => setForm(emptyAsset())}>Add asset</Button> : null}>
-      <div className="grid gap-3 p-4 sm:grid-cols-4">
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Active assets</p><p className="text-base font-bold">{active.length}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Cost</p><p className="text-base font-bold">{formatInr(active.reduce((sum, row) => sum + row.cost, 0))}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Accumulated depreciation</p><p className="text-base font-bold">{formatInr(active.reduce((sum, row) => sum + row.accumulated, 0))}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Book value</p><p className="text-base font-bold">{formatInr(active.reduce((sum, row) => sum + row.bookValue, 0))}</p></div>
+      <div className="grid gap-3 p-3 sm:grid-cols-4">
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Active assets</p><p className="text-[15px] font-semibold">{active.length}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Cost</p><p className="text-[15px] font-semibold">{formatInr(active.reduce((sum, row) => sum + row.cost, 0))}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Accumulated depreciation</p><p className="text-[15px] font-semibold">{formatInr(active.reduce((sum, row) => sum + row.accumulated, 0))}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Book value</p><p className="text-[15px] font-semibold">{formatInr(active.reduce((sum, row) => sum + row.bookValue, 0))}</p></div>
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !rows.length ? <EmptyState title="No assets registered" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Asset</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5">In use from</th><th className="px-4 py-2.5">Method</th><th className="px-4 py-2.5 text-right">Cost</th><th className="px-4 py-2.5 text-right">Depreciation</th><th className="px-4 py-2.5 text-right">Book value</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[1000px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Asset</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">In use from</th><th className="px-3 py-2">Method</th><th className="px-3 py-2 text-right">Cost</th><th className="px-3 py-2 text-right">Depreciation</th><th className="px-3 py-2 text-right">Book value</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <tr key={row.id} className={row.status === 'ACTIVE' ? '' : 'opacity-60'}>
@@ -386,12 +412,12 @@ export function FixedAssetsModule() {
       )}
       {form ? (
         <Modal title={form.id ? `Edit ${form.code}` : 'Add fixed asset'} subtitle="Companies Act WDV/SLM rates: computers 63.16% WDV / 3 years; furniture 25.89% / 10 years; vehicles 25.89%–31.23% / 8–10 years (check with your CA)." onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-4">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-4">
               <Field label="Asset code *"><input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} className={inputClass} maxLength={30} required /></Field>
               <Field label="Name *" wide><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={160} required /></Field>
               <Field label="Category"><input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={inputClass} maxLength={80} /></Field>
-              <Field label="Asset ledger *" wide><SearchableSelect options={assetLedgers} value={form.assetAccountId} onChange={(option) => setForm({ ...form, assetAccountId: String(option.id) })} placeholder="Fixed asset ledger" /></Field>
+              <Field label="Asset ledger *" wide><SearchableSelect buttonClassName={selectButtonClass} options={assetLedgers} value={form.assetAccountId} onChange={(option) => setForm({ ...form, assetAccountId: String(option.id) })} placeholder="Fixed asset ledger" /></Field>
               <Field label="Purchase date *"><input type="date" value={form.purchaseDate} onChange={(event) => setForm({ ...form, purchaseDate: event.target.value })} className={inputClass} required /></Field>
               <Field label="Put to use on"><input type="date" value={form.putToUseDate} onChange={(event) => setForm({ ...form, putToUseDate: event.target.value })} className={inputClass} /></Field>
               <Field label="Cost *"><input type="number" min={0} step="0.01" value={form.cost} onChange={(event) => setForm({ ...form, cost: event.target.value })} className={inputClass} required /></Field>
@@ -411,24 +437,24 @@ export function FixedAssetsModule() {
       {scheduleFor ? (
         <Modal title={`Depreciation: ${scheduleFor.code} ${scheduleFor.name}`} subtitle={`Accumulated ${formatInr(schedule.data?.accumulated ?? scheduleFor.accumulated)}`} onClose={() => setScheduleFor(null)} wide>
           {schedule.loading ? <LoadingState /> : schedule.error || !schedule.data ? <ErrorBanner message={schedule.error || 'Could not load.'} /> : (
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Posted</p>{schedule.data.history.length ? <table className="w-full text-sm"><tbody className="divide-y divide-slate-100">{schedule.data.history.map((row) => <tr key={row.month}><td className="py-1">{row.month}</td><td className="py-1 text-right">{formatInr(row.charge)}</td></tr>)}</tbody></table> : <p className="text-sm text-slate-500">No runs yet.</p>}</div>
-              <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Projection</p><table className="w-full text-sm"><thead className="text-[11px] text-slate-500"><tr><th className="py-1 text-left">Month</th><th className="py-1 text-right">Charge</th><th className="py-1 text-right">Closing</th></tr></thead><tbody className="divide-y divide-slate-100">{schedule.data.projection.map((row) => <tr key={row.month}><td className="py-1">{row.month}</td><td className="py-1 text-right">{formatInr(row.charge)}</td><td className="py-1 text-right">{formatInr(row.closing)}</td></tr>)}</tbody></table></div>
+            <div className="grid gap-3 p-4 md:grid-cols-2">
+              <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Posted</p>{schedule.data.history.length ? <table className="w-full text-[13px]"><tbody className="divide-y divide-slate-100">{schedule.data.history.map((row) => <tr key={row.month}><td className="py-1">{row.month}</td><td className="py-1 text-right">{formatInr(row.charge)}</td></tr>)}</tbody></table> : <p className="text-[13px] text-slate-500">No runs yet.</p>}</div>
+              <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Projection</p><table className="w-full text-[13px]"><thead className="text-[11px] text-slate-500"><tr><th className="py-1 text-left">Month</th><th className="py-1 text-right">Charge</th><th className="py-1 text-right">Closing</th></tr></thead><tbody className="divide-y divide-slate-100">{schedule.data.projection.map((row) => <tr key={row.month}><td className="py-1">{row.month}</td><td className="py-1 text-right">{formatInr(row.charge)}</td><td className="py-1 text-right">{formatInr(row.closing)}</td></tr>)}</tbody></table></div>
             </div>
           )}
         </Modal>
       ) : null}
       {disposing ? (
         <Modal title={`Dispose ${disposing.code} ${disposing.name}`} subtitle={`Book value ${formatInr(disposing.bookValue)} (run depreciation up to the disposal month first)`} onClose={() => { if (!busy) setDisposing(null); }}>
-          <div className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <div className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Date *"><input type="date" value={disposal.date} onChange={(event) => setDisposal({ ...disposal, date: event.target.value })} className={inputClass} /></Field>
               <Field label="Sale proceeds" hint="0 for scrap / discard."><input type="number" min={0} step="0.01" value={disposal.amount} onChange={(event) => setDisposal({ ...disposal, amount: event.target.value })} className={inputClass} /></Field>
-              {Number(disposal.amount) > 0 ? <Field label="Received into / receivable from *" wide><SearchableSelect options={receiving} value={disposal.receivingAccountId} onChange={(option) => setDisposal({ ...disposal, receivingAccountId: String(option.id) })} placeholder="Bank, cash or Sundry Debtors" /></Field> : null}
-              {lookups.accountsById.get(disposal.receivingAccountId)?.requiresParty ? <Field label="Buyer *" wide><SearchableSelect options={optionalChoices(lookups.partyOptions, disposal.partyId)} value={disposal.partyId} onChange={(option) => setDisposal({ ...disposal, partyId: String(option.id) })} placeholder="Required" /></Field> : null}
+              {Number(disposal.amount) > 0 ? <Field label="Received into / receivable from *" wide><SearchableSelect buttonClassName={selectButtonClass} options={receiving} value={disposal.receivingAccountId} onChange={(option) => setDisposal({ ...disposal, receivingAccountId: String(option.id) })} placeholder="Bank, cash or Sundry Debtors" /></Field> : null}
+              {lookups.accountsById.get(disposal.receivingAccountId)?.requiresParty ? <Field label="Buyer *" wide><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.partyOptions, disposal.partyId)} value={disposal.partyId} onChange={(option) => setDisposal({ ...disposal, partyId: String(option.id) })} placeholder="Required" /></Field> : null}
               <Field label="Reason" wide><input value={disposal.reason} onChange={(event) => setDisposal({ ...disposal, reason: event.target.value })} className={inputClass} maxLength={500} /></Field>
             </div>
-            {Number(disposal.amount) >= 0 ? <p className="mt-3 text-sm">{(Number(disposal.amount) || 0) - disposing.bookValue >= 0 ? 'Profit' : 'Loss'} on disposal: <strong>{formatInr(Math.abs((Number(disposal.amount) || 0) - disposing.bookValue))}</strong></p> : null}
+            {Number(disposal.amount) >= 0 ? <p className="mt-3 text-[13px]">{(Number(disposal.amount) || 0) - disposing.bookValue >= 0 ? 'Profit' : 'Loss'} on disposal: <strong>{formatInr(Math.abs((Number(disposal.amount) || 0) - disposing.bookValue))}</strong></p> : null}
             <ModalFooter><Button onClick={() => setDisposing(null)} disabled={busy}>Cancel</Button><Button variant="danger" busy={busy} disabled={Number(disposal.amount) > 0 && !disposal.receivingAccountId} onClick={() => void dispose()}>Dispose &amp; post</Button></ModalFooter>
           </div>
         </Modal>
@@ -464,24 +490,24 @@ export function PeriodicRunPanel({ kind }: { kind: 'depreciation' | 'prepaid' })
   };
   return (
     <Panel title={kind === 'depreciation' ? 'Depreciation' : 'Prepaid amortisation'} description={kind === 'depreciation' ? 'Run once a month after the month ends: Dr Depreciation, Cr Accumulated Depreciation, asset by asset. Only the latest run can be reversed.' : 'Run once a month: moves this month’s share from Prepaid Expenses to the expense ledger.'}>
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
         <Field label="Month"><input type="month" value={month} max={thisMonth()} onChange={(event) => setMonth(event.target.value)} className={inputClass} /></Field>
         {canPost ? <Button variant="primary" busy={busy} disabled={!view.data || view.data.alreadyRun || !view.data.preview.length} onClick={() => void act(() => api.post(`/finance-hub/assets/runs/${kind}`, { month }), `Posted ${label} for ${month}:`)}>Post {formatInr(total)} for {month}</Button> : null}
         {view.data?.alreadyRun ? <Badge tone="green">Already posted for {month}</Badge> : null}
       </div>
       {!canPost ? <ReadOnlyNotice>Posting runs needs “Post Vouchers”.</ReadOnlyNotice> : null}
       {view.loading ? <LoadingState /> : view.error || !view.data ? <ErrorBanner message={view.error || 'Could not load.'} schemaMissing={view.schemaMissing} /> : (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
+        <div className="grid gap-3 p-3 lg:grid-cols-2">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{view.data.alreadyRun ? 'Posted for' : 'Would post for'} {month}</p>
-            {!view.data.preview.length ? <p className="text-sm text-slate-500">Nothing for this month.</p> : (
-              <table className="w-full text-sm"><tbody className="divide-y divide-slate-100">{view.data.preview.map((line) => <tr key={line.refId}><td className="py-1.5">{line.label}</td><td className="py-1.5 text-right">{formatInr(line.amount)}</td></tr>)}<tr className="font-bold"><td className="py-1.5">Total</td><td className="py-1.5 text-right">{formatInr(total)}</td></tr></tbody></table>
+            {!view.data.preview.length ? <p className="text-[13px] text-slate-500">Nothing for this month.</p> : (
+              <table className="w-full text-[13px]"><tbody className="divide-y divide-slate-100">{view.data.preview.map((line) => <tr key={line.refId}><td className="py-1.5">{line.label}</td><td className="py-1.5 text-right">{formatInr(line.amount)}</td></tr>)}<tr className="font-semibold"><td className="py-1.5">Total</td><td className="py-1.5 text-right">{formatInr(total)}</td></tr></tbody></table>
             )}
           </div>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Runs</p>
-            {!view.data.runs.length ? <p className="text-sm text-slate-500">None yet.</p> : (
-              <table className="w-full text-sm">
+            {!view.data.runs.length ? <p className="text-[13px] text-slate-500">None yet.</p> : (
+              <table className="w-full text-[13px]">
                 <tbody className="divide-y divide-slate-100">
                   {view.data.runs.map((run, index) => (
                     <tr key={run.id} className={run.status === 'REVERSED' ? 'opacity-50' : ''}>
@@ -531,14 +557,14 @@ export function PrepaidExpensesModule() {
     }
   };
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Panel><Tabs<PrepaidTab> tabs={[{ key: 'items', label: 'Prepaid items' }, { key: 'run', label: 'Monthly amortisation' }]} active={tab} onChange={setTab} /></Panel>
       {tab === 'run' ? <PeriodicRunPanel kind="prepaid" /> : (
         <Panel title="Prepaid expenses" description="Paid in advance (insurance, annual licences): book the payment to Prepaid Expenses, register it here, and the monthly run moves each month’s share to the expense." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: '', expenseAccountId: '', totalAmount: '', startDate: todayIso(), months: '12', reference: '' })}>Add prepaid item</Button> : null}>
           {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No prepaid items" /> : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Item</th><th className="px-4 py-2.5">Expense ledger</th><th className="px-4 py-2.5">From</th><th className="px-4 py-2.5 text-right">Total</th><th className="px-4 py-2.5 text-right">Expensed</th><th className="px-4 py-2.5 text-right">Balance</th></tr></thead>
+              <table className="w-full min-w-[860px] text-left text-[13px]">
+                <thead className={tableHeadClass}><tr><th className="px-3 py-2">Item</th><th className="px-3 py-2">Expense ledger</th><th className="px-3 py-2">From</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-right">Expensed</th><th className="px-3 py-2 text-right">Balance</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {list.data.map((item) => (
                     <tr key={item.id}>
@@ -556,10 +582,10 @@ export function PrepaidExpensesModule() {
           )}
           {form ? (
             <Modal title="Add prepaid item" onClose={() => { if (!busy) setForm(null); }}>
-              <form onSubmit={save} className="p-5 sm:p-7">
-                <div className="grid gap-4 md:grid-cols-2">
+              <form onSubmit={save} className="p-4">
+                <div className="grid gap-3 md:grid-cols-2">
                   <Field label="Name *" wide><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={160} required /></Field>
-                  <Field label="Expense ledger *" wide><SearchableSelect options={options} value={form.expenseAccountId} onChange={(option) => setForm({ ...form, expenseAccountId: String(option.id) })} placeholder="e.g. Insurance" /></Field>
+                  <Field label="Expense ledger *" wide><SearchableSelect buttonClassName={selectButtonClass} options={options} value={form.expenseAccountId} onChange={(option) => setForm({ ...form, expenseAccountId: String(option.id) })} placeholder="e.g. Insurance" /></Field>
                   <Field label="Total amount *"><input type="number" min={0} step="0.01" value={form.totalAmount} onChange={(event) => setForm({ ...form, totalAmount: event.target.value })} className={inputClass} required /></Field>
                   <Field label="Months *"><input type="number" min={1} max={120} value={form.months} onChange={(event) => setForm({ ...form, months: event.target.value })} className={inputClass} required /></Field>
                   <Field label="Starts *"><input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} className={inputClass} required /></Field>

@@ -323,13 +323,42 @@ export const quickTimes = () => {
   ];
 };
 
-export const phoneLinks = (mobile: string | null | undefined, whatsapp?: string | null) => {
+export const phoneLinks = (mobile: string | null | undefined, whatsapp?: string | null, text?: string | null) => {
   const digits = (whatsapp || mobile || '').replace(/\D/g, '');
   const ten = digits.slice(-10);
   return {
     tel: mobile ? `tel:${mobile.replace(/\s/g, '')}` : null,
-    wa: ten.length === 10 ? `https://wa.me/91${ten}` : null,
+    wa: ten.length === 10 ? `https://wa.me/91${ten}${text ? `?text=${encodeURIComponent(text)}` : ''}` : null,
   };
+};
+
+/** Prefilled WhatsApp opener for a lead; staff still review and press Send in WhatsApp. */
+export const leadWhatsAppMessage = (
+  customerName: string | null | undefined,
+  lead?: {
+    leadType?: string | null;
+    listingTitleSnapshot?: string | null;
+    listingPriceSnapshot?: number | null;
+    expectedValue?: number | null;
+  } | null,
+) => {
+  const greeting = customerName?.trim() ? `Namaste ${customerName.trim()},` : 'Namaste ji,';
+  const title = lead?.listingTitleSnapshot?.trim();
+  const price = lead?.listingPriceSnapshot || lead?.expectedValue;
+  const subject = title
+    ? `*${title}*${price ? ` (${fmtInr(price)})` : ''}`
+    : lead?.leadType
+      ? LEAD_TYPE_LABELS[lead.leadType] || label(lead.leadType)
+      : null;
+  return [
+    greeting,
+    subject
+      ? `JCB Exchange se baat kar rahe hain. Aapne ${subject} ke liye enquiry ki thi.`
+      : 'JCB Exchange se baat kar rahe hain.',
+    title
+      ? 'Kya abhi baat karne ka sahi samay hai? Machine ki photos aur details share kar sakte hain.'
+      : 'Kya abhi baat karne ka sahi samay hai?',
+  ].join('\n');
 };
 
 // ───────────── Routing ─────────────

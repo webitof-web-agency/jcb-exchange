@@ -51,8 +51,8 @@ export default function CostCentresModule() {
       {!canManage ? <ReadOnlyNotice>Editing needs “Manage Finance Settings”.</ReadOnlyNotice> : null}
       {list.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Name</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">Under</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[560px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Under</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.map((item) => (
                 <tr key={item.id}>
@@ -71,7 +71,7 @@ export default function CostCentresModule() {
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.code}` : 'Add cost centre'} onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={save} className="grid gap-4 p-5 sm:p-7 md:grid-cols-2">
+          <form onSubmit={save} className="grid gap-3 p-4 md:grid-cols-2">
             <Field label="Code *"><input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} className={`${inputClass} font-mono`} maxLength={20} required /></Field>
             <Field label="Name *"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={120} required /></Field>
             <Field label="Type">
