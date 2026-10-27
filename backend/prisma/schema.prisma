@@ -1439,6 +1439,9 @@ model SellAccount {
   cancelReason          String?                @db.Text
   creditNoteNumber      String?                @unique
   creditNoteDate        DateTime?
+  // Listing this sale was made on, kept after cancelling: the cancel releases listingId so the
+  // vehicle can be sold again on a new record.
+  releasedListingId     String?
   createdById           String?
   updatedById           String?
   createdAt             DateTime               @default(now())
@@ -1518,6 +1521,9 @@ model SellAccountPayment {
   cancelReason   String?                 @db.Text
   receiptNumber  String?                 @unique
   receiptTokenHash String?               @unique
+  // Website payment (ListingPaymentSubmission) this receipt records; the books then post the
+  // money through the sale instead of as a separate customer advance.
+  listingPaymentId String?               @unique
   receiptTokenCiphertext String?
   receiptTokenExpiresAt  DateTime?
   receiptGeneratedAt     DateTime?

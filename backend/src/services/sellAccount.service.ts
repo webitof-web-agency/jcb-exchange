@@ -30,7 +30,8 @@ import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linked
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
 import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
-import { linkSoldVehicleToWonLeads } from '../modules/crm/services/soldVehicleLink';
+import { linkSoldVehicleToWonLeads, releaseCancelledSaleLeads } from '../modules/crm/services/soldVehicleLink';
+import { getListingPricing } from '../utils/listingPricing';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -731,6 +732,8 @@ export const cancelSellAccountSale = async (id: string, body: any, actorId?: str
         cancelReason: reason,
         dealStatus: SellAccountDealStatus.CANCELLED,
         ...(creditNoteNumber ? { creditNoteNumber, creditNoteDate: now } : {}),
+        // Release the listing so the vehicle can be sold again on a new record.
+        ...(current.listingId ? { listingId: null, releasedListingId: current.listingId } : {}),
         // The public Bill of Supply link stops working once the sale is cancelled.
         invoiceTokenHash: null,
         invoiceTokenExpiresAt: null,
@@ -740,6 +743,26 @@ export const cancelSellAccountSale = async (id: string, body: any, actorId?: str
     await tx.sellAccountStatusHistory.create({
       data: { sellAccountId: id, oldStatus: current.dealStatus, newStatus: SellAccountDealStatus.CANCELLED, reason, changedById: actorId || null },
     });
+
+    // Undo what the sale changed elsewhere: the listing goes back (paused until an admin checks the
+    // vehicle and publishes it), open RTO work stops, and the CRM deal is closed as lost.
+    if (current.listingId) {
+      const listing = await tx.listing.findUnique({ where: { id: current.listingId }, select: { id: true, status: true } });
+      if (listing?.status === 'SOLD') await tx.listing.update({ where: { id: listing.id }, data: { status: 'PAUSED', soldAt: null } });
+      await tx.saleRecord.deleteMany({ where: { listingId: current.listingId } });
+    }
+    const rto = await tx.vehicleRtoRecord.findUnique({ where: { sellAccountId: id }, include: { transferTasks: true } });
+    if (rto && !rto.isLocked) {
+      const cancelRemark = `Sale cancelled: ${reason}`;
+      await tx.vehicleRtoRecord.update({ where: { id: rto.id }, data: { rtoStatus: 'CANCELLED' } });
+      await recordRtoStatusChange(tx, { rtoRecordId: rto.id, oldStatus: normalizeRtoWorkStatus(rto.rtoStatus), newStatus: 'CANCELLED', remark: cancelRemark, actorId });
+      for (const task of rto.transferTasks.filter((item) => item.status !== 'TRANSFERRED' && item.status !== 'NOT_REQUIRED')) {
+        await tx.rtoTransferTask.update({ where: { id: task.id }, data: { status: 'NOT_REQUIRED', updatedById: actorId || null } });
+        await tx.rtoTransferTaskLog.create({ data: { taskId: task.id, oldStatus: task.status, newStatus: 'NOT_REQUIRED', remark: cancelRemark, changedById: actorId || null } });
+      }
+    }
+    await releaseCancelledSaleLeads(tx, { id, recordNumber: current.recordNumber, listingId: current.listingId, listingTitle: current.listingTitle, reason }, actorId);
+
     const refreshed = await tx.sellAccount.findUnique({ where: { id }, include });
     const rtoState = await getRtoState(tx, id, current.listingId);
     return refreshed ? serialize(refreshed, rtoState, SellAccountDealStatus.CANCELLED) : null;
@@ -899,5 +922,85 @@ export const lockRtoWorkRecord = async (id: string, actorId?: string) => {
       });
     }
     return locked;
+  });
+};
+
+const LISTING_METHOD_TO_RECEIPT: Record<string, SellAccountPaymentMethod> = {
+  RTGS: SellAccountPaymentMethod.BANK_TRANSFER,
+  PHONEPE: SellAccountPaymentMethod.UPI,
+  RAZORPAY: SellAccountPaymentMethod.OTHER,
+};
+
+/**
+ * A website payment for a listing was verified. It is recorded on the vehicle's Sold Vehicle record
+ * as a draft customer receipt linked to the payment: an open record on that listing gets it, otherwise
+ * a draft record is opened with the buyer, seller, vehicle and listing price for staff to complete.
+ * Completed or cancelled sales are left alone, and a payment is never recorded twice.
+ */
+export const recordListingPaymentOnSale = async (paymentId: string) => {
+  const payment = await prisma.listingPaymentSubmission.findUnique({
+    where: { id: paymentId },
+    include: {
+      buyer: { select: { name: true, mobile: true, city: true, state: true } },
+      listing: {
+        select: {
+          id: true, title: true, ownerName: true, price: true, adminMarginAmount: true, adminExpenseAmount: true, adminExpenseBreakdown: true,
+          category: { select: { name: true } }, brand: { select: { name: true } }, model: { select: { name: true } },
+          partner: { select: { name: true, mobile: true, city: true, state: true, role: true } },
+        },
+      },
+    },
+  });
+  if (!payment || !['APPROVED', 'PAID'].includes(payment.status)) return null;
+  if (await prisma.sellAccountPayment.findUnique({ where: { listingPaymentId: payment.id }, select: { id: true } })) return null;
+
+  return prisma.$transaction(async (tx) => {
+    let sale = await tx.sellAccount.findFirst({ where: { listingId: payment.listingId, deletedAt: null } });
+    if (sale && (sale.isLocked || sale.cancelledAt)) return null;
+    const listing = payment.listing;
+    if (!sale) {
+      const pricing = getListingPricing(listing);
+      const partner = listing.partner;
+      sale = await tx.sellAccount.create({
+        data: {
+          recordNumber: await nextSellAccountRecordNumber(tx),
+          listingId: listing.id,
+          listingTitle: listing.title,
+          ownerName: listing.ownerName || partner?.name || null,
+          vehicleType: listing.category?.name || null,
+          brandName: listing.brand?.name || null,
+          vehicleModel: listing.model?.name || null,
+          sourceType: partner?.role === 'PARTNER' ? SellAccountSourceType.PARTNER : SellAccountSourceType.JCB_EXCHANGE,
+          sellerName: partner?.name || null,
+          sellerNumber: partner?.mobile || null,
+          sellerCity: partner?.city || null,
+          sellerState: partner?.state || null,
+          purchaserName: payment.buyer?.name || null,
+          purchaserNumber: payment.buyer?.mobile || null,
+          purchaserCity: payment.customerCity || payment.buyer?.city || null,
+          purchaserState: payment.customerState || payment.buyer?.state || null,
+          purchaseAmount: pricing.sellerPrice,
+          sellAmount: pricing.finalPrice || Number(payment.amount),
+          remarks: `Opened from website payment ${payment.id}. Check the details, then save the record.`,
+          isDraft: true,
+          draftSavedAt: new Date(),
+        },
+      });
+    }
+    await tx.sellAccountPayment.create({
+      data: {
+        sellAccountId: sale.id,
+        side: SellAccountPaymentSide.PURCHASER_RECEIPT,
+        amount: payment.amount,
+        paymentDate: payment.createdAt,
+        method: LISTING_METHOD_TO_RECEIPT[payment.method] ?? SellAccountPaymentMethod.OTHER,
+        reference: payment.transactionRef || null,
+        note: `Website ${payment.method} payment ${payment.id}`,
+        receiptStatus: SellAccountReceiptStatus.DRAFT,
+        listingPaymentId: payment.id,
+      },
+    });
+    await touchSellAccount(tx, sale.id);
+    return { sellAccountId: sale.id, recordNumber: sale.recordNumber };
   });
 };

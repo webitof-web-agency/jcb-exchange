@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma';
+import { recordListingPaymentOnSale } from '../services/sellAccount.service';
 
 const prismaAny = prisma as any;
 
@@ -36,7 +37,7 @@ export const finalizeListingPaymentSale = async (paymentId: string) => {
   const buyerName = payment.buyer?.name || payment.buyer?.mobile || payment.buyer?.email || 'Customer';
   const buyerPhone = payment.buyer?.mobile || payment.buyer?.email || payment.buyer?.id || 'N/A';
 
-  return prismaAny.$transaction(async (tx: any) => {
+  const sold = await prismaAny.$transaction(async (tx: any) => {
     const listing = await tx.listing.findUnique({
       where: { id: payment.listingId },
       select: { id: true, status: true, soldAt: true },
@@ -95,4 +96,15 @@ export const finalizeListingPaymentSale = async (paymentId: string) => {
 
     return { listingId: payment.listingId };
   });
+
+  // Put the payment on the vehicle's Sold Vehicle record (a draft one if none exists) so RTO work and
+  // the books continue from Accounts. Never blocks the payment itself.
+  if (sold) {
+    try {
+      await recordListingPaymentOnSale(payment.id);
+    } catch (error) {
+      console.error(`[listing-payment] could not record payment ${payment.id} on a Sold Vehicle record`, error);
+    }
+  }
+  return sold;
 };

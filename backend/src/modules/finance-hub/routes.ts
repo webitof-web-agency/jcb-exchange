@@ -99,6 +99,7 @@ router.get('/vehicles', anyWorkspaceUser, ledger.vehicles);
 
 // Automatic posting (P3)
 router.get('/posting/status', allow([P.settingsManage, P.booksRead, P.booksPost, P.caRead]), posting.getPostingStatus);
+router.get('/posting/source-status', allow([P.expensesRead, P.expensesManage, P.booksRead, P.caRead]), posting.getSourceBookStatus);
 router.put('/posting/settings', settingsManager, posting.putPostingSettings);
 router.post('/posting/run', settingsManager, posting.postRunNow);
 router.post('/posting/preview', settingsManager, posting.postPreview);

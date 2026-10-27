@@ -472,9 +472,11 @@ export function CompleteFollowUpModal({ followUp, leadStatus, onClose, onDone }:
   const selectedStage = meta?.pipelineStages?.find((stage) => stage.code === newStatus);
   const closing = Boolean(selectedStage?.isTerminal) || newStatus === 'WON' || newStatus === 'LOST';
   const leadOpen = Boolean(followUp.leadId) && !currentStage?.isTerminal && leadStatus !== 'WON' && leadStatus !== 'LOST';
-  const statusOptions = (meta?.pipelineStages || []).length
+  // Won deals are closed from the lead's Close Deal form (machine, value, Sold Vehicle record).
+  const statusOptions = ((meta?.pipelineStages || []).length
     ? (meta?.pipelineStages || []).map((stage) => ({ id: stage.code, name: stage.name }))
-    : (meta?.enums.statuses || []).map((status) => ({ id: status, name: stageName(status) }));
+    : (meta?.enums.statuses || []).map((status) => ({ id: status, name: stageName(status) })))
+    .filter((option) => option.id !== 'WON');
   const requireNext = Boolean(meta?.config.requireNextFollowUp) && leadOpen && !closing;
 
   const save = async () => {

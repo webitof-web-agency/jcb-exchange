@@ -73,7 +73,7 @@ export default function SellAccountRefundsCard({ record, refundable, onRecordCha
 
   const cancelSale = async () => {
     const reason = window.prompt(
-      `Cancel this sale?\n\n${record.invoiceNumber ? `Bill of Supply ${record.invoiceNumber} will be cancelled with a credit note and the vehicle goes back to stock in the accounts. ` : ''}Draft receipts are dropped. Money already received can then be refunded (a cancellation charge can be kept).\n\nReason:`,
+      `Cancel this sale?\n\n${record.invoiceNumber ? `Bill of Supply ${record.invoiceNumber} will be cancelled with a credit note and the vehicle goes back to stock in the accounts. ` : ''}Draft receipts are dropped. Money already received can then be refunded (a cancellation charge can be kept).\n\nThe listing goes back to PAUSED (publish it again after checking the vehicle), open RTO work stops, and the CRM deal is marked lost.\n\nReason:`,
     );
     if (reason === null) return;
     await run('cancel-sale', () => api.post(`${base}/cancel-sale`, { reason }), 'Sale cancelled.');

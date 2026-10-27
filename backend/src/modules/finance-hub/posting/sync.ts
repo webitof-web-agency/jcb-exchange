@@ -23,6 +23,12 @@ import {
 
 type Tx = Prisma.TransactionClient;
 
+/** Queues another source for a fresh sync unless it is already waiting. */
+const requeueSource = async (tx: Tx, sourceType: PostingSourceType, sourceId: string, event: string) => {
+  const waiting = await tx.finPostingQueue.findFirst({ where: { sourceType, sourceId, status: 'PENDING' }, select: { id: true } });
+  if (!waiting) await tx.finPostingQueue.create({ data: { sourceType, sourceId, event } });
+};
+
 export const POSTING_SOURCE_TYPES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER', 'API_WALLET_DAY', 'FINANCE_TRANSACTION'] as const;
 export type PostingSourceType = (typeof POSTING_SOURCE_TYPES)[number];
 
@@ -119,6 +125,10 @@ const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId:
         where: { id: sourceId },
         include: { payments: { orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }] }, refunds: { orderBy: { createdAt: 'asc' } } },
       });
+      // Website payments recorded on this sale decide between their advance entry and the sale's receipt.
+      for (const payment of deal?.payments ?? []) {
+        if (payment.listingPaymentId) await requeueSource(tx, 'LISTING_PAYMENT', payment.listingPaymentId, 'SALE_CHANGED');
+      }
       if (!deal || deal.isDraft || deal.deletedAt) return [];
       const ownStock = deal.sourceType === 'JCB_EXCHANGE';
       const hasSellerPayments = deal.payments.some((payment) => payment.side === 'SELLER_PAYMENT');
@@ -169,6 +179,13 @@ const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId:
         include: { buyer: { select: { id: true, name: true, mobile: true } }, listing: { select: { title: true } } },
       });
       if (!payment || !['APPROVED', 'PAID'].includes(payment.status)) return [];
+      // Once the payment is an issued receipt on a saved Sold Vehicle record, that sale's entries carry
+      // the money; posting it here as well would count it twice.
+      const onSale = await tx.sellAccountPayment.findUnique({
+        where: { listingPaymentId: payment.id },
+        select: { receiptStatus: true, sellAccount: { select: { isDraft: true, deletedAt: true } } },
+      });
+      if (onSale && onSale.receiptStatus === 'ISSUED' && !onSale.sellAccount.isDraft && !onSale.sellAccount.deletedAt) return [];
       const buyerPartyId = await resolvePartyForCandidate(tx, {
         linkType: 'USER',
         linkId: payment.buyerId,

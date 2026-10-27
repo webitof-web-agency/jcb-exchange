@@ -31,7 +31,9 @@ import { buildPaginationItems } from '@/lib/paginationUtils';
 import BrandLoader from '@/components/ui/BrandLoader';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { useAuthStore } from '@/store/authStore';
+import Link from 'next/link';
 import { useRequestedNew } from '@/lib/financeWorkspaceClient';
+import { financeModulePath, financePortalPrefix } from '@/lib/financeWorkspace';
 import FinancePageHeader from '@/components/financeWorkspace/FinancePageHeader';
 import { Badge, Button, buttonLinkClass, DatePresets, Field, inputClass, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
 
@@ -84,6 +86,17 @@ type ImportMeta = {
 };
 
 type ExportFormat = 'csv' | 'xls';
+
+// Where each entry stands in the books (GET /finance-hub/posting/source-status).
+type BookState = 'IN_BOOKS' | 'DRAFT' | 'QUEUED' | 'NEEDS_ATTENTION' | 'NOT_IN_BOOKS';
+type BookStatus = { enabled: boolean; postingMode: string; items: Record<string, { state: BookState; voucherNumber: string | null; error: string | null }> };
+const bookBadge: Record<BookState, { label: string; tone: 'green' | 'amber' | 'blue' | 'red' | 'slate' }> = {
+  IN_BOOKS: { label: 'In books', tone: 'green' },
+  DRAFT: { label: 'Draft voucher', tone: 'amber' },
+  QUEUED: { label: 'Queued', tone: 'blue' },
+  NEEDS_ATTENTION: { label: 'Needs mapping', tone: 'red' },
+  NOT_IN_BOOKS: { label: 'Not in books', tone: 'slate' },
+};
 
 const paymentMethods: Array<{ value: PaymentMethod; label: string }> = [
   { value: 'CASH', label: 'Cash' },
@@ -383,6 +396,19 @@ export default function ExpensesPage() {
 
   useEffect(() => { void loadTransactions(); }, [loadTransactions]);
 
+  // Book status for the rows on screen. Hidden when the user cannot read the finance books.
+  const [bookStatus, setBookStatus] = useState<BookStatus | null>(null);
+  const visibleIds = paginatedTransactions.filter((row) => row.source === 'MANUAL').map((row) => row.id).join(',');
+  useEffect(() => {
+    if (!visibleIds) return;
+    let cancelled = false;
+    api.get('/finance-hub/posting/source-status', { params: { sourceType: 'FINANCE_TRANSACTION', ids: visibleIds } })
+      .then((response) => { if (!cancelled) setBookStatus(response.data as BookStatus); })
+      .catch(() => { if (!cancelled) setBookStatus(null); });
+    return () => { cancelled = true; };
+  }, [visibleIds]);
+  const prefix = financePortalPrefix(pathname);
+
   useEffect(() => {
     if (!hasHydrated || !isAuthenticated || !canRead) return;
     api.get('/finance/categories')
@@ -590,6 +616,12 @@ export default function ExpensesPage() {
 
       {error ? <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700"><span>{error}</span><button type="button" onClick={() => void loadTransactions(false)} className="font-medium underline">Retry</button></div> : null}
 
+      <p className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[12px] leading-5 text-slate-700">
+        Expenses entered here are <b className="font-semibold">paid</b> expenses and go into the books automatically{bookStatus && !bookStatus.enabled ? ' once automatic posting is on' : ''}.
+        For a bill you will pay later or one with GST input credit, use <Link href={financeModulePath(prefix, 'vendor-bills')} className="font-medium text-blue-700 hover:underline">Vendor Bills</Link> instead — do not enter the same expense in both.
+        Imported bank statement lines are matched in <Link href={financeModulePath(prefix, 'bank-reconciliation')} className="font-medium text-blue-700 hover:underline">Bank Reconciliation</Link>.
+      </p>
+
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 lg:grid-cols-4">
         {kpis.map(([title, value, tone]) => (
           <div key={title} className="bg-white px-3 py-2.5">
@@ -633,6 +665,7 @@ export default function ExpensesPage() {
                 <th className="px-3 py-2 font-medium">Narration</th>
                 <th className="px-3 py-2 text-right font-medium">Amount</th>
                 <th className="px-3 py-2 text-right font-medium">Balance</th>
+                {bookStatus ? <th className="px-3 py-2 font-medium">Books</th> : null}
                 <th className="w-12 px-3 py-2" aria-label="Actions" />
               </tr>
             </thead>
@@ -654,6 +687,19 @@ export default function ExpensesPage() {
                     <td className="max-w-[300px] truncate px-3 text-slate-600" title={transaction.narration}>{transaction.narration}</td>
                     <td className={`whitespace-nowrap px-3 text-right font-semibold ${debit ? 'text-red-700' : 'text-emerald-700'}`}>{debit ? '−' : '+'}{moneyLabel(transaction.amount)}</td>
                     <td className="whitespace-nowrap px-3 text-right text-slate-600">{moneyLabel(transaction.balance)}</td>
+                    {bookStatus ? (
+                      <td className="whitespace-nowrap px-3" onClick={(event) => event.stopPropagation()}>
+                        {transaction.source === 'IMPORT' ? <span className="text-[11px] text-slate-500">Bank statement</span> : (() => {
+                          const item = bookStatus.items[transaction.id];
+                          if (!item) return <span className="text-[11px] text-slate-400">—</span>;
+                          const badge = bookBadge[item.state];
+                          if (item.state === 'NEEDS_ATTENTION') {
+                            return <Link href={financeModulePath(prefix, 'account-ledger-masters')} title={item.error ?? undefined}><Badge tone={badge.tone}>{badge.label}</Badge></Link>;
+                          }
+                          return <span title={item.voucherNumber ?? undefined}><Badge tone={badge.tone}>{item.voucherNumber ?? badge.label}</Badge></span>;
+                        })()}
+                      </td>
+                    ) : null}
                     <td className="px-3 text-right">
                       <div onClick={(event) => event.stopPropagation()}>
                         {actions.length ? <PortalActionDropdown align="right" items={actions} /> : <span className="text-[12px] text-slate-400">—</span>}
@@ -664,7 +710,7 @@ export default function ExpensesPage() {
               })}
               {!paginatedTransactions.length ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center">
+                  <td colSpan={bookStatus ? 10 : 9} className="px-3 py-10 text-center">
                     <FileText className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-2 text-[13px] font-medium text-slate-700">No transactions found</p>
                     <p className="mt-0.5 text-[12px] text-slate-500">{hasFilters ? 'Nothing matches these filters.' : 'Add a transaction or import a bank statement to begin.'}</p>
