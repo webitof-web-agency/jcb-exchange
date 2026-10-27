@@ -17,8 +17,8 @@ const P_TABLE: number[][] = [
   [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
   [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
   [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
-  [2, 7, 9, 5, 8, 0, 4, 3, 1, 6],
-  [7, 0, 4, 1, 9, 5, 8, 2, 6, 3],
+  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+  [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
 ];
 
 const normalizeDigits = (value: unknown) => typeof value === 'string' ? value.replace(/\D/g, '') : '';
@@ -34,11 +34,31 @@ const isVerhoeffValid = (value: string) => {
 
 export const normalizeAadhaarInput = (value: unknown) => normalizeDigits(value).slice(0, 12);
 
-export const validateAadhaarNumber = (value: unknown) => {
+export const formatAadhaarNumber = (value: unknown): string => {
+  const digits = normalizeAadhaarInput(value);
+  if (!digits) return '';
+  const parts: string[] = [];
+  for (let i = 0; i < digits.length; i += 4) {
+    parts.push(digits.slice(i, i + 4));
+  }
+  return parts.join(' ');
+};
+
+export const validateAadhaarNumber = (value: unknown): string | null => {
   const normalized = normalizeAadhaarInput(value);
-  return normalized.length === 12 && normalized[0] !== '0' && normalized[0] !== '1' && isVerhoeffValid(normalized)
-    ? null
-    : 'Enter a valid 12-digit Aadhaar number.';
+  if (!normalized) {
+    return 'Please enter a 12-digit Aadhaar number.';
+  }
+  if (normalized.length !== 12) {
+    return `Aadhaar number must be exactly 12 digits (currently ${normalized.length} digits entered).`;
+  }
+  if (normalized[0] === '0' || normalized[0] === '1') {
+    return `Aadhaar number cannot start with '${normalized[0]}'. Valid Aadhaar numbers start with digits 2 to 9.`;
+  }
+  if (!isVerhoeffValid(normalized)) {
+    return 'Invalid Aadhaar number (checksum validation failed). Please verify all digits.';
+  }
+  return null;
 };
 
 export const maskAadhaar = (value: unknown) => {

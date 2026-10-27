@@ -12,7 +12,7 @@ import {
 } from '../middlewares/auth.middleware';
 
 const router = Router();
-const canVerify = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.update']);
+const canVerify = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.update', 'aadhaar.digilocker.read']);
 
 router.use(requireAuth, requireAdmin);
 router.post('/initialize', canVerify, initializeAadhaarVerification);

@@ -35,7 +35,7 @@ export interface PanCardTemplateProps {
   side?: 'front' | 'back';
 }
 
-function formatPanDate(dateStr?: string): string {
+export function formatPanDate(dateStr?: string): string {
   if (!dateStr) return '';
   const clean = dateStr.trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
@@ -72,22 +72,65 @@ export default function PanCardTemplate({
 
   const hasProvidedData = Boolean(data && Object.keys(data).length > 0);
   const pan = (data?.panNumber || data?.pan_number || (hasProvidedData ? '—' : 'ABCDE1234F')).toUpperCase().trim();
-  const name = (data?.name || data?.fullName || data?.full_name || (hasProvidedData ? 'APPLICANT NAME' : 'ROHIT KUMAR')).toUpperCase().trim();
+
+  const rawName = data?.name || data?.fullName || data?.full_name;
+  const isNameValid = Boolean(
+    rawName &&
+    !['-', '—', 'not available', 'not applicable', 'null', 'undefined'].includes(
+      String(rawName).trim().toLowerCase()
+    )
+  );
+  const name = (isNameValid ? String(rawName) : (hasProvidedData ? '—' : 'ROHIT KUMAR')).toUpperCase().trim();
 
   const rawFather = data?.fatherName || data?.father_name;
-  const isFatherValid = Boolean(rawFather && rawFather !== '-' && rawFather !== '—' && rawFather.trim() !== '');
+  const isFatherValid = Boolean(
+    rawFather &&
+    !['-', '—', 'not available', 'not applicable', 'null', 'undefined'].includes(
+      String(rawFather).trim().toLowerCase()
+    )
+  );
   const fatherName = isFatherValid
-    ? rawFather!.toUpperCase().trim()
-    : (hasProvidedData ? 'NOT AVAILABLE' : 'SURESH KUMAR');
+    ? String(rawFather).toUpperCase().trim()
+    : (hasProvidedData ? '—' : 'SURESH KUMAR');
 
-  const dob = formatPanDate(data?.dob || data?.dateOfBirth || data?.date_of_birth || (hasProvidedData ? '—' : '15/08/1990'));
+  const rawDob = data?.dob || data?.dateOfBirth || data?.date_of_birth;
+  const isDobValid = Boolean(
+    rawDob &&
+    !['-', '—', 'not available', 'not applicable', 'null', 'undefined'].includes(
+      String(rawDob).trim().toLowerCase()
+    )
+  );
+  const dob = isDobValid ? formatPanDate(String(rawDob)) : (hasProvidedData ? '—' : '15/08/1990');
   const photoUrl = data ? data.photoUrl || data.photo_url : undefined;
   const signatureUrl = data?.signatureUrl || data?.signature_url;
-  const signatureText = data ? data.signatureText || '' : 'Rohit Kumar';
+  const signatureText = data?.signatureText
+    ? data.signatureText
+    : isNameValid
+      ? name.split(' ').map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')
+      : (hasProvidedData ? 'Signature' : 'Rohit Kumar');
+
+  const nameLen = name.length;
+  const nameSizeStyle: React.CSSProperties = {
+    fontSize: nameLen > 24 ? '9.5px' : nameLen > 18 ? '10.5px' : '11.5px',
+    textShadow: '0 0.5px 0.5px rgba(255,255,255,0.6)',
+  };
+
+  const fatherLen = fatherName.length;
+  const fatherSizeStyle: React.CSSProperties = {
+    fontSize: fatherLen > 24 ? '9.5px' : fatherLen > 18 ? '10.5px' : '11.5px',
+    textShadow: '0 0.5px 0.5px rgba(255,255,255,0.6)',
+  };
 
   const qrPayload = useMemo(() => {
     if (data?.qrData) return data.qrData;
-    return `PAN:${pan}|NAME:${name}|FATHER:${fatherName}|DOB:${dob}`;
+    const lines = [
+      'INCOME TAX DEPARTMENT',
+      `PAN: ${pan}`,
+      name ? `Name: ${name}` : '',
+      fatherName ? `Father's Name: ${fatherName}` : '',
+      dob ? `Date of Birth: ${dob}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
   }, [data?.qrData, pan, name, fatherName, dob]);
 
   if (side === 'back') {
@@ -141,9 +184,9 @@ export default function PanCardTemplate({
           }}
         >
           <span
-            className="font-mono text-[18px] font-black tracking-[0.24em] text-[#08152a]"
+            className="font-sans text-[17px] font-black tracking-normal text-[#000000]"
             style={{
-              fontFeatureSettings: '"tnum" 1',
+              fontFamily: '"Arial Black", Impact, Arial, sans-serif',
               textShadow: '0 0.5px 1px rgba(255,255,255,0.7)',
             }}
           >
@@ -183,8 +226,8 @@ export default function PanCardTemplate({
           }}
         >
           <p
-            className="text-[11.5px] font-black text-[#08152a] uppercase tracking-wide leading-tight truncate"
-            style={{ textShadow: '0 0.5px 0.5px rgba(255,255,255,0.6)' }}
+            className="font-black text-[#08152a] uppercase tracking-wide leading-tight truncate"
+            style={nameSizeStyle}
           >
             {name}
           </p>
@@ -200,8 +243,8 @@ export default function PanCardTemplate({
           }}
         >
           <p
-            className="text-[11.5px] font-black text-[#08152a] uppercase tracking-wide leading-tight truncate"
-            style={{ textShadow: '0 0.5px 0.5px rgba(255,255,255,0.6)' }}
+            className="font-black text-[#08152a] uppercase tracking-wide leading-tight truncate"
+            style={fatherSizeStyle}
           >
             {fatherName}
           </p>
@@ -237,40 +280,27 @@ export default function PanCardTemplate({
           <QrCodeSvg value={qrPayload} size={86} />
         </div>
 
-        {/* ── DYNAMIC FIELD 7: SIGNATURE ── */}
-        <div
-          className="absolute z-10 flex items-center justify-center select-none"
-          style={{
-            top: '75.5%',
-            left: '43.0%',
-            transform: 'translateX(-50%)',
-            width: '25%',
-            height: '11.5%',
-          }}
-        >
-          {!sigError && signatureUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+        {/* ── DYNAMIC FIELD 7: SIGNATURE (Only if valid image signature is uploaded) ── */}
+        {!sigError && signatureUrl ? (
+          <div
+            className="absolute z-10 flex items-center justify-center select-none"
+            style={{
+              top: '75.5%',
+              left: '43.0%',
+              transform: 'translateX(-50%)',
+              width: '25%',
+              height: '11.5%',
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={signatureUrl}
               alt="Signature"
               className="max-h-full max-w-full object-contain"
               onError={() => setSigError(true)}
             />
-          ) : (
-            <span
-              className="text-[17px] font-bold text-[#0d1b2a] leading-none select-none"
-              style={{
-                fontFamily:
-                  '"Brush Script MT", "Segoe Script", "Dancing Script", cursive',
-                transform: 'rotate(-3deg)',
-                display: 'inline-block',
-                letterSpacing: '0.02em',
-              }}
-            >
-              {signatureText || name}
-            </span>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {/* ── LAYER: Subtle PVC Glare Overlay ── */}
         <div

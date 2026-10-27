@@ -13,9 +13,10 @@ test('vehicle transport overview does not render removed service cards', () => {
   const emptyStateStart = source.indexOf('{/* Empty State */}');
   const cardGrid = source.slice(gridStart, emptyStateStart);
 
-  for (const label of ['RC Owner History', 'RC to Mobile', 'Mobile To RC', 'RC Mobile Number Check']) {
-    assert.equal(cardGrid.includes(label), false, `${label} should not be rendered in the service card grid`);
-  }
+  assert.equal(cardGrid.includes('RC Mobile Number Check'), false, 'RC Mobile Number Check should not be rendered in the service card grid');
+  assert.equal(cardGrid.includes('RC Owner History'), true, 'RC Owner History should remain available');
+  assert.equal(cardGrid.includes('RC to Mobile'), true, 'RC to Mobile should remain available');
+  assert.equal(cardGrid.includes('Mobile to RC'), true, 'Mobile to RC should remain available');
 });
 
 test('identity hub overview does not render the removed Mobile To PAN card', () => {
@@ -25,4 +26,10 @@ test('identity hub overview does not render the removed Mobile To PAN card', () 
   const overview = source.slice(overviewStart, servicesStart);
 
   assert.equal(overview.includes('Mobile To PAN'), false, 'Mobile To PAN should not be rendered in the overview cards');
+});
+
+test('unconfigured API prices are not rendered as placeholder text', () => {
+  const source = readSource('../components/apiBilling/ApiBillingDisplay.tsx');
+
+  assert.equal(source.includes('Price not configured'), false, 'unconfigured price placeholder should stay hidden');
 });

@@ -2,6 +2,7 @@ import {
   PanVerificationOperation,
   PanVerificationStatus,
 } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import prisma from '../lib/prisma';
 import {
   buildPanContactPayload,
@@ -26,7 +27,8 @@ import {
   resolveSurepassEnvironment,
   type PanVerificationRuntimeConfig,
 } from './panVerificationSettings.service';
-import { createVerificationFingerprint, isFreshVerificationResult } from './verificationCache';
+import { createVerificationFingerprint } from './verificationCache';
+import { deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
 import {
   apiWalletBillingService,
   isApiWalletBillingError,
@@ -40,16 +42,59 @@ type PanRecordRepository = {
   count: (args: any) => Promise<number>;
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
+  updateMany?: (args: any) => Promise<{ count: number }>;
 };
+
+type PanTemplateRepository = {
+  findUnique: (args: any) => Promise<any>;
+  create: (args: any) => Promise<any>;
+  delete?: (args: any) => Promise<any>;
+};
+
+type PanTemplateUploader = (
+  buffer: Buffer,
+  mimeType: string,
+  filename: string,
+) => Promise<{ fileId: string }>;
 
 type PanVerificationDependencies = {
   record?: PanRecordRepository;
+  template?: PanTemplateRepository;
   provider?: ReturnType<typeof createSurepassClient>;
   dataSecret?: string;
   billing?: ApiBillingGateway;
+  uploadTemplateFile?: PanTemplateUploader;
+  deleteTemplateFile?: (fileId: string) => Promise<void>;
 };
 
 type SafeResult = Record<string, unknown>;
+
+export const PAN_RAW_DATA_TTL_MS = 5 * 60 * 1000;
+export const MAX_PAN_TEMPLATE_SIZE = 1 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+export const getPanRawDataExpiresAt = (completedAt = new Date()) =>
+  new Date(completedAt.getTime() + PAN_RAW_DATA_TTL_MS);
+
+export const isPanRawDataAvailable = (
+  record: { encryptedResult?: unknown; rawDataExpiresAt?: unknown },
+  now = Date.now(),
+) => {
+  if (typeof record.encryptedResult !== 'string' || !record.encryptedResult) return false;
+  const expiresAt = record.rawDataExpiresAt instanceof Date
+    ? record.rawDataExpiresAt.getTime()
+    : new Date(String(record.rawDataExpiresAt ?? '')).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > now;
+};
+
+const panTemplateSummary = (template: any) => template ? {
+  id: template.id,
+  fileName: template.fileName,
+  mimeType: template.mimeType,
+  fileSize: template.fileSize,
+  sha256: template.sha256,
+  createdAt: template.createdAt instanceof Date ? template.createdAt.toISOString() : template.createdAt,
+} : null;
 
 export class PanVerificationError extends Error {
   constructor(
@@ -205,7 +250,18 @@ export const sanitizePanComprehensiveV2Result = (pan: string, value: unknown): S
     lessInfo: safeBoolean(data.less_info ?? data.lessInfo ?? details.less_info ?? details.lessInfo),
     status: advancedPanStatusDescription || safeString(data.status ?? details.status, 50),
   };
+  const rawFather = normalizeFullName(
+    data.father_name ??
+    data.fatherName ??
+    details.father_name ??
+    details.fatherName ??
+    (objectValue(data.pan_to_father_name))?.father_name ??
+    (objectValue(data.pan_to_father_name))?.fatherName ??
+    data.care_of ??
+    details.care_of
+  );
   const optionalPanDetails: Array<[string, unknown]> = [
+    ...(rawFather ? [['fatherName', rawFather] as [string, unknown]] : []),
     ['title', safeString(data.title, 20)],
     ['panStatus', advancedPanStatus],
     ['panStatusDescription', advancedPanStatusDescription],
@@ -248,6 +304,8 @@ const recordSummary = (record: any) => ({
     : null,
   createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
   completedAt: record.completedAt instanceof Date ? record.completedAt.toISOString() : record.completedAt,
+  rawDataExpiresAt: record.rawDataExpiresAt instanceof Date ? record.rawDataExpiresAt.toISOString() : record.rawDataExpiresAt ?? null,
+  template: panTemplateSummary(record.template),
 });
 
 const providerFailure = (error: SurepassProviderError) => {
@@ -290,17 +348,26 @@ const ensureProviderData = (body: unknown) => {
 
 export class PanVerificationService {
   private readonly record: PanRecordRepository;
+  private readonly template: PanTemplateRepository;
   private readonly provider: ReturnType<typeof createSurepassClient> | undefined;
   private readonly dataSecret: string | undefined;
   private readonly billing: ApiBillingGateway | undefined;
+  private readonly uploadTemplateFile: PanTemplateUploader;
+  private readonly deleteTemplateFile: (fileId: string) => Promise<void>;
 
   constructor(dependencies: PanVerificationDependencies = {}) {
     this.record = dependencies.record || (prisma as any).panVerificationRecord;
+    this.template = dependencies.template || (prisma as any).panVerificationTemplate;
     this.provider = dependencies.provider;
     // Production resolves the active encrypted settings secret at request time.
     // Only isolated tests/custom runtimes may inject a direct secret.
     this.dataSecret = dependencies.dataSecret?.trim() || undefined;
     this.billing = dependencies.billing ?? (!dependencies.record ? apiWalletBillingService : undefined);
+    this.uploadTemplateFile = dependencies.uploadTemplateFile || (async (buffer, mimeType, filename) => {
+      const result = await uploadFileToDrive(buffer, mimeType, filename, undefined, { access: 'private' });
+      return { fileId: result.fileId };
+    });
+    this.deleteTemplateFile = dependencies.deleteTemplateFile || deleteFileFromDrive;
   }
 
   private async getRuntime() {
@@ -372,24 +439,27 @@ export class PanVerificationService {
         operation,
         requestFingerprint,
         status: PanVerificationStatus.SUCCESS,
-        completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        rawDataExpiresAt: { gt: new Date() },
         encryptedResult: { not: null },
       },
       orderBy: { completedAt: 'desc' },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
     });
-    if (!cached || !isFreshVerificationResult(cached)) return null;
+    if (!cached || !isPanRawDataAvailable(cached)) return null;
     try {
       return {
         record: recordSummary(cached),
         result: JSON.parse(decryptPanData(cached.encryptedResult, dataSecret)) as SafeResult,
+        template: panTemplateSummary(cached.template),
         cacheHit: true,
       };
     } catch {
       return null;
     }
   }
-
   private async markFailed(id: string, error: PanVerificationError, messageCode: string | null = null) {
     try {
       await this.record.update({
@@ -426,8 +496,9 @@ export class PanVerificationService {
     const existing = await this.record.findFirst({
       where: { operation: params.operation, requestFingerprint: params.requestFingerprint },
       orderBy: { completedAt: 'desc' },
+      include: { template: true },
     });
-    const pending = existing
+    const pending = existing && !existing.template
       ? await this.record.update({
           where: { id: existing.id },
           data: {
@@ -440,6 +511,7 @@ export class PanVerificationService {
             safeMessage: null,
             messageCode: null,
             encryptedResult: null,
+            rawDataExpiresAt: null,
             completedAt: null,
           },
         })
@@ -464,6 +536,8 @@ export class PanVerificationService {
       const body = await params.providerCall(runtime.provider, runtime);
       const { response, data } = ensureProviderData(body);
       const result = params.sanitize(data);
+      const completedAt = new Date();
+      const rawDataExpiresAt = getPanRawDataExpiresAt(completedAt);
       const encryptedResult = encryptPanData(JSON.stringify(result), runtime.dataSecret);
       const completed = await this.record.update({
         where: { id: pending.id },
@@ -472,11 +546,12 @@ export class PanVerificationService {
           providerClientId: providerClientIdFrom(data),
           messageCode: safeString(response.message_code, 100),
           encryptedResult,
-          completedAt: new Date(),
+          completedAt,
+          rawDataExpiresAt,
         },
       });
 
-      return { record: recordSummary(completed), result, cacheHit: false, ...(billing ? { billing } : {}) };
+      return { record: recordSummary(completed), result, template: null, cacheHit: false, ...(billing ? { billing } : {}) };
     } catch (error) {
       const normalized = isApiWalletBillingError(error)
         ? new PanVerificationError(error.message, error.statusCode, error.code)
@@ -549,12 +624,47 @@ export class PanVerificationService {
       pan,
       requestedById,
       requestFingerprint: createVerificationFingerprint('PAN_COMPREHENSIVE_V2', payload),
-      providerCall: (provider, runtime) => provider.getPanComprehensiveV2(payload, runtime.environment),
+      providerCall: async (provider, runtime) => {
+        // Concurrently query PAN Comprehensive and PAN to Father Name
+        const compPromise = provider.getPanComprehensiveV2(payload, runtime.environment);
+        const fatherPromise = typeof provider.getPanFatherName === 'function'
+          ? provider.getPanFatherName(payload).catch(() => null)
+          : Promise.resolve(null);
+
+        const [compBody, fatherBody] = await Promise.all([compPromise, fatherPromise]);
+        const compData = objectValue(compBody?.data);
+
+        if (compData && fatherBody) {
+          const fatherData = objectValue(fatherBody.data);
+          if (fatherData) {
+            const fetchedFather = normalizeFullName(
+              fatherData.father_name ??
+              fatherData.fatherName
+            );
+            if (fetchedFather) {
+              compData.father_name = fetchedFather;
+              compData.fatherName = fetchedFather;
+              const details = objectValue(compData.pan_details ?? compData.panDetails);
+              if (details) {
+                details.father_name = fetchedFather;
+                details.fatherName = fetchedFather;
+              }
+            }
+            compData.pan_to_father_name = fatherData;
+          }
+        }
+
+        return compBody;
+      },
       sanitize: (data) => sanitizePanComprehensiveV2Result(pan, data),
     });
   }
 
-  async listHistory(filters: { page?: unknown; limit?: unknown; operation?: unknown; status?: unknown; search?: unknown }) {
+  async listHistory(
+    filters: { page?: unknown; limit?: unknown; operation?: unknown; status?: unknown; search?: unknown },
+    requestedById?: string,
+    role?: string,
+  ) {
     const pageValue = Number.parseInt(String(filters.page ?? '1'), 10);
     const limitValue = Number.parseInt(String(filters.limit ?? '20'), 10);
     const page = Number.isFinite(pageValue) && pageValue > 0 ? Math.min(pageValue, 10_000) : 1;
@@ -567,6 +677,7 @@ export class PanVerificationService {
       : undefined;
     const search = typeof filters.search === 'string' ? filters.search.trim().slice(0, 20) : '';
     const where = {
+      ...(role === 'EMPLOYEE' && requestedById ? { requestedById } : {}),
       ...(operation ? { operation } : {}),
       ...(status ? { status } : {}),
       ...(search ? { maskedPan: { contains: search, mode: 'insensitive' } } : {}),
@@ -581,6 +692,7 @@ export class PanVerificationService {
         take: limit,
         include: {
           requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
         },
       }),
     ]);
@@ -603,15 +715,143 @@ export class PanVerificationService {
     return permissions.includes('ALL_ACCESS') || permissions.includes('pan.verification.contact');
   }
 
-  async getHistoryDetail(id: string, requestedById: string, role: string) {
+  private async clearExpiredRawData(record: any) {
+    if (record.status !== PanVerificationStatus.SUCCESS || !record.encryptedResult || isPanRawDataAvailable(record)) {
+      return record;
+    }
+
+    await this.record.update({
+      where: { id: record.id },
+      data: { encryptedResult: null, rawDataExpiresAt: null },
+    });
+    record.encryptedResult = null;
+    record.rawDataExpiresAt = null;
+    return record;
+  }
+
+  async cleanupExpiredRawData(now = new Date()) {
+    if (!this.record.updateMany) return 0;
+    const result = await this.record.updateMany({
+      where: {
+        status: PanVerificationStatus.SUCCESS,
+        encryptedResult: { not: null },
+        OR: [
+          { rawDataExpiresAt: null },
+          { rawDataExpiresAt: { lte: now } },
+        ],
+      },
+      data: { encryptedResult: null, rawDataExpiresAt: null },
+    });
+    return result.count;
+  }
+
+  async uploadTemplate(
+    recordId: string,
+    requestedById: string,
+    role: string,
+    buffer: Buffer,
+    mimeType: string,
+  ) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new PanVerificationError('A PAN template file is required.', 400, 'template_file_required');
+    }
+    if (buffer.length > MAX_PAN_TEMPLATE_SIZE) {
+      throw new PanVerificationError('The PAN template must be 1 MB or smaller.', 413, 'template_file_too_large');
+    }
+    if (mimeType !== 'image/png') {
+      throw new PanVerificationError('Only PNG PAN templates are allowed.', 400, 'template_file_type_invalid');
+    }
+    if (buffer.length < PNG_SIGNATURE.length || !buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new PanVerificationError('The PAN template file is invalid.', 400, 'template_file_signature_invalid');
+    }
+
     const record = await this.record.findUnique({
-      where: { id },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      where: { id: recordId },
+      include: { template: true },
     });
     if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new PanVerificationError('You do not have access to this PAN template.', 403, 'template_forbidden');
+    }
+    if (record.template) {
+      if (record.encryptedResult) {
+        await this.record.update({
+          where: { id: record.id },
+          data: { encryptedResult: null, rawDataExpiresAt: null },
+        });
+        record.encryptedResult = null;
+        record.rawDataExpiresAt = null;
+      }
+      return { record: recordSummary(record), result: null, template: panTemplateSummary(record.template), alreadyUploaded: true };
+    }
+    if (record.status !== PanVerificationStatus.SUCCESS || !record.encryptedResult) {
+      throw new PanVerificationError('A successful PAN result is required before uploading the template.', 409, 'template_result_unavailable');
+    }
+    if (!isPanRawDataAvailable(record)) {
+      await this.clearExpiredRawData(record);
+      throw new PanVerificationError('The five-minute PAN template window has expired. Run verification again.', 410, 'pan_raw_data_expired');
+    }
 
+    const fileName = `pan-template-${record.id}.png`;
+    let driveFileId: string | null = null;
+    let templateId: string | null = null;
+    try {
+      const stored = await this.uploadTemplateFile(buffer, mimeType, fileName);
+      driveFileId = stored.fileId;
+      const template = await this.template.create({
+        data: {
+          verificationRecordId: record.id,
+          requestedById: record.requestedById,
+          driveFileId,
+          fileName,
+          mimeType,
+          fileSize: buffer.length,
+          sha256: createHash('sha256').update(buffer).digest('hex'),
+        },
+      });
+      templateId = template.id;
+      await this.record.update({
+        where: { id: record.id },
+        data: { encryptedResult: null, rawDataExpiresAt: null },
+      });
+      return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null }), result: null, template: panTemplateSummary(template) };
+    } catch (error) {
+      if (templateId && this.template.delete) await this.template.delete({ where: { id: templateId } });
+      if (driveFileId) await this.deleteTemplateFile(driveFileId);
+      throw new PanVerificationError(
+        error instanceof PanVerificationError ? error.message : 'The PAN template could not be stored securely.',
+        error instanceof PanVerificationError ? error.statusCode : 502,
+        error instanceof PanVerificationError ? error.code : 'template_storage_failed',
+      );
+    }
+  }
+
+  async getTemplateDownload(recordId: string, requestedById: string, role: string) {
+    const record = await this.record.findUnique({
+      where: { id: recordId },
+      include: { template: true },
+    });
+    if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new PanVerificationError('You do not have access to this PAN template.', 403, 'template_forbidden');
+    }
+    if (!record.template) throw new PanVerificationError('PAN template not found.', 404, 'template_not_found');
+    return { ...panTemplateSummary(record.template), driveFileId: record.template.driveFileId };
+  }
+
+  async getHistoryDetail(id: string, requestedById: string, role: string) {
+    let record = await this.record.findUnique({
+      where: { id },
+      include: { requestedBy: { select: { id: true, name: true, email: true } }, template: true },
+    });
+    if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new PanVerificationError('You do not have access to this PAN history record.', 403, 'history_forbidden');
+    }
+
+    record = await this.clearExpiredRawData(record);
     let result: unknown = null;
-    if (record.status === PanVerificationStatus.SUCCESS && record.encryptedResult) {
+    if (record.status === PanVerificationStatus.SUCCESS && isPanRawDataAvailable(record)) {
       if (
         record.operation === PanVerificationOperation.PAN_CONTACT_LOOKUP &&
         !(await this.canViewContactResult(requestedById, role))
@@ -625,7 +865,7 @@ export class PanVerificationService {
       }
     }
 
-    return { record: recordSummary(record), result };
+    return { record: recordSummary(record), result, template: panTemplateSummary(record.template) };
   }
 }
 

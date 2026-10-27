@@ -212,3 +212,9 @@ whatsappfront/
 
 # Locally rendered PDF/DOCX previews are temporary verification artifacts.
 /preview-output/
+
+# Aadhaar blank template PDF and extracted PNG — provisioned locally, not committed.
+/aadharblanktemplate.pdf
+/aadharblanktemplate.PDF
+/admin-portal/public/templates/aadhaar/*.png
+/admin-portal/public/templates/aadhaar/*.pdf

@@ -2,6 +2,8 @@ import app from './app';
 import { startSoldListingRetentionJob } from './utils/soldListingRetention';
 import { startKeepAlive } from './utils/keepAlive';
 import { startDatabaseBackupJob } from './jobs/dbBackup.job';
+import { startPanVerificationRetentionJob } from './jobs/panVerificationRetention.job';
+import { startGstVerificationRetentionJob } from './jobs/gstVerificationRetention.job';
 import { storagePersistenceConfigured } from './utils/documentUpload';
 import { startFinanceHubWorker } from './modules/finance-hub';
 import { startCrmWorker } from './modules/crm';
@@ -10,6 +12,8 @@ const PORT = process.env.PORT || 5000;
 
 startSoldListingRetentionJob();
 startDatabaseBackupJob();
+startPanVerificationRetentionJob();
+startGstVerificationRetentionJob();
 // Finance Hub automatic posting; idle while posting mode is OFF.
 startFinanceHubWorker();
 // CRM follow-up reminders, missed marking, SLA and (opt-in) automation.

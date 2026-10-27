@@ -117,6 +117,16 @@ export const mapGstVerificationToCertificate = (
   const providerData = isRecord(result.providerData)
     ? (result.providerData as Record<string, unknown>)
     : (isRecord(response.providerData) ? (response.providerData as Record<string, unknown>) : rawData);
+  const contactDetails = isRecord(result.contactDetails)
+    ? (result.contactDetails as Record<string, unknown>)
+    : (isRecord(rawData.contact_details)
+      ? (rawData.contact_details as Record<string, unknown>)
+      : (isRecord(providerData.contact_details)
+        ? (providerData.contact_details as Record<string, unknown>)
+        : (isRecord(providerData.contactDetails) ? (providerData.contactDetails as Record<string, unknown>) : {})));
+  const principalContact = isRecord(contactDetails.principal)
+    ? (contactDetails.principal as Record<string, unknown>)
+    : {};
 
   const gstin = safeString(
     previewOrResult.number ||
@@ -138,10 +148,7 @@ export const mapGstVerificationToCertificate = (
       rawData.legalName ||
       providerData.legal_name ||
       providerData.legalName ||
-      record.legalName ||
-      result.businessName ||
-      result.business_name ||
-      rawData.business_name,
+      record.legalName,
     ''
   );
 
@@ -153,9 +160,8 @@ export const mapGstVerificationToCertificate = (
       result.trade_name ||
       rawData.trade_name ||
       providerData.trade_name ||
-      record.businessName ||
-      legalName,
-    legalName
+      record.businessName,
+    ''
   );
 
   const additionalTradeNames = safeString(
@@ -178,18 +184,54 @@ export const mapGstVerificationToCertificate = (
     result.dateOfRegistration ||
     result.date_of_registration ||
     rawData.date_of_registration ||
-    providerData.date_of_registration ||
-    record.createdAt;
+    providerData.date_of_registration;
   const validityFrom = formatDate(regDateRaw) || '';
-  const approvalDate = validityFrom;
-  const issueDate = validityFrom;
+  const approvalDate = formatDate(
+    result.approvalDate || result.approval_date || rawData.approval_date || providerData.approval_date,
+  ) || validityFrom;
+  const issueDate = formatDate(
+    result.issueDate || result.issue_date || rawData.issue_date || providerData.issue_date,
+  ) || validityFrom;
 
   const typeOfRegistration = safeString(
     result.taxpayerType ||
       result.taxpayer_type ||
       rawData.taxpayer_type ||
       providerData.taxpayer_type,
-    'Regular'
+    ''
+  );
+
+  const cancellationDateRaw =
+    result.dateOfCancellation ||
+    result.date_of_cancellation ||
+    rawData.date_of_cancellation ||
+    providerData.date_of_cancellation;
+  const validityTo = typeof cancellationDateRaw === 'string' && /^18\d{2}-/.test(cancellationDateRaw)
+    ? ''
+    : formatDate(cancellationDateRaw);
+
+  const signature = isRecord(result.signature)
+    ? (result.signature as Record<string, unknown>)
+    : (isRecord(providerData.signature) ? (providerData.signature as Record<string, unknown>) : {});
+  const signatureStatus = safeString(
+    result.signatureStatus || result.signature_status || providerData.signature_status || signature.status,
+    '',
+  );
+  const signatureIssuer = safeString(
+    result.signatureIssuer || result.signature_issuer || providerData.signature_issuer || signature.issuer,
+    '',
+  );
+  const signatureDate = safeString(
+    result.signatureDate || result.signature_date || providerData.signature_date || signature.date,
+    '',
+  );
+  const approverName = safeString(
+    result.approverName || result.approver_name || providerData.approver_name,
+    '',
+  );
+  const approverDesignation = safeString(
+    result.approverDesignation || result.approver_designation || providerData.approver_designation,
+    '',
   );
 
   const jurisdiction = safeString(
@@ -205,30 +247,42 @@ export const mapGstVerificationToCertificate = (
   );
 
   const address = parseGstAddress(
-    result.address || rawData.address || providerData.address,
+    result.address || rawData.address || providerData.address || principalContact.address,
     result.addressDetails || rawData.address_details || providerData.address_details,
     providerData.pradr
   );
 
-  // Extract promoters / signatories dynamically from API response
-  const rawPromoters = result.promoters || rawData.promoters || providerData.promoters || [];
+  // Extract promoters / signatories dynamically from the provider response.
+  // Some provider versions return an empty normalized `promoters` array while
+  // keeping the populated list under providerData or a director/signatory key.
+  const promoterCandidates = [
+    result.promoters,
+    rawData.promoters,
+    providerData.promoters,
+    providerData.directors,
+    providerData.director_details,
+    providerData.signatories,
+    providerData.authorized_signatories,
+    providerData.person_in_charge,
+  ];
+  const rawPromoters = promoterCandidates.find((value) => Array.isArray(value) && value.length > 0);
   let promoters: GstCertificateData['promoters'] = [];
 
-  if (Array.isArray(rawPromoters) && rawPromoters.length > 0) {
-    promoters = rawPromoters.map((item, index) => {
+  if (Array.isArray(rawPromoters)) {
+    promoters = rawPromoters.map((item) => {
       if (typeof item === 'string') {
         return {
           name: item.trim(),
-          designation: index === 0 ? 'DIRECTOR' : 'AUTHORISED PERSON',
-          state: address.state || '',
+          designation: '',
+          state: '',
         };
       }
       if (isRecord(item)) {
         return {
-          name: safeString(item.name || item.promoter_name, ''),
-          designation: safeString(item.designation || item.status, index === 0 ? 'DIRECTOR' : 'AUTHORISED PERSON'),
-          state: safeString(item.state || item.resident_of_state, address.state || ''),
-          photoUrl: typeof item.photoUrl === 'string' ? item.photoUrl : undefined,
+          name: safeString(item.name || item.promoter_name || item.director_name || item.full_name, ''),
+          designation: safeString(item.designation || item.status || item.designation_status, ''),
+          state: safeString(item.state || item.resident_of_state || item.residentState, ''),
+          photoUrl: typeof item.photoUrl === 'string' ? item.photoUrl : typeof item.photo_url === 'string' ? item.photo_url : undefined,
         };
       }
       return {
@@ -237,15 +291,6 @@ export const mapGstVerificationToCertificate = (
         state: address.state || '',
       };
     }).filter((p) => p.name.length > 0);
-  } else if (legalName) {
-    // If no explicit promoters array from API, use legalName as person in charge
-    promoters = [
-      {
-        name: legalName,
-        designation: constitutionOfBusiness.toLowerCase().includes('proprietor') ? 'PROPRIETOR' : 'DIRECTOR',
-        state: address.state || '',
-      },
-    ];
   }
 
   // Extract additional places dynamically
@@ -273,13 +318,24 @@ export const mapGstVerificationToCertificate = (
     additionalTradeNames,
     constitutionOfBusiness,
     address,
-    dateOfLiability: '',
+    dateOfLiability: formatDate(
+      result.dateOfLiability ||
+        result.date_of_liability ||
+        rawData.date_of_liability ||
+        providerData.date_of_liability ||
+        regDateRaw,
+    ),
     validityFrom,
-    validityTo: 'Not Applicable',
+    validityTo,
     typeOfRegistration,
     approvalDate,
     issueDate,
     jurisdiction,
+    signatureStatus,
+    signatureIssuer,
+    signatureDate,
+    approverName,
+    approverDesignation,
     additionalPlacesCount,
     additionalPlaces,
     promoters,

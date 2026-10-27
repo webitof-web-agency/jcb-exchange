@@ -27,6 +27,11 @@ export interface GstCertificateData {
   approvalDate: string;
   issueDate: string;
   jurisdiction: string;
+  signatureStatus?: string;
+  signatureIssuer?: string;
+  signatureDate?: string;
+  approverName?: string;
+  approverDesignation?: string;
   additionalPlacesCount: number;
   additionalPlaces?: Array<{ address: string }>;
   promoters: Array<{
@@ -38,7 +43,6 @@ export interface GstCertificateData {
 }
 
 const NAVY = '#000066';
-const BLACK = '#000000';
 const BORDER_COLOR = '#000066';
 
 const styles = StyleSheet.create({
@@ -253,16 +257,6 @@ const styles = StyleSheet.create({
     padding: 3,
     position: 'relative',
   },
-  sigQuestionMark: {
-    position: 'absolute',
-    fontSize: 38,
-    fontFamily: 'Helvetica-Bold',
-    color: '#eab308',
-    textAlign: 'center',
-    alignSelf: 'center',
-    zIndex: 0,
-    opacity: 0.88,
-  },
   sigTextBlock: {
     zIndex: 1,
     alignItems: 'center',
@@ -436,10 +430,6 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
   const gstin = data.gstin || '';
   const approvalDate = data.approvalDate || data.validityFrom || data.issueDate || '';
   const issueDate = data.issueDate || approvalDate;
-  const sigDate = approvalDate.includes('/')
-    ? approvalDate.split('/').reverse().join('.')
-    : approvalDate.replace(/-/g, '.');
-
   return (
     <Document title={`GST Registration Certificate - ${gstin}`} author="Goods and Services Tax Network">
       {/* ═══════════════════════════════════════════════════
@@ -478,7 +468,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
             <View style={styles.tableRow}>
               <View style={styles.colNum}><Text style={styles.colNumText}>2.</Text></View>
               <View style={styles.colLabel}><Text style={styles.colLabelText}>Trade Name, if any</Text></View>
-              <View style={styles.colValue}><Text style={styles.colValueTextBold}>{data.tradeName || data.legalName || '-'}</Text></View>
+              <View style={styles.colValue}><Text style={styles.colValueTextBold}>{data.tradeName || '-'}</Text></View>
             </View>
 
             {/* Row 3: Additional trade names */}
@@ -492,7 +482,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
             <View style={styles.tableRow}>
               <View style={styles.colNum}><Text style={styles.colNumText}>4.</Text></View>
               <View style={styles.colLabel}><Text style={styles.colLabelText}>Constitution of Business</Text></View>
-              <View style={styles.colValue}><Text style={styles.colValueText}>{data.constitutionOfBusiness || 'Others'}</Text></View>
+              <View style={styles.colValue}><Text style={styles.colValueText}>{data.constitutionOfBusiness || '-'}</Text></View>
             </View>
 
             {/* Row 5: Address of Principal Place of Business */}
@@ -561,7 +551,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
                 </View>
                 <View style={styles.validityCol}>
                   <Text style={styles.validitySubLabel}>To</Text>
-                  <Text style={styles.validitySubValue}>{data.validityTo || 'Not Applicable'}</Text>
+                  <Text style={styles.validitySubValue}>{data.validityTo || '-'}</Text>
                 </View>
               </View>
             </View>
@@ -570,7 +560,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
             <View style={styles.tableRow}>
               <View style={styles.colNum}><Text style={styles.colNumText}>8.</Text></View>
               <View style={styles.colLabel}><Text style={styles.colLabelText}>Type of Registration</Text></View>
-              <View style={styles.colValue}><Text style={styles.colValueText}>{data.typeOfRegistration || 'Regular'}</Text></View>
+              <View style={styles.colValue}><Text style={styles.colValueText}>{data.typeOfRegistration || '-'}</Text></View>
             </View>
 
             {/* Row 9: Particulars of Approving */}
@@ -584,12 +574,10 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
             <View style={styles.tableRow}>
               <View style={styles.subRowLabel}><Text style={styles.subRowLabelText}>Signature</Text></View>
               <View style={styles.signatureCell}>
-                <Text style={styles.sigQuestionMark}>?</Text>
                 <View style={styles.sigTextBlock}>
-                  <Text style={styles.sigLineBlack}>Signature Not Verified</Text>
-                  <Text style={styles.sigLineBlack}>Digitally signed by DS GOODS AND</Text>
-                  <Text style={styles.sigLineBlack}>SERVICES TAX NETWORK 11</Text>
-                  <Text style={styles.sigLineBlack}>Date: {sigDate} 14:30:29 IST</Text>
+                  <Text style={styles.sigLineBlack}>{data.signatureStatus || '-'}</Text>
+                  <Text style={styles.sigLineBlack}>{data.signatureIssuer || '-'}</Text>
+                  <Text style={styles.sigLineBlack}>{data.signatureDate || '-'}</Text>
                 </View>
               </View>
             </View>
@@ -597,13 +585,13 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
             {/* Name Row */}
             <View style={styles.tableRow}>
               <View style={styles.subRowLabel}><Text style={styles.subRowLabelText}>Name</Text></View>
-              <View style={styles.colValue}><Text style={styles.colValueText}>System Verified</Text></View>
+              <View style={styles.colValue}><Text style={styles.colValueText}>{data.approverName || '-'}</Text></View>
             </View>
 
             {/* Designation Row */}
             <View style={styles.tableRow}>
               <View style={styles.subRowLabel}><Text style={styles.subRowLabelText}>Designation</Text></View>
-              <View style={styles.colValue}><Text style={styles.colValueText}>Superintendent</Text></View>
+              <View style={styles.colValue}><Text style={styles.colValueText}>{data.approverDesignation || '-'}</Text></View>
             </View>
 
             {/* Jurisdictional Office Row */}
@@ -667,7 +655,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
         </View>
         <View style={styles.annexureFieldRow}>
           <Text style={styles.annexureFieldLabel}>Trade Name, if any</Text>
-          <Text style={styles.annexureFieldValue}>{data.tradeName || data.legalName || '-'}</Text>
+          <Text style={styles.annexureFieldValue}>{data.tradeName || '-'}</Text>
         </View>
 
         {/* Total Additional Places */}
@@ -711,7 +699,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
         </View>
         <View style={styles.annexureFieldRow}>
           <Text style={styles.annexureFieldLabel}>Trade Name, if any</Text>
-          <Text style={styles.annexureFieldValue}>{data.tradeName || data.legalName || '-'}</Text>
+          <Text style={styles.annexureFieldValue}>{data.tradeName || '-'}</Text>
         </View>
 
         {/* Section Heading */}
@@ -728,9 +716,7 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
                 {promoter.photoUrl ? (
                   // eslint-disable-next-line jsx-a11y/alt-text
                   <Image src={promoter.photoUrl} style={styles.promoterPhotoImage} />
-                ) : (
-                  <Text style={{ fontSize: 7, color: '#94a3b8' }}>PHOTO</Text>
-                )}
+                ) : null}
               </View>
               <View style={styles.promoterDetailsCol}>
                 <View style={styles.promoterInfoRow}>
@@ -739,38 +725,15 @@ export function GstCertificatePdfDocument({ data }: { data: GstCertificateData }
                 </View>
                 <View style={styles.promoterInfoRow}>
                   <Text style={styles.promoterInfoLabel}>Designation/Status</Text>
-                  <Text style={styles.promoterInfoValue}>{promoter.designation || 'DIRECTOR'}</Text>
+                  <Text style={styles.promoterInfoValue}>{promoter.designation || '-'}</Text>
                 </View>
                 <View style={styles.promoterInfoRow}>
                   <Text style={styles.promoterInfoLabel}>Resident of State</Text>
-                  <Text style={styles.promoterInfoValue}>{promoter.state || data.address.state || '-'}</Text>
+                  <Text style={styles.promoterInfoValue}>{promoter.state || '-'}</Text>
                 </View>
               </View>
             </View>
           ))
-        ) : data.legalName ? (
-          <View style={styles.promoterRow} wrap={false}>
-            <Text style={styles.promoterIndex}>1</Text>
-            <View style={styles.promoterPhotoBox}>
-              <Text style={{ fontSize: 7, color: '#94a3b8' }}>PHOTO</Text>
-            </View>
-            <View style={styles.promoterDetailsCol}>
-              <View style={styles.promoterInfoRow}>
-                <Text style={styles.promoterInfoLabel}>Name</Text>
-                <Text style={styles.promoterInfoValue}>{data.legalName}</Text>
-              </View>
-              <View style={styles.promoterInfoRow}>
-                <Text style={styles.promoterInfoLabel}>Designation/Status</Text>
-                <Text style={styles.promoterInfoValue}>
-                  {data.constitutionOfBusiness?.toLowerCase().includes('proprietor') ? 'PROPRIETOR' : 'DIRECTOR'}
-                </Text>
-              </View>
-              <View style={styles.promoterInfoRow}>
-                <Text style={styles.promoterInfoLabel}>Resident of State</Text>
-                <Text style={styles.promoterInfoValue}>{data.address.state || '-'}</Text>
-              </View>
-            </View>
-          </View>
         ) : null}
       </Page>
     </Document>

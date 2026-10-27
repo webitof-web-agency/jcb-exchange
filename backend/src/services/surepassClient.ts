@@ -185,7 +185,9 @@ export class SurepassClient {
         aadhaar_xml: payload.aadhaar_xml ?? true,
         ...(payload.logo_url ? { logo_url: payload.logo_url } : {}),
         ...(payload.skip_main_screen !== undefined ? { skip_main_screen: payload.skip_main_screen } : {}),
-        ...(payload.webhook_url ? { webhook_url: payload.webhook_url } : {}),
+        // Webhook delivery is intentionally disabled while direct SDK callbacks are used.
+        // To enable provider callbacks later, uncomment the next line and add the verified server URL.
+        // ...(payload.webhook_url ? { webhook_url: payload.webhook_url } : {}),
       },
     });
   }
@@ -203,7 +205,7 @@ export class SurepassClient {
   }
 
   verifyGstin(payload: { id_number: string }) {
-    return this.post('/api/v1/corporate/gstin', payload);
+    return this.post('/api/v1/corporate/gstin-advanced', payload);
   }
 
   verifyDrivingLicense(payload: { id_number: string; dob: string }) {
@@ -262,6 +264,9 @@ export class SurepassClient {
     });
   }
 
+  getPanFatherName(payload: { id_number: string }) {
+    return this.post('/api/v1/pan/pan-to-father-name', payload);
+  }
 }
 
 export const createSurepassClient = (configured?: { baseUrl: string; token: string; customerId?: string }) => {

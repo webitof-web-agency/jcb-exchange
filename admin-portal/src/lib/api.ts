@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizeApiBaseUrl } from './apiBaseUrl.mjs';
+import { notifyApiBillingSummaryChanged } from './apiBilling';
 import { getAuthorizationToken, isCurrentAuthToken, isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -13,6 +14,29 @@ if (!configuredApiUrl) {
 export const API_BASE_URL = normalizeApiBaseUrl(configuredApiUrl);
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
+
+const DIRECT_PROVIDER_REQUEST_PATHS = [
+  '/pan-verification/verify',
+  '/pan-verification/to-aadhaar',
+  '/pan-verification/contact',
+  '/pan-verification/comprehensive',
+  '/gst-verification/verify',
+  '/mobile-to-pan/lookup',
+  '/aadhaar-verification/initialize',
+  '/driving-license-verification/verify',
+  '/rc-owner-history/verify',
+  '/rc-full/verify',
+  '/rc-challan-verification/verify',
+  '/chassis-to-rc/verify',
+  '/rc-to-mobile/verify',
+  '/mobile-to-rc/lookup',
+] as const;
+
+const isDirectProviderRequest = (config: { method?: string; url?: string } | undefined) => {
+  if (config?.method?.toLowerCase() !== 'post' || !config.url) return false;
+  const requestPath = config.url.split('?')[0];
+  return DIRECT_PROVIDER_REQUEST_PATHS.some((path) => requestPath === path || requestPath.endsWith(path));
+};
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -21,8 +45,16 @@ const api = axios.create({
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (isDirectProviderRequest(response.config)) {
+      notifyApiBillingSummaryChanged();
+    }
+    return response;
+  },
   (error) => {
+    if (isDirectProviderRequest(error?.config)) {
+      notifyApiBillingSummaryChanged();
+    }
     const requestHeaders = error?.config?.headers;
     const sentAuthToken = getAuthorizationToken(requestHeaders);
 

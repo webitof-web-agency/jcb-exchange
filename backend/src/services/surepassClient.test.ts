@@ -76,7 +76,7 @@ test('sends sandbox PAN comprehensive requests to the documented endpoint with i
   });
 });
 
-test('sends standard GSTIN verification to the documented production endpoint', async () => {
+test('sends GSTIN Advanced verification to the documented production endpoint', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
     baseUrl: 'https://kyc-api.surepass.app',
@@ -91,7 +91,7 @@ test('sends standard GSTIN verification to the documented production endpoint', 
 
   const sent = request as unknown as { url: string; init: RequestInit };
   assert.ok(sent);
-  assert.equal(sent.url, 'https://kyc-api.surepass.app/api/v1/corporate/gstin');
+  assert.equal(sent.url, 'https://kyc-api.surepass.app/api/v1/corporate/gstin-advanced');
   assert.equal(sent.init.method, 'POST');
   assert.deepEqual(JSON.parse(String(sent.init.body)), { id_number: '08AKWPJ1234H1ZN' });
   assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');

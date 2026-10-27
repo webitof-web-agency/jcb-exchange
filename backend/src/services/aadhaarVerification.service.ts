@@ -104,8 +104,8 @@ const P_TABLE = [
   [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
   [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
   [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
-  [2, 7, 9, 5, 8, 0, 4, 3, 1, 6],
-  [7, 0, 4, 1, 9, 5, 8, 2, 6, 3],
+  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+  [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
 ];
 const INV_TABLE = [0, 4, 3, 2, 1, 5, 6, 7, 8, 9];
 
@@ -291,21 +291,29 @@ export class AadhaarVerificationService {
     }
   }
 
-  async initialize(input: { aadhaarNumber: unknown; side: unknown }, requestedById: string) {
-    const validationError = validateAadhaarNumber(input.aadhaarNumber);
-    if (validationError) throw new AadhaarVerificationError(validationError, 400, 'invalid_aadhaar');
+  async initialize(input: { aadhaarNumber?: unknown; side: unknown }, requestedById: string) {
+    const rawNumber = typeof input.aadhaarNumber === 'string' ? input.aadhaarNumber.trim() : '';
+    const hasAadhaar = Boolean(rawNumber);
+    if (hasAadhaar) {
+      const validationError = validateAadhaarNumber(rawNumber);
+      if (validationError) throw new AadhaarVerificationError(validationError, 400, 'invalid_aadhaar');
+    }
     const side = String(input.side || '').toUpperCase() as AadhaarVerificationSide;
     if (!Object.values(AadhaarVerificationSide).includes(side)) throw new AadhaarVerificationError('Aadhaar verification side is invalid.', 400, 'invalid_side');
-    const aadhaarNumber = normalizeDigits(input.aadhaarNumber);
-    const maskedAadhaar = maskAadhaar(aadhaarNumber);
-    const requestFingerprint = createVerificationFingerprint('AADHAAR_DIGILOCKER', { aadhaarNumber, side });
+    const aadhaarNumber = hasAadhaar ? normalizeDigits(rawNumber) : '';
+    const maskedAadhaar = hasAadhaar ? maskAadhaar(aadhaarNumber) : 'PENDING';
+    const requestFingerprint = hasAadhaar
+      ? createVerificationFingerprint('AADHAAR_DIGILOCKER', { aadhaarNumber, side })
+      : createVerificationFingerprint('AADHAAR_DIGILOCKER', { side, requestedById, nonce: Date.now() });
     const runtime = await this.getRuntime();
-    const cached = await this.record.findFirst({ where: { side, requestFingerprint, status: AadhaarVerificationStatus.SUCCESS, encryptedResult: { not: null }, completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }, orderBy: { completedAt: 'desc' } });
-    if (cached && isFreshVerificationResult(cached)) {
-      try {
-        return { record: recordSummary(cached), result: JSON.parse(decryptPanData(cached.encryptedResult, runtime.dataSecret)), cacheHit: true as const };
-      } catch {
-        // A corrupt cache is ignored and a fresh provider session is started.
+    if (hasAadhaar) {
+      const cached = await this.record.findFirst({ where: { side, requestFingerprint, status: AadhaarVerificationStatus.SUCCESS, encryptedResult: { not: null }, completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }, orderBy: { completedAt: 'desc' } });
+      if (cached && isFreshVerificationResult(cached)) {
+        try {
+          return { record: recordSummary(cached), result: JSON.parse(decryptPanData(cached.encryptedResult, runtime.dataSecret)), cacheHit: true as const };
+        } catch {
+          // A corrupt cache is ignored and a fresh provider session is started.
+        }
       }
     }
     const pending = await this.record.create({ data: { status: AadhaarVerificationStatus.PENDING, side, maskedAadhaar, requestFingerprint, requestedById } });
@@ -320,7 +328,21 @@ export class AadhaarVerificationService {
       const sdkToken = providerTokenFrom(data);
       if (!clientId || !sdkToken) throw new AadhaarVerificationError('Surepass did not return a DigiLocker session.', 502, 'provider_malformed_response');
       const updated = await this.record.update({ where: { id: pending.id }, data: { providerClientId: clientId } });
-      return { record: recordSummary(updated), sdkToken, gateway: runtime.environment === 'PRODUCTION' ? 'production' : 'sandbox', expirySeconds: Number(data.expiry_seconds) || 600 };
+      return {
+        record: recordSummary(updated),
+        sdkToken,
+        gateway: runtime.environment === 'PRODUCTION' ? 'production' : 'sandbox',
+        expirySeconds: Number(data.expiry_seconds) || 600,
+        billing: billing
+          ? {
+              charged: billing.charged,
+              billingMode: billing.billingMode,
+              amountRupees: billing.amountRupees,
+              balanceRupees: billing.balanceRupees,
+              serviceKey: billing.serviceKey,
+            }
+          : null,
+      };
     } catch (error) {
       const normalized = isApiWalletBillingError(error)
         ? new AadhaarVerificationError(error.message, error.statusCode, error.code)
@@ -352,10 +374,10 @@ export class AadhaarVerificationService {
       const { response, data } = responseData(body);
       const result = normalizeAadhaarDownloadResult(data);
       if (!result.clientId || !result.fullName || !result.maskedAadhaar) throw new AadhaarVerificationError('Surepass returned incomplete Aadhaar data.', 502, 'provider_malformed_response');
-      if (!aadhaarMatchesMasked(record.maskedAadhaar, result.maskedAadhaar)) {
+      if (record.maskedAadhaar && record.maskedAadhaar !== 'PENDING' && !aadhaarMatchesMasked(record.maskedAadhaar, result.maskedAadhaar)) {
         throw new AadhaarVerificationError('The DigiLocker Aadhaar does not match the entered Aadhaar number.', 409, 'aadhaar_mismatch');
       }
-      const completed = await this.record.update({ where: { id: record.id }, data: { status: AadhaarVerificationStatus.SUCCESS, providerClientId: result.clientId, messageCode: safeString(response.message_code, 100), encryptedResult: encryptPanData(JSON.stringify(result), runtime.dataSecret), completedAt: new Date() } });
+      const completed = await this.record.update({ where: { id: record.id }, data: { status: AadhaarVerificationStatus.SUCCESS, providerClientId: result.clientId, maskedAadhaar: result.maskedAadhaar, messageCode: safeString(response.message_code, 100), encryptedResult: encryptPanData(JSON.stringify(result), runtime.dataSecret), completedAt: new Date() } });
       return { record: recordSummary(completed), result, cacheHit: false as const };
     } catch (error) {
       const normalized = error instanceof SurepassProviderError
