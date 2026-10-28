@@ -99,48 +99,50 @@ export default function FinanceCommandPalette({ prefix, groups, legacyItems, sho
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/40 p-3 pt-[12vh]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Finance quick search">
-        <div className="flex items-center gap-2 border-b border-slate-100 px-3">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/60 backdrop-blur-xs p-3 pt-[10vh]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Finance quick search">
+        <div className="flex items-center gap-2.5 border-b border-slate-100 bg-gradient-to-r from-slate-50/70 to-white px-3.5">
+          <Search className="h-4 w-4 shrink-0 text-amber-500" />
           <input
             autoFocus
             value={query}
             onChange={(event) => { setQuery(event.target.value); setActive(0); }}
             onKeyDown={onInputKey}
-            placeholder="Search finance pages or create… (e.g. day book, gst, new payment)"
-            className="h-11 w-full bg-transparent text-[14px] text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Search 96+ finance modules or actions… (e.g. gst, day book, new payment)"
+            className="h-11 w-full bg-transparent text-[13.5px] font-medium text-slate-900 outline-none placeholder:text-slate-400"
             aria-label="Search finance pages"
           />
-          <kbd className="shrink-0 rounded border border-slate-200 px-1.5 text-[11px] text-slate-500">Esc</kbd>
+          <kbd className="shrink-0 rounded-md border border-slate-200/90 bg-white px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-500 shadow-2xs">Esc</kbd>
         </div>
-        <div ref={listRef} className="max-h-[56vh] overflow-y-auto py-1">
-          {!results.length ? <p className="px-4 py-6 text-center text-[13px] text-slate-500">No finance page matches “{query}”.</p> : results.map((item, index) => {
+        <div ref={listRef} className="max-h-[56vh] overflow-y-auto py-1 divide-y divide-slate-50">
+          {!results.length ? <p className="px-4 py-8 text-center text-[13px] text-slate-500">No finance page matches “{query}”.</p> : results.map((item, index) => {
             const showSection = index === 0 || results[index - 1].section !== item.section;
             const Icon = sectionIcons[item.section];
             return (
               <div key={item.id}>
-                {showSection ? <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">{item.section}</p> : null}
+                {showSection ? <p className="px-3.5 pb-1 pt-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">{item.section}</p> : null}
                 <button
                   type="button"
                   data-index={index}
                   onMouseMove={() => setActive(index)}
                   onClick={() => go(item)}
-                  className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] ${active === index ? 'bg-amber-50 text-slate-950' : 'text-slate-700'}`}
+                  className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[12.5px] transition-all ${active === index ? 'bg-amber-50/70 text-slate-950 font-semibold border-l-2 border-amber-400' : 'text-slate-700 font-normal hover:bg-slate-50'}`}
                 >
                   <Icon className={`h-3.5 w-3.5 shrink-0 ${item.section === 'Create' ? 'text-amber-600' : item.section === 'Pinned' ? 'fill-amber-400 text-amber-500' : 'text-slate-400'}`} />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {item.hint ? <span className="shrink-0 truncate text-[11px] text-slate-400">{item.hint}</span> : null}
-                  {active === index ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" /> : null}
+                  {item.hint ? <span className="shrink-0 truncate text-[11px] font-normal text-slate-400">{item.hint}</span> : null}
+                  {active === index ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
                 </button>
               </div>
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-500">
-          <span className="inline-flex items-center gap-1"><kbd className="rounded border border-slate-200 bg-white px-1">↑</kbd><kbd className="rounded border border-slate-200 bg-white px-1">↓</kbd> move</span>
-          <span className="inline-flex items-center gap-1"><CornerDownLeft className="h-3 w-3" /> open</span>
-          <span>On a finance page: <kbd className="rounded border border-slate-200 bg-white px-1">/</kbd> search · <kbd className="rounded border border-slate-200 bg-white px-1">N</kbd> new · <kbd className="rounded border border-slate-200 bg-white px-1">Ctrl K</kbd> this menu</span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-slate-100 bg-slate-50/70 px-3.5 py-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 font-mono"><kbd className="rounded border border-slate-200 bg-white px-1">↑</kbd><kbd className="rounded border border-slate-200 bg-white px-1">↓</kbd> navigate</span>
+            <span className="inline-flex items-center gap-1 font-mono"><CornerDownLeft className="h-3 w-3" /> select</span>
+          </div>
+          <span className="text-slate-400">Shortcuts: <kbd className="rounded border border-slate-200 bg-white px-1">/</kbd> search · <kbd className="rounded border border-slate-200 bg-white px-1">N</kbd> new</span>
         </div>
       </div>
     </div>
