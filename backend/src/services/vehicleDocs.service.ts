@@ -333,12 +333,12 @@ export const listVehicleDocs = async (query: { q?: unknown }) => {
     prisma.vehicleRtoRecord.findMany({ select: { vehicleNumber: true, listingId: true, rtoStatus: true, brandName: true, vehicleModel: true, customerName: true, updatedAt: true, transferTasks: { select: { documents: true } } } }),
     prisma.listingVehicleVerification.findMany({ where: { verifiedRegistrationNumber: { not: null } }, select: { listingId: true, verifiedRegistrationNumber: true, verifiedChassisNumber: true, verifiedEngineNumber: true } }),
   ]);
-  type Row = { vehicleNumber: string; title: string; owner: string | null; buyer: string | null; chassisNumber: string | null; engineNumber: string | null; dealStatus: string | null; rtoStatus: string | null; listingStatus: string | null; listingIds: Set<string>; documents: number; updatedAt: Date };
+  type Row = { vehicleNumber: string; title: string; owner: string | null; buyer: string | null; chassisNumber: string | null; engineNumber: string | null; dealStatus: string | null; rtoStatus: string | null; listingStatus: string | null; saleIds: Set<string>; listingIds: Set<string>; documents: number; updatedAt: Date };
   const rows = new Map<string, Row>();
   const row = (number: string, title: string, updatedAt: Date) => {
     const key = normalizeVehicleNumber(number);
     if (key.length < 4) return null;
-    const existing = rows.get(key) ?? { vehicleNumber: number.toUpperCase(), title, owner: null, buyer: null, chassisNumber: null, engineNumber: null, dealStatus: null, rtoStatus: null, listingStatus: null, listingIds: new Set<string>(), documents: 0, updatedAt };
+    const existing = rows.get(key) ?? { vehicleNumber: number.toUpperCase(), title, owner: null, buyer: null, chassisNumber: null, engineNumber: null, dealStatus: null, rtoStatus: null, listingStatus: null, saleIds: new Set<string>(), listingIds: new Set<string>(), documents: 0, updatedAt };
     if (updatedAt > existing.updatedAt) existing.updatedAt = updatedAt;
     rows.set(key, existing);
     return existing;
@@ -350,6 +350,7 @@ export const listVehicleDocs = async (query: { q?: unknown }) => {
     item.buyer ||= sale.purchaserName;
     item.chassisNumber ||= sale.chassisNumber;
     item.dealStatus = sale.dealStatus;
+    item.saleIds.add(sale.id);
     const uploads = (sale.documents && typeof sale.documents === 'object' ? sale.documents : {}) as Record<string, unknown>;
     item.documents += SALE_DOCUMENT_SLOTS.filter((slot) => Boolean(uploads[slot.key])).length + (sale.invoiceNumber ? 1 : 0) + (sale.creditNoteNumber ? 1 : 0) + sale.payments.length + sale.refunds.length;
     for (const id of [sale.listingId, sale.releasedListingId]) if (id) item.listingIds.add(id);
@@ -371,11 +372,26 @@ export const listVehicleDocs = async (query: { q?: unknown }) => {
   }
   const listingIds = Array.from(new Set(Array.from(rows.values()).flatMap((item) => Array.from(item.listingIds))));
   const listings = listingIds.length
-    ? await prisma.listing.findMany({ where: { id: { in: listingIds } }, select: { id: true, title: true, status: true, engineNumber: true, updatedAt: true, _count: { select: { media: true } } } })
+    ? await prisma.listing.findMany({
+      where: { id: { in: listingIds } },
+      select: {
+        id: true, title: true, status: true, engineNumber: true, updatedAt: true,
+        _count: { select: { media: true, paymentSubmissions: { where: { status: { in: ['APPROVED', 'PAID'] }, receiptUrl: { not: null } } } } },
+      },
+    })
     : [];
   const byId = new Map(listings.map((listing) => [listing.id, listing]));
-  const result = Array.from(rows.values()).map((item) => {
+  // Vault files count the way the detail page finds them: linked to the sale/listing, or tagged with the number.
+  const saleIds = Array.from(rows.values()).flatMap((item) => Array.from(item.saleIds));
+  const vault = rows.size
+    ? await prisma.finVaultDocument.findMany({
+      where: { isArchived: false, OR: [{ entityId: { in: [...saleIds, ...listingIds] } }, { tags: { hasSome: Array.from(rows.keys()) } }] },
+      select: { entityId: true, tags: true },
+    })
+    : [];
+  const result = Array.from(rows.entries()).map(([key, item]) => {
     const linked = Array.from(item.listingIds).map((id) => byId.get(id)).filter((listing): listing is NonNullable<typeof listing> => Boolean(listing));
+    const vaultCount = vault.filter((file) => file.tags.includes(key) || (file.entityId && (item.saleIds.has(file.entityId) || item.listingIds.has(file.entityId)))).length;
     const listing = linked[0];
     const updatedAt = [item.updatedAt, ...linked.map((entry) => entry.updatedAt)].reduce((latest, date) => (date > latest ? date : latest));
     return {
@@ -389,7 +405,7 @@ export const listVehicleDocs = async (query: { q?: unknown }) => {
       dealStatus: item.dealStatus,
       rtoStatus: item.rtoStatus,
       listingStatus: listing?.status ?? null,
-      documents: item.documents + linked.reduce((sum, entry) => sum + entry._count.media, 0),
+      documents: item.documents + vaultCount + linked.reduce((sum, entry) => sum + entry._count.media + entry._count.paymentSubmissions, 0),
       updatedAt: updatedAt.toISOString(),
     };
   });
