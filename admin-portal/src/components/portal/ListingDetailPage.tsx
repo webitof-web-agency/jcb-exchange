@@ -2306,6 +2306,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       apiFilled={Boolean(vehicleApiFill?.filled)}
                       value={form.rtoDetails}
                       onChange={(key, value) => updateForm('rtoDetails', { ...form.rtoDetails, [key]: value })}
+                      manufacturingYear={form.manufacturingYear}
                       insuranceExpiry={form.insuranceExpiry}
                       onInsuranceExpiryChange={(value) => updateForm('insuranceExpiry', value)}
                       required={Boolean(listing.rtoRecords?.length) || hasListingRtoInput(form.rtoDetails)}

@@ -51,6 +51,7 @@ export default function ListingRtoFields({
   compact = false,
   apiFillSource = '',
   apiFilled = false,
+  manufacturingYear,
 }: {
   value: ListingRtoFormState;
   onChange: <K extends keyof ListingRtoFormState>(key: K, next: ListingRtoFormState[K]) => void;
@@ -61,7 +62,11 @@ export default function ListingRtoFields({
   /** Shows the AI badge on fields that vehicle verification can fill. */
   apiFillSource?: string;
   apiFilled?: boolean;
+  /** HSRP fields are asked only for vehicles made before 2019 (later ones come with HSRP fitted). */
+  manufacturingYear?: string | number | null;
 }) {
+  const year = Number(manufacturingYear);
+  const showHsrp = Number.isInteger(year) && year > 0 && year < 2019;
   const apiFill = apiFillSource ? { source: apiFillSource, filled: apiFilled } : null;
   const currentInputClass = compact
     ? 'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107] h-[34px]'
@@ -216,18 +221,22 @@ export default function ListingRtoFields({
 
         {dateField('pucStatus', 'pucValidUntil', 'PUC Validity')}
 
-        <Field label="HSRP Valid" required={false} compact={compact}>
-          {makeSelect('hsrpStatus', hsrpOptions)}
-        </Field>
-        <Field label="HSRP Number" required={false} compact={compact} apiFill={apiFill}>
-          <input
-            value={value.hsrpNumber}
-            maxLength={30}
-            onChange={(e) => onChange('hsrpNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 30))}
-            className={currentInputClass}
-            placeholder="HSRP plate number"
-          />
-        </Field>
+        {showHsrp ? (
+          <Field label="HSRP Valid" required={false} compact={compact}>
+            {makeSelect('hsrpStatus', hsrpOptions)}
+          </Field>
+        ) : null}
+        {showHsrp ? (
+          <Field label="HSRP Number" required={false} compact={compact} apiFill={apiFill}>
+            <input
+              value={value.hsrpNumber}
+              maxLength={30}
+              onChange={(e) => onChange('hsrpNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 30))}
+              className={currentInputClass}
+              placeholder="HSRP plate number"
+            />
+          </Field>
+        ) : null}
 
         <Field label="RTO Office" required={required} compact={compact} apiFill={apiFill}>
           <input
