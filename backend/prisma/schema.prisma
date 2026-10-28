@@ -1664,6 +1664,8 @@ model RtoTransferTask {
   sortOrder   Int                   @default(0)
   status      RtoTransferTaskStatus @default(PENDING)
   remark      String?               @db.Text
+  /// Proof uploaded for this task (RC copy, insurance policy, NOC...): [{ id, fileUrl, fileName, mimeType, size, uploadedAt, uploadedById }]
+  documents   Json?
   updatedById String?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt

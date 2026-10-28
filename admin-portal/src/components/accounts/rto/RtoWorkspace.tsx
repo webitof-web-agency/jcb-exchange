@@ -14,6 +14,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import RemarkDialog from '@/components/accounts/RemarkDialog';
 import CitySelect, { type LocationOption } from '@/components/accounts/CitySelect';
 import RtoTermsModal from '@/components/accounts/rto/RtoTermsModal';
+import RtoTaskDocuments, { type RtoTaskDocument } from '@/components/accounts/rto/RtoTaskDocuments';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyPermission } from '@/lib/permissionUtils';
@@ -76,7 +77,7 @@ type Compliance = {
   suggested: Partial<Record<'taxStatus' | 'taxValidUntil' | 'insuranceStatus' | 'insuranceValidUntil' | 'fitnessStatus' | 'fitnessValidUntil' | 'pucStatus' | 'pucValidUntil' | 'hirePurchaseStatus' | 'financerName', string>>;
 };
 type TaskLog = { id: string; oldStatus: string | null; newStatus: string; remark: string; createdAt: string; changedByName: string | null };
-type Task = { id: string; taskKey: string; label: string; isOptional: boolean; status: string; remark: string | null; updatedAt: string; updatedByName: string | null; logs: TaskLog[] };
+type Task = { id: string; taskKey: string; label: string; isOptional: boolean; status: string; remark: string | null; documents?: RtoTaskDocument[]; updatedAt: string; updatedByName: string | null; logs: TaskLog[] };
 type SellSummary = {
   id: string; recordNumber: string; listingTitle?: string | null; vehicleNumber?: string | null; ownerName?: string | null;
   sourceType?: string | null; purchaseType?: string; saleType?: string;
@@ -727,6 +728,14 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
                           </button>
                         </div>
                       </div>
+                      <RtoTaskDocuments<Workspace>
+                        recordId={recordId!}
+                        taskId={task.id}
+                        taskLabel={task.label}
+                        documents={task.documents || []}
+                        canEdit={!isLocked && canUpdateRto}
+                        onWorkspace={(next) => applyWorkspace(next, false)}
+                      />
                       {expanded ? (
                         <ol className="ml-10 mt-2 space-y-1.5 border-l border-gray-200 pl-3">
                           {task.logs.map((log) => (

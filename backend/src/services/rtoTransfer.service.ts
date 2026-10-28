@@ -1,4 +1,5 @@
-import { RtoTransferTaskStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { Prisma, RtoTransferTaskStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { assertRecordEditable } from './recordLock';
 import { evaluateRtoTransferCompliance, type ComplianceResult, type ComplianceSource } from './rtoCompliance';
@@ -6,8 +7,11 @@ import { serializeRtoRecord } from './rtoRecordSerializer';
 import { normalizeRtoWorkStatus } from './rtoStatus';
 import {
   assertRemark,
+  buildTaskDocument,
   deriveRtoStatusFromTasks,
   isValidTransferTaskStatus,
+  MAX_TASK_DOCUMENTS,
+  readTaskDocuments,
   summarizeTransferTasks,
 } from './rtoTransferTasks';
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
@@ -122,7 +126,11 @@ export const getRtoTransferWorkspace = async (id: string) => {
 
   const names = await userNames([
     record.lockedById,
-    ...record.transferTasks.flatMap((task) => [task.updatedById, ...task.logs.map((log) => log.changedById)]),
+    ...record.transferTasks.flatMap((task) => [
+      task.updatedById,
+      ...task.logs.map((log) => log.changedById),
+      ...readTaskDocuments(task.documents).map((document) => document.uploadedById),
+    ]),
     ...record.statusLogs.map((log) => log.changedById),
   ]);
   const tasks = record.transferTasks.map((task) => ({
@@ -132,6 +140,10 @@ export const getRtoTransferWorkspace = async (id: string) => {
     isOptional: task.isOptional,
     status: task.status,
     remark: task.remark,
+    documents: readTaskDocuments(task.documents).map((document) => ({
+      ...document,
+      uploadedByName: document.uploadedById ? names.get(document.uploadedById) || null : null,
+    })),
     updatedAt: task.updatedAt,
     updatedByName: task.updatedById ? names.get(task.updatedById) || null : null,
     logs: task.logs.map((log) => ({
@@ -224,6 +236,71 @@ export const updateRtoTransferTask = async (
       data: { taskId: task.id, oldStatus: task.status, newStatus: nextStatus, remark, changedById: actorId || null },
     });
     await syncRtoStatusFromTasks(tx, rtoRecordId, `${task.label}: ${remark}`, actorId);
+  });
+
+  return getRtoTransferWorkspace(rtoRecordId);
+};
+
+const loadEditableTask = async (tx: Prisma.TransactionClient, rtoRecordId: string, taskId: string) => {
+  const record = await tx.vehicleRtoRecord.findUnique({ where: { id: rtoRecordId }, include: { sellAccount: { select: { isLocked: true } } } });
+  if (!record) throw new RtoTransferError('RTO record not found.', 404);
+  assertWorkspaceEditable(record);
+  const task = await tx.rtoTransferTask.findFirst({ where: { id: taskId, rtoRecordId } });
+  if (!task) throw new RtoTransferError('Transfer task not found.', 404);
+  return task;
+};
+
+/** Attaches an uploaded proof file to a task. The task history records the upload. */
+export const addRtoTransferTaskDocument = async (
+  rtoRecordId: string,
+  taskId: string,
+  body: Record<string, unknown>,
+  actorId?: string,
+) => {
+  let document: ReturnType<typeof buildTaskDocument>;
+  try {
+    document = buildTaskDocument(body, { id: randomUUID(), uploadedById: actorId ?? null });
+  } catch (error) {
+    throw new RtoTransferError(error instanceof Error ? error.message : 'Invalid document.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const task = await loadEditableTask(tx, rtoRecordId, taskId);
+    const documents = readTaskDocuments(task.documents);
+    if (documents.length >= MAX_TASK_DOCUMENTS) {
+      throw new RtoTransferError(`A task can hold up to ${MAX_TASK_DOCUMENTS} documents. Remove one first.`);
+    }
+    if (documents.some((existing) => existing.fileUrl === document.fileUrl)) {
+      throw new RtoTransferError('This file is already attached to the task.');
+    }
+
+    await tx.rtoTransferTask.update({
+      where: { id: task.id },
+      data: { documents: [...documents, document] as unknown as Prisma.InputJsonValue },
+    });
+    await tx.rtoTransferTaskLog.create({
+      data: { taskId: task.id, oldStatus: null, newStatus: task.status, remark: `Document uploaded: ${document.fileName}`, changedById: actorId || null },
+    });
+  });
+
+  return getRtoTransferWorkspace(rtoRecordId);
+};
+
+/** Detaches a proof file from a task. The Drive copy is kept so the audit trail still resolves. */
+export const removeRtoTransferTaskDocument = async (rtoRecordId: string, taskId: string, documentId: string, actorId?: string) => {
+  await prisma.$transaction(async (tx) => {
+    const task = await loadEditableTask(tx, rtoRecordId, taskId);
+    const documents = readTaskDocuments(task.documents);
+    const removed = documents.find((document) => document.id === documentId);
+    if (!removed) throw new RtoTransferError('Document not found on this task.', 404);
+
+    await tx.rtoTransferTask.update({
+      where: { id: task.id },
+      data: { documents: documents.filter((document) => document.id !== documentId) as unknown as Prisma.InputJsonValue },
+    });
+    await tx.rtoTransferTaskLog.create({
+      data: { taskId: task.id, oldStatus: null, newStatus: task.status, remark: `Document removed: ${removed.fileName}`, changedById: actorId || null },
+    });
   });
 
   return getRtoTransferWorkspace(rtoRecordId);

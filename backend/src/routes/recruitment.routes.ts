@@ -52,6 +52,7 @@ import {
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 import {
+  addRtoRecordTaskDocument,
   checkRtoRecordCompliance,
   checkRtoRecordComplianceWithRcApi,
   createRtoRecord,
@@ -62,6 +63,7 @@ import {
   listRtoRecords,
   lockRtoRecord,
   listAllRtoTransferTasks,
+  removeRtoRecordTaskDocument,
   updateRtoRecord,
   updateRtoRecordTask,
 } from '../controllers/rto.controller';
@@ -198,6 +200,8 @@ router.post('/admin/rto-records/:id/lock', canUpdateRto, lockRtoRecord);
 router.get('/admin/rto-records/:id/workspace', canViewRto, getRtoRecordWorkspace);
 router.post('/admin/rto-records/:id/transfer-tasks', canUpdateRto, initializeRtoRecordTasks);
 router.patch('/admin/rto-records/:id/transfer-tasks/:taskId', canUpdateRto, updateRtoRecordTask);
+router.post('/admin/rto-records/:id/transfer-tasks/:taskId/documents', canUpdateRto, addRtoRecordTaskDocument);
+router.delete('/admin/rto-records/:id/transfer-tasks/:taskId/documents/:documentId', canUpdateRto, removeRtoRecordTaskDocument);
 router.post('/admin/rto-records/:id/compliance', canUpdateRto, checkRtoRecordCompliance);
 // A fresh RC lookup is billed to the API wallet, so it also needs the RC verification permission.
 router.post('/admin/rto-records/:id/compliance/rc-api', canUpdateRto, requireAdminOrEmployeePermissions(['rc.full.read']), checkRtoRecordComplianceWithRcApi);

@@ -21,7 +21,7 @@ import FinanceSidebarNav from '@/components/layout/FinanceSidebarNav';
 import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandPalette';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
-import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
+import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
@@ -134,6 +134,11 @@ const getRequiredPermissionsForPath = (pathname: string) => {
   );
   if (matchedDirectVerificationRoute) {
     return matchedDirectVerificationRoute.permissions;
+  }
+
+  // Vehicle Docs holds Sold Vehicle deeds and KYC copies: same access as Sold Vehicles.
+  if (/^\/(admin|employee)\/accounts\/vehicle-docs(\/|$)/.test(pathname)) {
+    return accountsNavItems.find((item) => item.key === 'sell-accounts')?.permissions || null;
   }
 
   const matchedAccount = accountsNavItems.find((item) =>
@@ -593,12 +598,14 @@ export default function AdminLayout({
     '/admin/analytics': t('admin.analytics'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/admin/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/admin/invoices': t('admin.invoices', 'Invoices'),
     '/admin/tasks': t('admin.tasks', 'Tasks'),
     '/admin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
     '/admin/finance/workspace': t('admin.financeDashboard', 'Finance Dashboard'),
     '/employee/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/employee/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/employee/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/employee/invoices': t('admin.invoices', 'Invoices'),
     '/employee/tasks': t('admin.tasks', 'Tasks'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
@@ -673,6 +680,7 @@ export default function AdminLayout({
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
     if (pathname.includes('/accounts/sell-accounts/')) return t('admin.soldVehicle', 'Sold Vehicle');
+    if (pathname.includes('/accounts/vehicle-docs/')) return t('admin.vehicleDocs', 'Vehicle Docs');
     if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWork', 'RTO Work');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
     const financePage = matchFinanceModulePath(pathname);
@@ -731,6 +739,9 @@ export default function AdminLayout({
       defaultLabel: item.defaultLabel,
       icon: accountsSidebarIcons[item.key],
     }));
+  if (visibleAccountsNavItems.some((item) => item.key === 'sell-accounts')) {
+    accountsSidebarItems.push({ href: `${routePrefix}/accounts/vehicle-docs`, labelKey: 'admin.vehicleDocs', defaultLabel: 'Vehicle Docs', icon: FileArchive });
+  }
   const hasDailyOperationsNav = accountsSidebarItems.length > 0 || [
     '/crm',
     '/listings',

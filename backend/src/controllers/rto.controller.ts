@@ -10,9 +10,11 @@ import { serializeRtoRecord } from '../services/rtoRecordSerializer';
 import { recordRtoStatusChange } from '../services/rtoTransferStore';
 import { normalizeRemark } from '../services/rtoTransferTasks';
 import {
+  addRtoTransferTaskDocument,
   assertTasksAllowStatus,
   getRtoTransferWorkspace,
   initializeRtoTransferTasks,
+  removeRtoTransferTaskDocument,
   RtoTransferError,
   runRtoComplianceCheck,
   updateRtoTransferTask,
@@ -305,6 +307,20 @@ export const initializeRtoRecordTasks = async (req: Request, res: Response, next
 export const updateRtoRecordTask = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const workspace = await updateRtoTransferTask(text(req.params.id), text(req.params.taskId), req.body || {}, req.user?.id);
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const addRtoRecordTaskDocument = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await addRtoTransferTaskDocument(text(req.params.id), text(req.params.taskId), req.body || {}, req.user?.id);
+    res.json({ success: true, ...workspace });
+  } catch (error) { sendWorkspaceError(error, res, next); }
+};
+
+export const removeRtoRecordTaskDocument = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const workspace = await removeRtoTransferTaskDocument(text(req.params.id), text(req.params.taskId), text(req.params.documentId), req.user?.id);
     res.json({ success: true, ...workspace });
   } catch (error) { sendWorkspaceError(error, res, next); }
 };
