@@ -44,7 +44,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as AuthTokenPayload;
     fetchAuthenticatedUserById(decoded.id)
       .then((user) => {
         if (!user) {

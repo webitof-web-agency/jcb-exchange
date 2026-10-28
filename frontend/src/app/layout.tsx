@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -120,6 +120,8 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
   const branding = await getSiteBranding();
+  // Set by src/proxy.ts; inline scripts run only with this request's nonce.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   const siteSchema = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -157,6 +159,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteSchema) }}
         />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `(function(){if(typeof window==='undefined')return;document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});document.addEventListener('gesturechange',function(e){e.preventDefault();},{passive:false});document.addEventListener('gestureend',function(e){e.preventDefault();},{passive:false});})();`,
           }}

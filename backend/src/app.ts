@@ -1,19 +1,43 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import { isAllowedOrigin, resolveCorsOrigins } from './utils/corsOrigins';
 import apiRoutes from './routes';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.routes';
 import apiWalletBillingWebhookRoutes from './routes/apiWalletBillingWebhook.routes';
 import { publicUploadDir } from './utils/documentUpload';
 import { sanitizeRequest } from './middlewares/sanitizeRequest.middleware';
 import { FieldValidationError } from './utils/fieldValidation';
+import { FILE_CONTENT_MISMATCH_MESSAGE } from './utils/fileSignature';
 
 dotenv.config();
 
 const app: Application = express();
 
+// The API sits behind one reverse proxy (nginx / the host's load balancer), so req.ip is the visitor's
+// address taken from X-Forwarded-For; rate limits depend on it. TRUST_PROXY overrides the hop count.
+app.set('trust proxy', Number.parseInt(process.env.TRUST_PROXY ?? '1', 10) || false);
+
 // Middleware
-app.use(cors());
+const allowedOrigins = resolveCorsOrigins();
+// Security headers. The API serves no pages of its own, so helmet's strict default CSP stays on. Uploaded
+// images are shown on the website's domain (cross-origin resources), and the website and admin portal
+// preview API documents (PDFs, receipts) in iframes, so only those sites may frame API responses.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  xFrameOptions: false,
+  contentSecurityPolicy: {
+    directives: {
+      'frame-ancestors': [
+        "'self'",
+        ...allowedOrigins,
+        ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:*', 'http://127.0.0.1:*']),
+      ],
+    },
+  },
+}));
+app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin, allowedOrigins)) }));
 // Meta signs the unparsed webhook payload. This route must remain before express.json().
 app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
 // Wallet webhook signatures cover the exact raw JSON payload, so this route must also
@@ -60,7 +84,8 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     err.message.includes('PDF files must be 3MB or smaller.') ||
     err.message.includes('Image files must be 5MB or smaller.') ||
     err.message.includes('Video files must be 15MB or smaller.') ||
-    err.message.includes('File too large')
+    err.message.includes('File too large') ||
+    err.message.includes(FILE_CONTENT_MISMATCH_MESSAGE)
   ) {
     return res.status(400).json({ success: false, error: err.message });
   }

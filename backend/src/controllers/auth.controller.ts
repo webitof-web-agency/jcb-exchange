@@ -112,6 +112,8 @@ import {
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
 import { publicUploadDir } from '../utils/documentUpload';
+import { clearLoginFailures, loginLockRemainingMs, recordLoginFailure } from '../utils/loginLockout';
+import { authTokenLifetime } from '../utils/authTokenLifetime';
 import {
   AVATAR_MAX_BYTES,
   getAvatarFileName,
@@ -602,8 +604,12 @@ const signAuthToken = (user: any) =>
       authVersion: Number.isInteger(user.authVersion) && user.authVersion >= 0 ? user.authVersion : 0,
     },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: authTokenLifetime(user.role), algorithm: 'HS256' }
   );
+
+// Compared against when the email has no account, so a wrong email takes as long as a wrong password and
+// response time does not reveal which emails are registered.
+const UNKNOWN_ACCOUNT_HASH = bcrypt.hashSync('unknown-account-placeholder', 10);
 
 const assertAccountAccessOrRespond = (res: Response, user: unknown) => {
   const accessState = getAccountAccessState(user as any);
@@ -1393,17 +1399,23 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
+    const lockRemainingMs = loginLockRemainingMs(normalizedEmail);
+    if (lockRemainingMs > 0) {
+      res.setHeader('Retry-After', String(Math.ceil(lockRemainingMs / 1000)));
+      return res.status(429).json({
+        error: `Too many wrong passwords. Password login is locked for ${Math.ceil(lockRemainingMs / 60000)} minute(s); you can still sign in with OTP.`,
+      });
+    }
+
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!user || !user.password) {
+    const isMatch = await bcrypt.compare(password, user?.password || UNKNOWN_ACCOUNT_HASH);
+    if (!user || !user.password || !isMatch) {
+      recordLoginFailure(normalizedEmail);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    clearLoginFailures(normalizedEmail);
 
     const userRecord = user as any;
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
 
     const currentUser = await fetchAuthenticatedUserById(userRecord.id);
     if (assertAccountAccessOrRespond(res, currentUser)) {

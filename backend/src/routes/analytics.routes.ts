@@ -9,6 +9,7 @@ import {
   ingestAnalyticsEvent,
 } from '../controllers/analytics.controller';
 import { requireAnalyticsAccess, requireAuth } from '../middlewares/auth.middleware';
+import { analyticsEventRateLimit } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
@@ -18,6 +19,6 @@ router.get('/overview', requireAuth, requireAnalyticsAccess, getAnalyticsOvervie
 router.get('/listings', requireAuth, requireAnalyticsAccess, getAnalyticsListings);
 router.get('/listings/:id', requireAuth, requireAnalyticsAccess, getAnalyticsListingDetail);
 router.get('/export/listings.csv', requireAuth, requireAnalyticsAccess, exportAnalyticsListings);
-router.post('/events', ingestAnalyticsEvent);
+router.post('/events', analyticsEventRateLimit, ingestAnalyticsEvent);
 
 export default router;

@@ -96,6 +96,7 @@ import {
   downloadSellAccountRefundAdvice,
 } from '../controllers/sellAccount.controller';
 
+import { jobApplicationRateLimit } from '../middlewares/rateLimit.middleware';
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
 const offerLetterUpload = getDocumentUploadMiddleware('secure', 'offer-letter');
@@ -163,7 +164,7 @@ const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['re
 // Public endpoints
 router.get('/public/jobs', getPublicJobs);
 router.get('/public/jobs/:slug', getPublicJobBySlug);
-router.post('/public/jobs/:slug/apply', resumeUpload.single('resume'), sanitizeRequestBody, applyForJob);
+router.post('/public/jobs/:slug/apply', jobApplicationRateLimit, resumeUpload.single('resume'), sanitizeRequestBody, applyForJob);
 
 // Applicant protected endpoints
 router.get('/my-applications', requireAuth, getMyApplications);

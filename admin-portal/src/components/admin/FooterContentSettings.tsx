@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import { useTranslation } from '@/hooks/useTranslation';
+import { purifyHtml } from '@/lib/safeHtml';
 
 type FooterSocialLink = {
   id: string;
@@ -1093,7 +1094,7 @@ export default function FooterContentSettings() {
                 <div
                   className={LEGAL_CONTENT_CLASS_NAME}
                   dangerouslySetInnerHTML={{
-                    __html:
+                    __html: purifyHtml(
                       activeUsefulSubTab === 'privacy'
                         ? legalPages.privacyPolicy || DEFAULT_PRIVACY_POLICY
                         : activeUsefulSubTab === 'terms'
@@ -1101,6 +1102,7 @@ export default function FooterContentSettings() {
                           : activeUsefulSubTab === 'refund'
                             ? legalPages.refundReturnPolicy || DEFAULT_REFUND_RETURN_POLICY
                           : legalPages.disclaimer || DEFAULT_DISCLAIMER,
+                    ),
                   }}
                 />
               </div>

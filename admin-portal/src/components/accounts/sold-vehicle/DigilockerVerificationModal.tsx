@@ -17,7 +17,10 @@ declare global {
   }
 }
 
-const SDK_SRC = 'https://cdn.jsdelivr.net/gh/surepassio/surepass-digiboost-web-sdk@latest/index.min.js';
+// Pinned with a Subresource Integrity hash: the browser refuses the file if its content ever changes.
+// To upgrade, change the version and replace the hash with the new file's sha384.
+const SDK_SRC = 'https://cdn.jsdelivr.net/gh/surepassio/surepass-digiboost-web-sdk@1.1.8/index.min.js';
+const SDK_INTEGRITY = 'sha384-9I0RgD1w33B4urxSPbfBC4LjjxvgAA38/Y2cMEL8AL6HvOUiuoCUAIzlqzBSYjBM';
 
 const findClientId = (value: unknown): string => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
@@ -118,6 +121,8 @@ export function DigilockerVerificationModal({
     }
     const script = document.createElement('script');
     script.src = SDK_SRC;
+    script.integrity = SDK_INTEGRITY;
+    script.crossOrigin = 'anonymous';
     script.async = true;
     script.onload = () => setSdkReady(Boolean(window.DigiboostSdk));
     script.onerror = () => setSdkError('DigiLocker verification service could not be loaded.');
