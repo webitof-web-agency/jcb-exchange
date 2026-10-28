@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import CategoriesPageClient from './CategoriesPageClient';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 export const metadata: Metadata = {
   title: 'Machine Categories',
@@ -40,7 +41,7 @@ export default function CategoriesPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionSchema) }}
       />
       <CategoriesPageClient />
     </>

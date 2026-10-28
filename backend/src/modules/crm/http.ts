@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { FieldValidationError } from '../../utils/fieldValidation';
 
 export class CrmHttpError extends Error {
   constructor(public status: number, message: string, public details?: unknown) {
@@ -33,6 +34,9 @@ export const handle = (handler: Handler, successStatus = 200) =>
     } catch (error) {
       if (error instanceof CrmHttpError) {
         return res.status(error.status).json({ error: error.message, ...(error.details ? { details: error.details } : {}) });
+      }
+      if (error instanceof FieldValidationError) {
+        return res.status(400).json({ error: error.message, field: error.field });
       }
       if (isCrmSchemaMissing(error)) {
         return res.status(503).json({ error: 'CRM tables are not installed yet. Apply the CRM migration first.', code: CRM_SCHEMA_MISSING_CODE });

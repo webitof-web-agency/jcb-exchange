@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { normalizeListingBillPayload, type ListingBillType } from '../utils/listingBillPayload';
+import { validateField } from '../utils/fieldValidation';
 
 const prismaAny = prisma as any;
 
@@ -83,6 +84,11 @@ export const saveListingBill = async (req: Request, res: Response, next: NextFun
     if (existingBill && existingBill.paymentId !== paymentId) {
       return res.status(400).json({ error: 'The selected bill does not belong to this payment.' });
     }
+
+    // Values already on the saved bill are accepted unchanged; new ones must be well formed.
+    const previousPayload = (existingBill?.payload || {}) as Partial<typeof payload>;
+    payload.customerMobile = validateField('mobile', payload.customerMobile, 'Customer Mobile', { previous: previousPayload.customerMobile, field: 'customerMobile' }) ?? '';
+    payload.customerEmail = validateField('email', payload.customerEmail, 'Customer Email', { previous: previousPayload.customerEmail, field: 'customerEmail' }) ?? '';
 
     const bill = existingBill
       ? await prismaAny.listingBill.update({

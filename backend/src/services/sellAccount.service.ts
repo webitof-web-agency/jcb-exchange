@@ -15,6 +15,7 @@ import {
   SellAccountMarginBasis,
 } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { validateField } from '../utils/fieldValidation';
 import {
   calculateSellAccountGst,
   calculateSellAccountPaymentSummary,
@@ -504,10 +505,22 @@ export const getSellAccount = async (id: string) => {
   return refreshed ? serialize(refreshed, synced.rtoState, synced.nextStatus) : null;
 };
 
+/** Format checks for phone and registration numbers; unchanged stored values are accepted. Normalises in place. */
+const validateSellAccountFormats = (payload: ReturnType<typeof buildPayload>, existing?: Record<string, any> | null) => {
+  const phones: Array<['ownerNumber' | 'sellerNumber' | 'purchaserNumber' | 'brokerNumber', string]> = [
+    ['ownerNumber', 'Owner Number'], ['sellerNumber', 'Seller Number'], ['purchaserNumber', 'Purchaser Number'], ['brokerNumber', 'Broker Number'],
+  ];
+  for (const [key, label] of phones) {
+    payload[key] = validateField('mobile', payload[key], label, { previous: existing?.[key], field: key });
+  }
+  payload.vehicleNumber = validateField('vehicle', payload.vehicleNumber, 'Registration Number', { previous: existing?.vehicleNumber, field: 'vehicleNumber' });
+};
+
 export const createSellAccount = async (body: unknown, actorId?: string) => {
   const payload = buildPayload(body);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
+  validateSellAccountFormats(payload);
   await assertListingAvailable(payload.listingId);
   const record = await prisma.$transaction(async (tx) => {
     const recordNumber = await nextSellAccountRecordNumber(tx);
@@ -536,6 +549,7 @@ export const updateSellAccount = async (id: string, body: unknown, actorId?: str
   const payload = buildPayload(body, existing);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
+  validateSellAccountFormats(payload, existing);
   if (payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, id);
   assertSaleTermsUnchanged(existing, payload);
   const record = await prisma.$transaction(async (tx) => {
@@ -781,6 +795,7 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
   const payload = buildPayload(requestBody, existing);
   const error = validatePayload(payload);
   if (error) throw new Error(error);
+  validateSellAccountFormats(payload, existing);
   if (!existing || payload.listingId !== existing.listingId) await assertListingAvailable(payload.listingId, existing?.id);
   if (existing?.cancelledAt) throw new Error('This sale is cancelled.');
   if (existing) assertSaleTermsUnchanged(existing, payload);

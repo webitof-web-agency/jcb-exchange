@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
+import { purifySvg } from '@/lib/safeHtml';
 
 interface IconData {
   id: string;
@@ -305,7 +306,7 @@ export default function SuperAdminCategoriesPage() {
                     {category.icon?.svgData ? (
                       <div
                         className="flex h-13 w-13 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-50 p-2.5 sm:p-3 text-amber-700 transition-colors group-hover:bg-amber-100/80 shadow-2xs"
-                        dangerouslySetInnerHTML={{ __html: category.icon.svgData }}
+                        dangerouslySetInnerHTML={{ __html: purifySvg(category.icon.svgData) }}
                       />
                     ) : (
                       <div className="flex h-13 w-13 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-400 transition-colors group-hover:bg-amber-50 group-hover:text-amber-600 shadow-2xs">
@@ -440,7 +441,7 @@ export default function SuperAdminCategoriesPage() {
                       >
                         <div
                           className="flex h-8 w-8 items-center justify-center"
-                          dangerouslySetInnerHTML={{ __html: icon.svgData }}
+                          dangerouslySetInnerHTML={{ __html: purifySvg(icon.svgData) }}
                         />
                       </div>
                     ))}

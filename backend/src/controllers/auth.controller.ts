@@ -21,6 +21,7 @@ import {
 } from '../utils/accountAccess';
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import { sanitizeName, isValidEmail, sanitizePassword } from '../utils/authSanitization';
+import { validateField } from '../utils/fieldValidation';
 import {
   getLoginMobileCandidates,
   MOBILE_OTP_COOLDOWN_SECONDS,
@@ -1023,6 +1024,10 @@ export const saveOnboardingData = async ({
       kycStatus: true,
       approvedById: true,
       approvedAt: true,
+      pinCode: true,
+      alternateMobile: true,
+      gstNumber: true,
+      user: { select: { email: true, whatsappNumber: true } },
       kycReviews: {
         where: {
           action: {
@@ -1087,13 +1092,23 @@ export const saveOnboardingData = async ({
       ? 'CHANGES_REQUESTED'
       : kycStatus;
 
+  // Format checks; values already stored (possibly from before these checks) are accepted unchanged.
+  const stored = currentPartnerProfile as { pinCode?: string | null; alternateMobile?: string | null; gstNumber?: string | null; user?: { email?: string | null; whatsappNumber?: string | null } } | null;
+  const checkedEmail = validateField('email', normalizeText(profile.email), 'Email', { previous: stored?.user?.email ?? userEmail, field: 'email' });
+  const checkedWhatsapp = validateField('mobile', normalizeText(profile.whatsappNumber), 'WhatsApp number', { previous: stored?.user?.whatsappNumber, field: 'whatsappNumber' });
+  const checkedPinCode = validateField('pincode', normalizeText(profile.pinCode), 'PIN code', { previous: stored?.pinCode, field: 'pinCode' });
+  const checkedAlternateMobile = validateField('mobile', normalizeText(profile.alternateMobile), 'Alternate mobile', { previous: stored?.alternateMobile, field: 'alternateMobile' });
+  const checkedGstNumber = Object.prototype.hasOwnProperty.call(profile, 'gstNumber')
+    ? validateField('gstin', normalizeText(profile.gstNumber), 'GST number', { previous: stored?.gstNumber, field: 'gstNumber' })
+    : undefined;
+
   await prisma.user.update({
     where: { id: userId },
     data: {
       name: normalizeText(profile.ownerName),
-      email: normalizeText(profile.email) || userEmail || null,
+      email: checkedEmail || userEmail || null,
       ...(normalizeText(profile.primaryContact) ? { mobile: normalizeText(profile.primaryContact) } : {}),
-      ...(normalizeText(profile.whatsappNumber) ? { whatsappNumber: normalizeText(profile.whatsappNumber) } : { whatsappNumber: null }),
+      ...(checkedWhatsapp ? { whatsappNumber: checkedWhatsapp } : { whatsappNumber: null }),
       ...(normalizeText(profile.city) ? { city: normalizeText(profile.city) } : { city: null }),
       ...(normalizeText(profile.state) ? { state: normalizeText(profile.state) } : { state: null }),
     },
@@ -1107,7 +1122,7 @@ export const saveOnboardingData = async ({
       partnerType: normalizedPartnerType,
       businessAddress: normalizeText(profile.businessAddress),
       district: normalizeText(profile.district),
-      pinCode: normalizeText(profile.pinCode),
+      pinCode: checkedPinCode,
       businessExperience: normalizeText(profile.businessExperience),
       expectedMonthlyListings: parseOptionalInt(profile.expectedMonthlyListings),
       referralCode: normalizeText(profile.referralCode),
@@ -1116,14 +1131,12 @@ export const saveOnboardingData = async ({
       googleMapsLocation: normalizeText(profile.googleMapsLocation),
       serviceAreas: normalizeText(profile.serviceAreas),
       workingHours: normalizeText(profile.workingHours),
-      alternateMobile: normalizeText(profile.alternateMobile),
+      alternateMobile: checkedAlternateMobile,
       websiteUrl: normalizeText(profile.websiteUrl),
       socialLinks: normalizeText(profile.socialLinks),
       yearsInBusiness: parseOptionalInt(profile.yearsInBusiness),
       teamSize: parseOptionalInt(profile.teamSize),
-      ...(Object.prototype.hasOwnProperty.call(profile, 'gstNumber')
-        ? { gstNumber: normalizeText(profile.gstNumber) }
-        : {}),
+      ...(checkedGstNumber !== undefined ? { gstNumber: checkedGstNumber } : {}),
       businessRegistrationNumber: normalizeText(profile.businessRegistrationNumber),
       contactPreference: normalizeText(profile.contactPreference),
       onboardingStatus: nextOnboardingStatus,

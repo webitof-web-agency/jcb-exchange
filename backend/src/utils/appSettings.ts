@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma';
 import { normalizeRemoteMediaUrl } from './mediaUrl';
 import { mergeSiteBrandingMedia } from './siteBrandingSettings';
+import { sanitizeLegalHtml } from './htmlSanitizer';
 import {
   type CustomerPrimeSettings,
   normalizeCustomerPrimeSettings,
@@ -1017,9 +1018,10 @@ export const updateFooterSettings = async ({
         updatedByUserId: updatedByUserId || null,
       },
       legalPages: {
-        privacyPolicy: legalPages?.privacyPolicy !== undefined ? (legalPages.privacyPolicy?.trim() || null) : currentSettings.footer.legalPages.privacyPolicy,
-        termsConditions: legalPages?.termsConditions !== undefined ? (legalPages.termsConditions?.trim() || null) : currentSettings.footer.legalPages.termsConditions,
-        disclaimer: legalPages?.disclaimer !== undefined ? (legalPages.disclaimer?.trim() || null) : currentSettings.footer.legalPages.disclaimer,
+        // Legal pages are rendered as HTML on the public site: allow-list clean on every save.
+        privacyPolicy: legalPages?.privacyPolicy !== undefined ? (sanitizeLegalHtml(legalPages.privacyPolicy) || null) : currentSettings.footer.legalPages.privacyPolicy,
+        termsConditions: legalPages?.termsConditions !== undefined ? (sanitizeLegalHtml(legalPages.termsConditions) || null) : currentSettings.footer.legalPages.termsConditions,
+        disclaimer: legalPages?.disclaimer !== undefined ? (sanitizeLegalHtml(legalPages.disclaimer) || null) : currentSettings.footer.legalPages.disclaimer,
         updatedAt: nextTimestamp,
         updatedByUserId: updatedByUserId || null,
       },

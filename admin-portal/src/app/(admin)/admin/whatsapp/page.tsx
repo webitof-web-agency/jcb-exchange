@@ -1567,7 +1567,7 @@ export default function SuperAdminWhatsAppPage() {
               <div className="rounded-2xl border border-gray-200 p-5">
                 <h4 className="font-bold text-gray-900">{wt('campaign.recordRevokeConsent', 'Record or revoke consent')}</h4>
                 <div className="mt-4 space-y-3">
-                  <input
+                  <input data-sanitize="digits"
                     value={consentForm.phone}
                     onChange={(event) => setConsentForm((current) => ({ ...current, phone: event.target.value }))}
                     placeholder="919876543210"

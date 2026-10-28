@@ -35,6 +35,7 @@ import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { getRecruitmentTemplateComponents } from '../modules/whatsapp-core';
 import { normalizeOfferLetterData, validateOfferLetterData, type OfferLetterData } from '../utils/offerLetter';
+import { validateField } from '../utils/fieldValidation';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
@@ -451,8 +452,8 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
     }
 
     const fullName = body.fullName?.trim();
-    const email = body.email?.trim().toLowerCase();
-    const mobile = body.mobile?.trim();
+    const email = validateField('email', body.email, 'Email', { field: 'email' });
+    const mobile = validateField('mobile', body.mobile, 'Mobile number', { field: 'mobile' });
 
     if (!fullName || !email || !mobile) {
       return res.status(400).json({

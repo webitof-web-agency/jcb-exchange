@@ -159,7 +159,7 @@ export function IntegrationsModule() {
           <div className="p-4">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="GSP"><input value={gsp.provider} onChange={(event) => setGsp({ ...gsp, provider: event.target.value })} className={inputClass} placeholder="e.g. ClearTax, Masters India" /></Field>
-              <Field label="GSTIN"><input value={gsp.gstin} onChange={(event) => setGsp({ ...gsp, gstin: event.target.value.toUpperCase() })} className={inputClass} maxLength={15} /></Field>
+              <Field label="GSTIN"><input data-sanitize="gstin" value={gsp.gstin} onChange={(event) => setGsp({ ...gsp, gstin: event.target.value.toUpperCase() })} className={inputClass} maxLength={15} /></Field>
               <Field label="Portal username"><input value={gsp.username} onChange={(event) => setGsp({ ...gsp, username: event.target.value })} className={inputClass} /></Field>
             </div>
             <ModalFooter><Button onClick={() => setGsp(null)}>Cancel</Button><Button variant="primary" busy={busy} onClick={() => void run(() => api.put('/finance-hub/integrations/gsp', { ...gsp, enabled: false }), 'Saved.').then((ok) => { if (ok) setGsp(null); })}>Save</Button></ModalFooter>

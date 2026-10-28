@@ -9,6 +9,7 @@ import { assertAssignableStaff, contactSelect, pageArgs, stringList, textOrNull,
 import { selectContactPipelineStage } from '../contactStage';
 import { listPipelineStageStatusSets } from './pipelineStages.service';
 import { notifyAssignment } from './notify.service';
+import { validateField } from '../../../utils/fieldValidation';
 
 export type ContactInput = {
   name?: unknown;
@@ -34,7 +35,13 @@ export const findOrCreateContact = async (db: Db, input: ContactInput, actorId: 
   const name = textOrNull(input.name, 120);
   const city = textOrNull(input.city, 80);
   const state = textOrNull(input.state, 80);
-  const email = textOrNull(input.email, 160)?.toLowerCase() ?? null;
+  // Staff get told about a bad email; website forms and webhooks (no actor) keep the lead and drop the email.
+  let email: string | null = null;
+  try {
+    email = validateField('email', textOrNull(input.email, 160), 'Email', { field: 'email' });
+  } catch (error) {
+    if (actorId !== null) throw error;
+  }
   const whatsapp = optionalContactPhone(input.whatsappNumber, 'WhatsApp number');
 
   const existing = await db.user.findFirst({ where: { mobile: { in: mobileVariants(mobile) } }, select: { ...contactSelect, crmProfile: { select: { id: true } } } });
@@ -202,11 +209,13 @@ export const createContact = async (access: CrmAccess, body: Record<string, unkn
 
 const applyProfilePatch = async (db: Db, access: CrmAccess, userId: string, body: Record<string, unknown>) => {
   const data: Prisma.CrmContactProfileUncheckedUpdateInput = {};
+  // Stored values that predate the format checks are accepted unchanged.
+  const stored = await db.crmContactProfile.findUnique({ where: { userId }, select: { pinCode: true, gstNumber: true } });
   if ('companyName' in body) data.companyName = textOrNull(body.companyName, 160);
   if ('alternatePhone' in body) data.alternatePhone = optionalContactPhone(body.alternatePhone, 'alternate phone number');
   if ('address' in body) data.address = textOrNull(body.address, 500);
-  if ('pinCode' in body) data.pinCode = textOrNull(body.pinCode, 6);
-  if ('gstNumber' in body) data.gstNumber = textOrNull(body.gstNumber, 15)?.toUpperCase() ?? null;
+  if ('pinCode' in body) data.pinCode = validateField('pincode', body.pinCode, 'PIN code', { previous: stored?.pinCode, field: 'pinCode' });
+  if ('gstNumber' in body) data.gstNumber = validateField('gstin', body.gstNumber, 'GST number', { previous: stored?.gstNumber, field: 'gstNumber' });
   if ('source' in body) data.source = textOrNull(body.source, 40);
   if ('lifecycle' in body) {
     const lifecycle = oneOf(LIFECYCLES, body.lifecycle);
@@ -242,7 +251,8 @@ export const updateContact = async (access: CrmAccess, userId: string, body: Rec
     const userData: Prisma.UserUpdateInput = {};
     if ('name' in body && textOrNull(body.name, 120)) userData.name = textOrNull(body.name, 120);
     if ('email' in body) {
-      const email = textOrNull(body.email, 160)?.toLowerCase() ?? null;
+      const storedEmail = (await tx.user.findUnique({ where: { id: userId }, select: { email: true } }))?.email;
+      const email = validateField('email', textOrNull(body.email, 160), 'Email', { previous: storedEmail, field: 'email' })?.toLowerCase() ?? null;
       if (email) {
         const existing = await tx.user.findFirst({ where: { email, id: { not: userId } }, select: { id: true } });
         if (existing) throw conflict('That email address is already in use.');

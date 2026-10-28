@@ -1277,7 +1277,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   <FormField label={partnerTypeMeta.ownerLabel} required>
                     <div className="relative">
                       <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <input
+                      <input data-sanitize="name"
                         value={profile.ownerName}
                         onChange={(event) => setProfile((current) => ({ ...current, ownerName: toTitleCase(event.target.value) }))}
                         disabled={!canEdit}
@@ -1351,7 +1351,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   <FormField label="Official email address" required fullWidth>
                     <div className="relative">
                       <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <input
+                      <input data-sanitize="email"
                         value={profile.email}
                         onChange={(event) => setProfile((current) => ({ ...current, email: toLowerCase(event.target.value) }))}
                         disabled={!canEdit}

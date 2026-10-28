@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Check, FileText, Loader2, Mail, MapPin, X } from 'lucide-react';
 import api from '@/lib/api';
+import { purifyHtml } from '@/lib/safeHtml';
 
 // ─── Terms & Conditions Modal ────────────────────────────────────────────────
 // Dynamically fetches content from /master/footer API (legalPages.termsConditions)
@@ -80,7 +81,7 @@ export default function RtoTermsModal({ onClose }: { onClose: () => void }) {
             <div className="px-6 py-6">
               <div
                 className="prose max-w-none text-sm leading-relaxed text-gray-700 prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-600 prose-a:font-semibold prose-a:text-amber-700 prose-a:no-underline hover:prose-a:underline prose-strong:text-gray-900 prose-ul:my-3 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-3 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-li:text-gray-600 prose-hr:border-gray-200"
-                dangerouslySetInnerHTML={{ __html: customHtml }}
+                dangerouslySetInnerHTML={{ __html: purifyHtml(customHtml) }}
               />
             </div>
           ) : (

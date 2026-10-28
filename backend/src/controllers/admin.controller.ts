@@ -56,6 +56,7 @@ import { buildKycReviewDocument } from '../utils/kycReviewPresentation';
 import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
 import { normalizeProfileEmail } from '../utils/profileSecurity';
+import { validateField } from '../utils/fieldValidation';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -1266,7 +1267,9 @@ export const updatePlatformSettings = async (req: Request, res: Response, next: 
       settingsPayload.companyInvoice = {
         ...(companyInvoice.companyName !== undefined ? { companyName: companyInvoice.companyName } : {}),
         ...(companyInvoice.cin !== undefined ? { cin: companyInvoice.cin } : {}),
-        ...(companyInvoice.gstin !== undefined ? { gstin: companyInvoice.gstin } : {}),
+        ...(companyInvoice.gstin !== undefined
+          ? { gstin: validateField('gstin', companyInvoice.gstin, 'Company GSTIN', { previous: (await getAppSettings()).companyInvoice.gstin, field: 'gstin' }) }
+          : {}),
         ...(companyInvoice.address !== undefined ? { address: companyInvoice.address } : {}),
         ...(companyInvoice.state !== undefined ? { state: companyInvoice.state } : {}),
         ...(companyInvoice.city !== undefined ? { city: companyInvoice.city } : {}),

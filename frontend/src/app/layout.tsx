@@ -24,6 +24,8 @@ import {
   DEFAULT_PWA_THEME_COLOR,
   getSiteBranding,
 } from '@/lib/siteBranding';
+import { serializeJsonLd } from '@/lib/jsonLd';
+import FormSanitizer from '@/components/FormSanitizer';
 
 export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
@@ -152,7 +154,7 @@ export default async function RootLayout({
       <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased pb-16 lg:pb-0" suppressHydrationWarning>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteSchema) }}
         />
         <script
           dangerouslySetInnerHTML={{
@@ -160,6 +162,7 @@ export default async function RootLayout({
           }}
         />
         <LocaleSync />
+        <FormSanitizer />
         <Navbar />
         <div className="h-[53px] shrink-0 lg:hidden" aria-hidden="true" />
         <main className="flex-grow flex flex-col">

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import LocaleSync from "@/components/LocaleSync";
+import FormSanitizer from "@/components/FormSanitizer";
 import ToastProvider from "@/components/ToastProvider";
 import "react-toastify/dist/ReactToastify.css";
 import "./globals.css";
@@ -87,6 +88,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         />
         <SiteLogoProvider value={{ logoUrl: branding.logoUrl, darkLogoUrl: branding.darkLogoUrl }}>
           <LocaleSync />
+          <FormSanitizer />
           <ToastProvider>
             {children}
           </ToastProvider>

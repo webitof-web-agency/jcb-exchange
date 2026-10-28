@@ -152,7 +152,7 @@ export default function CompanyProfileModule() {
         <Modal title={registration.id ? `Edit ${registration.gstin}` : 'Add GST registration'} onClose={() => { if (!busy) setRegistration(null); }}>
           <form onSubmit={saveRegistration} className="space-y-3 p-4">
             <Field label="GSTIN *" hint="15 characters; the check digit is verified.">
-              <input value={registration.gstin} disabled={Boolean(registration.id)} onChange={(event) => setRegistration({ ...registration, gstin: event.target.value.toUpperCase() })} className={`${inputClass} font-mono uppercase`} maxLength={15} required />
+              <input data-sanitize="gstin" value={registration.gstin} disabled={Boolean(registration.id)} onChange={(event) => setRegistration({ ...registration, gstin: event.target.value.toUpperCase() })} className={`${inputClass} font-mono uppercase`} maxLength={15} required />
             </Field>
             <Field label="Registration type">
               <select value={registration.registrationType} onChange={(event) => setRegistration({ ...registration, registrationType: event.target.value as Registration['registrationType'] })} className={inputClass}>

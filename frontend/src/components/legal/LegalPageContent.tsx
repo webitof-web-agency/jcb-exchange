@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { purifyHtml } from '@/lib/safeHtml';
 
 type LegalPageContentProps = {
   pageKey: 'privacyPolicy' | 'termsConditions' | 'disclaimer' | 'refundReturnPolicy';
@@ -47,7 +48,7 @@ export default function LegalPageContent({ pageKey, fallbackHtml }: LegalPageCon
     return (
       <div 
         className={LEGAL_CONTENT_CLASS_NAME}
-        dangerouslySetInnerHTML={{ __html: customHtml }}
+        dangerouslySetInnerHTML={{ __html: purifyHtml(customHtml) }}
       />
     );
   }

@@ -11,6 +11,7 @@ import {
 import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.service';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getListingFinalPrice, getPublicListingPricing, type ListingPricingSource } from '../utils/listingPricing';
+import { sanitizeLegalHtml, sanitizeSvg } from '../utils/htmlSanitizer';
 
 const prismaAny = prisma as any;
 
@@ -685,8 +686,11 @@ export const getIcons = async (req: Request, res: Response, next: NextFunction) 
 
 export const createIcon = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, svgData } = req.body;
-    if (!name || !svgData) return res.status(400).json({ error: 'Name and SVG data are required' });
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
+    // Icons are injected as raw SVG on the website: keep drawing elements only.
+    const svgData = sanitizeSvg(req.body?.svgData);
+    if (!name || !req.body?.svgData) return res.status(400).json({ error: 'Name and SVG data are required' });
+    if (!svgData) return res.status(400).json({ error: 'The file is not a valid SVG icon.' });
 
     const existing = await prisma.categoryIcon.findUnique({ where: { name } });
     if (existing) return res.status(400).json({ error: 'Icon with this name already exists' });
@@ -974,7 +978,13 @@ export const getFooterSettings = async (req: Request, res: Response, next: NextF
             ...settings.footer.contact,
             supportWhatsappNumber: defaultSuperAdminContact.adminWhatsappNumber,
           },
-        legalPages: settings.footer.legalPages,
+        // Public pages render these as HTML: clean again on the way out.
+        legalPages: {
+          ...settings.footer.legalPages,
+          privacyPolicy: settings.footer.legalPages.privacyPolicy ? sanitizeLegalHtml(settings.footer.legalPages.privacyPolicy) : null,
+          termsConditions: settings.footer.legalPages.termsConditions ? sanitizeLegalHtml(settings.footer.legalPages.termsConditions) : null,
+          disclaimer: settings.footer.legalPages.disclaimer ? sanitizeLegalHtml(settings.footer.legalPages.disclaimer) : null,
+        },
       },
     });
   } catch (error) {

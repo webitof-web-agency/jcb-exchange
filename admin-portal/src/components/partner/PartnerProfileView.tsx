@@ -555,7 +555,7 @@ export default function PartnerProfileView() {
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Owner / Representative Name
                     </label>
-                    <input
+                    <input data-sanitize="name"
                       type="text"
                       value={profileForm.ownerName}
                       onChange={(event) => setProfileForm((current) => ({ ...current, ownerName: event.target.value }))}
@@ -616,7 +616,7 @@ export default function PartnerProfileView() {
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Primary Mobile Number
                     </label>
-                    <input
+                    <input data-sanitize="mobile"
                       type="text"
                       value={profileForm.mobile}
                       onChange={(event) => setProfileForm((current) => ({ ...current, mobile: event.target.value }))}
@@ -629,7 +629,7 @@ export default function PartnerProfileView() {
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       WhatsApp Dispatch Number
                     </label>
-                    <input
+                    <input data-sanitize="mobile"
                       type="text"
                       value={profileForm.whatsappNumber}
                       onChange={(event) => setProfileForm((current) => ({ ...current, whatsappNumber: event.target.value }))}
@@ -695,7 +695,7 @@ export default function PartnerProfileView() {
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       PIN Code
                     </label>
-                    <input
+                    <input data-sanitize="pincode"
                       type="text"
                       value={profileForm.pinCode}
                       onChange={(event) => setProfileForm((current) => ({ ...current, pinCode: event.target.value }))}

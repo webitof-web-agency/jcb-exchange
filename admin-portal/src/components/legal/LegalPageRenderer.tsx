@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, FileText, Loader2, Mail, MapPin, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
+import { purifyHtml } from '@/lib/safeHtml';
 
 type LegalPageKey = 'termsConditions' | 'privacyPolicy' | 'disclaimer' | 'refundReturnPolicy';
 
@@ -94,7 +95,7 @@ export default function LegalPageRenderer({
           ) : customHtml ? (
             <div
               className="prose max-w-none text-sm leading-relaxed text-gray-700 sm:text-base prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:font-semibold prose-a:text-amber-700 prose-a:underline hover:prose-a:text-amber-800 prose-strong:text-gray-900 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1"
-              dangerouslySetInnerHTML={{ __html: customHtml }}
+              dangerouslySetInnerHTML={{ __html: purifyHtml(customHtml) }}
             />
           ) : fallbackContent ? (
             fallbackContent

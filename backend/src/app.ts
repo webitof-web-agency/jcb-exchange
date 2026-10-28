@@ -5,6 +5,8 @@ import apiRoutes from './routes';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.routes';
 import apiWalletBillingWebhookRoutes from './routes/apiWalletBillingWebhook.routes';
 import { publicUploadDir } from './utils/documentUpload';
+import { sanitizeRequest } from './middlewares/sanitizeRequest.middleware';
+import { FieldValidationError } from './utils/fieldValidation';
 
 dotenv.config();
 
@@ -19,6 +21,9 @@ app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
 app.use('/api/api-billing/webhook', express.raw({ type: 'application/json', limit: '64kb' }), apiWalletBillingWebhookRoutes);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+// Every form and API call: strip tags and control characters from strings, drop prototype keys.
+// Multipart forms are cleaned on their routes, after multer has parsed them.
+app.use(sanitizeRequest);
 // Serve branding images (hero, logo, certification) stored on the server's
 // public upload directory. These are written to disk by the upload handlers
 // and fetched directly by the frontend — no Drive dependency needed.
@@ -35,6 +40,11 @@ app.get('/health', (req: Request, res: Response) => {
 // Default Error Handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);
+
+  // Wrong format in a form field (mobile, email, PAN, GSTIN ...): tell the user which field.
+  if (err instanceof FieldValidationError) {
+    return res.status(400).json({ success: false, error: err.message, field: err.field });
+  }
 
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({

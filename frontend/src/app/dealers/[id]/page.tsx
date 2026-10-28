@@ -4,6 +4,7 @@ import { extractIdFromSlug, generateDealerSlugPath } from '@/lib/seoUtils';
 import { resolvePublicDealerId } from '@/lib/publicRouteResolvers';
 import DealerDetailPageClient from './DealerDetailPageClient';
 import { getAbsoluteDealerAssetUrl, getDealerDetail, getDealerListings } from './data';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 type DealerDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -111,7 +112,7 @@ export default async function DealerDetailPage({ params }: DealerDetailPageProps
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(localBusinessSchema) }}
       />
       <DealerDetailPageClient dealerId={dealerLookupId} initialDealer={dealer} initialListings={listings} />
     </>

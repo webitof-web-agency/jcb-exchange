@@ -292,7 +292,7 @@ export default function AdminProfileView() {
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">Mobile number</span>
-                <input
+                <input data-sanitize="mobile"
                   type="text"
                   value={profileForm.mobile}
                   onChange={(event) => setProfileForm((current) => ({ ...current, mobile: event.target.value }))}
@@ -303,7 +303,7 @@ export default function AdminProfileView() {
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-semibold text-gray-700">WhatsApp number</span>
-                <input
+                <input data-sanitize="mobile"
                   type="text"
                   value={profileForm.whatsappNumber}
                   onChange={(event) => setProfileForm((current) => ({ ...current, whatsappNumber: event.target.value }))}

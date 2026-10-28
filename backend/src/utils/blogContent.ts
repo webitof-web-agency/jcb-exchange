@@ -1,3 +1,5 @@
+import { sanitizeBlogMarkup } from './htmlSanitizer';
+
 const ALLOWED_TAGS = new Set([
   'p',
   'br',
@@ -27,9 +29,13 @@ const isSafeMediaUrl = (value: string) =>
 const isSafeHref = (value: string) =>
   /^(?:https?:\/\/|mailto:|tel:|\/)/i.test(value.trim()) && !/^(?:javascript|data|vbscript):/i.test(value.trim());
 
+// Attribute values arrive entity-encoded from the parser pass; decode once so escapeAttribute does not double-encode.
+const decodeEntities = (value: string) => value
+  .replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
 const getAttribute = (attributes: string, name: string) => {
   const match = attributes.match(new RegExp(`${name}\\s*=\\s*["']([^"']*)["']`, 'i'));
-  return match?.[1]?.trim() || '';
+  return decodeEntities(match?.[1]?.trim() || '');
 };
 
 const unwrapAccidentalHeadingWrappers = (html: string) => html.replace(
@@ -62,7 +68,9 @@ export const sanitizeBlogHtml = (value: string) => {
     throw new Error('Blog content cannot be empty.');
   }
 
-  const withoutDangerousBlocks = source
+  // A real HTML parser pass first (handles malformed tags, encoded tricks and comments); the regex pass below
+  // then rebuilds each allowed tag in its fixed shape.
+  const withoutDangerousBlocks = sanitizeBlogMarkup(source)
     .replace(/<!--(?:.|\n|\r)*?-->/g, '')
     .replace(/<(script|style|iframe|object|embed|form)\b[^>]*>(?:.|\n|\r)*?<\/\1>/gi, '')
     .replace(/<(script|style|iframe|object|embed|form)\b[^>]*\/?>/gi, '');
