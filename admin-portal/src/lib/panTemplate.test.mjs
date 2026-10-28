@@ -29,9 +29,15 @@ test('PAN template uses the current full input PAN and keeps fields below printe
   assert.match(previewSource, /dateOfBirth: \{ x: 58, y: 612/);
   assert.match(pageSource, /panNumber=\{pan\}/);
 });
-test('PAN template masks the value and places it below the printed card title', () => {
-  assert.match(previewSource, /const maskPanNumber =/);
-  assert.match(previewSource, /templatePanNumber = maskPanNumber/);
+
+test('PAN template preserves the verified typed number instead of masking it', () => {
+  assert.match(previewSource, /resolvePanTemplateNumber\(rawPan, response\.record\.maskedPan\)/);
+  assert.match(previewSource, /templatePanNumber/);
+  assert.match(previewSource, /`PAN: \$\{templatePanNumber\}`/);
+  assert.match(pageSource, /panNumber=\{pan\}/);
+});
+test('PAN template uses a full verified value and a masked fallback below the printed card title', () => {
+  assert.match(previewSource, /resolvePanTemplateNumber\(rawPan, response\.record\.maskedPan\)/);
   assert.match(previewSource, /panNumber: \{ x: 470, y: 276/);
   assert.doesNotMatch(previewSource, /panNumber: \{ x: 664, y: 590/);
 });

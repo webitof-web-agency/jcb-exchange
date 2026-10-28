@@ -216,6 +216,10 @@ export class SurepassClient {
     return this.post('/api/v1/rc/rc-full', payload);
   }
 
+  verifyRcOwnerHistory(payload: { id_number: string }) {
+    return this.post('/api/v1/rc/rc-owner-history', payload);
+  }
+
   verifyChassisToRc(payload: { chassis_number: string }) {
     return this.post('/api/v1/rc/chassis-to-rc-details', payload);
   }

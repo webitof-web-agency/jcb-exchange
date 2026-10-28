@@ -221,7 +221,7 @@ export default function EAadhaarFullTemplate({
               <p>Sub District: {subDistrict}</p>
               <p>District: {district}</p>
               <p>State: {state}</p>
-              <p>PIN Code: {pinCode} ,</p>
+              <p>PIN Code: {pinCode}</p>
               <p className="font-semibold text-slate-900">Mobile: {mobile}</p>
             </div>
 
@@ -364,10 +364,10 @@ export default function EAadhaarFullTemplate({
                 <p className="text-[12.5px] font-bold text-slate-900 leading-tight">{nameHindi}</p>
                 <p className="text-[12px] font-semibold text-slate-900 leading-tight">{nameEnglish}</p>
                 <p className="text-[9.5px] font-bold text-slate-900 leading-tight pt-0.5">
-                  जन्म तिथि/DOB:{dob}
+                  जन्म तिथि/DOB: {dob}
                 </p>
                 <p className="text-[9.5px] font-bold text-slate-900 leading-tight">
-                  {genderHindi}/ {gender}
+                  {genderHindi} / {gender}
                 </p>
 
                 {/* Red Disclaimer Box - fitted to text */}

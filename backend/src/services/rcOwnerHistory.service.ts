@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import prisma from '../lib/prisma';
 import { decryptPanData, encryptPanData } from './panVerification.dataCrypto';
 import { getPanVerificationRuntimeConfig } from './panVerificationSettings.service';
@@ -14,12 +15,31 @@ import {
   type ApiBillingGateway,
   type ApiBillableServiceKey,
 } from './apiWalletBilling.service';
+import { deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
 
 const RC_STATUS = {
   PENDING: 'PENDING',
   SUCCESS: 'SUCCESS',
   FAILED: 'FAILED',
 } as const;
+
+export const RC_OWNER_HISTORY_RAW_DATA_TTL_MS = 5 * 60 * 1000;
+export const MAX_RC_OWNER_HISTORY_TEMPLATE_SIZE = 5 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+export const getRcOwnerHistoryRawDataExpiresAt = (completedAt = new Date()) =>
+  new Date(completedAt.getTime() + RC_OWNER_HISTORY_RAW_DATA_TTL_MS);
+
+export const isRcOwnerHistoryRawDataAvailable = (
+  record: { encryptedResult?: unknown; rawDataExpiresAt?: unknown },
+  now = Date.now(),
+) => {
+  if (typeof record.encryptedResult !== 'string' || !record.encryptedResult) return false;
+  const expiresAt = record.rawDataExpiresAt instanceof Date
+    ? record.rawDataExpiresAt.getTime()
+    : new Date(String(record.rawDataExpiresAt ?? '')).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > now;
+};
 
 type RcOwnerHistoryRecordRepository = {
   findFirst: (args: any) => Promise<any>;
@@ -28,12 +48,21 @@ type RcOwnerHistoryRecordRepository = {
   count: (args: any) => Promise<number>;
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
+  updateMany?: (args: any) => Promise<{ count: number }>;
 };
+
+type RcOwnerHistoryTemplateRepository = {
+  create: (args: any) => Promise<any>;
+  delete?: (args: any) => Promise<any>;
+};
+
+type RcOwnerHistoryTemplateUploader = (buffer: Buffer, mimeType: string, fileName: string) => Promise<{ fileId: string }>;
 
 type RcOwnerHistoryAuditRepository = { create: (args: any) => Promise<any> };
 
 type RcOwnerHistoryDependencies = {
   record?: RcOwnerHistoryRecordRepository;
+  template?: RcOwnerHistoryTemplateRepository;
   audit?: RcOwnerHistoryAuditRepository;
   provider?: ReturnType<typeof createSurepassClient>;
   dataSecret?: string;
@@ -41,6 +70,8 @@ type RcOwnerHistoryDependencies = {
   serviceKey?: Extract<ApiBillableServiceKey, 'RC_OWNER_HISTORY' | 'RC_FULL'>;
   auditEntityType?: 'RC_OWNER_HISTORY' | 'RC_FULL';
   auditActionPrefix?: 'RC_OWNER_HISTORY' | 'RC_FULL';
+  uploadTemplateFile?: RcOwnerHistoryTemplateUploader;
+  deleteTemplateFile?: (fileId: string) => Promise<void>;
 };
 
 export class RcOwnerHistoryError extends Error {
@@ -62,6 +93,21 @@ const safeText = (value: unknown, maxLength = 500) => {
 
 const objectValue = (value: unknown) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+
+const normalizeOwnerHistory = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 50).map((item) => {
+    const owner = objectValue(item);
+    if (!owner) return null;
+    const ownerName = safeText(owner.owner_name ?? owner.ownerName, 250);
+    const ownerNumber = safeText(owner.owner_number ?? owner.ownerNumber, 20);
+    if (!ownerName && !ownerNumber) return null;
+    return {
+      ...(ownerName ? { ownerName } : {}),
+      ...(ownerNumber ? { ownerNumber } : {}),
+    };
+  }).filter((item): item is { ownerName?: string; ownerNumber?: string } => item !== null);
+};
 
 const dateFromParts = (year: number, month: number, day: number) => {
   if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -161,7 +207,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
   const textFields: Array<[string, unknown, number?]> = [
     ['providerClientId', data.client_id ?? data.clientId, 150],
     ['rcNumber', data.rc_number ?? data.rcNumber, 40],
-    ['ownerName', data.owner_name ?? data.ownerName, 250],
+    ['ownerName', data.owner_name ?? data.ownerName ?? data.current_owner_name ?? data.currentOwnerName, 250],
     ['fatherName', data.father_name ?? data.fatherName, 250],
     ['presentAddress', data.present_address ?? data.presentAddress, 1200],
     ['permanentAddress', data.permanent_address ?? data.permanentAddress, 1200],
@@ -197,7 +243,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     ['nonUseStatus', data.non_use_status ?? data.nonUseStatus, 100],
     ['blacklistStatus', data.blacklist_status ?? data.blacklistStatus, 100],
     ['nocDetails', data.noc_details ?? data.nocDetails, 500],
-    ['ownerNumber', data.owner_number ?? data.ownerNumber, 20],
+    ['ownerNumber', data.owner_number ?? data.ownerNumber ?? data.current_owner_number ?? data.currentOwnerNumber, 20],
     ['rcStatus', data.rc_status ?? data.rcStatus, 100],
     ['variant', data.variant, 250],
   ];
@@ -247,6 +293,9 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     if (normalized !== null) result[key] = normalized;
   }
 
+  const ownerHistory = normalizeOwnerHistory(data.owner_history ?? data.ownerHistory);
+  if (ownerHistory.length) result.ownerHistory = ownerHistory;
+
   return result;
 };
 
@@ -274,6 +323,8 @@ const recordSummary = (record: any) => ({
     : null,
   createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
   completedAt: record.completedAt instanceof Date ? record.completedAt.toISOString() : record.completedAt,
+  rawDataExpiresAt: record.rawDataExpiresAt instanceof Date ? record.rawDataExpiresAt.toISOString() : record.rawDataExpiresAt ?? null,
+  template: rcOwnerHistoryTemplateSummary(record.template),
 });
 
 const providerFailure = (error: SurepassProviderError) => {
@@ -301,8 +352,23 @@ const ensureProviderData = (body: unknown) => {
   return { response, data };
 };
 
+const rcOwnerHistoryTemplateSummary = (template: any) => template ? {
+  id: template.id,
+  fileName: template.fileName,
+  mimeType: template.mimeType,
+  fileSize: template.fileSize,
+  sha256: template.sha256,
+  createdAt: template.createdAt instanceof Date ? template.createdAt.toISOString() : template.createdAt,
+} : null;
+
+const rcOwnerHistoryTemplateFileName = (maskedRcNumber: string, recordId: string) => {
+  const safeNumber = maskedRcNumber.replace(/[^A-Z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toUpperCase();
+  return `rc-owner-history-template-${safeNumber || recordId}.png`;
+};
+
 export class RcOwnerHistoryService {
   private readonly record: RcOwnerHistoryRecordRepository;
+  private readonly template: RcOwnerHistoryTemplateRepository;
   private readonly audit: RcOwnerHistoryAuditRepository | undefined;
   private readonly provider: ReturnType<typeof createSurepassClient> | undefined;
   private readonly dataSecret: string | undefined;
@@ -310,9 +376,12 @@ export class RcOwnerHistoryService {
   private readonly serviceKey: Extract<ApiBillableServiceKey, 'RC_OWNER_HISTORY' | 'RC_FULL'>;
   private readonly auditEntityType: 'RC_OWNER_HISTORY' | 'RC_FULL';
   private readonly auditActionPrefix: 'RC_OWNER_HISTORY' | 'RC_FULL';
+  private readonly uploadTemplateFile: RcOwnerHistoryTemplateUploader;
+  private readonly deleteTemplateFile: (fileId: string) => Promise<void>;
 
   constructor(dependencies: RcOwnerHistoryDependencies = {}) {
     this.record = dependencies.record || (prisma as any).rcOwnerHistoryRecord;
+    this.template = dependencies.template || (prisma as any).rcOwnerHistoryTemplate;
     this.audit = dependencies.audit || (!dependencies.record ? (prisma as any).auditLog : undefined);
     this.provider = dependencies.provider;
     this.dataSecret = dependencies.dataSecret?.trim() || undefined;
@@ -320,6 +389,11 @@ export class RcOwnerHistoryService {
     this.serviceKey = dependencies.serviceKey || 'RC_OWNER_HISTORY';
     this.auditEntityType = dependencies.auditEntityType || this.serviceKey;
     this.auditActionPrefix = dependencies.auditActionPrefix || this.serviceKey;
+    this.uploadTemplateFile = dependencies.uploadTemplateFile || (async (buffer, mimeType, fileName) => {
+      const result = await uploadFileToDrive(buffer, mimeType, fileName, undefined, { access: 'private' });
+      return { fileId: result.fileId };
+    });
+    this.deleteTemplateFile = dependencies.deleteTemplateFile || deleteFileFromDrive;
   }
 
   private async getRuntime() {
@@ -359,17 +433,23 @@ export class RcOwnerHistoryService {
         serviceKey: this.serviceKey,
         requestFingerprint,
         status: RC_STATUS.SUCCESS,
-        completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        ...(this.serviceKey === 'RC_OWNER_HISTORY'
+          ? { rawDataExpiresAt: { gt: new Date() } }
+          : { completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
         encryptedResult: { not: null },
       },
       orderBy: { completedAt: 'desc' },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
     });
-    if (!cached || !isFreshVerificationResult(cached)) return null;
+    if (!cached || !isFreshVerificationResult(cached) || (this.serviceKey === 'RC_OWNER_HISTORY' && !isRcOwnerHistoryRawDataAvailable(cached))) return null;
     try {
       return {
         record: recordSummary(cached),
         result: JSON.parse(decryptPanData(cached.encryptedResult, dataSecret)),
+        template: rcOwnerHistoryTemplateSummary(cached.template),
         cacheHit: true,
       };
     } catch {
@@ -403,10 +483,15 @@ export class RcOwnerHistoryService {
     const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret);
     if (cached) return cached;
     await this.ensureNoRecentDuplicate(requestFingerprint);
-    const existing = await this.record.findFirst({ where: { serviceKey: this.serviceKey, requestFingerprint }, orderBy: { completedAt: 'desc' } });
-    const pending = existing
+    const existing = await this.record.findFirst({
+      where: { serviceKey: this.serviceKey, requestFingerprint },
+      orderBy: { completedAt: 'desc' },
+      include: { template: true },
+    });
+    const reusableExisting = existing && (this.serviceKey === 'RC_FULL' || !existing.template) ? existing : null;
+    const pending = reusableExisting
       ? await this.record.update({
-          where: { id: existing.id },
+          where: { id: reusableExisting.id },
           data: {
             status: RC_STATUS.PENDING,
             serviceKey: this.serviceKey,
@@ -417,10 +502,11 @@ export class RcOwnerHistoryService {
             safeMessage: null,
             messageCode: null,
             encryptedResult: null,
+            rawDataExpiresAt: null,
             completedAt: null,
           },
         })
-      : await this.record.create({ data: { status: RC_STATUS.PENDING, serviceKey: this.serviceKey, maskedRcNumber, requestFingerprint, requestedById } });
+      : await this.record.create({ data: { status: RC_STATUS.PENDING, serviceKey: this.serviceKey, maskedRcNumber, requestFingerprint, requestedById, rawDataExpiresAt: null } });
     await this.writeAudit(requestedById, `${this.auditActionPrefix}_REQUESTED`, pending.id, { maskedRcNumber, status: RC_STATUS.PENDING });
 
     let billing: { charged: boolean; usageId?: string } | undefined;
@@ -432,7 +518,24 @@ export class RcOwnerHistoryService {
             requestedById,
           })
         : undefined;
-      const body = await runtime.provider.verifyRcFull({ id_number: rcNumber });
+      let body: unknown;
+      if (this.serviceKey === 'RC_OWNER_HISTORY') {
+        try {
+          body = await runtime.provider.verifyRcOwnerHistory({ id_number: rcNumber });
+        } catch (providerErr) {
+          if (
+            providerErr instanceof SurepassProviderError &&
+            (providerErr.kind === 'PROVIDER_UNAVAILABLE' || providerErr.statusCode >= 500) &&
+            typeof (runtime.provider as any).verifyRcFull === 'function'
+          ) {
+            body = await runtime.provider.verifyRcFull({ id_number: rcNumber });
+          } else {
+            throw providerErr;
+          }
+        }
+      } else {
+        body = await runtime.provider.verifyRcFull({ id_number: rcNumber });
+      }
       const { response, data } = ensureProviderData(body);
       const normalized = normalizeRcOwnerHistoryResult({
         ...data,
@@ -449,6 +552,7 @@ export class RcOwnerHistoryService {
         );
       }
       const encryptedResult = encryptPanData(JSON.stringify(normalized), runtime.dataSecret);
+      const completedAt = new Date();
       const completed = await this.record.update({
         where: { id: pending.id },
         data: {
@@ -460,16 +564,20 @@ export class RcOwnerHistoryService {
           providerClientId: typeof normalized.providerClientId === 'string' ? normalized.providerClientId : null,
           messageCode: typeof response.message_code === 'string' ? response.message_code : null,
           encryptedResult,
-          completedAt: new Date(),
+          rawDataExpiresAt: this.serviceKey === 'RC_OWNER_HISTORY' ? getRcOwnerHistoryRawDataExpiresAt(completedAt) : null,
+          completedAt,
         },
-        include: { requestedBy: { select: { id: true, name: true, email: true } } },
+        include: {
+          requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
+        },
       });
       await this.writeAudit(requestedById, `${this.auditActionPrefix}_SUCCEEDED`, pending.id, {
         maskedRcNumber,
         status: RC_STATUS.SUCCESS,
         rcStatus: completed.rcStatus ?? null,
       });
-      return { record: recordSummary(completed), result: normalized, cacheHit: false, ...(billing ? { billing } : {}) };
+      return { record: recordSummary(completed), result: normalized, template: rcOwnerHistoryTemplateSummary(completed.template), cacheHit: false, ...(billing ? { billing } : {}) };
     } catch (error) {
       const normalizedError = isApiWalletBillingError(error)
         ? new RcOwnerHistoryError(error.message, error.statusCode, error.code)
@@ -526,16 +634,125 @@ export class RcOwnerHistoryService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { requestedBy: { select: { id: true, name: true, email: true } } },
+        include: {
+          requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
+        },
       }),
     ]);
     return { records: records.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
+  async cleanupExpiredRawData(now = new Date()) {
+    if (this.serviceKey !== 'RC_OWNER_HISTORY' || !this.record.updateMany) return 0;
+    const result = await this.record.updateMany({
+      where: {
+        serviceKey: 'RC_OWNER_HISTORY',
+        status: RC_STATUS.SUCCESS,
+        encryptedResult: { not: null },
+        OR: [
+          { rawDataExpiresAt: null },
+          { rawDataExpiresAt: { lte: now } },
+        ],
+      },
+      data: { encryptedResult: null, rawDataExpiresAt: null },
+    });
+    return result.count;
+  }
+
+  async uploadTemplate(
+    recordId: string,
+    requestedById: string,
+    role: string,
+    buffer: Buffer,
+    mimeType: string,
+  ) {
+    if (this.serviceKey !== 'RC_OWNER_HISTORY') {
+      throw new RcOwnerHistoryError('RC owner-history templates are not available for this service.', 404, 'template_not_found');
+    }
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new RcOwnerHistoryError('An RC owner-history template file is required.', 400, 'template_file_required');
+    }
+    if (buffer.length > MAX_RC_OWNER_HISTORY_TEMPLATE_SIZE) {
+      throw new RcOwnerHistoryError('The RC owner-history template must be 5 MB or smaller.', 413, 'template_file_too_large');
+    }
+    if (mimeType !== 'image/png') {
+      throw new RcOwnerHistoryError('Only PNG RC owner-history templates are allowed.', 400, 'template_file_type_invalid');
+    }
+    if (buffer.length < PNG_SIGNATURE.length || !buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new RcOwnerHistoryError('The RC owner-history template file is invalid.', 400, 'template_file_signature_invalid');
+    }
+
+    const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
+    if (!record || record.serviceKey !== 'RC_OWNER_HISTORY') throw new RcOwnerHistoryError('RC owner-history verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new RcOwnerHistoryError('You do not have access to this RC owner-history template.', 403, 'template_forbidden');
+    }
+    if (record.template) {
+      if (record.encryptedResult || record.rawDataExpiresAt) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      }
+      return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null }), result: null, template: rcOwnerHistoryTemplateSummary(record.template), alreadyUploaded: true };
+    }
+    if (record.status !== RC_STATUS.SUCCESS || !isRcOwnerHistoryRawDataAvailable(record)) {
+      if (record.encryptedResult) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      }
+      throw new RcOwnerHistoryError('The RC owner-history template upload window has expired. Run verification again.', 409, 'template_result_unavailable');
+    }
+
+    const fileName = rcOwnerHistoryTemplateFileName(record.maskedRcNumber, record.id);
+    let driveFileId: string | null = null;
+    let templateId: string | null = null;
+    try {
+      const stored = await this.uploadTemplateFile(buffer, mimeType, fileName);
+      driveFileId = stored.fileId;
+      const template = await this.template.create({
+        data: {
+          verificationRecordId: record.id,
+          requestedById: record.requestedById,
+          driveFileId,
+          fileName,
+          mimeType,
+          fileSize: buffer.length,
+          sha256: createHash('sha256').update(buffer).digest('hex'),
+        },
+      });
+      templateId = template.id;
+      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      return {
+        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
+        result: null,
+        template: rcOwnerHistoryTemplateSummary(template),
+      };
+    } catch (error) {
+      if (templateId && this.template.delete) await this.template.delete({ where: { id: templateId } });
+      if (driveFileId) await this.deleteTemplateFile(driveFileId);
+      throw new RcOwnerHistoryError(
+        error instanceof RcOwnerHistoryError ? error.message : 'The RC owner-history template could not be stored securely.',
+        error instanceof RcOwnerHistoryError ? error.statusCode : 502,
+        error instanceof RcOwnerHistoryError ? error.code : 'template_storage_failed',
+      );
+    }
+  }
+
+  async getTemplateDownload(recordId: string, requestedById: string, role: string) {
+    const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
+    if (!record || record.serviceKey !== 'RC_OWNER_HISTORY') throw new RcOwnerHistoryError('RC owner-history verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new RcOwnerHistoryError('You do not have access to this RC owner-history template.', 403, 'template_forbidden');
+    }
+    if (!record.template) throw new RcOwnerHistoryError('RC owner-history template not found.', 404, 'template_not_found');
+    return { ...rcOwnerHistoryTemplateSummary(record.template), driveFileId: record.template.driveFileId };
+  }
+
   async getHistoryDetail(id: string) {
     const record = await this.record.findUnique({
       where: { id, serviceKey: this.serviceKey },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
     });
     if (!record) throw new RcOwnerHistoryError('Vehicle verification record not found.', 404, 'record_not_found');
     let result: unknown = null;

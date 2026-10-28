@@ -12,6 +12,7 @@ import { useHeaderStore } from '@/store/headerStore';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiServicePrice } from '@/components/apiBilling/ApiBillingDisplay';
 import AadhaarDigiLockerPanel from '@/components/identityHub/AadhaarDigiLockerPanel';
+import AadhaarTemplatePreview, { type AadhaarData, type AadhaarTemplateInfo } from '@/components/identityHub/AadhaarTemplatePreview';
 import PanTemplatePreview from '@/components/identityHub/PanTemplatePreview';
 import GstTemplatePreview from '@/components/identityHub/GstTemplatePreview';
 import {
@@ -49,15 +50,34 @@ import {
   sanitizeSearchInput,
 } from '@/lib/verificationSanitizers';
 import { filterDrivingLicenseDobYears, getDrivingLicenseDobYears } from '@/lib/drivingLicenseVerification';
+import { dedupeIdentityHistoryRecords } from '@/lib/identityHubHistory.mjs';
+import { getAadhaarTemplateBlob } from '@/lib/aadhaarTemplateCache';
 
 // --- Shared Types & Helpers ---
 type Tab = 'overview' | 'pan' | 'gst' | 'mobileToPan' | 'aadhaar';
 type PanTab = 'verify' | 'aadhaar' | 'contact' | 'comprehensive';
 type HistoryResponse<T> = { records: T[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
+type AadhaarRecord = {
+  id: string;
+  side: string;
+  status: string;
+  maskedAadhaar: string;
+  provider?: string | null;
+  providerClientId?: string | null;
+  messageCode: string | null;
+  safeMessage: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+  rawDataExpiresAt?: string | null;
+  template?: AadhaarTemplateInfo | null;
+};
+type AadhaarResultResponse = { record: AadhaarRecord; result: AadhaarData | null; template?: AadhaarTemplateInfo | null };
+type HistoryDetailResponse = PanResultResponse | GstResultResponse | MobileToPanResponse | AadhaarResultResponse;
 type UnifiedRecord = (
   | (PanRecord & { _type: 'PAN' })
   | (GstRecord & { _type: 'GST' })
   | (MobileToPanRecord & { _type: 'MOBILE_TO_PAN' })
+  | (AadhaarRecord & { _type: 'AADHAAR' })
 );
 
 const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20';
@@ -223,6 +243,20 @@ function PanResultPanel({ response, onUploaded, panNumber }: { response: PanResu
   }
   return <PanTemplatePreview response={response} onUploaded={onUploaded} panNumber={panNumber} />;
 }
+function AadhaarResultPanel({ response, onUploaded }: { response: AadhaarResultResponse; onUploaded?: (template: AadhaarTemplateInfo) => void }) {
+  if (response.record.status !== 'SUCCESS') {
+    return <VerificationHistoryState title="Aadhaar verification" record={response.record} />;
+  }
+  return (
+    <AadhaarTemplatePreview
+      data={response.result}
+      recordId={response.record.id}
+      recordMaskedAadhaar={response.record.maskedAadhaar}
+      template={response.template || response.record.template || null}
+      onUploaded={onUploaded}
+    />
+  );
+}
 function MobileToPanResultPanel({ response }: { response: MobileToPanResponse }) {
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title="Mobile To PAN lookup" record={response.record} />;
@@ -337,13 +371,14 @@ function GstResultPanel({ response, onUploaded }: { response: GstResultResponse;
   );
 }
 
-function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDetail, activeTab = 'overview', panTab = 'comprehensive' }: { refreshTrigger: number; onTotalQueriesChange?: (count: number) => void; onSelectDetail?: (type: "PAN" | "GST" | "MOBILE_TO_PAN", id: string) => Promise<void>; activeTab?: Tab; panTab?: PanTab }) {
+function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDetail, activeTab = 'overview', panTab = 'comprehensive' }: { refreshTrigger: number; onTotalQueriesChange?: (count: number) => void; onSelectDetail?: (type: "PAN" | "GST" | "MOBILE_TO_PAN" | "AADHAAR", id: string) => Promise<HistoryDetailResponse | null>; activeTab?: Tab; panTab?: PanTab }) {
   const { user } = useAuthStore();
   const permissions = user?.permissions;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canPanHistory = isSuperAdmin || hasAnyPermission(permissions, ['pan.verification.read']);
   const canGstHistory = isSuperAdmin || hasAnyPermission(permissions, ['gst.verification.read']);
   const canMobileToPanHistory = isSuperAdmin || hasAnyPermission(permissions, ['pan.mobile-to-pan.read']);
+  const canAadhaarHistory = isSuperAdmin || hasAnyPermission(permissions, ['aadhaar.digilocker.read']);
 
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<UnifiedRecord[]>([]);
@@ -352,6 +387,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
   
   const [panDetail, setPanDetail] = useState<PanResultResponse | null>(null);
   const [gstDetail, setGstDetail] = useState<GstResultResponse | null>(null);
+  const [aadhaarDetail, setAadhaarDetail] = useState<AadhaarResultResponse | null>(null);
   const [mobileToPanDetail, setMobileToPanDetail] = useState<MobileToPanResponse | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
@@ -362,6 +398,7 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
       const fetchPan = canPanHistory && (activeTab === 'overview' || activeTab === 'pan');
       const fetchGst = canGstHistory && (activeTab === 'overview' || activeTab === 'gst');
       const fetchMobileToPan = canMobileToPanHistory && (activeTab === 'overview' || activeTab === 'mobileToPan');
+      const fetchAadhaar = canAadhaarHistory && (activeTab === 'overview' || activeTab === 'aadhaar');
 
       const targetOperation = panTab === 'aadhaar'
         ? 'PAN_TO_AADHAAR'
@@ -376,10 +413,11 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
         panParams.operation = targetOperation;
       }
 
-      const [panRes, gstRes, mobileToPanRes] = await Promise.allSettled([
+      const [panRes, gstRes, mobileToPanRes, aadhaarRes] = await Promise.allSettled([
         fetchPan ? api.get<HistoryResponse<PanRecord>>('/pan-verification/history', { params: panParams, timeout: 15000 }) : Promise.resolve(null),
         fetchGst ? api.get<HistoryResponse<GstRecord>>('/gst-verification/history', { params: { page: 1, limit: 50 }, timeout: 15000 }) : Promise.resolve(null),
         fetchMobileToPan ? api.get<HistoryResponse<MobileToPanRecord>>('/mobile-to-pan/history', { params: { page: 1, limit: 50 }, timeout: 15000 }) : Promise.resolve(null),
+        fetchAadhaar ? api.get<HistoryResponse<AadhaarRecord>>('/aadhaar-verification/history', { params: { page: 1, limit: 50 }, timeout: 15000 }) : Promise.resolve(null),
       ]);
 
       let combined: UnifiedRecord[] = [];
@@ -400,11 +438,16 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
         combined = [...combined, ...mobileToPanRes.value.data.records.map((r): UnifiedRecord => ({ ...r, _type: 'MOBILE_TO_PAN' }))];
         totalCount += mobileToPanRes.value.data.pagination?.total ?? mobileToPanRes.value.data.records.length;
       }
+      if (aadhaarRes && aadhaarRes.status === 'fulfilled' && aadhaarRes.value?.data) {
+        combined = [...combined, ...aadhaarRes.value.data.records.map((r): UnifiedRecord => ({ ...r, _type: 'AADHAAR' }))];
+        totalCount += aadhaarRes.value.data.pagination?.total ?? aadhaarRes.value.data.records.length;
+      }
 
       const failedModules = [
         fetchPan && panRes.status === 'rejected' ? 'PAN' : null,
         fetchGst && gstRes.status === 'rejected' ? 'GST' : null,
         fetchMobileToPan && mobileToPanRes?.status === 'rejected' ? 'Mobile To PAN' : null,
+        fetchAadhaar && aadhaarRes?.status === 'rejected' ? 'Aadhaar' : null,
       ].filter((module): module is string => Boolean(module));
       setError(failedModules.length ? `${failedModules.join(' and ')} history could not be loaded. You can retry.` : '');
 
@@ -413,29 +456,16 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
       // Sort by latest first
       combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      // Deduplicate consecutive/duplicate checks for the same identifier to keep UI clean
-      const uniqueCombined: UnifiedRecord[] = [];
-      const seenKeys = new Set<string>();
-      for (const rec of combined) {
-        const identifierKey = rec._type === 'PAN' 
-          ? `${rec._type}_${rec.operation}_${rec.maskedPan}`
-          : rec._type === 'GST' 
-            ? `${rec._type}_${rec.maskedGstin}`
-            : `${rec._type}_${rec.maskedName}_${rec.maskedMobileNumber}`;
-        
-        if (!seenKeys.has(identifierKey)) {
-          seenKeys.add(identifierKey);
-          uniqueCombined.push(rec);
-        }
-      }
-      
-      setRecords(uniqueCombined.slice(0, 30));
+      // Keep every persisted verification record. Deduplicate only an exact
+      // duplicate response row so older saved-template history is not hidden
+      // by a newer check for the same PAN.
+      setRecords(dedupeIdentityHistoryRecords(combined).slice(0, 30));
     } catch {
       setError('Unable to load history.');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, canGstHistory, canMobileToPanHistory, canPanHistory, onTotalQueriesChange, panTab]);
+  }, [activeTab, canAadhaarHistory, canGstHistory, canMobileToPanHistory, canPanHistory, onTotalQueriesChange, panTab]);
 
   useEffect(() => {
     void loadUnifiedHistory();
@@ -455,6 +485,8 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
       ? (panTab === 'aadhaar' ? 'Recent PAN to Aadhaar checks' : panTab === 'contact' ? 'Recent PAN contact lookups' : panTab === 'comprehensive' ? 'Recent PAN Comprehensive checks' : 'Recent basic PAN verifications')
       : activeTab === 'mobileToPan'
         ? 'Recent Mobile to PAN lookups'
+      : activeTab === 'aadhaar'
+        ? 'Recent Aadhaar verifications'
         : 'Latest verifications across all modules';
 
   const filteredRecords = records.filter((rec) => {
@@ -477,6 +509,9 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
       const name = (rec.maskedName || '').toLowerCase();
       const mobile = (rec.maskedMobileNumber || '').toLowerCase();
       return name.includes(q) || mobile.includes(q) || status.includes(q) || type.includes(q);
+    }
+    if (rec._type === 'AADHAAR') {
+      return (rec.maskedAadhaar || '').toLowerCase().includes(q) || status.includes(q) || type.includes(q);
     }
     return true;
   });
@@ -537,16 +572,24 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
                               : 'Basic Verify'
                         : record._type === 'GST'
                           ? 'GST Verification'
-                          : 'Mobile To PAN'}
+                          : record._type === 'AADHAAR'
+                            ? 'Aadhaar Verification'
+                            : 'Mobile To PAN'}
                     </span>
                   </td>
                   <td className="px-3 py-3 font-mono font-semibold text-slate-800">
-                    {record._type === 'PAN' ? record.maskedPan : record._type === 'GST' ? record.maskedGstin : `${record.maskedName} · ${record.maskedMobileNumber}`}
+                    {record._type === 'PAN'
+                      ? record.maskedPan
+                      : record._type === 'GST'
+                        ? record.maskedGstin
+                        : record._type === 'AADHAAR'
+                          ? record.maskedAadhaar
+                          : `${record.maskedName} · ${record.maskedMobileNumber}`}
                   </td>
                    <td className="px-3 py-3">
                      <div className="flex flex-col items-start gap-1">
                        <StatusBadge status={record.status} />
-                       {((record._type === 'PAN' || record._type === 'GST') && record.template) ? (
+                       {((record._type === 'PAN' || record._type === 'GST' || record._type === 'AADHAAR') && record.template) ? (
                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
                            <CheckCircle2 className="h-3 w-3" /> Template saved
                          </span>
@@ -561,7 +604,20 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
                       onClick={async () => {
                         setLoadingId(record.id);
                         try {
-                          await onSelectDetail?.(record._type, record.id);
+                          const aadhaarTemplatePreload = record._type === 'AADHAAR' && record.template
+                            ? getAadhaarTemplateBlob(`${record.id}:${record.template.id}`, async () => {
+                                const response = await api.get<Blob>(`/aadhaar-verification/${record.id}/template`, { responseType: 'blob' });
+                                return response.data;
+                              })
+                            : null;
+                          void aadhaarTemplatePreload?.catch(() => undefined);
+                          const detail = await onSelectDetail?.(record._type, record.id);
+                          // The history row already contains the template metadata, so start the
+                          // private Drive download before the detail request finishes. The preview
+                          // reuses this pending promise instead of making a second request.
+                          if (detail && record._type === 'PAN') setPanDetail(detail as PanResultResponse);
+                          if (detail && record._type === 'GST') setGstDetail(detail as GstResultResponse);
+                          if (detail && record._type === 'AADHAAR') setAadhaarDetail(detail as AadhaarResultResponse);
                         } finally {
                           setLoadingId(null);
                         }
@@ -610,6 +666,18 @@ function UnifiedHistoryPanel({ refreshTrigger, onTotalQueriesChange, onSelectDet
         </div>
       ) : null}
 
+      {aadhaarDetail ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/50 p-4" role="dialog" aria-modal="true">
+          <div className="mx-auto my-4 w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-7">
+            <div className="flex items-start justify-between">
+              <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Aadhaar Verification</p><h2 className="mt-1 text-xl font-bold text-slate-900">Saved Template & Result</h2></div>
+              <button type="button" onClick={() => setAadhaarDetail(null)} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100">Close</button>
+            </div>
+            <AadhaarResultPanel response={aadhaarDetail} onUploaded={(template) => setAadhaarDetail({ ...aadhaarDetail, template, record: { ...aadhaarDetail.record, template } })} />
+          </div>
+        </div>
+      ) : null}
+
       {mobileToPanDetail ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/50 p-4" role="dialog" aria-modal="true">
           <div className="mx-auto my-4 w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-7">
@@ -645,7 +713,7 @@ export default function IdentityHubPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [refreshHistory, setRefreshHistory] = useState(0);
 
-  const handleSelectDetail = async (type: 'PAN' | 'GST' | 'MOBILE_TO_PAN', id: string) => {
+  const handleSelectDetail = async (type: 'PAN' | 'GST' | 'MOBILE_TO_PAN' | 'AADHAAR', id: string): Promise<HistoryDetailResponse | null> => {
     if (type === 'GST') {
       setActiveTab('gst');
       setGstError('');
@@ -654,6 +722,7 @@ export default function IdentityHubPage() {
         const result = await api.get<GstResultResponse>(`/gst-verification/history/${id}`);
         setGstResponse(result.data);
         setGstin(typeof result.data.result?.gstin === 'string' ? result.data.result.gstin : '');
+        return result.data;
       } catch (err) {
         setGstError(safeGstApiError(err, 'Unable to load GST result detail.'));
       }
@@ -667,6 +736,7 @@ export default function IdentityHubPage() {
         setPanResponse(result.data);
         const panVal = typeof result.data.result?.pan === 'string' ? result.data.result.pan : result.data.record?.maskedPan;
         if (panVal) setPan(String(panVal));
+        return result.data;
       } catch (err) {
         setPanError(safePanApiError(err, 'Unable to load PAN result detail.'));
       }
@@ -679,10 +749,20 @@ export default function IdentityHubPage() {
         setMobileToPanResponse(result.data);
         if (result.data.result?.name) setMobileToPanName(result.data.result.name);
         if (result.data.result?.mobileNumber) setMobileToPanNumber(result.data.result.mobileNumber);
+        return result.data;
       } catch (err) {
         setMobileToPanError(safeMobileToPanApiError(err, 'Unable to load Mobile to PAN detail.'));
       }
+    } else if (type === 'AADHAAR') {
+      setActiveTab('aadhaar');
+      try {
+        const result = await api.get<AadhaarResultResponse>(`/aadhaar-verification/history/${id}`);
+        return result.data;
+      } catch (err) {
+        setPanError(safePanApiError(err, 'Unable to load Aadhaar result detail.'));
+      }
     }
+    return null;
   };
 
   // PAN State
@@ -1088,7 +1168,7 @@ export default function IdentityHubPage() {
             )}
 
             {activeTab === 'aadhaar' && (
-              <AadhaarDigiLockerPanel canVerify={canAadhaarView} />
+              <AadhaarDigiLockerPanel canVerify={canAadhaarView} onUploaded={triggerHistoryRefresh} />
             )}
 
           </div>

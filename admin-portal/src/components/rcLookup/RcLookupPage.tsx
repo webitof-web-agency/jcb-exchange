@@ -15,6 +15,8 @@ import {
   type RcOwnerHistoryResponse,
 } from '@/lib/rcOwnerHistory';
 import { sanitizeRcNumber } from '@/lib/verificationSanitizers';
+import RcOwnerHistoryTemplatePreview from '@/components/rcOwnerHistory/RcOwnerHistoryTemplatePreview';
+import RcCardTemplatePreview from './RcCardTemplatePreview';
 
 export type RcLookupVariant = 'owner-history' | 'full';
 
@@ -164,6 +166,12 @@ export default function RcLookupPage({ embedded = false, variant }: { embedded?:
     }
   };
 
+  const handleTemplateUploaded = (nextResponse: RcOwnerHistoryResponse) => {
+    setResponse(nextResponse);
+    setHistoryPage(1);
+    void loadHistory(1, historySearch);
+  };
+
   return <main className={embedded ? 'w-full' : 'min-h-full bg-slate-50 p-4 sm:p-6 lg:p-8'}>
     <div className="mx-auto max-w-7xl">
       {!embedded ? <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600">Vehicle &amp; Transport</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">{config.label}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">{config.description}</p></div><div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Provider: Surepass</div></div> : null}
@@ -171,7 +179,15 @@ export default function RcLookupPage({ embedded = false, variant }: { embedded?:
         <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:max-h-[calc(100vh-140px)] lg:overflow-hidden"><div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div className="mb-5 flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" /><p>Enter the vehicle registration number. It is normalized and validated before any provider request.</p></div>
           <form onSubmit={submit}><label><span className="text-sm font-semibold text-slate-700">Vehicle Registration Number <span className="text-red-500">*</span></span><input value={rcNumber} onChange={(event) => setRcNumber(sanitizeRcNumber(event.target.value))} className={inputClass} placeholder="RJ12XJ1234" autoComplete="off" maxLength={30} /></label>{error ? <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}<button type="submit" disabled={busy || !canAccess} className={`${buttonClass} mt-6 w-full`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}{busy ? 'Verifying…' : canAccess ? `Verify ${config.label}` : 'Verification not permitted'}</button></form>
-          {response ? <ResultPanel response={response} label={config.label} /> : null}
+          {response ? (
+            <>
+              <RcCardTemplatePreview response={response} />
+              <ResultPanel response={response} label={config.label} />
+              {variant === 'owner-history' ? (
+                <RcOwnerHistoryTemplatePreview response={response} onUploaded={handleTemplateUploaded} />
+              ) : null}
+            </>
+          ) : null}
         </div></section>
         {canAccess ? <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:max-h-[calc(100vh-140px)] lg:overflow-hidden"><div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><History className="h-5 w-5 text-amber-600" />{config.label}</h2><p className="text-sm text-slate-500">Only masked registration numbers are shown in history.</p></div><div className="flex gap-2"><input value={historySearch} onChange={(event) => setHistorySearch(sanitizeRcNumber(event.target.value))} onKeyDown={(event) => { if (event.key === 'Enter') { setHistoryPage(1); void loadHistory(1, historySearch); } }} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search masked RC" /><button type="button" onClick={() => { setHistoryPage(1); void loadHistory(1, historySearch); }} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Search history"><Search className="h-4 w-4" /></button></div></div>

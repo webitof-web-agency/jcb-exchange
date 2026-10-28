@@ -76,7 +76,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="h-full min-h-full flex flex-col" suppressHydrationWarning>
         {(branding.darkLogoUrl || branding.logoUrl) && (
-          <link rel="preload" as="image" href={branding.darkLogoUrl || branding.logoUrl || undefined} />
+          <link rel="preload" as="image" href={branding.logoUrl || branding.darkLogoUrl || undefined} />
         )}
         <script
           dangerouslySetInnerHTML={{

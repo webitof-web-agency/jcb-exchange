@@ -15,12 +15,24 @@ export type RcOwnerHistoryRecord = {
   requestedBy?: { id: string; name: string | null; email: string | null } | null;
   createdAt: string;
   completedAt: string | null;
+  rawDataExpiresAt?: string | null;
+  template?: RcOwnerHistoryTemplateSummary | null;
+};
+
+export type RcOwnerHistoryTemplateSummary = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sha256: string;
+  createdAt: string;
 };
 
 export type RcOwnerHistoryResponse = {
   success: boolean;
   record: RcOwnerHistoryRecord;
   result: Record<string, unknown> | null;
+  template?: RcOwnerHistoryTemplateSummary | null;
 };
 
 export const normalizeRcNumber = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');

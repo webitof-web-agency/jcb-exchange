@@ -62,4 +62,3 @@ export function useFinancePrefs() {
 
   return { ...state, isPinned, togglePin, recordVisit };
 }
-

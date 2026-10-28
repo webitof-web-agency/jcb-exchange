@@ -32,6 +32,7 @@ import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusCha
 import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 import { linkSoldVehicleToWonLeads, releaseCancelledSaleLeads } from '../modules/crm/services/soldVehicleLink';
+import { buildSellAccountLookup } from './sellAccountLookup';
 import { getListingPricing } from '../utils/listingPricing';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
@@ -498,7 +499,7 @@ export const listSellAccounts = async (query: { q?: unknown; status?: unknown })
 };
 
 export const getSellAccount = async (id: string) => {
-  const record = await prisma.sellAccount.findFirst({ where: { OR: [{ id }, { recordNumber: id }], deletedAt: null }, include });
+  const record = await prisma.sellAccount.findFirst({ where: buildSellAccountLookup(id), include });
   if (!record) return null;
   const synced = await syncStatus(prisma, record);
   const refreshed = await prisma.sellAccount.findUnique({ where: { id: record.id }, include });

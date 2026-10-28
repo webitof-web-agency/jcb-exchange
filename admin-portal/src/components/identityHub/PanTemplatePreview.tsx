@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Download, Loader2, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import api from '@/lib/api';
-import type { PanResultResponse } from '@/lib/panVerification';
+import { resolvePanTemplateNumber, type PanResultResponse } from '@/lib/panVerification';
 import { getPanTemplateBlob } from '@/lib/panTemplateCache';
 
 const TEMPLATE_ASSET = '/images/pancard/pan-card-base-template.jpg';
@@ -67,15 +67,6 @@ const stringValue = (...values: unknown[]) => {
     }
   }
   return '';
-};
-
-const maskPanNumber = (value: string) => {
-  const normalized = value.trim().toUpperCase();
-  if (!normalized) return '';
-  if (normalized.includes('*')) return normalized;
-  const compact = normalized.replace(/[^A-Z0-9]/g, '');
-  if (compact.length <= 6) return compact;
-  return `${compact.slice(0, 5)}${'*'.repeat(compact.length - 6)}${compact.slice(-1)}`;
 };
 
 const fitText = (context: CanvasRenderingContext2D, value: string, maxWidth: number, startingSize: number) => {
@@ -252,7 +243,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
     providerData.pan_number,
     response.record.maskedPan,
   );
-  const templatePanNumber = maskPanNumber(rawPan);
+  const templatePanNumber = resolvePanTemplateNumber(rawPan, response.record.maskedPan);
   const hasSavedTemplate = Boolean(response.template);
   const templateId = response.template?.id;
 
@@ -276,7 +267,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
       // 1. Build plain text data payload for QR code scanner
       const qrLines = [
         'INCOME TAX DEPARTMENT',
-        `PAN: ${rawPan || templatePanNumber}`,
+        `PAN: ${templatePanNumber}`,
         fullName ? `Name: ${fullName.toUpperCase()}` : '',
         fatherName ? `Father's Name: ${fatherName.toUpperCase()}` : '',
         dateOfBirth ? `Date of Birth: ${dateOfBirth}` : '',

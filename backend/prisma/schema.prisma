@@ -475,7 +475,9 @@ model User {
   createdListingBills                ListingBill[]                      @relation("ListingBillCreator")
   auditLogs                          AuditLog[]                         @relation("AuditActor")
   drivingLicenseVerificationRecords  DrivingLicenseVerificationRecord[] @relation("DrivingLicenseVerificationRequester")
+  drivingLicenseVerificationTemplates DrivingLicenseVerificationTemplate[] @relation("DrivingLicenseVerificationTemplateRequester")
   rcOwnerHistoryRecords              RcOwnerHistoryRecord[]             @relation("RcOwnerHistoryRequester")
+  rcOwnerHistoryTemplates            RcOwnerHistoryTemplate[]           @relation("RcOwnerHistoryTemplateRequester")
   rcChallanVerificationRecords       RcChallanVerificationRecord[]      @relation("RcChallanVerificationRequester")
   chassisToRcVerificationRecords     ChassisToRcVerificationRecord[]    @relation("ChassisToRcVerificationRequester")
   rcToMobileVerificationRecords      RcToMobileVerificationRecord[]     @relation("RcToMobileVerificationRequester")
@@ -504,6 +506,7 @@ model User {
   gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
   gstVerificationTemplates           GstVerificationTemplate[]          @relation("GstVerificationTemplateRequester")
   aadhaarVerificationRecords         AadhaarVerificationRecord[]        @relation("AadhaarVerificationRequester")
+  aadhaarVerificationTemplates       AadhaarVerificationTemplate[]      @relation("AadhaarVerificationTemplateRequester")
   blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
   answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
   ownedLeads                         Lead[]                             @relation("LeadOwner")
@@ -692,10 +695,12 @@ model AadhaarVerificationRecord {
   messageCode        String?
   safeMessage        String?                   @db.Text
   encryptedResult    String?                   @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime                  @default(now())
   completedAt        DateTime?
 
+  template           AadhaarVerificationTemplate? @relation("AadhaarVerificationRecordTemplate")
   requestedBy User @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -703,6 +708,24 @@ model AadhaarVerificationRecord {
   @@index([requestedById, createdAt])
   @@index([maskedAadhaar, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model AadhaarVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord AadhaarVerificationRecord @relation("AadhaarVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                      @relation("AadhaarVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model MobileToPanLookupRecord {
@@ -789,10 +812,12 @@ model DrivingLicenseVerificationRecord {
   messageCode         String?
   safeMessage         String?                          @db.Text
   encryptedResult     String?                          @db.Text
+  rawDataExpiresAt    DateTime?
   requestedById       String
   createdAt           DateTime                         @default(now())
   completedAt         DateTime?
 
+  template           DrivingLicenseVerificationTemplate? @relation("DrivingLicenseVerificationRecordTemplate")
   requestedBy User @relation("DrivingLicenseVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -800,6 +825,24 @@ model DrivingLicenseVerificationRecord {
   @@index([maskedLicenseNumber, createdAt])
   @@index([currentStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model DrivingLicenseVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord DrivingLicenseVerificationRecord @relation("DrivingLicenseVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                            @relation("DrivingLicenseVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model RcOwnerHistoryRecord {
@@ -817,10 +860,12 @@ model RcOwnerHistoryRecord {
   messageCode        String?
   safeMessage        String?              @db.Text
   encryptedResult    String?              @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime             @default(now())
   completedAt        DateTime?
 
+  template           RcOwnerHistoryTemplate? @relation("RcOwnerHistoryRecordTemplate")
   requestedBy User @relation("RcOwnerHistoryRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -830,6 +875,24 @@ model RcOwnerHistoryRecord {
   @@index([requestFingerprint, status, completedAt])
   @@index([serviceKey, status, createdAt])
   @@index([serviceKey, requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model RcOwnerHistoryTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord RcOwnerHistoryRecord @relation("RcOwnerHistoryRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                  @relation("RcOwnerHistoryTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model RcChallanVerificationRecord {
