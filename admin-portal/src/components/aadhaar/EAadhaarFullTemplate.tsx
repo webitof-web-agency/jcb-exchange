@@ -120,9 +120,28 @@ export default function EAadhaarFullTemplate({
 
   const qrPayload = useMemo(() => {
     if (data?.qrUrl) return data.qrUrl;
-    if (data?.qrData) return data.qrData;
-    return 'Aadhaar DigiLocker data unavailable';
-  }, [data?.qrData, data?.qrUrl]);
+    if (data?.qrData && !data.qrData.startsWith('<?xml') && !data.qrData.startsWith('<PrintLetterBarcodeData')) {
+      return data.qrData;
+    }
+    return JSON.stringify(
+      {
+        name: nameEnglish,
+        aadhaar_number: aadhaarNumber,
+        dob,
+        gender,
+        care_of: careOf ? `C/O: ${careOf}` : undefined,
+        mobile: mobile || undefined,
+        vtc: vtc || undefined,
+        post_office: po || undefined,
+        sub_district: subDistrict || undefined,
+        district: district || undefined,
+        state: state || undefined,
+        pincode: pinCode || undefined,
+      },
+      null,
+      2,
+    );
+  }, [data?.qrData, data?.qrUrl, nameEnglish, aadhaarNumber, dob, gender, careOf, mobile, vtc, po, subDistrict, district, state, pinCode]);
 
   const aadhaarParts = (() => {
     const clean = aadhaarNumber.replace(/\D/g, '');
@@ -227,7 +246,7 @@ export default function EAadhaarFullTemplate({
               <p>Sub District: {subDistrict}</p>
               <p>District: {district}</p>
               <p>State: {state}</p>
-              <p>PIN Code: {pinCode} ,</p>
+              <p>PIN Code: {pinCode}</p>
               <p className="font-semibold text-slate-900">Mobile: {mobile}</p>
             </div>
 
@@ -365,10 +384,10 @@ export default function EAadhaarFullTemplate({
                 <p className="text-[12.5px] font-bold text-slate-900 leading-tight">{nameHindi}</p>
                 <p className="text-[12px] font-semibold text-slate-900 leading-tight">{nameEnglish}</p>
                 <p className="text-[9.5px] font-bold text-slate-900 leading-tight pt-0.5">
-                  जन्म तिथि/DOB:{dob}
+                  जन्म तिथि/DOB: {dob}
                 </p>
                 <p className="text-[9.5px] font-bold text-slate-900 leading-tight">
-                  {genderHindi}/ {gender}
+                  {genderHindi} / {gender}
                 </p>
 
                 {/* Red Disclaimer Box - fitted to text */}

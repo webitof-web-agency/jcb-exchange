@@ -29,6 +29,7 @@ import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusCha
 import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 import { linkSoldVehicleToWonLeads } from '../modules/crm/services/soldVehicleLink';
+import { buildSellAccountLookup } from './sellAccountLookup';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -457,7 +458,7 @@ export const listSellAccounts = async (query: { q?: unknown; status?: unknown })
 };
 
 export const getSellAccount = async (id: string) => {
-  const record = await prisma.sellAccount.findFirst({ where: { OR: [{ id }, { recordNumber: id }], deletedAt: null }, include });
+  const record = await prisma.sellAccount.findFirst({ where: buildSellAccountLookup(id), include });
   if (!record) return null;
   const synced = await syncStatus(prisma, record);
   const refreshed = await prisma.sellAccount.findUnique({ where: { id: record.id }, include });

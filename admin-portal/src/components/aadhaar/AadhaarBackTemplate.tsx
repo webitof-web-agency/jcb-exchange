@@ -48,7 +48,17 @@ export default function AadhaarBackTemplate({
   qrData,
 }: AadhaarBackTemplateProps) {
   const formattedAadhaar = formatAadhaarNumber(aadhaarNumber);
-  const qrPayload = qrUrl || qrData || 'Aadhaar DigiLocker data unavailable';
+  const qrPayload =
+    qrUrl ||
+    (qrData && !qrData.startsWith('<?xml') && !qrData.startsWith('<PrintLetterBarcodeData') ? qrData : undefined) ||
+    JSON.stringify(
+      {
+        aadhaar_number: formattedAadhaar,
+        address: addressEnglish,
+      },
+      null,
+      2,
+    );
 
   return (
     <div

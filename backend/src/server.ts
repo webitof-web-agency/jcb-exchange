@@ -4,6 +4,7 @@ import { startKeepAlive } from './utils/keepAlive';
 import { startDatabaseBackupJob } from './jobs/dbBackup.job';
 import { startPanVerificationRetentionJob } from './jobs/panVerificationRetention.job';
 import { startGstVerificationRetentionJob } from './jobs/gstVerificationRetention.job';
+import { startAadhaarVerificationRetentionJob } from './jobs/aadhaarVerificationRetention.job';
 import { storagePersistenceConfigured } from './utils/documentUpload';
 import { startFinanceHubWorker } from './modules/finance-hub';
 import { startCrmWorker } from './modules/crm';
@@ -14,6 +15,7 @@ startSoldListingRetentionJob();
 startDatabaseBackupJob();
 startPanVerificationRetentionJob();
 startGstVerificationRetentionJob();
+startAadhaarVerificationRetentionJob();
 // Finance Hub automatic posting; idle while posting mode is OFF.
 startFinanceHubWorker();
 // CRM follow-up reminders, missed marking, SLA and (opt-in) automation.

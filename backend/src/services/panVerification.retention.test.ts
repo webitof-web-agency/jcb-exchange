@@ -9,6 +9,7 @@ import {
 } from './panVerification.service';
 
 const secret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const validPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 test('PAN raw-data expiry is exactly five minutes after completion', () => {
   const completedAt = new Date('2026-10-27T10:00:00.000Z');
@@ -54,7 +55,7 @@ test('template upload is rejected after the raw-data window and does not call st
   });
 
   await assert.rejects(
-    () => service.uploadTemplate('record-1', 'user-1', 'EMPLOYEE', Buffer.from('png'), 'image/png'),
+    () => service.uploadTemplate('record-1', 'user-1', 'EMPLOYEE', validPng, 'image/png'),
     (error: unknown) => error instanceof PanVerificationError
       && error.statusCode === 410
       && error.code === 'pan_raw_data_expired',
@@ -97,14 +98,14 @@ test('successful template upload stores only private artifact metadata and clear
     },
     dataSecret: secret,
     uploadTemplateFile: async (buffer: Buffer, mimeType: string, filename: string) => {
-      assert.equal(buffer.toString(), 'png');
+      assert.deepEqual(buffer, validPng);
       assert.equal(mimeType, 'image/png');
       assert.equal(filename, 'pan-template-record-1.png');
       return { fileId: 'drive-file-1' };
     },
   });
 
-  const result = await service.uploadTemplate('record-1', 'user-1', 'EMPLOYEE', Buffer.from('png'), 'image/png');
+  const result = await service.uploadTemplate('record-1', 'user-1', 'EMPLOYEE', validPng, 'image/png');
 
   assert.ok(result.template);
   assert.equal(result.template.id, 'template-1');
@@ -119,7 +120,7 @@ test('successful template upload stores only private artifact metadata and clear
       driveFileId: 'drive-file-1',
       fileName: 'pan-template-record-1.png',
       mimeType: 'image/png',
-      fileSize: 3,
+      fileSize: validPng.length,
       sha256: undefined,
     },
   );

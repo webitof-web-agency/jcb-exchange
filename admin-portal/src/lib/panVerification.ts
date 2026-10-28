@@ -41,6 +41,12 @@ export type PanResultResponse = {
 
 export const normalizePan = (value: string) => value.trim().toUpperCase();
 
+export const resolvePanTemplateNumber = (typedPan: unknown, fallbackPan: unknown) => {
+  const typed = typeof typedPan === 'string' ? normalizePan(typedPan) : '';
+  if (PAN_PATTERN.test(typed)) return typed;
+  return typeof fallbackPan === 'string' ? normalizePan(fallbackPan) : '';
+};
+
 export const validatePan = (value: string) => {
   const pan = normalizePan(value);
   return pan ? (PAN_PATTERN.test(pan) ? null : 'Enter a valid PAN in the format ABCDE1234F.') : 'PAN number is required.';

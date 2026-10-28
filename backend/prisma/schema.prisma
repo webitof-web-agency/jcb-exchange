@@ -504,6 +504,7 @@ model User {
   gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
   gstVerificationTemplates           GstVerificationTemplate[]          @relation("GstVerificationTemplateRequester")
   aadhaarVerificationRecords         AadhaarVerificationRecord[]        @relation("AadhaarVerificationRequester")
+  aadhaarVerificationTemplates       AadhaarVerificationTemplate[]      @relation("AadhaarVerificationTemplateRequester")
   blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
   answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
   ownedLeads                         Lead[]                             @relation("LeadOwner")
@@ -692,10 +693,12 @@ model AadhaarVerificationRecord {
   messageCode        String?
   safeMessage        String?                   @db.Text
   encryptedResult    String?                   @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime                  @default(now())
   completedAt        DateTime?
 
+  template           AadhaarVerificationTemplate? @relation("AadhaarVerificationRecordTemplate")
   requestedBy User @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -703,6 +706,24 @@ model AadhaarVerificationRecord {
   @@index([requestedById, createdAt])
   @@index([maskedAadhaar, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model AadhaarVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord AadhaarVerificationRecord @relation("AadhaarVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                      @relation("AadhaarVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model MobileToPanLookupRecord {
@@ -1278,6 +1299,7 @@ enum SellAccountDealStatus {
   RTO_WORK_FAILED
   RTO_WORK_COMPLETED
   DEAL_DONE
+  CANCELLED
 }
 
 enum SellAccountPaymentSide {

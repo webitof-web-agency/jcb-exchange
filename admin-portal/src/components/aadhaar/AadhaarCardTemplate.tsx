@@ -249,12 +249,12 @@ export default function AadhaarCardTemplate({
 
             {/* Date of Birth */}
             <div className="pt-0.5 text-[9px] font-bold text-slate-900">
-              <span>जन्म तिथि/DOB:{dob}</span>
+              <span>जन्म तिथि/DOB: {dob}</span>
             </div>
 
             {/* Gender */}
             <div className="text-[9px] font-bold text-slate-900">
-              <span>{genderHindi}/ {gender}</span>
+              <span>{genderHindi} / {gender}</span>
             </div>
 
             {/* Red Disclaimer Box - fitted to text */}

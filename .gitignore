@@ -218,3 +218,4 @@ whatsappfront/
 /aadharblanktemplate.PDF
 /admin-portal/public/templates/aadhaar/*.png
 /admin-portal/public/templates/aadhaar/*.pdf
+!/admin-portal/public/templates/aadhaar/aadhaar-blank-template.png

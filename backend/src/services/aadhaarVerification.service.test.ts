@@ -71,6 +71,7 @@ test('normalizes the Surepass DigiLocker response from the documented nested sha
     gender: 'M',
     mobileNumber: '9876543210',
     maskedAadhaar: 'XXXXXXXX1234',
+    issueDate: null,
     fullAddress: 'Connaught Place, New Delhi, Delhi, India',
     address: {
       country: 'India',
@@ -183,4 +184,37 @@ test('allows direct DigiLocker initialization without upfront Aadhaar number', a
   const initResult = await service.initialize({ side: 'SALE' }, 'user-1');
   assert.equal(initResult.sdkToken, 'sdk-token-2');
   assert.equal(initResult.record.id, 'aadhaar-record-2');
+});
+
+test('checkStatus returns pending without failing when user has not completed OTP in popup', async () => {
+  let record: Record<string, unknown> = {
+    id: 'aadhaar-record-status-1',
+    requestedById: 'user-1',
+    side: 'SALE',
+    status: 'PENDING',
+    providerClientId: 'digilocker-client-status',
+    maskedAadhaar: 'PENDING',
+  };
+
+  const service = new AadhaarVerificationService({
+    record: {
+      findUnique: async () => record,
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        record = { ...record, ...data };
+        return record;
+      },
+    } as any,
+    provider: {
+      downloadAadhaar: async () => {
+        throw new Error('Not completed yet');
+      },
+    } as any,
+    dataSecret: 'test-secret',
+  });
+
+  const status = await service.checkStatus('aadhaar-record-status-1', 'user-1');
+  assert.equal(status.ready, false);
+  assert.equal(status.status, 'PENDING');
+  // Record MUST NOT be marked failed!
+  assert.equal(record.status, 'PENDING');
 });
