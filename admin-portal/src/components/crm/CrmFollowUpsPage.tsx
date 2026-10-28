@@ -52,6 +52,7 @@ import {
   LEAD_TYPE_LABELS,
   leadHref,
   OUTCOME_LABELS,
+  leadWhatsAppMessage,
   phoneLinks,
   relative,
   StatusBadge,
@@ -467,7 +468,7 @@ function FollowUps() {
                     open &&
                     !overdue &&
                     new Date(f.dueAt).toDateString() === new Date(now).toDateString();
-                  const links = phoneLinks(f.contact?.mobile, f.contact?.whatsappNumber);
+                  const links = phoneLinks(f.contact?.mobile, f.contact?.whatsappNumber, leadWhatsAppMessage(f.contact?.name, f.lead));
 
                   return (
                     <tr

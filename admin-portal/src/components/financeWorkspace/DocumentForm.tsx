@@ -8,7 +8,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { documentLabel, GST_STATES, isPurchaseSide, NOTE_REASONS, originalTypeFor, reasonLabel, type DocumentType, type FinDocument, type NoteReason } from './documentsShared';
 import { isCashBank, optionalChoices, toPaise, todayIso, type LedgerLookups } from './ledgerLookups';
-import { Button, Field, inputClass, Modal, ModalFooter, Toggle } from './ui';
+import { Button, Field, inputClass, Modal, ModalFooter, selectButtonClass, Toggle } from './ui';
 import { useResource } from './useResource';
 
 // GST 2.0 (Sept 2025) slabs 5 / 18 / 40; 12 and 28 kept for older documents.
@@ -122,8 +122,8 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
       onClose={() => { if (!busy) onClose(); }}
       wide
     >
-      <form onSubmit={onSubmit} className="p-5 sm:p-7">
-        <div className="grid gap-4 md:grid-cols-4">
+      <form onSubmit={onSubmit} className="p-4">
+        <div className="grid gap-3 md:grid-cols-4">
           <Field label="Document *">
             <select value={docType} onChange={(event) => { setDocType(event.target.value as DocumentType); setRows([newRow()]); setAgainstDocumentId(''); }} className={inputClass} disabled={Boolean(initial?.id) || createTypes.length === 1}>
               {(initial?.id ? [initial.docType] : createTypes).map((type) => <option key={type} value={type}>{documentLabel[type]}</option>)}
@@ -143,7 +143,7 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
             <input value={partyDocNumber} onChange={(event) => setPartyDocNumber(event.target.value.toUpperCase())} className={inputClass} maxLength={60} required={docType === 'PURCHASE_BILL'} />
           </Field>
           <Field label={purchaseSide ? 'Supplier *' : 'Customer *'} wide>
-            <SearchableSelect options={optionalChoices(lookups.partyOptions, partyId)} value={partyId} onChange={(option) => { setPartyId(String(option.id)); setAgainstDocumentId(''); }} placeholder="Choose party (add new ones in Party Ledgers)" />
+            <SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.partyOptions, partyId)} value={partyId} onChange={(option) => { setPartyId(String(option.id)); setAgainstDocumentId(''); }} placeholder="Choose party (add new ones in Party Ledgers)" />
           </Field>
           <Field label="Place of supply" hint="Blank: the party's state, else your own state.">
             <select value={placeOfSupply} onChange={(event) => setPlaceOfSupply(event.target.value)} className={inputClass}>
@@ -152,7 +152,7 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
             </select>
           </Field>
           <Field label="Vehicle (optional)">
-            <SearchableSelect options={optionalChoices(lookups.vehicleOptions, sellAccountId)} value={sellAccountId} onChange={(option) => setSellAccountId(String(option.id))} placeholder="—" />
+            <SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.vehicleOptions, sellAccountId)} value={sellAccountId} onChange={(option) => setSellAccountId(String(option.id))} placeholder="—" />
           </Field>
           {isNote ? (
             <>
@@ -172,9 +172,9 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
           ) : null}
         </div>
 
-        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[1320px] text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[1320px] text-left text-[13px]">
+            <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2">Description</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">HSN/SAC</th><th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">Rate</th><th className="px-3 py-2 text-right">Discount</th><th className="px-3 py-2">GST %</th>
@@ -185,7 +185,7 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
               {rows.map((row) => (
                 <tr key={row.key}>
                   <td className="w-56 px-3 py-2"><input value={row.description} onChange={(event) => update(row.key, { description: event.target.value })} className={`${inputClass} py-2`} maxLength={300} placeholder="Item or service" /></td>
-                  <td className="w-60 px-3 py-2"><SearchableSelect options={ledgerOptions} value={row.accountId} onChange={(option) => update(row.key, { accountId: String(option.id) })} placeholder="Ledger" size="sm" /></td>
+                  <td className="w-60 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={ledgerOptions} value={row.accountId} onChange={(option) => update(row.key, { accountId: String(option.id) })} placeholder="Ledger" size="sm" /></td>
                   <td className="w-24 px-3 py-2"><input value={row.hsnSac} onChange={(event) => update(row.key, { hsnSac: event.target.value.replace(/\D/g, '').slice(0, 8) })} className={`${inputClass} py-2`} inputMode="numeric" /></td>
                   <td className="w-24 min-w-[88px] px-3 py-2"><input type="number" min={0} step="0.001" value={row.quantity} onChange={(event) => update(row.key, { quantity: event.target.value })} className={`${inputClass} py-2 text-right`} /></td>
                   <td className="w-36 min-w-[128px] px-3 py-2"><input type="number" min={0} step="0.01" value={row.rate} onChange={(event) => update(row.key, { rate: event.target.value })} className={`${inputClass} py-2 text-right`} /></td>
@@ -196,16 +196,16 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
                     </select>
                   </td>
                   {purchaseSide ? <td className="px-3 py-2"><input type="checkbox" checked={row.itcEligible} onChange={(event) => update(row.key, { itcEligible: event.target.checked })} className="h-4 w-4 accent-amber-500" title="Input tax credit can be claimed" /></td> : null}
-                  <td className="w-44 px-3 py-2"><SearchableSelect options={optionalChoices(lookups.vehicleOptions, row.sellAccountId)} value={row.sellAccountId} onChange={(option) => update(row.key, { sellAccountId: String(option.id) })} placeholder="—" size="sm" /></td>
+                  <td className="w-44 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.vehicleOptions, row.sellAccountId)} value={row.sellAccountId} onChange={(option) => update(row.key, { sellAccountId: String(option.id) })} placeholder="—" size="sm" /></td>
                   <td className="w-28 px-3 py-2 text-right font-semibold">{formatInr(lineTaxable(row) / 100)}</td>
                   <td className="px-3 py-2 text-right">{rows.length > 1 ? <button type="button" onClick={() => setRows(rows.filter((item) => item.key !== row.key))} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button> : null}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-3 py-2.5 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-3 py-2 text-[13px]">
             <Button variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setRows([...rows, newRow()])}>Add line</Button>
-            <div className="flex flex-wrap items-center gap-4 font-semibold text-slate-800">
+            <div className="flex flex-wrap items-center gap-3 font-semibold text-slate-800">
               <span>Taxable {formatInr(totals.taxable / 100)}</span>
               <span>GST {formatInr(totals.tax / 100)}{reverseCharge ? ' (RCM)' : ''}</span>
               <span>Total {formatInr(totals.total / 100)}</span>
@@ -214,7 +214,7 @@ export default function DocumentForm({ lookups, initial, createTypes, defaultTyp
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-4">
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
           {docType === 'PURCHASE_BILL' ? (
             <>
               <Field label="TDS section" hint="e.g. 194C, 194J, 194I, 194H"><input value={tdsSection} onChange={(event) => setTdsSection(event.target.value.toUpperCase())} className={inputClass} maxLength={10} /></Field>

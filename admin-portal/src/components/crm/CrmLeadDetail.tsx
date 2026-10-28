@@ -54,6 +54,7 @@ import {
   label,
   LEAD_TYPE_LABELS,
   leadHref,
+  leadWhatsAppMessage,
   phoneLinks,
   PriorityBadge,
   relative,
@@ -344,7 +345,7 @@ function Detail({ leadId }: { leadId: string }) {
   const isPartner = Boolean(access?.isPartner);
   const currentStage = meta?.pipelineStages?.find((stage) => stage.code === lead.status);
   const open = !currentStage?.isTerminal && lead.status !== 'WON' && lead.status !== 'LOST';
-  const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber);
+  const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
   const pending = lead.followUps
     .filter((f) => f.status === 'PENDING' || f.status === 'MISSED')
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt));

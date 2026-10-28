@@ -136,6 +136,7 @@ export const allowedAdminPermissions = new Set([
   'accounts.sell.update',
   'accounts.sell.delete',
   'accounts.sell.export',
+  'accounts.sell.refund.approve',
   'recruitment.dashboard.read',
   'recruitment.departments.read',
   'recruitment.departments.create',

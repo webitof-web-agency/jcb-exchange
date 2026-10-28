@@ -84,11 +84,11 @@ export default function BankAccountsModule() {
     >
       {!canManage ? <ReadOnlyNotice>Account numbers are masked. Adding or editing needs “Manage Banking & Cash”.</ReadOnlyNotice> : null}
       {list.length ? (
-        <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
           {list.map((item) => (
-            <div key={item.id} className={`rounded-xl border border-slate-200 p-4 ${item.isActive ? 'bg-white' : 'bg-slate-50 opacity-70'}`}>
+            <div key={item.id} className={`rounded-lg border border-slate-200 p-3 ${item.isActive ? 'bg-white' : 'bg-slate-50 opacity-70'}`}>
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2"><Landmark className="h-5 w-5 text-amber-600" /><p className="font-bold text-slate-900">{item.displayName}</p></div>
+                <div className="flex items-center gap-2"><Landmark className="h-5 w-5 text-amber-600" /><p className="font-semibold text-slate-900">{item.displayName}</p></div>
                 <Badge tone={item.isActive ? 'green' : 'slate'}>{item.isActive ? enumLabel(item.type) : 'Inactive'}</Badge>
               </div>
               <dl className="mt-3 space-y-1 text-xs text-slate-600">
@@ -107,8 +107,8 @@ export default function BankAccountsModule() {
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.displayName}` : 'Add bank / cash account'} onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-3">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-3">
               <Field label="Type *">
                 <select value={form.type} disabled={Boolean(form.id)} onChange={(event) => setForm({ ...form, type: event.target.value as BankType })} className={inputClass}>
                   {TYPES.map((type) => <option key={type} value={type}>{enumLabel(type)}</option>)}
@@ -139,12 +139,12 @@ export default function BankAccountsModule() {
               {form.id ? <div className="flex items-end pb-2"><Toggle checked={form.isActive} onChange={(value) => setForm({ ...form, isActive: value })} label="Active" /></div> : null}
             </div>
 
-            <div className="mt-5 rounded-xl border border-slate-200 p-4">
-              <p className="text-sm font-bold text-slate-800">Statement aliases</p>
+            <div className="mt-4 rounded-lg border border-slate-200 p-3">
+              <p className="text-[13px] font-semibold text-slate-800">Statement aliases</p>
               <p className="mt-0.5 text-xs text-slate-500">Bank names typed on the existing Expenses & Transactions page that belong to this account. Used for reconciliation.</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {form.statementAliases.map((alias) => (
-                  <span key={alias} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                  <span key={alias} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                     {alias}
                     <button type="button" onClick={() => setForm({ ...form, statementAliases: form.statementAliases.filter((item) => item !== alias) })} aria-label={`Remove ${alias}`}><X className="h-3 w-3" /></button>
                   </span>

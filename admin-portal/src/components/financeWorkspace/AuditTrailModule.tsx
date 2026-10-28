@@ -26,7 +26,7 @@ export default function AuditTrailModule() {
 
   return (
     <Panel title="Audit trail" description="Every change in the finance workspace: who, when, what changed (before → after) and why. Read-only and never purged.">
-      <form onSubmit={apply} className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_1fr_150px_150px_auto] md:items-end">
+      <form onSubmit={apply} className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[1fr_1fr_150px_150px_auto] md:items-end">
         <Field label="Record type">
           <select value={filters.entityType} onChange={(event) => setFilters({ ...filters, entityType: event.target.value })} className={inputClass}>
             <option value="">All</option>
@@ -46,25 +46,25 @@ export default function AuditTrailModule() {
       {audit.loading ? <LoadingState /> : audit.error ? <ErrorBanner message={audit.error} schemaMissing={audit.schemaMissing} /> : !audit.data?.logs.length ? <EmptyState title="No activity found" /> : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">When</th><th className="px-4 py-2.5">User</th><th className="px-4 py-2.5">Action</th><th className="px-4 py-2.5">Record</th><th className="px-4 py-2.5">Reason</th><th className="px-4 py-2.5" /></tr></thead>
+            <table className="w-full min-w-[860px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">When</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Action</th><th className="px-3 py-2">Record</th><th className="px-3 py-2">Reason</th><th className="px-3 py-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {audit.data.logs.map((log) => (
                   <Fragment key={log.id}>
                     <tr>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-xs">{new Date(log.createdAt).toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-2.5 text-xs font-semibold text-slate-800">{log.actorName}</td>
-                      <td className="px-4 py-2.5">{enumLabel(log.action)}</td>
-                      <td className="px-4 py-2.5 text-xs">{entityLabel(log.entityType)} <span className="font-mono text-slate-400">{log.entityId.slice(0, 8)}</span></td>
-                      <td className="max-w-[260px] truncate px-4 py-2.5 text-xs" title={log.reason ?? ''}>{log.reason ?? '—'}</td>
-                      <td className="px-4 py-2.5 text-right">{log.beforeJson || log.afterJson ? <Button variant="ghost" onClick={() => setExpanded(expanded === log.id ? null : log.id)}>{expanded === log.id ? 'Hide' : 'Changes'}</Button> : null}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">{new Date(log.createdAt).toLocaleString('en-IN')}</td>
+                      <td className="px-3 py-2 text-xs font-semibold text-slate-800">{log.actorName}</td>
+                      <td className="px-3 py-2">{enumLabel(log.action)}</td>
+                      <td className="px-3 py-2 text-xs">{entityLabel(log.entityType)} <span className="font-mono text-slate-400">{log.entityId.slice(0, 8)}</span></td>
+                      <td className="max-w-[260px] truncate px-3 py-2 text-xs" title={log.reason ?? ''}>{log.reason ?? '—'}</td>
+                      <td className="px-3 py-2 text-right">{log.beforeJson || log.afterJson ? <Button variant="ghost" onClick={() => setExpanded(expanded === log.id ? null : log.id)}>{expanded === log.id ? 'Hide' : 'Changes'}</Button> : null}</td>
                     </tr>
                     {expanded === log.id ? (
                       <tr className="bg-slate-50">
-                        <td colSpan={6} className="px-4 py-3">
+                        <td colSpan={6} className="px-3 py-2">
                           <div className="grid gap-3 md:grid-cols-2">
-                            <div><p className="mb-1 text-[11px] font-bold uppercase text-slate-500">Before</p><pre className="max-h-64 overflow-auto rounded-lg bg-white p-3 text-[11px] text-slate-700">{JSON.stringify(log.beforeJson, null, 2) ?? '—'}</pre></div>
-                            <div><p className="mb-1 text-[11px] font-bold uppercase text-slate-500">After</p><pre className="max-h-64 overflow-auto rounded-lg bg-white p-3 text-[11px] text-slate-700">{JSON.stringify(log.afterJson, null, 2) ?? '—'}</pre></div>
+                            <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Before</p><pre className="max-h-64 overflow-auto rounded-lg bg-white p-3 text-[11px] text-slate-700">{JSON.stringify(log.beforeJson, null, 2) ?? '—'}</pre></div>
+                            <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">After</p><pre className="max-h-64 overflow-auto rounded-lg bg-white p-3 text-[11px] text-slate-700">{JSON.stringify(log.afterJson, null, 2) ?? '—'}</pre></div>
                           </div>
                         </td>
                       </tr>
@@ -74,7 +74,7 @@ export default function AuditTrailModule() {
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
             <span>{audit.data.total} events</span>
             <span className="flex items-center gap-2">
               <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)} icon={<ChevronLeft className="h-4 w-4" />}>Prev</Button>

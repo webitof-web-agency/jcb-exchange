@@ -3383,7 +3383,7 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
       (prisma as any).jobApplication.count({
         where: {
           currentStage: 'NEW',
-          ...(recruitmentAppsSeenAt ? { createdAt: { gt: recruitmentAppsSeenAt } } : {}),
+          ...(recruitmentAppsSeenAt ? { appliedAt: { gt: recruitmentAppsSeenAt } } : {}),
         },
       }),
       (prisma as any).interview.count({

@@ -23,6 +23,12 @@ import {
 
 type Tx = Prisma.TransactionClient;
 
+/** Queues another source for a fresh sync unless it is already waiting. */
+const requeueSource = async (tx: Tx, sourceType: PostingSourceType, sourceId: string, event: string) => {
+  const waiting = await tx.finPostingQueue.findFirst({ where: { sourceType, sourceId, status: 'PENDING' }, select: { id: true } });
+  if (!waiting) await tx.finPostingQueue.create({ data: { sourceType, sourceId, event } });
+};
+
 export const POSTING_SOURCE_TYPES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET_LEDGER', 'API_WALLET_DAY', 'FINANCE_TRANSACTION'] as const;
 export type PostingSourceType = (typeof POSTING_SOURCE_TYPES)[number];
 
@@ -115,12 +121,19 @@ const validGstinOrNull = (value: string | null | undefined) => {
 const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId: string, context: SyncContext): Promise<DesiredVoucher[]> => {
   switch (sourceType) {
     case 'SELL_ACCOUNT': {
-      const deal = await tx.sellAccount.findUnique({ where: { id: sourceId }, include: { payments: { orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }] } } });
+      const deal = await tx.sellAccount.findUnique({
+        where: { id: sourceId },
+        include: { payments: { orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }] }, refunds: { orderBy: { createdAt: 'asc' } } },
+      });
+      // Website payments recorded on this sale decide between their advance entry and the sale's receipt.
+      for (const payment of deal?.payments ?? []) {
+        if (payment.listingPaymentId) await requeueSource(tx, 'LISTING_PAYMENT', payment.listingPaymentId, 'SALE_CHANGED');
+      }
       if (!deal || deal.isDraft || deal.deletedAt) return [];
       const ownStock = deal.sourceType === 'JCB_EXCHANGE';
       const hasSellerPayments = deal.payments.some((payment) => payment.side === 'SELLER_PAYMENT');
       const needsSeller = (!ownStock && Number(deal.purchaseAmount) > 0) || hasSellerPayments;
-      const needsPurchaser = Number(deal.sellAmount) > 0 || deal.payments.some((payment) => payment.side === 'PURCHASER_RECEIPT');
+      const needsPurchaser = Number(deal.sellAmount) > 0 || deal.payments.some((payment) => payment.side === 'PURCHASER_RECEIPT') || deal.refunds.length > 0;
       const seller: PartyCandidate = {
         linkType: 'SELL_ACCOUNT_SELLER',
         linkId: deal.id,
@@ -166,6 +179,13 @@ const desiredForSource = async (tx: Tx, sourceType: PostingSourceType, sourceId:
         include: { buyer: { select: { id: true, name: true, mobile: true } }, listing: { select: { title: true } } },
       });
       if (!payment || !['APPROVED', 'PAID'].includes(payment.status)) return [];
+      // Once the payment is an issued receipt on a saved Sold Vehicle record, that sale's entries carry
+      // the money; posting it here as well would count it twice.
+      const onSale = await tx.sellAccountPayment.findUnique({
+        where: { listingPaymentId: payment.id },
+        select: { receiptStatus: true, sellAccount: { select: { isDraft: true, deletedAt: true } } },
+      });
+      if (onSale && onSale.receiptStatus === 'ISSUED' && !onSale.sellAccount.isDraft && !onSale.sellAccount.deletedAt) return [];
       const buyerPartyId = await resolvePartyForCandidate(tx, {
         linkType: 'USER',
         linkId: payment.buyerId,
@@ -264,6 +284,7 @@ const toLineInputs = (lines: DesiredVoucher['lines']): VoucherLineInput[] =>
   }));
 
 const createSystemVoucher = async (tx: Tx, sourceType: string, sourceId: string, desired: DesiredVoucher, hash: string, mode: 'SHADOW' | 'LIVE') => {
+  if (desired.draft) mode = 'SHADOW';
   const lines = toLineInputs(desired.lines);
   const placed = await placeInOpenPeriod(tx, desired.date);
   const narration = placed.moved ? `${desired.narration} (belongs to ${desired.date.toISOString().slice(0, 10).split('-').reverse().join('-')}; that month is closed)` : desired.narration;
@@ -368,7 +389,7 @@ export const syncSource = async (sourceType: PostingSourceType, sourceId: string
         const current = existing.find((item) => item.sourceEvent === voucher.key && !matched.has(item.id));
         if (current && current.sourceHash === hash) {
           matched.add(current.id);
-          if (options.mode === 'LIVE' && current.status !== 'POSTED') {
+          if (options.mode === 'LIVE' && current.status !== 'POSTED' && !voucher.draft) {
             await postExistingDraft(tx, current);
             summary.posted += 1;
           } else {

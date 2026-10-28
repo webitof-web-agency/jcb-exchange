@@ -9,7 +9,7 @@ import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceA
 import { useDues } from './DuesModule';
 import { optionalChoices, todayIso, useLedgerLookups } from './ledgerLookups';
 import { FollowUpModal, PartyStatementView, ScheduleModal, usePartyOptions, whatsappLink, type DueSide, type PartyRef, type Schedule } from './receivablesShared';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -20,8 +20,8 @@ export function PartyStatementsModule() {
   const [range, setRange] = useState({ from: '', to: todayIso() });
   return (
     <Panel title="Party statements" description="Opening balance, every entry and closing balance across the party's ledgers (receivable, payable, advances, deposits). Dr = due from the party.">
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_180px_180px]">
-        <Field label="Party"><SearchableSelect options={optionalChoices(parties.data ?? [], partyId)} value={partyId} onChange={(option) => setPartyId(String(option.id))} placeholder="Choose party" /></Field>
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[1fr_180px_180px]">
+        <Field label="Party"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(parties.data ?? [], partyId)} value={partyId} onChange={(option) => setPartyId(String(option.id))} placeholder="Choose party" /></Field>
         <Field label="From" hint="Blank: start of the financial year."><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={inputClass} /></Field>
         <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={inputClass} /></Field>
       </div>
@@ -39,15 +39,15 @@ export function AdvancesModule() {
   const [statementFor, setStatementFor] = useState<PartyRef | null>(null);
   return (
     <Panel title="Party advances & deposits" description="Customer advances and partner security deposits we hold, and advances we paid to sellers and employees. Adjusted when the sale / purchase / salary is booked.">
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[180px_1fr_1fr]">
+      <div className="grid gap-3 border-b border-slate-100 p-3 sm:grid-cols-[180px_1fr_1fr]">
         <Field label="As of"><input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} className={inputClass} /></Field>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">We hold (advances & deposits received)</p><p className="text-base font-bold">{formatInr(advances.data?.held ?? 0)}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">We paid ahead</p><p className="text-base font-bold">{formatInr(advances.data?.paid ?? 0)}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">We hold (advances & deposits received)</p><p className="text-[15px] font-semibold">{formatInr(advances.data?.held ?? 0)}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">We paid ahead</p><p className="text-[15px] font-semibold">{formatInr(advances.data?.paid ?? 0)}</p></div>
       </div>
       {advances.loading ? <LoadingState /> : advances.error ? <ErrorBanner message={advances.error} schemaMissing={advances.schemaMissing} /> : !advances.data?.rows.length ? <EmptyState title="No open advances or deposits" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5 text-right">Balance</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[720px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Party</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {advances.data.rows.map((row) => (
                 <tr key={`${row.party.id}-${row.account.id}`}>
@@ -100,21 +100,21 @@ export function SchedulesModule() {
 
   return (
     <Panel title="Payment schedules" description="Expected collections and planned payments by due date. Planning only: record the money with a receipt or payment voucher, then mark the item done." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ initial: null })}>Schedule</Button> : null}>
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-4">
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-4">
         <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className={inputClass} aria-label="Status"><option value="">All statuses</option><option value="PLANNED">Planned</option><option value="DONE">Done</option><option value="CANCELLED">Cancelled</option></select>
         <select value={filters.side} onChange={(event) => setFilters({ ...filters, side: event.target.value })} className={inputClass} aria-label="Direction"><option value="">In and out</option><option value="RECEIVABLE">Money in</option><option value="PAYABLE">Money out</option></select>
         <input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} className={inputClass} aria-label="From" />
         <input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} className={inputClass} aria-label="To" />
       </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-3">
-        <div className="rounded-xl bg-emerald-50 p-3"><p className="text-[11px] uppercase tracking-wide text-emerald-700">Expected in</p><p className="text-base font-bold">{formatInr(totals.inflow)}</p></div>
-        <div className="rounded-xl bg-amber-50 p-3"><p className="text-[11px] uppercase tracking-wide text-amber-700">Planned out</p><p className="text-base font-bold">{formatInr(totals.outflow)}</p></div>
-        <div className="rounded-xl bg-red-50 p-3"><p className="text-[11px] uppercase tracking-wide text-red-700">Overdue items</p><p className="text-base font-bold">{totals.overdue}</p></div>
+      <div className="grid gap-3 p-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-emerald-50 p-3"><p className="text-[11px] uppercase tracking-wide text-emerald-700">Expected in</p><p className="text-[15px] font-semibold">{formatInr(totals.inflow)}</p></div>
+        <div className="rounded-lg bg-amber-50 p-3"><p className="text-[11px] uppercase tracking-wide text-amber-700">Planned out</p><p className="text-[15px] font-semibold">{formatInr(totals.outflow)}</p></div>
+        <div className="rounded-lg bg-red-50 p-3"><p className="text-[11px] uppercase tracking-wide text-red-700">Overdue items</p><p className="text-[15px] font-semibold">{totals.overdue}</p></div>
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !rows.length ? <EmptyState title="Nothing scheduled" description="Add expected collections (e.g. promised instalments) and planned payments." /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Due</th><th className="px-4 py-2.5">Direction</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Reference</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[900px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Due</th><th className="px-3 py-2">Direction</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <tr key={row.id} className={row.overdue ? 'bg-red-50/40' : ''}>
@@ -179,7 +179,7 @@ export function FollowUpsModule() {
   return (
     <Panel title="Follow-up & reminders" description="Calls, WhatsApp reminders and visits with promises to pay. WhatsApp opens with a ready message; nothing is sent automatically." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating({ party: null })}>Log follow-up</Button> : null}>
       {topOverdue.length ? (
-        <div className="border-b border-slate-100 p-4">
+        <div className="border-b border-slate-100 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Overdue more than 30 days</p>
           <div className="flex flex-wrap gap-2">
             {topOverdue.map((row) => (
@@ -191,8 +191,8 @@ export function FollowUpsModule() {
       <Tabs<FollowTab> tabs={[{ key: 'today', label: 'Due today & overdue' }, { key: 'open', label: 'All open' }, { key: 'done', label: 'History' }]} active={tab} onChange={setTab} />
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="Nothing here" description={tab === 'today' ? 'No follow-ups due today.' : undefined} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Next action</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">Notes</th><th className="px-4 py-2.5">Promise</th><th className="px-4 py-2.5">Owner</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Next action</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Notes</th><th className="px-3 py-2">Promise</th><th className="px-3 py-2">Owner</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((row) => (
                 <tr key={row.id} className={row.overdue ? 'bg-red-50/40' : ''}>
@@ -237,8 +237,8 @@ export function WriteOffsModule() {
       {!canManage ? <ReadOnlyNotice>Creating adjustments needs “Manage Receivables & Payables”.</ReadOnlyNotice> : null}
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No adjustments yet" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5">Kind</th><th className="px-4 py-2.5">Ledgers</th><th className="px-4 py-2.5">Reason</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Voucher</th></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Kind</th><th className="px-3 py-2">Ledgers</th><th className="px-3 py-2">Reason</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Voucher</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((row) => (
                 <tr key={row.id}>
@@ -292,8 +292,8 @@ function WriteOffForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
   return (
     <Modal title="New settlement adjustment" subtitle="Creates a journal voucher between the party ledger and an expense / income ledger." onClose={() => { if (!busy) onClose(); }}>
-      <form onSubmit={submit} className="p-5 sm:p-7">
-        <div className="grid gap-4 md:grid-cols-2">
+      <form onSubmit={submit} className="p-4">
+        <div className="grid gap-3 md:grid-cols-2">
           <Field label="Balance">
             <select value={side} onChange={(event) => { const next = event.target.value as DueSide; setSide(next); setForm({ ...form, partyId: '', controlAccountId: '', kind: 'DISCOUNT', counterAccountId: suggest('DISCOUNT', next) }); }} className={inputClass}>
               <option value="RECEIVABLE">Receivable (party owes us)</option>
@@ -306,7 +306,7 @@ function WriteOffForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </select>
           </Field>
           <Field label="Party *" wide>
-            <SearchableSelect options={(dues.data?.parties ?? []).map((item) => ({ id: item.party.id, name: `${item.party.name} · ${formatInr(item.net)}` }))} value={form.partyId} onChange={(option) => { const party = dues.data?.parties.find((item) => item.party.id === option.id); setForm({ ...form, partyId: String(option.id), controlAccountId: party?.accounts[0]?.id ?? '', counterAccountId: form.counterAccountId || suggest(form.kind) }); }} placeholder={dues.loading ? 'Loading…' : 'Parties with an open balance'} />
+            <SearchableSelect buttonClassName={selectButtonClass} options={(dues.data?.parties ?? []).map((item) => ({ id: item.party.id, name: `${item.party.name} · ${formatInr(item.net)}` }))} value={form.partyId} onChange={(option) => { const party = dues.data?.parties.find((item) => item.party.id === option.id); setForm({ ...form, partyId: String(option.id), controlAccountId: party?.accounts[0]?.id ?? '', counterAccountId: form.counterAccountId || suggest(form.kind) }); }} placeholder={dues.loading ? 'Loading…' : 'Parties with an open balance'} />
           </Field>
           <Field label="Party ledger *">
             <select value={form.controlAccountId} onChange={(event) => setForm({ ...form, controlAccountId: event.target.value })} className={inputClass} disabled={!row}>
@@ -314,7 +314,7 @@ function WriteOffForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </select>
           </Field>
           <Field label={side === 'RECEIVABLE' ? 'Expense ledger *' : 'Income ledger *'}>
-            <SearchableSelect options={counterOptions} value={form.counterAccountId} onChange={(option) => setForm({ ...form, counterAccountId: String(option.id) })} placeholder="Choose ledger" />
+            <SearchableSelect buttonClassName={selectButtonClass} options={counterOptions} value={form.counterAccountId} onChange={(option) => setForm({ ...form, counterAccountId: String(option.id) })} placeholder="Choose ledger" />
           </Field>
           <Field label="Date *"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} required /></Field>
           <Field label="Amount *" hint={control ? `Open: ${formatInr(control.net)}` : undefined}><input type="number" min={0} max={control?.net} step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} className={inputClass} required /></Field>

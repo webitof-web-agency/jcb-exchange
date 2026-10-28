@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Download, Plus, Printer, RefreshCw, Trash2, Users } from 'lucide-react';
+import { Download, FileSpreadsheet, Plus, Printer, RefreshCw, Trash2, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
@@ -9,7 +9,7 @@ import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceA
 import { GST_STATES } from './documentsShared';
 import { isCashBank, todayIso, useLedgerLookups } from './ledgerLookups';
 import { ChallansModule, downloadCsv } from './TaxModules';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -87,15 +87,15 @@ export function EmployeeSalaryModule() {
   const gross = form ? form.earnings.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) : 0;
   return (
     <Panel title="Employee salary" description="Employees are parties of type Employee (Party Ledgers). Set the monthly earnings, PF / ESI / PT and TDS here; payroll uses the profile each month." actions={canManage ? <Button icon={<Users className="h-4 w-4" />} busy={busy && !form} onClick={() => void importStaff()}>Add staff logins as employees</Button> : null}>
-      <div className="grid gap-3 p-4 sm:grid-cols-3">
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Employees</p><p className="text-base font-bold">{rows.length}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">On payroll</p><p className="text-base font-bold">{rows.filter((row) => row.salary?.isActive).length}</p></div>
-        <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Monthly gross</p><p className="text-base font-bold">{formatInr(monthly)}</p></div>
+      <div className="grid gap-3 p-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Employees</p><p className="text-[15px] font-semibold">{rows.length}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">On payroll</p><p className="text-[15px] font-semibold">{rows.filter((row) => row.salary?.isActive).length}</p></div>
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Monthly gross</p><p className="text-[15px] font-semibold">{formatInr(monthly)}</p></div>
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !rows.length ? <EmptyState title="No employees" description="Mark parties as type Employee in Party Ledgers, or add staff logins with the button above." /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Role</th><th className="px-4 py-2.5">Joined</th><th className="px-4 py-2.5">Statutory</th><th className="px-4 py-2.5 text-right">Monthly gross</th><th className="px-4 py-2.5 text-right">Advance due</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Employee</th><th className="px-3 py-2">Role</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">Statutory</th><th className="px-3 py-2 text-right">Monthly gross</th><th className="px-3 py-2 text-right">Advance due</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <tr key={row.party.id} className={row.salary && !row.salary.isActive ? 'opacity-60' : ''}>
@@ -114,8 +114,8 @@ export function EmployeeSalaryModule() {
       )}
       {editing && form ? (
         <Modal title={`Salary: ${editing.party.name}`} subtitle="Monthly amounts for a full month. Tick PF wage for basic (+ DA)." onClose={() => { if (!busy) setEditing(null); }} wide>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-4">
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-4">
               <Field label="Employee code"><input value={form.employeeCode} onChange={(event) => setForm({ ...form, employeeCode: event.target.value })} className={inputClass} maxLength={30} /></Field>
               <Field label="Designation"><input value={form.designation} onChange={(event) => setForm({ ...form, designation: event.target.value })} className={inputClass} maxLength={80} /></Field>
               <Field label="Department"><input value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })} className={inputClass} maxLength={80} /></Field>
@@ -126,8 +126,8 @@ export function EmployeeSalaryModule() {
               <Field label="Monthly gross (for structure)"><input type="number" min={0} value={form.gross} onChange={(event) => setForm({ ...form, gross: event.target.value })} className={inputClass} /></Field>
               <div className="flex items-end"><Button disabled={!form.structureId || !(Number(form.gross) > 0)} onClick={() => { const structure = structures.data?.find((item) => item.id === form.structureId); if (structure) setForm({ ...form, earnings: applyStructure(structure, Number(form.gross)) }); }}>Fill from structure</Button></div>
             </div>
-            <div className="mt-4 rounded-xl border border-slate-200">
-              <table className="w-full text-sm">
+            <div className="mt-3 rounded-lg border border-slate-200">
+              <table className="w-full text-[13px]">
                 <thead className={tableHeadClass}><tr><th className="px-3 py-2">Earning</th><th className="px-3 py-2 text-right">Monthly amount</th><th className="px-3 py-2">PF wage</th><th className="px-3 py-2" /></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {form.earnings.map((item, index) => (
@@ -140,13 +140,13 @@ export function EmployeeSalaryModule() {
                   ))}
                 </tbody>
               </table>
-              <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2"><Button variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ ...form, earnings: [...form.earnings, { name: '', amount: 0, pfWage: false }] })}>Add earning</Button><span className="text-sm font-bold">Gross {formatInr(gross)}</span></div>
+              <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2"><Button variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ ...form, earnings: [...form.earnings, { name: '', amount: 0, pfWage: false }] })}>Add earning</Button><span className="text-[13px] font-semibold">Gross {formatInr(gross)}</span></div>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-4">
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pfApplicable} onChange={(event) => setForm({ ...form, pfApplicable: event.target.checked })} className="h-4 w-4 accent-amber-500" />PF applies</label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pfWageCap} onChange={(event) => setForm({ ...form, pfWageCap: event.target.checked })} className="h-4 w-4 accent-amber-500" />PF on ₹15,000 ceiling</label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.esiApplicable} onChange={(event) => setForm({ ...form, esiApplicable: event.target.checked })} className="h-4 w-4 accent-amber-500" />ESI applies (gross ≤ ₹21,000)</label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />On payroll</label>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={form.pfApplicable} onChange={(event) => setForm({ ...form, pfApplicable: event.target.checked })} className="h-4 w-4 accent-amber-500" />PF applies</label>
+              <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={form.pfWageCap} onChange={(event) => setForm({ ...form, pfWageCap: event.target.checked })} className="h-4 w-4 accent-amber-500" />PF on ₹15,000 ceiling</label>
+              <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={form.esiApplicable} onChange={(event) => setForm({ ...form, esiApplicable: event.target.checked })} className="h-4 w-4 accent-amber-500" />ESI applies (gross ≤ ₹21,000)</label>
+              <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />On payroll</label>
               <Field label="Professional tax state"><select value={form.ptState} onChange={(event) => setForm({ ...form, ptState: event.target.value })} className={inputClass}><option value="">None</option>{GST_STATES.map(([code, name]) => <option key={code} value={code}>{code} · {name}</option>)}</select></Field>
               <Field label="Monthly TDS (192)" hint="From the employee's estimated annual tax."><input type="number" min={0} value={form.monthlyTds} onChange={(event) => setForm({ ...form, monthlyTds: event.target.value })} className={inputClass} /></Field>
               <Field label="UAN"><input value={form.uan} onChange={(event) => setForm({ ...form, uan: event.target.value.replace(/\D/g, '').slice(0, 12) })} className={inputClass} inputMode="numeric" /></Field>
@@ -187,20 +187,20 @@ export function SalaryStructureModule() {
   return (
     <Panel title="Salary structure" description="Component templates: fixed amounts, a % of monthly gross, and one component that takes the balance. Apply one when setting an employee's salary." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: '', isActive: true, notes: '', components: [{ name: 'Basic', calc: 'PERCENT_OF_CTC', value: 50, pfWage: true }, { name: 'HRA', calc: 'PERCENT_OF_CTC', value: 20, pfWage: false }, { name: 'Special allowance', calc: 'BALANCE', value: 0, pfWage: false }] })}>Add structure</Button> : null}>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No structures yet" /> : (
-        <div className="grid gap-3 p-4 md:grid-cols-2">
+        <div className="grid gap-3 p-3 md:grid-cols-2">
           {list.data.map((item) => (
-            <div key={item.id} className={`rounded-xl border border-slate-200 p-4 ${item.isActive ? '' : 'opacity-60'}`}>
+            <div key={item.id} className={`rounded-lg border border-slate-200 p-3 ${item.isActive ? '' : 'opacity-60'}`}>
               <div className="flex items-center justify-between"><p className="font-semibold">{item.name}</p>{canManage ? <Button variant="ghost" onClick={() => setForm(item)}>Edit</Button> : null}</div>
-              <ul className="mt-2 space-y-1 text-sm text-slate-600">{item.components.map((component) => <li key={component.name}>{component.name}: {component.calc === 'FIXED' ? formatInr(component.value) : component.calc === 'BALANCE' ? 'balance' : `${component.value}% of gross`}{component.pfWage ? ' · PF wage' : ''}</li>)}</ul>
+              <ul className="mt-2 space-y-1 text-[13px] text-slate-600">{item.components.map((component) => <li key={component.name}>{component.name}: {component.calc === 'FIXED' ? formatInr(component.value) : component.calc === 'BALANCE' ? 'balance' : `${component.value}% of gross`}{component.pfWage ? ' · PF wage' : ''}</li>)}</ul>
             </div>
           ))}
         </div>
       )}
       {form ? (
         <Modal title={form.id ? 'Edit structure' : 'Add structure'} onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
+          <form onSubmit={save} className="p-4">
             <Field label="Name *"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={inputClass} maxLength={80} required /></Field>
-            <table className="mt-4 w-full text-sm">
+            <table className="mt-3 w-full text-[13px]">
               <thead className={tableHeadClass}><tr><th className="px-2 py-2">Component</th><th className="px-2 py-2">Calculated as</th><th className="px-2 py-2 text-right">Value</th><th className="px-2 py-2">PF</th><th /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {form.components.map((component, index) => {
@@ -218,7 +218,7 @@ export function SalaryStructureModule() {
               </tbody>
             </table>
             <Button variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ ...form, components: [...form.components, { name: '', calc: 'FIXED', value: 0, pfWage: false }] })}>Add component</Button>
-            <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />Active</label>
+            <label className="mt-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="h-4 w-4 accent-amber-500" />Active</label>
             <ModalFooter><Button onClick={() => setForm(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="primary" busy={busy} disabled={!form.name.trim()}>Save</Button></ModalFooter>
           </form>
         </Modal>
@@ -282,15 +282,15 @@ export function PayrollProcessingModule() {
   return (
     <Panel title="Payroll processing" description="Prepare the month from salary profiles, adjust paid days (loss of pay), additions and TDS, then a checker approves — that posts the salary journal. Pay net salaries from the bank afterwards.">
       {canManage ? (
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
+        <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3">
           <Field label="Month"><input type="month" value={month} max={thisMonth()} onChange={(event) => setMonth(event.target.value)} className={inputClass} /></Field>
           <Button variant="primary" icon={<Plus className="h-4 w-4" />} busy={busy} onClick={() => void create()}>Prepare payroll</Button>
         </div>
       ) : null}
       {runs.loading ? <LoadingState /> : runs.error ? <ErrorBanner message={runs.error} schemaMissing={runs.schemaMissing} /> : !runs.data?.length ? <EmptyState title="No payroll runs yet" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Month</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Employees</th><th className="px-4 py-2.5 text-right">Gross</th><th className="px-4 py-2.5 text-right">Net pay</th><th className="px-4 py-2.5 text-right">Cost to company</th><th className="px-4 py-2.5">Vouchers</th></tr></thead>
+          <table className="w-full min-w-[860px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Month</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Employees</th><th className="px-3 py-2 text-right">Gross</th><th className="px-3 py-2 text-right">Net pay</th><th className="px-3 py-2 text-right">Cost to company</th><th className="px-3 py-2">Vouchers</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {runs.data.map((run) => (
                 <tr key={run.id} onClick={() => setOpenId(run.id)} className={`cursor-pointer hover:bg-amber-50/40 ${run.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
@@ -344,11 +344,11 @@ function RunDetailModal({ id, banks, canManage, canApprove, canPay, onClose }: {
   return (
     <Modal title={run ? `Payroll ${run.month}` : 'Payroll'} subtitle={run ? `${enumLabel(run.status)} · ${run.totals.employees} employees` : undefined} onClose={() => { if (!busy) onClose(); }} wide>
       {detail.loading ? <LoadingState /> : detail.error || !run ? <ErrorBanner message={detail.error || 'Not found.'} /> : (
-        <div className="p-5">
+        <div className="p-4">
           <div className="grid gap-3 sm:grid-cols-4">
-            {[['Gross', run.totals.gross], ['Deductions', run.totals.gross - run.totals.net], ['Net pay', run.totals.net], ['Employer PF + ESI', run.totals.employerPf + run.totals.employerEsi]].map(([label, value]) => <div key={label as string} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-base font-bold">{formatInr(value as number)}</p></div>)}
+            {[['Gross', run.totals.gross], ['Deductions', run.totals.gross - run.totals.net], ['Net pay', run.totals.net], ['Employer PF + ESI', run.totals.employerPf + run.totals.employerEsi]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold">{formatInr(value as number)}</p></div>)}
           </div>
-          <div className="mt-4 max-h-[50vh] overflow-auto rounded-xl border border-slate-200">
+          <div className="mt-3 max-h-[50vh] overflow-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[1100px] text-left text-xs">
               <thead className={tableHeadClass}><tr><th className="px-2 py-2">Employee</th><th className="px-2 py-2 text-right">Paid days</th><th className="px-2 py-2 text-right">Additions</th><th className="px-2 py-2 text-right">Gross</th><th className="px-2 py-2 text-right">PF</th><th className="px-2 py-2 text-right">ESI</th><th className="px-2 py-2 text-right">PT</th><th className="px-2 py-2 text-right">TDS</th><th className="px-2 py-2 text-right">Advance</th><th className="px-2 py-2 text-right">Net</th><th className="px-2 py-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -367,7 +367,7 @@ function RunDetailModal({ id, banks, canManage, canApprove, canPay, onClose }: {
                       <td className="px-2 py-2 text-right">{formatInr(slip.professionalTax)}</td>
                       <td className="px-2 py-2 text-right">{field('tds')}</td>
                       <td className="px-2 py-2 text-right">{field('advanceRecovery')}</td>
-                      <td className="px-2 py-2 text-right font-bold">{formatInr(slip.net)}</td>
+                      <td className="px-2 py-2 text-right font-semibold">{formatInr(slip.net)}</td>
                       <td className="px-2 py-2 text-right">{edit ? <Button variant="primary" busy={busy} onClick={() => void saveSlip(slip)}>Save</Button> : <button type="button" onClick={() => printPayslips(run, [slip])} className="text-slate-400 hover:text-slate-900" aria-label="Print payslip"><Printer className="h-4 w-4" /></button>}</td>
                     </tr>
                   );
@@ -384,8 +384,8 @@ function RunDetailModal({ id, banks, canManage, canApprove, canPay, onClose }: {
             {run.status === 'POSTED' && canPay ? <Button variant="primary" onClick={() => setPay({ bankAccountId: banks[0]?.id ?? '', date: todayIso(), reference: '' })}>Pay salaries</Button> : null}
           </ModalFooter>
           {pay ? (
-            <div className="mt-2 grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[2fr_160px_1fr_auto] md:items-end">
-              <Field label="Paid from"><SearchableSelect options={banks} value={pay.bankAccountId} onChange={(option) => setPay({ ...pay, bankAccountId: String(option.id) })} placeholder="Bank" /></Field>
+            <div className="mt-2 grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[2fr_160px_1fr_auto] md:items-end">
+              <Field label="Paid from"><SearchableSelect buttonClassName={selectButtonClass} options={banks} value={pay.bankAccountId} onChange={(option) => setPay({ ...pay, bankAccountId: String(option.id) })} placeholder="Bank" /></Field>
               <Field label="Date"><input type="date" value={pay.date} onChange={(event) => setPay({ ...pay, date: event.target.value })} className={inputClass} /></Field>
               <Field label="Reference"><input value={pay.reference} onChange={(event) => setPay({ ...pay, reference: event.target.value })} className={inputClass} maxLength={80} /></Field>
               <Button variant="primary" busy={busy} disabled={!pay.bankAccountId} onClick={() => void act(() => api.post(`/finance-hub/payroll/runs/${id}/pay`, pay), 'Paid:').then((ok) => { if (ok) setPay(null); })}>Pay {formatInr(run.totals.net)}</Button>
@@ -430,8 +430,8 @@ export function AdvancesDeductionsModule() {
     <Panel title="Advances & deductions" description="Salary advances and loans: paid from the bank to Employee Advances, recovered each month in payroll (never more than the net pay). Statutory deductions are set on each salary profile." actions={canPay ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ partyId: '', amount: '', monthlyRecovery: '', bankAccountId: banks[0]?.id ?? '', date: todayIso(), notes: '' })}>Give advance</Button> : null}>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No advances" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5 text-right">Per month</th><th className="px-4 py-2.5 text-right">Employee balance</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[820px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Employee</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2 text-right">Per month</th><th className="px-3 py-2 text-right">Employee balance</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((item) => (
                 <tr key={item.id}>
@@ -450,12 +450,12 @@ export function AdvancesDeductionsModule() {
       )}
       {form ? (
         <Modal title="Give salary advance" onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={save} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Employee *" wide><SearchableSelect options={(employees.data ?? []).map((row) => ({ id: row.party.id, name: row.party.name }))} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Employee" /></Field>
+          <form onSubmit={save} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Employee *" wide><SearchableSelect buttonClassName={selectButtonClass} options={(employees.data ?? []).map((row) => ({ id: row.party.id, name: row.party.name }))} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Employee" /></Field>
               <Field label="Amount *"><input type="number" min={0} value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} className={inputClass} required /></Field>
               <Field label="Recover per month *"><input type="number" min={0} value={form.monthlyRecovery} onChange={(event) => setForm({ ...form, monthlyRecovery: event.target.value })} className={inputClass} required /></Field>
-              <Field label="Paid from *"><SearchableSelect options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder="Bank / cash" /></Field>
+              <Field label="Paid from *"><SearchableSelect buttonClassName={selectButtonClass} options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder="Bank / cash" /></Field>
               <Field label="Date *"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} required /></Field>
               <Field label="Notes" wide><input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className={inputClass} maxLength={1000} /></Field>
             </div>
@@ -468,21 +468,28 @@ export function AdvancesDeductionsModule() {
 }
 
 /** Payslips of a posted month: view and print (save as PDF). */
+/** Salary register for one payroll month: every payslip with its deductions and employer cost. */
+const salaryRegisterCsv = (run: RunDetail) => downloadCsv(
+  `salary-register-${run.month}.csv`,
+  ['Employee', 'Code', 'PAN', 'Paid days', 'Days in month', 'Gross', 'Employee PF', 'Employee ESI', 'Professional tax', 'TDS', 'Advance recovery', 'Net pay', 'Employer PF', 'Employer ESI'],
+  run.payslips.map((slip) => [slip.party?.name, slip.party?.code, slip.party?.pan, slip.paidDays, slip.daysInMonth, slip.gross, slip.employeePf, slip.employeeEsi, slip.professionalTax, slip.tds, slip.advanceRecovery, slip.net, slip.employerPf, slip.employerEsi]),
+);
+
 export function PayslipsModule() {
   const runs = useResource(async () => ((await api.get('/finance-hub/payroll/runs')).data.runs as Run[]).filter((run) => run.status === 'POSTED' || run.status === 'PAID'), 'payslip-runs');
   const [runId, setRunId] = useState('');
   const chosen = runId || runs.data?.[0]?.id || '';
   const detail = useResource(async () => (chosen ? (await api.get(`/finance-hub/payroll/runs/${chosen}`)).data as RunDetail : null), `payslips-${chosen}`);
   return (
-    <Panel title="Payslips" description="Payslips of approved payroll months. Print one or all; the browser's print dialog saves them as PDF." actions={detail.data ? <Button icon={<Printer className="h-4 w-4" />} onClick={() => printPayslips(detail.data!, detail.data!.payslips)}>Print all</Button> : null}>
-      <div className="border-b border-slate-100 p-4"><Field label="Month"><select value={chosen} onChange={(event) => setRunId(event.target.value)} className={`${inputClass} max-w-xs`}>{(runs.data ?? []).map((run) => <option key={run.id} value={run.id}>{run.month} · {enumLabel(run.status)}</option>)}</select></Field></div>
+    <Panel title="Payslips" description="Payslips of approved payroll months. Print one or all; the browser's print dialog saves them as PDF. Export gives the month's salary register." actions={detail.data ? <><Button icon={<FileSpreadsheet />} onClick={() => salaryRegisterCsv(detail.data!)}>Export register</Button><Button icon={<Printer className="h-4 w-4" />} onClick={() => printPayslips(detail.data!, detail.data!.payslips)}>Print all</Button></> : null}>
+      <div className="border-b border-slate-100 p-3"><Field label="Month"><select value={chosen} onChange={(event) => setRunId(event.target.value)} className={`${inputClass} max-w-xs`}>{(runs.data ?? []).map((run) => <option key={run.id} value={run.id}>{run.month} · {enumLabel(run.status)}</option>)}</select></Field></div>
       {runs.loading || detail.loading ? <LoadingState /> : !chosen ? <EmptyState title="No approved payroll yet" /> : detail.error || !detail.data ? <ErrorBanner message={detail.error || 'Could not load.'} /> : (
-        <div className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">
           {detail.data.payslips.map((slip) => (
-            <div key={slip.id} className="rounded-xl border border-slate-200 p-4">
+            <div key={slip.id} className="rounded-lg border border-slate-200 p-3">
               <div className="flex items-start justify-between"><div><p className="font-semibold">{slip.party?.name}</p><p className="text-xs text-slate-500">{[slip.profile?.designation, `${slip.paidDays}/${slip.daysInMonth} days`].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => printPayslips(detail.data!, [slip])} className="text-slate-400 hover:text-slate-900" aria-label="Print"><Printer className="h-4 w-4" /></button></div>
-              <p className="mt-2 text-sm">Gross {formatInr(slip.gross)} · Deductions {formatInr(slip.gross - slip.net)}</p>
-              <p className="text-lg font-bold">Net {formatInr(slip.net)}</p>
+              <p className="mt-2 text-[13px]">Gross {formatInr(slip.gross)} · Deductions {formatInr(slip.gross - slip.net)}</p>
+              <p className="text-[15px] font-semibold">Net {formatInr(slip.net)}</p>
             </div>
           ))}
         </div>
@@ -510,15 +517,15 @@ export function StatutoryContributionsModule() {
     URL.revokeObjectURL(url);
   };
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Panel><Tabs<StatTab> tabs={[{ key: 'summary', label: 'PF / ESI / PT' }, { key: 'challans', label: 'Challans' }]} active={tab} onChange={setTab} /></Panel>
       {tab === 'challans' ? <ChallansModule fixedTypes={['PF', 'ESI', 'PROFESSIONAL_TAX', 'TDS']} /> : (
         <Panel title="Statutory contributions" description="From the approved payroll. PF and ESI are due by the 15th of the next month; upload the ECR file on the EPFO portal and the ESI sheet on ESIC, then record the challans." actions={data.data?.pf.length ? <><Button icon={<Download className="h-4 w-4" />} onClick={ecr}>PF ECR file</Button><Button icon={<Download className="h-4 w-4" />} disabled={!data.data.esi.length} onClick={() => downloadCsv(`ESI-${month}.csv`, ['IP number', 'Name', 'Days', 'Wages', 'Employee', 'Employer'], data.data!.esi.map((row) => [row.ipNumber, row.name, row.days, row.wages, row.employee, row.employer]))}>ESI sheet</Button></> : null}>
-          <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4"><Field label="Month"><input type="month" value={month} max={thisMonth()} onChange={(event) => setMonth(event.target.value)} className={inputClass} /></Field></div>
+          <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-3"><Field label="Month"><input type="month" value={month} max={thisMonth()} onChange={(event) => setMonth(event.target.value)} className={inputClass} /></Field></div>
           {data.loading ? <LoadingState /> : data.error || !data.data ? <ErrorBanner message={data.error || 'Could not load.'} schemaMissing={data.schemaMissing} /> : !data.data.run ? <EmptyState title="No approved payroll for this month" /> : (
             <>
-              <div className="grid gap-3 p-4 sm:grid-cols-4">
-                {[['PF payable', data.data.totals?.pf], ['ESI payable', data.data.totals?.esi], ['Professional tax', data.data.totals?.pt], ['TDS on salary', data.data.totals?.tds]].map(([label, value]) => <div key={label as string} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-base font-bold">{formatInr(value as number)}</p></div>)}
+              <div className="grid gap-3 p-3 sm:grid-cols-4">
+                {[['PF payable', data.data.totals?.pf], ['ESI payable', data.data.totals?.esi], ['Professional tax', data.data.totals?.pt], ['TDS on salary', data.data.totals?.tds]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold">{formatInr(value as number)}</p></div>)}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[960px] text-left text-xs">
@@ -526,7 +533,7 @@ export function StatutoryContributionsModule() {
                   <tbody className="divide-y divide-slate-100">{data.data.pf.map((row) => <tr key={row.partyId}><td className="px-3 py-2 font-mono">{row.uan ?? <span className="text-red-600">missing</span>}</td><td className="px-3 py-2">{row.name}</td><td className="px-3 py-2 text-right">{formatInr(row.grossWages)}</td><td className="px-3 py-2 text-right">{formatInr(row.epfWages)}</td><td className="px-3 py-2 text-right">{formatInr(row.epsWages)}</td><td className="px-3 py-2 text-right">{formatInr(row.epfContribution)}</td><td className="px-3 py-2 text-right">{formatInr(row.epsContribution)}</td><td className="px-3 py-2 text-right">{formatInr(row.epfEpsDifference)}</td><td className="px-3 py-2 text-right">{row.ncpDays}</td></tr>)}</tbody>
                 </table>
               </div>
-              {data.data.pt.length ? <p className="px-4 py-3 text-sm">Professional tax: {data.data.pt.map((row) => `state ${row.state}: ${row.employees} employees, ${formatInr(row.amount)}`).join(' · ')}</p> : null}
+              {data.data.pt.length ? <p className="px-3 py-2 text-[13px]">Professional tax: {data.data.pt.map((row) => `state ${row.state}: ${row.employees} employees, ${formatInr(row.amount)}`).join(' · ')}</p> : null}
             </>
           )}
         </Panel>
@@ -576,8 +583,8 @@ export function FullFinalModule() {
     <Panel title="Full & final settlement" description="When an employee leaves: salary for the last days, leave encashment, gratuity (after 5 years: 15/26 × last basic × years), bonus, less notice recovery, TDS and any advance. Approval posts it and takes the employee off payroll." actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ partyId: '', lastWorkingDay: todayIso(), tds: '', notes: '', items: [{ code: 'SALARY', label: 'Salary for days worked', amount: '' }, { code: 'LEAVE_ENCASHMENT', label: 'Leave encashment', amount: '' }] })}>New settlement</Button> : null}>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.length ? <EmptyState title="No settlements" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Last day</th><th className="px-4 py-2.5">Items</th><th className="px-4 py-2.5 text-right">Net payable</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[860px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Employee</th><th className="px-3 py-2">Last day</th><th className="px-3 py-2">Items</th><th className="px-3 py-2 text-right">Net payable</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.map((item) => (
                 <tr key={item.id}>
@@ -598,14 +605,14 @@ export function FullFinalModule() {
       )}
       {form ? (
         <Modal title="New full & final settlement" onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={(event) => { event.preventDefault(); void run(() => api.post('/finance-hub/payroll/full-final', { ...form, tds: form.tds || null, items: form.items.map((item) => ({ ...item, amount: Number(item.amount) || 0 })) }), 'Settlement drafted for approval.').then((ok) => { if (ok) setForm(null); }); }} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Employee *"><SearchableSelect options={(employees.data ?? []).filter((row) => row.salary?.isActive).map((row) => ({ id: row.party.id, name: row.party.name }))} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Employee on payroll" /></Field>
+          <form onSubmit={(event) => { event.preventDefault(); void run(() => api.post('/finance-hub/payroll/full-final', { ...form, tds: form.tds || null, items: form.items.map((item) => ({ ...item, amount: Number(item.amount) || 0 })) }), 'Settlement drafted for approval.').then((ok) => { if (ok) setForm(null); }); }} className="p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Employee *"><SearchableSelect buttonClassName={selectButtonClass} options={(employees.data ?? []).filter((row) => row.salary?.isActive).map((row) => ({ id: row.party.id, name: row.party.name }))} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Employee on payroll" /></Field>
               <Field label="Last working day *"><input type="date" value={form.lastWorkingDay} onChange={(event) => setForm({ ...form, lastWorkingDay: event.target.value })} className={inputClass} required /></Field>
               <Field label="TDS"><input type="number" min={0} value={form.tds} onChange={(event) => setForm({ ...form, tds: event.target.value })} className={inputClass} /></Field>
             </div>
             {chosen ? <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">Basic {formatInr(basic)} · joined {formatDate(chosen.salary?.dateOfJoining)} · {years} completed years · gratuity {years >= 5 ? formatInr(suggestedGratuity) : 'not due (< 5 years)'} · leave encashment per day {formatInr(Math.round(basic / 26))} · advance to recover {formatInr(chosen.advanceBalance)} (deducted automatically)</p> : null}
-            <table className="mt-3 w-full text-sm">
+            <table className="mt-3 w-full text-[13px]">
               <tbody className="divide-y divide-slate-100">
                 {form.items.map((item, index) => (
                   <tr key={index}>

@@ -264,6 +264,7 @@ export const completeFollowUp = async (access: CrmAccess, id: string, body: Reco
   const nextDue = nextInput ? dateOrNull(nextInput.dueAt, 'next follow-up date') : null;
   if (nextDue && nextDue.getTime() < Date.now() - 5 * 60 * 1000) throw badRequest('The next follow-up must be in the future.');
   const leadStatus = textOrNull(body.leadStatus, 40)?.toUpperCase() ?? null;
+  if (leadStatus === 'WON' && followUp.lead?.status !== 'WON') throw badRequest('Mark a deal as won with Close Deal, so the machine, the deal value and the Sold Vehicle record are captured.', { code: 'CLOSE_DEAL_REQUIRED' });
   const { terminal } = await listPipelineStageStatusSets();
   const closingLead = Boolean(leadStatus && (terminal.includes(leadStatus) || isClosedStatus(leadStatus)));
   const lead = followUp.lead;

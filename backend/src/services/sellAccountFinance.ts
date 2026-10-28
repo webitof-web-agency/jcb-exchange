@@ -12,11 +12,22 @@ export type SellAccountDealStatus =
   | 'RTO_WORK_IN_PROGRESS'
   | 'RTO_WORK_FAILED'
   | 'RTO_WORK_COMPLETED'
-  | 'DEAL_DONE';
+  | 'DEAL_DONE'
+  | 'CANCELLED';
+
+export type SellAccountReceiptStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED';
 
 export interface SellAccountPaymentInput {
   side?: SellAccountPaymentSide | string;
   amount?: number | string;
+  // Missing = ISSUED (records saved before draft receipts existed).
+  receiptStatus?: SellAccountReceiptStatus | string | null;
+}
+
+export interface SellAccountRefundInput {
+  status?: string;
+  amount?: number | string;
+  forfeitAmount?: number | string;
 }
 
 export interface SellAccountFinanceInput {
@@ -33,6 +44,8 @@ export interface SellAccountFinanceInput {
   purchaseExchangeValue?: number | string;
   saleExchangeValue?: number | string;
   payments?: SellAccountPaymentInput[];
+  refunds?: SellAccountRefundInput[];
+  cancelled?: boolean;
 }
 
 export const SELL_ACCOUNT_EXPENSE_KEYS = ['transport', 'paperwork', 'rtoWork', 'other'] as const;
@@ -124,16 +137,31 @@ export const calculateSellAccountGst = (input: SellAccountFinanceInput = {}) => 
   };
 };
 
+const isIssued = (payment: SellAccountPaymentInput) => (payment.receiptStatus ?? 'ISSUED') === 'ISSUED';
+
+/**
+ * Only ISSUED customer receipts count as money received; DRAFT receipts are shown as pending.
+ * Paid refunds (and amounts forfeited on a cancelled deal) come off what was received.
+ * A cancelled deal expects nothing more from the customer, so everything still held is refundable.
+ */
 export const calculateSellAccountPaymentSummary = (input: SellAccountFinanceInput = {}) => {
-  const expectedSale = roundMoney(Math.max(number(input.sellAmount) - number(input.saleExchangeValue), 0));
+  const cancelled = input.cancelled === true;
+  const dealSale = roundMoney(Math.max(number(input.sellAmount) - number(input.saleExchangeValue), 0));
+  const expectedSale = cancelled ? 0 : dealSale;
   const expectedPurchase = roundMoney(Math.max(number(input.purchaseAmount) - number(input.purchaseExchangeValue), 0));
   const payments = Array.isArray(input.payments) ? input.payments : [];
-  const purchaserReceived = roundMoney(payments
-    .filter((payment) => payment.side === 'PURCHASER_RECEIPT')
-    .reduce((total, payment) => total + number(payment.amount), 0));
-  const sellerPaid = roundMoney(payments
-    .filter((payment) => payment.side === 'SELLER_PAYMENT')
-    .reduce((total, payment) => total + number(payment.amount), 0));
+  const refunds = Array.isArray(input.refunds) ? input.refunds : [];
+  const sum = (items: SellAccountPaymentInput[]) => roundMoney(items.reduce((total, payment) => total + number(payment.amount), 0));
+  const customerReceipts = payments.filter((payment) => payment.side === 'PURCHASER_RECEIPT');
+  const purchaserReceivedGross = sum(customerReceipts.filter(isIssued));
+  const purchaserDraftPending = sum(customerReceipts.filter((payment) => payment.receiptStatus === 'DRAFT'));
+  const paidRefunds = refunds.filter((refund) => refund.status === 'PAID');
+  const purchaserRefunded = roundMoney(paidRefunds.reduce((total, refund) => total + number(refund.amount), 0));
+  const purchaserForfeited = roundMoney(paidRefunds.reduce((total, refund) => total + number(refund.forfeitAmount), 0));
+  const openRefunds = refunds.filter((refund) => refund.status === 'REQUESTED' || refund.status === 'APPROVED');
+  const purchaserRefundPending = roundMoney(openRefunds.reduce((total, refund) => total + number(refund.amount) + number(refund.forfeitAmount), 0));
+  const purchaserReceived = roundMoney(Math.max(purchaserReceivedGross - purchaserRefunded - purchaserForfeited, 0));
+  const sellerPaid = sum(payments.filter((payment) => payment.side === 'SELLER_PAYMENT' && isIssued(payment)));
   // A deal settled entirely by exchange has nothing left to collect in cash.
   const status = (received: number, expected: number, dealValue: unknown): SellAccountPaymentStatus => {
     if (expected <= 0) return number(dealValue) > 0 ? 'FULL' : 'UNPAID';
@@ -141,18 +169,46 @@ export const calculateSellAccountPaymentSummary = (input: SellAccountFinanceInpu
     if (received >= expected) return 'FULL';
     return 'PARTIAL';
   };
+  const purchaserExcess = roundMoney(Math.max(purchaserReceived - expectedSale, 0));
 
   return {
     customerCashReceivable: expectedSale,
     sellerCashPayable: expectedPurchase,
+    purchaserReceivedGross,
+    purchaserDraftPending,
+    purchaserRefunded,
+    purchaserForfeited,
+    purchaserRefundPending,
     purchaserReceived,
     purchaserBalance: roundMoney(Math.max(expectedSale - purchaserReceived, 0)),
-    purchaserPaymentStatus: status(purchaserReceived, expectedSale, input.sellAmount),
+    purchaserPaymentStatus: cancelled ? 'UNPAID' as SellAccountPaymentStatus : status(purchaserReceived, expectedSale, input.sellAmount),
+    // Money the customer can be refunded now: overpayment, or everything held on a cancelled deal.
+    purchaserRefundable: roundMoney(Math.max(purchaserExcess - purchaserRefundPending, 0)),
     sellerPaid,
     sellerBalance: roundMoney(Math.max(expectedPurchase - sellerPaid, 0)),
     sellerPaymentStatus: status(sellerPaid, expectedPurchase, input.purchaseAmount),
   };
 };
+
+type StoredRecord = {
+  sellAmount: unknown; purchaseAmount: unknown; purchaseType?: string | null; saleType?: string | null;
+  purchaseExchangeValue?: unknown; saleExchangeValue?: unknown; cancelledAt?: Date | string | null;
+};
+
+/** Payment summary of a stored Sold Vehicle (exchange values only count for exchange deals). */
+export const paymentSummaryForSellAccount = (
+  record: StoredRecord,
+  payments: Array<{ side: string; amount: unknown; receiptStatus?: string | null }>,
+  refunds: Array<{ status: string; amount: unknown; forfeitAmount?: unknown }> = [],
+) => calculateSellAccountPaymentSummary({
+  sellAmount: Number(record.sellAmount),
+  purchaseAmount: Number(record.purchaseAmount),
+  purchaseExchangeValue: record.purchaseType === 'EXCHANGE' ? Number(record.purchaseExchangeValue || 0) : 0,
+  saleExchangeValue: record.saleType === 'EXCHANGE' ? Number(record.saleExchangeValue || 0) : 0,
+  payments: payments.map((item) => ({ side: item.side, amount: Number(item.amount), receiptStatus: item.receiptStatus ?? 'ISSUED' })),
+  refunds: refunds.map((refund) => ({ status: refund.status, amount: Number(refund.amount), forfeitAmount: Number(refund.forfeitAmount || 0) })),
+  cancelled: Boolean(record.cancelledAt),
+});
 
 export const deriveSellAccountDealStatus = (
   purchaserPaymentStatus: SellAccountPaymentStatus,

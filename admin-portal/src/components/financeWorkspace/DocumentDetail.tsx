@@ -52,7 +52,7 @@ export default function DocumentDetail({ documentId, lookups, onClose, onChanged
   return (
     <Modal title={document ? `${documentLabel[document.docType]} ${document.number ?? '(draft)'}` : 'Document'} subtitle={document?.party.name} onClose={() => { if (!busy) onClose(); }} wide>
       {detail.loading ? <LoadingState /> : detail.error || !document ? <ErrorBanner message={detail.error || 'Not found.'} /> : (
-        <div className="p-5 sm:p-7">
+        <div className="p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={documentStatusTone[document.status]}>{document.status === 'POSTED' ? 'Posted' : document.status === 'DRAFT' ? 'Draft' : 'Cancelled'}</Badge>
             {document.isReverseCharge ? <Badge tone="violet">Reverse charge</Badge> : null}
@@ -61,15 +61,15 @@ export default function DocumentDetail({ documentId, lookups, onClose, onChanged
             {document.voucher ? <button type="button" onClick={() => setOpenVoucher(document.voucher!.id)} className="ml-auto text-xs font-semibold text-blue-700 hover:underline">Voucher {document.voucher.number}{document.voucher.reversal ? ` · reversed by ${document.voucher.reversal.number}` : ''} →</button> : null}
           </div>
 
-          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+          <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-4">
             <div><dt className="text-[11px] uppercase tracking-wide text-slate-500">Date</dt><dd className="font-semibold">{formatDate(document.date)}</dd></div>
             <div><dt className="text-[11px] uppercase tracking-wide text-slate-500">{isPurchaseSide(document.docType) ? 'Supplier' : 'Customer'}</dt><dd className="font-semibold">{document.party.name}</dd>{document.party.gstin ? <dd className="font-mono text-xs text-slate-500">{document.party.gstin}</dd> : null}</div>
             <div><dt className="text-[11px] uppercase tracking-wide text-slate-500">{document.docType === 'PURCHASE_BILL' ? 'Supplier bill no.' : 'Party reference'}</dt><dd className="font-mono">{document.partyDocNumber ?? '—'}</dd></div>
             <div><dt className="text-[11px] uppercase tracking-wide text-slate-500">{document.dueDate ? 'Due' : 'Against'}</dt><dd>{document.dueDate ? formatDate(document.dueDate) : document.against ? `${document.against.number} (${formatInr(document.against.total)})` : document.againstReference ?? '—'}</dd></div>
           </dl>
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[820px] text-left text-sm">
+          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[820px] text-left text-[13px]">
               <thead className={tableHeadClass}><tr><th className="px-3 py-2">Description</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">HSN/SAC</th><th className="px-3 py-2 text-right">Qty × rate</th><th className="px-3 py-2 text-right">Taxable</th><th className="px-3 py-2 text-right">GST</th><th className="px-3 py-2">Vehicle</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {document.lines.map((line) => (
@@ -87,22 +87,22 @@ export default function DocumentDetail({ documentId, lookups, onClose, onChanged
             </table>
           </div>
 
-          <div className="mt-4 ml-auto max-w-sm space-y-1 text-sm">
+          <div className="mt-3 ml-auto max-w-sm space-y-1 text-[13px]">
             <div className="flex justify-between"><span>Taxable value</span><span>{formatInr(document.subTotal)}</span></div>
             {document.cgst ? <div className="flex justify-between"><span>CGST</span><span>{formatInr(document.cgst)}</span></div> : null}
             {document.sgst ? <div className="flex justify-between"><span>SGST</span><span>{formatInr(document.sgst)}</span></div> : null}
             {document.igst ? <div className="flex justify-between"><span>IGST</span><span>{formatInr(document.igst)}</span></div> : null}
             {document.isReverseCharge ? <div className="flex justify-between text-xs text-violet-700"><span>GST under reverse charge (paid by us)</span><span>not in total</span></div> : null}
             {document.roundOff ? <div className="flex justify-between"><span>Round off</span><span>{formatInr(document.roundOff)}</span></div> : null}
-            <div className="flex justify-between border-t border-slate-200 pt-1 text-base font-bold"><span>Total</span><span>{formatInr(document.total)}</span></div>
+            <div className="flex justify-between border-t border-slate-200 pt-1 text-[15px] font-semibold"><span>Total</span><span>{formatInr(document.total)}</span></div>
             {document.tdsAmount ? <div className="flex justify-between text-slate-600"><span>− TDS {document.tdsSection}</span><span>{formatInr(document.tdsAmount)}</span></div> : null}
             {document.tdsAmount ? <div className="flex justify-between font-semibold"><span>Payable to supplier</span><span>{formatInr(document.total - document.tdsAmount)}</span></div> : null}
           </div>
-          {document.notes ? <p className="mt-3 text-sm text-slate-600">Notes: {document.notes}</p> : null}
-          {document.cancelReason ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Cancelled: {document.cancelReason}</p> : null}
+          {document.notes ? <p className="mt-3 text-[13px] text-slate-600">Notes: {document.notes}</p> : null}
+          {document.cancelReason ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">Cancelled: {document.cancelReason}</p> : null}
 
           {cancelling ? (
-            <div className="mt-4 grid gap-3 rounded-xl border border-red-200 bg-red-50/40 p-4 md:grid-cols-[1fr_180px]">
+            <div className="mt-3 grid gap-3 rounded-lg border border-red-200 bg-red-50/40 p-3 md:grid-cols-[1fr_180px]">
               <Field label="Reason for cancelling *"><input value={cancelling.reason} onChange={(event) => setCancelling({ ...cancelling, reason: event.target.value })} className={inputClass} maxLength={500} autoFocus /></Field>
               <Field label="Reversal date"><input type="date" value={cancelling.date} onChange={(event) => setCancelling({ ...cancelling, date: event.target.value })} className={inputClass} /></Field>
             </div>

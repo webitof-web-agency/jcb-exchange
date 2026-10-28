@@ -36,6 +36,7 @@ import {
   label,
   LEAD_TYPE_LABELS,
   leadHref,
+  leadWhatsAppMessage,
   phoneLinks,
   relative,
   requirementSummary,
@@ -536,7 +537,7 @@ export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChange
                         lead.nextFollowUpAt &&
                         !overdue &&
                         new Date(lead.nextFollowUpAt).toDateString() === new Date(now).toDateString();
-                      const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber);
+                      const links = phoneLinks(lead.customer.mobile, lead.customer.whatsappNumber, leadWhatsAppMessage(lead.customer.name, lead));
                       const stageIndex = rawColumns.findIndex((item) => item.status === lead.status);
                       const dynamicFlow = stageIndex >= 0 ? {
                         prev: rawColumns[stageIndex - 1]?.status,

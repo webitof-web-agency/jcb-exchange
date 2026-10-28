@@ -107,7 +107,7 @@ export default function FinancialYearsModule() {
   const reopening = pending ? pending.to === 'OPEN' || (pending.to === 'SOFT_CLOSED' && pending.from === 'LOCKED') : false;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Panel
         title="Financial years"
         description="Indian FY (April–March). Creating a year adds its 12 monthly periods and a voucher number series for every voucher type."
@@ -115,10 +115,10 @@ export default function FinancialYearsModule() {
       >
         {!canManage ? <ReadOnlyNotice>You can view years and periods. Creating years needs “Manage Finance Settings”.</ReadOnlyNotice> : null}
         {list.length ? (
-          <div className="flex flex-wrap gap-2 p-5">
+          <div className="flex flex-wrap gap-2 p-4">
             {list.map((year) => (
-              <button key={year.id} type="button" onClick={() => setSelectedId(year.id)} className={`rounded-xl border px-4 py-3 text-left transition ${selected?.id === year.id ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                <span className="flex items-center gap-2 text-sm font-bold text-slate-900">{year.label}{year.isCurrent ? <Badge tone="blue">Current</Badge> : null}</span>
+              <button key={year.id} type="button" onClick={() => setSelectedId(year.id)} className={`rounded-lg border px-3 py-2 text-left transition ${selected?.id === year.id ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">{year.label}{year.isCurrent ? <Badge tone="blue">Current</Badge> : null}</span>
                 <span className="mt-0.5 block text-xs text-slate-500">{formatDate(year.startDate)} – {formatDate(year.endDate)}</span>
               </button>
             ))}
@@ -136,8 +136,8 @@ export default function FinancialYearsModule() {
         >
           {!canLock ? <ReadOnlyNotice>Closing and reopening months needs the “Close, Lock & Reopen Periods” permission.</ReadOnlyNotice> : null}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Month</th><th className="px-4 py-2.5">Dates</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5">Last change</th><th className="px-4 py-2.5 text-right">Actions</th></tr></thead>
+            <table className="w-full min-w-[720px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">Month</th><th className="px-3 py-2">Dates</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Last change</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {selected.periods.map((period) => (
                   <tr key={period.id}>
@@ -164,7 +164,7 @@ export default function FinancialYearsModule() {
 
       {createOpen ? (
         <Modal title="Create financial year" subtitle="Adds 12 monthly periods (all open) and voucher number series such as JV/26-27/00001." onClose={() => { if (!busy) setCreateOpen(false); }}>
-          <form onSubmit={createYear} className="p-5 sm:p-7">
+          <form onSubmit={createYear} className="p-4">
             <Field label="Financial year *">
               <select value={startYear} onChange={(event) => setStartYear(event.target.value)} className={inputClass} required>
                 {yearOptions.map((year) => <option key={year} value={year}>FY {year}-{String((year + 1) % 100).padStart(2, '0')} (1 Apr {year} – 31 Mar {year + 1})</option>)}
@@ -180,7 +180,7 @@ export default function FinancialYearsModule() {
 
       {pending ? (
         <Modal title={`${pending.to === 'OPEN' ? 'Reopen' : pending.to === 'LOCKED' ? 'Lock' : 'Soft close'} ${pending.label}`} subtitle={reopening ? 'Reopening is recorded in the audit trail with your reason.' : 'Posting into this month will be restricted.'} onClose={() => { if (!busy) setPending(null); }}>
-          <form onSubmit={applyChange} className="p-5 sm:p-7">
+          <form onSubmit={applyChange} className="p-4">
             <Field label={reopening ? 'Reason *' : 'Note'}>
               <textarea value={reason} onChange={(event) => setReason(event.target.value)} className={`${inputClass} min-h-24`} required={reopening} maxLength={500} placeholder={reopening ? 'Why does this month need to be reopened?' : 'Optional'} />
             </Field>

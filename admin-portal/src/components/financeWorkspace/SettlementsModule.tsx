@@ -1,12 +1,14 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { downloadTableFile } from '@/lib/tabularExport';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { isCashBank, toPaise, todayIso, useLedgerLookups } from './ledgerLookups';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -48,31 +50,71 @@ export default function SettlementsModule() {
   };
 
   const drafts = (history.data ?? []).filter((item) => item.status === 'DRAFT').length;
+  const today = todayIso();
+  const exportCsv = () => {
+    if (tab === 'open') {
+      const rows = (open.data ?? []).flatMap((entry) => entry.items.map((item) => ({ entry, item })));
+      type Line = (typeof rows)[number];
+      downloadTableFile({
+        columns: [
+          { header: 'Party code', value: (row: Line) => row.entry.party.code },
+          { header: 'Party', value: (row: Line) => row.entry.party.name },
+          { header: 'PAN', value: (row: Line) => row.entry.party.pan ?? '' },
+          { header: 'TDS section', value: (row: Line) => row.entry.party.tdsSection ?? '' },
+          { header: 'Kind', value: (row: Line) => KIND_LABEL[row.item.systemKey] ?? row.item.accountName },
+          { header: 'Vehicle', value: (row: Line) => row.item.vehicle ?? '' },
+          { header: 'Owed', value: (row: Line) => row.item.balance },
+        ],
+        rows,
+        fileName: `settlements-owed-${today}`,
+        format: 'csv',
+      });
+      return;
+    }
+    downloadTableFile({
+      columns: [
+        { header: 'Date', value: (row: Settlement) => formatDate(row.date) },
+        { header: 'Party code', value: (row: Settlement) => row.party.code },
+        { header: 'Party', value: (row: Settlement) => row.party.name },
+        { header: 'Gross', value: (row: Settlement) => row.grossAmount },
+        { header: 'TDS', value: (row: Settlement) => row.tdsAmount },
+        { header: 'TDS section', value: (row: Settlement) => row.tdsSection ?? '' },
+        { header: 'Paid', value: (row: Settlement) => row.netAmount },
+        { header: 'Reference', value: (row: Settlement) => row.reference ?? '' },
+        { header: 'Status', value: (row: Settlement) => enumLabel(row.status) },
+        { header: 'Voucher', value: (row: Settlement) => row.voucherNumber ?? '' },
+      ],
+      rows: history.data ?? [],
+      fileName: `settlements-history-${today}`,
+      format: 'csv',
+    });
+  };
+  const exportable = tab === 'open' ? Boolean(open.data?.length) : Boolean(history.data?.length);
 
   return (
-    <Panel title="Partner commission & settlement" description="Partner profit share, brokerage and consignment proceeds owed (from posted ledger entries), and the payouts made against them.">
+    <Panel title="Partner commission & settlement" description="Partner profit share, brokerage and consignment proceeds owed (from posted ledger entries), and the payouts made against them." actions={exportable ? <Button icon={<FileSpreadsheet />} onClick={exportCsv}>Export CSV</Button> : null}>
       <ReadOnlyNotice>Only posted entries count. While automatic posting is in shadow mode the vehicle entries are drafts, so nothing shows here until they are posted (or posting goes live).</ReadOnlyNotice>
       <Tabs<Tab> tabs={[{ key: 'open', label: `Owed now${open.data?.length ? ` (${open.data.length})` : ''}` }, { key: 'history', label: `Settlements${drafts ? ` · ${drafts} draft` : ''}` }]} active={tab} onChange={setTab} />
       {tab === 'open' ? (
         open.loading ? <LoadingState /> : open.error ? <ErrorBanner message={open.error} schemaMissing={open.schemaMissing} /> : !open.data?.length ? (
           <EmptyState title="Nothing owed" description="Brokerage, partner share and consignment amounts appear here once their vouchers are posted." />
         ) : (
-          <div className="space-y-3 p-4">
+          <div className="space-y-3 p-3">
             {open.data.map((entry) => (
-              <div key={entry.party.id} className="rounded-xl border border-slate-200">
-                <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+              <div key={entry.party.id} className="rounded-lg border border-slate-200">
+                <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-3 py-2">
                   <span className="font-semibold text-slate-900">{entry.party.name}</span>
                   <span className="font-mono text-xs text-slate-500">{entry.party.code}{entry.party.pan ? ` · PAN ${entry.party.pan}` : ''}</span>
-                  <span className="ml-auto text-base font-bold">{formatInr(entry.total)}</span>
+                  <span className="ml-auto text-[15px] font-semibold">{formatInr(entry.total)}</span>
                   {canCreate ? <Button variant="primary" onClick={() => setSettling(entry)}>Settle…</Button> : null}
                 </div>
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left text-[13px]">
                   <tbody className="divide-y divide-slate-100">
                     {entry.items.map((item) => (
                       <tr key={`${item.accountId}-${item.sellAccountId}`}>
-                        <td className="px-4 py-2"><Badge tone="violet">{KIND_LABEL[item.systemKey] ?? item.accountName}</Badge></td>
-                        <td className="px-4 py-2 text-xs">{item.vehicle ?? 'Not tied to a vehicle'}</td>
-                        <td className="px-4 py-2 text-right font-semibold">{formatInr(item.balance)}</td>
+                        <td className="px-3 py-2"><Badge tone="violet">{KIND_LABEL[item.systemKey] ?? item.accountName}</Badge></td>
+                        <td className="px-3 py-2 text-xs">{item.vehicle ?? 'Not tied to a vehicle'}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{formatInr(item.balance)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -85,8 +127,8 @@ export default function SettlementsModule() {
         <EmptyState title="No settlements yet" description="Settle an amount from the “Owed now” tab." />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5 text-right">Gross</th><th className="px-4 py-2.5 text-right">TDS</th><th className="px-4 py-2.5 text-right">Paid</th><th className="px-4 py-2.5">Reference</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[920px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Party</th><th className="px-3 py-2 text-right">Gross</th><th className="px-3 py-2 text-right">TDS</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {history.data.map((item) => (
                 <tr key={item.id}>
@@ -153,8 +195,8 @@ function SettlementForm({ entry, canPay, onClose, onSaved }: { entry: OpenParty;
 
   return (
     <Modal title={`Settle with ${entry.party.name}`} subtitle="Pay part or all of what is owed. TDS deducted is credited to TDS Payable." onClose={() => { if (!busy) onClose(); }} wide>
-      <form onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(false); }} className="p-5 sm:p-7">
-        <table className="w-full text-left text-sm">
+      <form onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(false); }} className="p-4">
+        <table className="w-full text-left text-[13px]">
           <thead className={tableHeadClass}><tr><th className="px-3 py-2">For</th><th className="px-3 py-2">Vehicle</th><th className="px-3 py-2 text-right">Owed</th><th className="px-3 py-2 text-right">Pay now</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {entry.items.map((item) => {
@@ -170,9 +212,9 @@ function SettlementForm({ entry, canPay, onClose, onSaved }: { entry: OpenParty;
             })}
           </tbody>
         </table>
-        <div className="mt-4 grid gap-4 md:grid-cols-4">
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
           <Field label="Payment date *"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} required /></Field>
-          <Field label="Paid from *" wide><SearchableSelect options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder={banks.length ? 'Bank / cash account' : 'Add a bank account in Banking first'} /></Field>
+          <Field label="Paid from *" wide><SearchableSelect buttonClassName={selectButtonClass} options={banks} value={form.bankAccountId} onChange={(option) => setForm({ ...form, bankAccountId: String(option.id) })} placeholder={banks.length ? 'Bank / cash account' : 'Add a bank account in Banking first'} /></Field>
           <Field label="Mode">
             <select value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })} className={inputClass}>
               {PAYMENT_METHODS.map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}
@@ -183,7 +225,7 @@ function SettlementForm({ entry, canPay, onClose, onSaved }: { entry: OpenParty;
           <Field label="TDS amount"><input type="number" min={0} step="0.01" value={form.tdsAmount} onChange={(event) => setForm({ ...form, tdsAmount: event.target.value })} className={inputClass} /></Field>
           <Field label="Notes"><input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className={inputClass} maxLength={1000} /></Field>
         </div>
-        <p className="mt-4 text-right text-sm font-semibold text-slate-800">Gross {formatInr(gross / 100)} · TDS {formatInr(toPaise(form.tdsAmount) / 100)} · <span className="text-base">Pay {formatInr(net / 100)}</span></p>
+        <p className="mt-3 text-right text-[13px] font-semibold text-slate-800">Gross {formatInr(gross / 100)} · TDS {formatInr(toPaise(form.tdsAmount) / 100)} · <span className="text-[15px]">Pay {formatInr(net / 100)}</span></p>
         <ModalFooter>
           <Button onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="submit" busy={busy} disabled={gross <= 0 || net <= 0 || !form.bankAccountId}>Save draft</Button>

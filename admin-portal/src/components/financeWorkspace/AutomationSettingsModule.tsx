@@ -59,11 +59,11 @@ export default function AutomationSettingsModule() {
   if (settings.error || !form || !current) return <Panel><ErrorBanner message={settings.error || 'Settings unavailable.'} schemaMissing={settings.schemaMissing} /></Panel>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Panel title="Voucher approvals (maker-checker)" description="When a posted voucher matches a rule it waits in Alerts & Pending Approvals until someone else with “Approve Finance Entries” approves it. Super admins may approve their own.">
         {!canManage ? <ReadOnlyNotice>Changing these needs “Manage Finance Settings”.</ReadOnlyNotice> : null}
-        <form onSubmit={save} className="p-5 sm:p-7">
-          <fieldset disabled={!canManage} className="grid gap-4 md:grid-cols-3">
+        <form onSubmit={save} className="p-4">
+          <fieldset disabled={!canManage} className="grid gap-3 md:grid-cols-3">
             <Field label="Approval needed at or above (₹)" hint="Blank = no amount rule."><input type="number" min={0} step="0.01" value={form.threshold} onChange={(event) => setDraft({ ...form, threshold: event.target.value })} className={inputClass} /></Field>
             <div className="flex items-end pb-2.5 md:col-span-2"><Toggle checked={form.cash} onChange={(value) => setDraft({ ...form, cash: value })} label="Every voucher touching cash or petty cash needs approval" /></div>
             <Field label="Cash payment warning limit (₹)" hint="Sec 40A(3) — default ₹10,000 per party per day."><input type="number" min={0} step="0.01" value={form.cashLimit} onChange={(event) => setDraft({ ...form, cashLimit: event.target.value })} className={inputClass} /></Field>

@@ -4441,6 +4441,7 @@ export default function PartnerListingsPage() {
                       compact={true}
                       value={form.rtoDetails}
                       onChange={updateRtoField}
+                      manufacturingYear={form.manufacturingYear}
                       insuranceExpiry={form.insuranceExpiry}
                       onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
                       required={!editingListingId || hasListingRtoInput(form.rtoDetails)}

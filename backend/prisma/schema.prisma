@@ -475,7 +475,9 @@ model User {
   createdListingBills                ListingBill[]                      @relation("ListingBillCreator")
   auditLogs                          AuditLog[]                         @relation("AuditActor")
   drivingLicenseVerificationRecords  DrivingLicenseVerificationRecord[] @relation("DrivingLicenseVerificationRequester")
+  drivingLicenseVerificationTemplates DrivingLicenseVerificationTemplate[] @relation("DrivingLicenseVerificationTemplateRequester")
   rcOwnerHistoryRecords              RcOwnerHistoryRecord[]             @relation("RcOwnerHistoryRequester")
+  rcOwnerHistoryTemplates            RcOwnerHistoryTemplate[]           @relation("RcOwnerHistoryTemplateRequester")
   rcChallanVerificationRecords       RcChallanVerificationRecord[]      @relation("RcChallanVerificationRequester")
   chassisToRcVerificationRecords     ChassisToRcVerificationRecord[]    @relation("ChassisToRcVerificationRequester")
   rcToMobileVerificationRecords      RcToMobileVerificationRecord[]     @relation("RcToMobileVerificationRequester")
@@ -810,10 +812,12 @@ model DrivingLicenseVerificationRecord {
   messageCode         String?
   safeMessage         String?                          @db.Text
   encryptedResult     String?                          @db.Text
+  rawDataExpiresAt    DateTime?
   requestedById       String
   createdAt           DateTime                         @default(now())
   completedAt         DateTime?
 
+  template           DrivingLicenseVerificationTemplate? @relation("DrivingLicenseVerificationRecordTemplate")
   requestedBy User @relation("DrivingLicenseVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -821,6 +825,24 @@ model DrivingLicenseVerificationRecord {
   @@index([maskedLicenseNumber, createdAt])
   @@index([currentStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model DrivingLicenseVerificationTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord DrivingLicenseVerificationRecord @relation("DrivingLicenseVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                            @relation("DrivingLicenseVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model RcOwnerHistoryRecord {
@@ -838,10 +860,12 @@ model RcOwnerHistoryRecord {
   messageCode        String?
   safeMessage        String?              @db.Text
   encryptedResult    String?              @db.Text
+  rawDataExpiresAt   DateTime?
   requestedById      String
   createdAt          DateTime             @default(now())
   completedAt        DateTime?
 
+  template           RcOwnerHistoryTemplate? @relation("RcOwnerHistoryRecordTemplate")
   requestedBy User @relation("RcOwnerHistoryRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
@@ -851,6 +875,24 @@ model RcOwnerHistoryRecord {
   @@index([requestFingerprint, status, completedAt])
   @@index([serviceKey, status, createdAt])
   @@index([serviceKey, requestFingerprint, status, completedAt])
+  @@index([rawDataExpiresAt])
+}
+
+model RcOwnerHistoryTemplate {
+  id                   String   @id @default(uuid())
+  verificationRecordId String   @unique
+  driveFileId          String
+  fileName             String
+  mimeType             String
+  fileSize             Int
+  sha256               String   @db.VarChar(64)
+  createdAt            DateTime @default(now())
+
+  verificationRecord RcOwnerHistoryRecord @relation("RcOwnerHistoryRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  requestedBy        User                  @relation("RcOwnerHistoryTemplateRequester", fields: [requestedById], references: [id])
+  requestedById      String
+
+  @@index([requestedById, createdAt])
 }
 
 model RcChallanVerificationRecord {
@@ -1315,6 +1357,30 @@ enum SellAccountPaymentMethod {
   OTHER
 }
 
+// Customer receipts start as DRAFT (no receipt number, not sent, not counted in the balance)
+// and become ISSUED when staff convert them. CANCELLED = an issued receipt whose money never
+// arrived (e.g. a bounced cheque). Seller payments are always ISSUED.
+enum SellAccountReceiptStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum SellAccountRefundStatus {
+  REQUESTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum SellAccountRefundReason {
+  DEAL_CANCELLED
+  EXCESS_PAYMENT
+  PRICE_REDUCTION
+  VEHICLE_RETURN
+  OTHER
+}
+
 enum SellAccountTaxMode {
   INCLUSIVE
   EXCLUSIVE
@@ -1425,21 +1491,32 @@ model SellAccount {
   invoiceNumber           String?                 @unique
   invoiceGeneratedAt      DateTime?
   // Only a SHA-256 hash of the public invoice link token is stored.
-  invoiceTokenHash        String?                 @unique
-  invoiceTokenExpiresAt   DateTime?
-  invoiceSentAt           DateTime?
-  invoiceDelivery         Json?
-  createdById             String?
-  updatedById             String?
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
-  deletedAt               DateTime?
+  invoiceTokenHash      String?                @unique
+  invoiceTokenExpiresAt DateTime?
+  invoiceSentAt         DateTime?
+  invoiceDelivery       Json?
+  // Sale cancelled (customer backed out / vehicle returned). When a Bill of Supply was already
+  // issued, a credit note number is assigned against it.
+  cancelledAt           DateTime?
+  cancelledById         String?
+  cancelReason          String?                @db.Text
+  creditNoteNumber      String?                @unique
+  creditNoteDate        DateTime?
+  // Listing this sale was made on, kept after cancelling: the cancel releases listingId so the
+  // vehicle can be sold again on a new record.
+  releasedListingId     String?
+  createdById           String?
+  updatedById           String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
 
-  listing       Listing?                   @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  rtoRecord     VehicleRtoRecord?
-  payments      SellAccountPayment[]
-  statusHistory SellAccountStatusHistory[]
-  deedWorkflows SellAccountDeedWorkflow[]
+  listing               Listing?               @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  rtoRecord             VehicleRtoRecord?
+  payments              SellAccountPayment[]
+  refunds               SellAccountRefund[]
+  statusHistory         SellAccountStatusHistory[]
+  deedWorkflows         SellAccountDeedWorkflow[]
 
   @@index([dealStatus, updatedAt])
   @@index([isDraft, updatedAt])
@@ -1489,16 +1566,27 @@ model SellAccountDeedWorkflow {
 }
 
 model SellAccountPayment {
-  id                     String                   @id @default(uuid())
-  sellAccountId          String
-  side                   SellAccountPaymentSide
-  amount                 Decimal                  @db.Decimal(14, 2)
-  paymentDate            DateTime
-  method                 SellAccountPaymentMethod @default(OTHER)
-  reference              String?
-  note                   String?                  @db.Text
-  receiptNumber          String?                  @unique
-  receiptTokenHash       String?                  @unique
+  id             String                  @id @default(uuid())
+  sellAccountId  String
+  side           SellAccountPaymentSide
+  amount         Decimal                 @db.Decimal(14, 2)
+  paymentDate    DateTime
+  method         SellAccountPaymentMethod @default(OTHER)
+  reference      String?
+  // Bank the cheque / transfer was drawn on ("Drawn on" on the money receipt).
+  drawnOn        String?
+  note           String?                 @db.Text
+  receiptStatus  SellAccountReceiptStatus @default(ISSUED)
+  issuedAt       DateTime?
+  issuedById     String?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?                 @db.Text
+  receiptNumber  String?                 @unique
+  receiptTokenHash String?               @unique
+  // Website payment (ListingPaymentSubmission) this receipt records; the books then post the
+  // money through the sale instead of as a separate customer advance.
+  listingPaymentId String?               @unique
   receiptTokenCiphertext String?
   receiptTokenExpiresAt  DateTime?
   receiptGeneratedAt     DateTime?
@@ -1509,6 +1597,39 @@ model SellAccountPayment {
   sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, side, paymentDate])
+}
+
+// Money returned to the purchaser. Maker-checker: requested by one user, approved by another,
+// then marked paid. Only PAID refunds reach the books and the customer balance.
+// forfeitAmount (cancelled deals only) is kept by JCB Exchange as a cancellation charge.
+model SellAccountRefund {
+  id             String                   @id @default(uuid())
+  sellAccountId  String
+  refundNumber   String?                  @unique
+  status         SellAccountRefundStatus  @default(REQUESTED)
+  reason         SellAccountRefundReason
+  amount         Decimal                  @db.Decimal(14, 2)
+  forfeitAmount  Decimal                  @default(0) @db.Decimal(14, 2)
+  method         SellAccountPaymentMethod @default(BANK_TRANSFER)
+  reference      String?
+  drawnOn        String?
+  refundDate     DateTime?
+  note           String?                  @db.Text
+  requestedById  String?
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedById   String?
+  rejectedAt     DateTime?
+  rejectReason   String?                  @db.Text
+  paidById       String?
+  paidAt         DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  sellAccount    SellAccount              @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@index([sellAccountId, status])
+  @@index([status, createdAt])
 }
 
 model SellAccountStatusHistory {
@@ -1606,6 +1727,8 @@ model RtoTransferTask {
   sortOrder   Int                   @default(0)
   status      RtoTransferTaskStatus @default(PENDING)
   remark      String?               @db.Text
+  /// Proof uploaded for this task (RC copy, insurance policy, NOC...): [{ id, fileUrl, fileName, mimeType, size, uploadedAt, uploadedById }]
+  documents   Json?
   updatedById String?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt

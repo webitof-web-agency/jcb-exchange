@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, enumLabel, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import { fromPaise, isCashBank, optionalChoices, toPaise, todayIso, type LedgerLookups } from './ledgerLookups';
-import { Badge, Button, Field, inputClass, Modal, ModalFooter } from './ui';
+import { Badge, Button, Field, inputClass, Modal, ModalFooter, selectButtonClass } from './ui';
 
 export const MANUAL_TYPES = ['JOURNAL', 'PAYMENT', 'RECEIPT', 'CONTRA', 'ADJUSTMENT'] as const;
 export type ManualType = (typeof MANUAL_TYPES)[number];
@@ -148,8 +148,8 @@ export default function VoucherForm({ lookups, initial, allowedTypes, defaultTyp
 
   return (
     <Modal title={initial?.id ? 'Edit voucher' : 'New voucher'} subtitle="Draft first; posting gives it a number and puts it in the books. Posted vouchers are corrected by reversal, never edited." onClose={() => { if (!busy) onClose(); }} wide>
-      <form onSubmit={onSubmit} className="p-5 sm:p-7">
-        <div className="grid gap-4 md:grid-cols-4">
+      <form onSubmit={onSubmit} className="p-4">
+        <div className="grid gap-3 md:grid-cols-4">
           <Field label="Voucher type *">
             <select value={type} onChange={(event) => changeType(event.target.value as ManualType)} className={inputClass} disabled={allowedTypes.length === 1}>
               {allowedTypes.map((item) => <option key={item} value={item}>{enumLabel(item)}</option>)}
@@ -168,14 +168,14 @@ export default function VoucherForm({ lookups, initial, allowedTypes, defaultTyp
           <Field label="Narration *" wide><input value={narration} onChange={(event) => setNarration(event.target.value)} className={inputClass} maxLength={1000} required placeholder="What is this entry for?" /></Field>
           {mode === 'simple' ? (
             <Field label={counterLabel} wide>
-              <SearchableSelect options={cashBankOptions} value={counter} onChange={(option) => setCounter(String(option.id))} placeholder="Choose bank / cash account" />
+              <SearchableSelect buttonClassName={selectButtonClass} options={cashBankOptions} value={counter} onChange={(option) => setCounter(String(option.id))} placeholder="Choose bank / cash account" />
             </Field>
           ) : null}
         </div>
 
-        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[1000px] text-left text-[13px]">
+            <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2">{mode === 'simple' ? amountLabel : 'Ledger'}</th>
                 <th className="px-3 py-2">Party</th>
@@ -191,10 +191,10 @@ export default function VoucherForm({ lookups, initial, allowedTypes, defaultTyp
                 const account = lookups.accountsById.get(row.accountId);
                 return (
                   <tr key={row.key}>
-                    <td className="w-64 px-3 py-2"><SearchableSelect options={lineOptions} value={row.accountId} onChange={(option) => update(row.key, { accountId: String(option.id) })} placeholder="Ledger" size="sm" /></td>
-                    <td className="w-48 px-3 py-2"><SearchableSelect options={optionalChoices(lookups.partyOptions, row.partyId)} value={row.partyId} highlighted={Boolean(account?.requiresParty && !row.partyId)} onChange={(option) => update(row.key, { partyId: String(option.id) })} placeholder={account?.requiresParty ? 'Required' : '—'} size="sm" /></td>
-                    <td className="w-48 px-3 py-2"><SearchableSelect options={optionalChoices(lookups.vehicleOptions, row.sellAccountId)} value={row.sellAccountId} highlighted={Boolean(account?.requiresVehicle && !row.sellAccountId)} onChange={(option) => update(row.key, { sellAccountId: String(option.id) })} placeholder={account?.requiresVehicle ? 'Required' : '—'} size="sm" /></td>
-                    <td className="w-40 px-3 py-2"><SearchableSelect options={optionalChoices(lookups.costCentreOptions, row.costCentreId)} value={row.costCentreId} highlighted={Boolean(account?.requiresCostCentre && !row.costCentreId)} onChange={(option) => update(row.key, { costCentreId: String(option.id) })} placeholder="—" size="sm" /></td>
+                    <td className="w-64 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={lineOptions} value={row.accountId} onChange={(option) => update(row.key, { accountId: String(option.id) })} placeholder="Ledger" size="sm" /></td>
+                    <td className="w-48 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.partyOptions, row.partyId)} value={row.partyId} highlighted={Boolean(account?.requiresParty && !row.partyId)} onChange={(option) => update(row.key, { partyId: String(option.id) })} placeholder={account?.requiresParty ? 'Required' : '—'} size="sm" /></td>
+                    <td className="w-48 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.vehicleOptions, row.sellAccountId)} value={row.sellAccountId} highlighted={Boolean(account?.requiresVehicle && !row.sellAccountId)} onChange={(option) => update(row.key, { sellAccountId: String(option.id) })} placeholder={account?.requiresVehicle ? 'Required' : '—'} size="sm" /></td>
+                    <td className="w-40 px-3 py-2"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.costCentreOptions, row.costCentreId)} value={row.costCentreId} highlighted={Boolean(account?.requiresCostCentre && !row.costCentreId)} onChange={(option) => update(row.key, { costCentreId: String(option.id) })} placeholder="—" size="sm" /></td>
                     {mode === 'simple' ? (
                       <td className="w-36 px-3 py-2"><input type="number" min={0} step="0.01" value={row.amount} onChange={(event) => update(row.key, { amount: event.target.value })} className={`${inputClass} py-2 text-right`} /></td>
                     ) : (
@@ -210,7 +210,7 @@ export default function VoucherForm({ lookups, initial, allowedTypes, defaultTyp
               })}
             </tbody>
           </table>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-3 py-2.5 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-3 py-2 text-[13px]">
             <div className="flex gap-2">
               {type !== 'CONTRA' || mode === 'grid' ? <Button variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setRows([...rows, newRow()])}>Add line</Button> : null}
               {mode === 'simple' ? <Button variant="ghost" onClick={() => switchToGrid()}>Switch to Dr/Cr grid</Button> : null}

@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { enumLabel, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import type { DealTerms } from './DealTermsPanel';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, LoadingState, Modal, Panel, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, LoadingState, Modal, Panel, selectButtonClass, tableHeadClass } from './ui';
 import { useResource } from './useResource';
 import VehicleDetail from './VehicleDetail';
 
@@ -34,8 +34,8 @@ export default function DealTermsListModule({ kind, embedded = false }: { kind: 
 
   const body = (
     <>
-      <div className="grid gap-3 p-4 sm:grid-cols-4">
-        {totals.map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-base font-bold text-slate-900">{value}</p></div>)}
+      <div className="grid gap-3 p-3 sm:grid-cols-4">
+        {totals.map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p><p className="text-[15px] font-semibold text-slate-900">{value}</p></div>)}
       </div>
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !deals.length ? (
         <EmptyState
@@ -44,12 +44,12 @@ export default function DealTermsListModule({ kind, embedded = false }: { kind: 
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-[13px]">
             <thead className={tableHeadClass}>
               {consignment ? (
-                <tr><th className="px-4 py-2.5">Vehicle</th><th className="px-4 py-2.5">Owner</th><th className="px-4 py-2.5">Purchaser</th><th className="px-4 py-2.5 text-right">Sale</th><th className="px-4 py-2.5 text-right">Commission</th><th className="px-4 py-2.5 text-right">Due to owner</th><th className="px-4 py-2.5">Status</th></tr>
+                <tr><th className="px-3 py-2">Vehicle</th><th className="px-3 py-2">Owner</th><th className="px-3 py-2">Purchaser</th><th className="px-3 py-2 text-right">Sale</th><th className="px-3 py-2 text-right">Commission</th><th className="px-3 py-2 text-right">Due to owner</th><th className="px-3 py-2">Status</th></tr>
               ) : (
-                <tr><th className="px-4 py-2.5">Vehicle</th><th className="px-4 py-2.5">Broker</th><th className="px-4 py-2.5 text-right">We pay</th><th className="px-4 py-2.5">Earned from</th><th className="px-4 py-2.5 text-right">We earn</th><th className="px-4 py-2.5">Status</th></tr>
+                <tr><th className="px-3 py-2">Vehicle</th><th className="px-3 py-2">Broker</th><th className="px-3 py-2 text-right">We pay</th><th className="px-3 py-2">Earned from</th><th className="px-3 py-2 text-right">We earn</th><th className="px-3 py-2">Status</th></tr>
               )}
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -81,8 +81,8 @@ export default function DealTermsListModule({ kind, embedded = false }: { kind: 
       )}
       {picking ? (
         <Modal title="Choose a Sold Vehicle" onClose={() => setPicking(false)}>
-          <div className="p-5">
-            <Field label="Vehicle"><SearchableSelect options={(vehicles.data ?? []).map((vehicle) => ({ id: vehicle.id, name: vehicle.label }))} value="" onChange={(option) => { setPicking(false); setOpenId(String(option.id)); }} placeholder="Search record number, vehicle number…" /></Field>
+          <div className="p-4">
+            <Field label="Vehicle"><SearchableSelect buttonClassName={selectButtonClass} options={(vehicles.data ?? []).map((vehicle) => ({ id: vehicle.id, name: vehicle.label }))} value="" onChange={(option) => { setPicking(false); setOpenId(String(option.id)); }} placeholder="Search record number, vehicle number…" /></Field>
           </div>
         </Modal>
       ) : null}
@@ -95,7 +95,7 @@ export default function DealTermsListModule({ kind, embedded = false }: { kind: 
   );
 
   const action = canEdit ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setPicking(true)}>Set terms for a vehicle</Button> : null;
-  return embedded ? <div><div className="flex justify-end px-4 pt-4">{action}</div>{body}</div> : (
+  return embedded ? <div><div className="flex justify-end px-3 pt-3">{action}</div>{body}</div> : (
     <Panel
       title={consignment ? 'Consignment deals' : 'Vehicle brokerage'}
       description={consignment ? 'Vehicles sold on behalf of their owner: our income is the commission; the rest is owed to the owner (settle from Partner Commission & Settlement).' : 'Brokerage paid to brokers and earned on vehicle deals.'}

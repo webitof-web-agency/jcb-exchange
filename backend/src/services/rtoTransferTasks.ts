@@ -45,6 +45,51 @@ export const assertRemark = (value: unknown, context = 'this status change') => 
   return remark;
 };
 
+export type RtoTaskDocument = {
+  id: string;
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  uploadedById: string | null;
+};
+
+export const MAX_TASK_DOCUMENTS = 5;
+const TASK_DOCUMENT_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+// Only files returned by POST /api/documents/upload/secure (private Drive copies) can be attached.
+const SECURE_DRIVE_URL = /^\/api\/documents\/secure\/drive-[A-Za-z0-9%_-]+$/;
+
+/** Stored task documents, skipping anything malformed. */
+export const readTaskDocuments = (value: unknown): RtoTaskDocument[] =>
+  (Array.isArray(value) ? value : []).filter((entry): entry is RtoTaskDocument =>
+    Boolean(entry) && typeof entry === 'object'
+    && typeof (entry as RtoTaskDocument).id === 'string'
+    && typeof (entry as RtoTaskDocument).fileUrl === 'string');
+
+/** Validates the upload response the portal sends back and turns it into a stored entry. */
+export const buildTaskDocument = (
+  input: { fileUrl?: unknown; originalName?: unknown; fileName?: unknown; mimeType?: unknown; size?: unknown },
+  meta: { id: string; uploadedById?: string | null; now?: Date },
+): RtoTaskDocument => {
+  const fileUrl = typeof input.fileUrl === 'string' ? input.fileUrl.trim() : '';
+  if (!SECURE_DRIVE_URL.test(fileUrl)) throw new Error('Upload the file first, then attach it to the task.');
+  const mimeType = typeof input.mimeType === 'string' ? input.mimeType.trim().toLowerCase() : '';
+  if (!TASK_DOCUMENT_MIME_TYPES.has(mimeType)) throw new Error('Only PDF, JPG, PNG or WEBP files can be attached.');
+  const rawName = [input.originalName, input.fileName].find((name) => typeof name === 'string' && name.trim());
+  const fileName = String(rawName || 'document').trim().replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 160);
+  const size = Number(input.size);
+  return {
+    id: meta.id,
+    fileUrl,
+    fileName,
+    mimeType,
+    size: Number.isFinite(size) && size > 0 ? Math.round(size) : 0,
+    uploadedAt: (meta.now || new Date()).toISOString(),
+    uploadedById: meta.uploadedById || null,
+  };
+};
+
 export const isTransferTaskDone = (status: string) => RTO_TRANSFER_DONE_STATUSES.includes(status as RtoTransferTaskStatusValue);
 
 export const isValidTransferTaskStatus = (status: unknown): status is RtoTransferTaskStatusValue =>

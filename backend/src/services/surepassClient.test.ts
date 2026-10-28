@@ -137,6 +137,29 @@ test('sends RC full verification to the documented endpoint', async () => {
   assert.deepEqual(JSON.parse(String(sent.init.body)), { id_number: 'RJ12XJ1234' });
 });
 
+test('sends RC owner history verification to the documented endpoint', async () => {
+  let request: { url: string; init: RequestInit } | null = null;
+  const client = new SurepassClient({
+    baseUrl: 'https://kyc-api.surepass.app',
+    token: 'server-only-token',
+    fetchImpl: async (url, init) => {
+      request = { url, init: init ?? {} };
+      return response({
+        success: true,
+        status_code: 200,
+        data: { rc_number: 'GJ01RV8123', current_owner_number: '3', owner_history: [] },
+      });
+    },
+  });
+
+  await client.verifyRcOwnerHistory({ id_number: 'GJ01RV8999' });
+
+  const sent = request as unknown as { url: string; init: RequestInit };
+  assert.ok(sent);
+  assert.equal(sent.url, 'https://kyc-api.surepass.app/api/v1/rc/rc-owner-history');
+  assert.deepEqual(JSON.parse(String(sent.init.body)), { id_number: 'GJ01RV8999' });
+});
+
 test('sends chassis-to-RC verification to the documented endpoint', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({

@@ -28,9 +28,9 @@ const IconAction = ({ label, onClick, children }: { label: string; onClick: () =
 );
 
 const BucketCards = ({ totals }: { totals: DuesResponse['totals'] }) => (
-  <div className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-    <div className="rounded-xl bg-slate-900 p-3 text-white"><p className="text-[11px] uppercase tracking-wide text-slate-300">Outstanding</p><p className="text-base font-bold">{formatInr(totals.outstanding)}</p><p className="text-[11px] text-slate-400">{totals.parties} parties</p></div>
-    {BUCKETS.map((bucket) => <div key={bucket} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{bucketLabel[bucket]}</p><p className={`text-base font-bold ${bucket === 'D61_90' || bucket === 'D90_PLUS' ? 'text-red-700' : 'text-slate-900'}`}>{formatInr(totals.buckets[bucket])}</p></div>)}
+  <div className="grid gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="rounded-lg bg-slate-900 p-3 text-white"><p className="text-[11px] uppercase tracking-wide text-slate-300">Outstanding</p><p className="text-[15px] font-semibold">{formatInr(totals.outstanding)}</p><p className="text-[11px] text-slate-400">{totals.parties} parties</p></div>
+    {BUCKETS.map((bucket) => <div key={bucket} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{bucketLabel[bucket]}</p><p className={`text-[15px] font-semibold ${bucket === 'D61_90' || bucket === 'D90_PLUS' ? 'text-red-700' : 'text-slate-900'}`}>{formatInr(totals.buckets[bucket])}</p></div>)}
   </div>
 );
 
@@ -54,7 +54,7 @@ export default function DuesModule({ side }: { side: DueSide }) {
       title={receivable ? 'Customer dues' : 'Supplier / partner payables'}
       description={receivable ? 'What customers and partners owe, from posted entries. Payments are applied to the oldest bill first; due date = bill date + party credit days (or the bill’s own due date).' : 'What we owe sellers, vendors, partners, brokers and consignors, from posted entries. Payments are applied to the oldest bill first.'}
     >
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[180px_200px]">
+      <div className="grid gap-3 border-b border-slate-100 p-3 sm:grid-cols-[180px_200px]">
         <Field label="As of"><input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} className={inputClass} /></Field>
         <Field label="Age">
           <select value={bucket} onChange={(event) => setBucket(event.target.value as Bucket)} className={inputClass}>
@@ -68,15 +68,15 @@ export default function DuesModule({ side }: { side: DueSide }) {
         <EmptyState title={receivable ? 'Nothing receivable' : 'Nothing payable'} description="Only posted vouchers count. In shadow mode the automatic entries are drafts until posted." />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5" /><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5 text-right">Outstanding</th>{BUCKETS.map((item) => <th key={item} className="px-4 py-2.5 text-right">{bucketLabel[item]}</th>)}<th className="px-4 py-2.5 text-right">{receivable ? 'Advance' : 'Paid ahead'}</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[1000px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2" /><th className="px-3 py-2">Party</th><th className="px-3 py-2 text-right">Outstanding</th>{BUCKETS.map((item) => <th key={item} className="px-3 py-2 text-right">{bucketLabel[item]}</th>)}<th className="px-3 py-2 text-right">{receivable ? 'Advance' : 'Paid ahead'}</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <Fragment key={row.party.id}>
                   <tr className="hover:bg-amber-50/30">
-                    <td className="px-2 py-3"><button type="button" onClick={() => setExpanded(expanded === row.party.id ? null : row.party.id)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Show bills">{expanded === row.party.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
+                    <td className="px-2 py-2"><button type="button" onClick={() => setExpanded(expanded === row.party.id ? null : row.party.id)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Show bills">{expanded === row.party.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
                     <td className={cellClass}><span className="font-semibold text-slate-900">{row.party.name}</span><span className="block font-mono text-[11px] text-slate-400">{row.party.code}{row.party.creditDays ? ` · ${row.party.creditDays} days credit` : ''}{row.party.creditLimit && row.outstanding > row.party.creditLimit ? ' · over limit' : ''}</span></td>
-                    <td className={`${cellClass} text-right font-bold`}>{formatInr(row.outstanding)}</td>
+                    <td className={`${cellClass} text-right font-semibold`}>{formatInr(row.outstanding)}</td>
                     {BUCKETS.map((item) => <td key={item} className={`${cellClass} text-right ${row.buckets[item] && (item === 'D61_90' || item === 'D90_PLUS') ? 'font-semibold text-red-700' : ''}`}>{row.buckets[item] ? formatInr(row.buckets[item]) : '—'}</td>)}
                     <td className={`${cellClass} text-right text-xs`}>{row.unapplied ? formatInr(row.unapplied) : '—'}</td>
                     <td className={`${cellClass} whitespace-nowrap text-right`}>
@@ -88,9 +88,9 @@ export default function DuesModule({ side }: { side: DueSide }) {
                   {expanded === row.party.id ? (
                     <tr className="bg-slate-50/60">
                       <td />
-                      <td colSpan={BUCKETS.length + 4} className="px-4 py-3">
+                      <td colSpan={BUCKETS.length + 4} className="px-3 py-2">
                         <table className="w-full text-left text-xs">
-                          <thead className="text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="py-1">Date</th><th className="py-1">Bill / voucher</th><th className="py-1">Ledger</th><th className="py-1">Due</th><th className="py-1 text-right">Amount</th><th className="py-1 text-right">Open</th><th className="py-1">Age</th></tr></thead>
+                          <thead className="text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="py-1">Date</th><th className="py-1">Bill / voucher</th><th className="py-1">Ledger</th><th className="py-1">Due</th><th className="py-1 text-right">Amount</th><th className="py-1 text-right">Open</th><th className="py-1">Age</th></tr></thead>
                           <tbody className="divide-y divide-slate-100">
                             {row.items.map((item) => (
                               <tr key={item.id}>
@@ -142,17 +142,17 @@ export function AgingModule() {
   return (
     <Panel title="Due ageing" description="Open amounts by how long they are overdue. Not due = within credit days." actions={<Button onClick={downloadCsv} disabled={!dues.data?.parties.length}>Download CSV</Button>}>
       <Tabs<AgingTab> tabs={[{ key: 'RECEIVABLE', label: 'Receivables' }, { key: 'PAYABLE', label: 'Payables' }]} active={tab} onChange={setTab} />
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[180px]"><Field label="As of"><input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} className={inputClass} /></Field></div>
+      <div className="grid gap-3 border-b border-slate-100 p-3 sm:grid-cols-[180px]"><Field label="As of"><input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} className={inputClass} /></Field></div>
       {dues.data ? <BucketCards totals={dues.data.totals} /> : null}
       {dues.loading ? <LoadingState /> : dues.error ? <ErrorBanner message={dues.error} schemaMissing={dues.schemaMissing} /> : !dues.data?.parties.length ? <EmptyState title="Nothing open" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Party</th><th className="px-4 py-2.5 text-right">Outstanding</th>{BUCKETS.map((item) => <th key={item} className="px-4 py-2.5 text-right">{bucketLabel[item]}</th>)}<th className="px-4 py-2.5 text-right">Oldest</th></tr></thead>
+          <table className="w-full min-w-[900px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Party</th><th className="px-3 py-2 text-right">Outstanding</th>{BUCKETS.map((item) => <th key={item} className="px-3 py-2 text-right">{bucketLabel[item]}</th>)}<th className="px-3 py-2 text-right">Oldest</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {dues.data.parties.map((row) => (
                 <tr key={row.party.id}>
                   <td className={cellClass}><span className="font-semibold">{row.party.name}</span><span className="block font-mono text-[11px] text-slate-400">{row.party.code}</span></td>
-                  <td className={`${cellClass} text-right font-bold`}>{formatInr(row.outstanding)}</td>
+                  <td className={`${cellClass} text-right font-semibold`}>{formatInr(row.outstanding)}</td>
                   {BUCKETS.map((item) => <td key={item} className={`${cellClass} text-right`}>{row.buckets[item] ? formatInr(row.buckets[item]) : '—'}</td>)}
                   <td className={`${cellClass} text-right text-xs`}>{row.oldestDays > 0 ? `${row.oldestDays} days` : '—'}</td>
                 </tr>

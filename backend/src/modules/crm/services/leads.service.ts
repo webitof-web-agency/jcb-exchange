@@ -621,6 +621,10 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
     // The Close Deal form sends soldVehicleMode. Other WON paths (e.g. completing a follow-up)
     // only change the status and never touch listings or Sold Vehicle records.
     const soldMode = status === 'WON' ? oneOf(SOLD_VEHICLE_MODES, body.soldVehicleMode) : null;
+    // WON only through Close Deal: other paths would leave the listing live and no Sold Vehicle record.
+    if (status === 'WON' && !soldMode && lead.status !== 'WON') {
+      throw badRequest('Mark a deal as won with Close Deal, so the machine, the deal value and the Sold Vehicle record are captured.', { code: 'CLOSE_DEAL_REQUIRED' });
+    }
     const wonAmount = decimalOrNull(body.wonAmount);
     let soldListing: Prisma.ListingGetPayload<{ select: typeof soldListingSelect }> | null = null;
     let isAlternate = false;
@@ -680,10 +684,11 @@ export const changeStatus = async (access: CrmAccess, id: string, body: Record<s
       }
 
       // The Sold Vehicle record itself is created from the Accounts form the user is sent to next
-      // (it links back to this lead on save). An existing record for the machine is linked now.
+      // (it links back to this lead on save). An existing record for the machine is linked now,
+      // unless it is locked: that is an earlier, completed sale, and this deal gets its own draft.
       if (soldListing && !access.isPartner && !resolvedSellAccountId) {
-        const existing = await tx.sellAccount.findUnique({ where: { listingId: soldListing.id }, select: { id: true, deletedAt: true } });
-        if (existing && !existing.deletedAt) resolvedSellAccountId = existing.id;
+        const existing = await tx.sellAccount.findUnique({ where: { listingId: soldListing.id }, select: { id: true, deletedAt: true, isLocked: true } });
+        if (existing && !existing.deletedAt && !existing.isLocked) resolvedSellAccountId = existing.id;
       }
 
       // Other open enquiries on a machine that is now sold need a different offer.

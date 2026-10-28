@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFinSettingsUpdate } from './settings.service';
+import { buildFinSettingsUpdate, readPostingConfig } from './settings.service';
 import { isFinanceHubSchemaMissing } from './schemaState';
 
 test('buildFinSettingsUpdate parses dates and limits', () => {
@@ -27,4 +27,10 @@ test('isFinanceHubSchemaMissing recognises a missing finance hub table', () => {
   assert.equal(isFinanceHubSchemaMissing({ message: 'relation "FinSettings" does not exist' }), true);
   assert.equal(isFinanceHubSchemaMissing({ code: 'P2002' }), false);
   assert.equal(isFinanceHubSchemaMissing(null), false);
+});
+
+test('every posting source, including Expenses-page entries, is on unless switched off', () => {
+  assert.equal(readPostingConfig(null).sources.FINANCE_TRANSACTION, true);
+  assert.equal(readPostingConfig({ posting: { sources: { FINANCE_TRANSACTION: false } } }).sources.FINANCE_TRANSACTION, false);
+  assert.ok(Object.values(readPostingConfig({}).sources).every(Boolean));
 });

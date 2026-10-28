@@ -28,6 +28,8 @@ export type DesiredVoucher = {
   partyId?: string | null;
   sellAccountId?: string | null;
   lines: DesiredLine[];
+  /** Stays a DRAFT voucher even in LIVE posting (e.g. a draft money receipt). */
+  draft?: boolean;
 };
 
 /** Hash of the financial content only, so editing a narration never reverses a voucher. */
@@ -96,7 +98,11 @@ export type SellAccountSource = {
   sellDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  payments: Array<{ id: string; side: string; amount: Prisma.Decimal; paymentDate: Date; method: string; reference: string | null }>;
+  payments: Array<{ id: string; side: string; amount: Prisma.Decimal; paymentDate: Date; method: string; reference: string | null; receiptStatus?: string | null }>;
+  refunds?: Array<{ id: string; status: string; amount: Prisma.Decimal; forfeitAmount: Prisma.Decimal; method: string; reference: string | null; refundDate: Date | null; paidAt: Date | null }>;
+  cancelledAt?: Date | null;
+  creditNoteNumber?: string | null;
+  creditNoteDate?: Date | null;
 };
 
 /** Purchase is booked when the record is saved (not a draft); dated by the seller date. */
@@ -343,6 +349,25 @@ export const buildSellAccountVouchers = (
     }
   }
 
+  // R3r sale cancelled after the Bill of Supply: one credit note reverses the sale, the cost of
+  // the vehicle sold and any exchange vehicle taken in, so the vehicle is back in stock.
+  if (deal.cancelledAt && saleDate && withinBooks(saleDate, booksBegin)) {
+    const booked = vouchers.filter((voucher) => ['SALE', 'COGS', 'SALE_EXCHANGE'].includes(voucher.key));
+    const cancelledOn = istDay(deal.creditNoteDate ?? deal.cancelledAt);
+    if (booked.length) {
+      vouchers.push({
+        key: 'SALE_CANCEL',
+        type: 'CREDIT_NOTE',
+        date: cancelledOn < saleDate ? saleDate : cancelledOn,
+        narration: `Sale cancelled ${label}${deal.creditNoteNumber ? ` (credit note ${deal.creditNoteNumber} against ${deal.invoiceNumber ?? 'the bill of supply'})` : ''}`,
+        reference: deal.creditNoteNumber ?? deal.recordNumber,
+        partyId: Pc,
+        sellAccountId: V,
+        lines: booked.flatMap((voucher) => voucher.lines.map((line) => ({ ...line, debit: line.credit, credit: line.debit }))),
+      });
+    }
+  }
+
   // R4/R5 payments. Money before the sale/purchase is booked sits in advances; one transfer
   // journal on the booking date moves it, so earlier receipts never need to be reversed.
   let advanceReceived = ZERO;
@@ -350,11 +375,16 @@ export const buildSellAccountVouchers = (
   for (const payment of deal.payments) {
     const amount = D(payment.amount);
     const date = istDay(payment.paymentDate);
-    if (!amount.greaterThan(0) || !withinBooks(date, booksBegin)) continue;
+    const receiptStatus = payment.receiptStatus ?? 'ISSUED';
+    // A cancelled receipt (money never arrived) has nothing in the books; its voucher is reversed.
+    if (!amount.greaterThan(0) || !withinBooks(date, booksBegin) || receiptStatus === 'CANCELLED') continue;
     if (payment.side === 'PURCHASER_RECEIPT') {
       if (!Pc) throw new PostingError(`${deal.recordNumber}: purchaser party could not be resolved.`);
+      // A draft money receipt shows in the books as a draft voucher only; it is posted when
+      // the receipt is converted to a real one.
+      const draft = receiptStatus === 'DRAFT';
       const isAdvance = !saleDate || date < saleDate;
-      if (isAdvance && saleDate && withinBooks(saleDate, booksBegin)) advanceReceived = advanceReceived.plus(amount);
+      if (isAdvance && !draft && saleDate && withinBooks(saleDate, booksBegin)) advanceReceived = advanceReceived.plus(amount);
       vouchers.push({
         key: `RECEIPT:${payment.id}`,
         type: 'RECEIPT',
@@ -364,6 +394,7 @@ export const buildSellAccountVouchers = (
         paymentMethod: payment.method,
         partyId: Pc,
         sellAccountId: V,
+        ...(draft ? { draft: true } : {}),
         lines: [
           debit(accounts.cashBank('SELL_ACCOUNT_PAYMENT', payment.method), amount),
           credit(accounts.system(isAdvance ? 'CUSTOMER_ADVANCES' : 'DEBTORS_CONTROL'), amount, { partyId: Pc, sellAccountId: V }),
@@ -401,6 +432,51 @@ export const buildSellAccountVouchers = (
         lines: [
           debit(accounts.system(isAdvance ? 'SELLER_ADVANCES' : 'CREDITORS_CONTROL'), amount, { partyId: Ps, sellAccountId: V }),
           credit(accounts.cashBank('SELL_ACCOUNT_PAYMENT', payment.method), amount),
+        ],
+      });
+    }
+  }
+
+  // R6 refunds to the purchaser (paid ones only) and amounts forfeited on a cancelled deal.
+  // Before the sale is booked they come out of advances, afterwards out of the debtor balance.
+  for (const refund of deal.refunds ?? []) {
+    if (refund.status !== 'PAID') continue;
+    const date = istDay(refund.refundDate ?? refund.paidAt ?? deal.updatedAt);
+    if (!withinBooks(date, booksBegin)) continue;
+    if (!Pc) throw new PostingError(`${deal.recordNumber}: purchaser party could not be resolved.`);
+    const amount = D(refund.amount);
+    const forfeit = D(refund.forfeitAmount);
+    const fromAdvances = !saleDate || date < saleDate;
+    if (fromAdvances && saleDate && withinBooks(saleDate, booksBegin)) advanceReceived = advanceReceived.minus(amount).minus(forfeit);
+    const heldIn = accounts.system(fromAdvances ? 'CUSTOMER_ADVANCES' : 'DEBTORS_CONTROL');
+    if (amount.greaterThan(0)) {
+      vouchers.push({
+        key: `REFUND:${refund.id}`,
+        type: 'PAYMENT',
+        date,
+        narration: `Refund to purchaser for ${label}`,
+        reference: refund.reference,
+        paymentMethod: refund.method,
+        partyId: Pc,
+        sellAccountId: V,
+        lines: [
+          debit(heldIn, amount, { partyId: Pc, sellAccountId: V }),
+          credit(accounts.cashBank('SELL_ACCOUNT_PAYMENT', refund.method), amount),
+        ],
+      });
+    }
+    if (forfeit.greaterThan(0)) {
+      vouchers.push({
+        key: `FORFEIT:${refund.id}`,
+        type: 'JOURNAL',
+        date,
+        narration: `Cancellation charge retained from purchaser on ${label}`,
+        reference: deal.recordNumber,
+        partyId: Pc,
+        sellAccountId: V,
+        lines: [
+          debit(heldIn, forfeit, { partyId: Pc, sellAccountId: V }),
+          credit(accounts.system('FORFEITED_ADVANCES'), forfeit, { sellAccountId: V }),
         ],
       });
     }
@@ -462,7 +538,7 @@ export const buildSellAccountVouchers = (
       });
     }
     const share = D(terms.partnerShareAmount);
-    if (share.greaterThan(0) && saleDate) {
+    if (share.greaterThan(0) && saleDate && !deal.cancelledAt) {
       if (!terms.partnerPartyId) throw new PostingError(`${deal.recordNumber}: choose the partner for the profit share.`);
       vouchers.push({
         key: 'PARTNER_SHARE',

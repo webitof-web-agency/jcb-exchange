@@ -81,3 +81,50 @@ test('sums an itemised expense breakdown and ignores invalid values', () => {
   assert.equal(sumSellAccountExpenseBreakdown(breakdown), 17500);
   assert.equal(normalizeSellAccountExpenseBreakdown(null), null);
 });
+
+test('only issued customer receipts count; drafts are pending and refunds come off', () => {
+  const summary = calculateSellAccountPaymentSummary({
+    sellAmount: 400000,
+    purchaseAmount: 300000,
+    payments: [
+      { side: 'PURCHASER_RECEIPT', amount: 150000, receiptStatus: 'ISSUED' },
+      { side: 'PURCHASER_RECEIPT', amount: 100000, receiptStatus: 'DRAFT' },
+      { side: 'PURCHASER_RECEIPT', amount: 50000, receiptStatus: 'CANCELLED' },
+      { side: 'PURCHASER_RECEIPT', amount: 300000 },
+    ],
+    refunds: [
+      { status: 'PAID', amount: 40000 },
+      { status: 'REQUESTED', amount: 5000 },
+      { status: 'REJECTED', amount: 99999 },
+    ],
+  });
+  // Missing status = issued (records saved before draft receipts existed).
+  assert.equal(summary.purchaserReceivedGross, 450000);
+  assert.equal(summary.purchaserDraftPending, 100000);
+  assert.equal(summary.purchaserRefunded, 40000);
+  assert.equal(summary.purchaserReceived, 410000);
+  assert.equal(summary.purchaserPaymentStatus, 'FULL');
+  assert.equal(summary.purchaserRefundPending, 5000);
+  assert.equal(summary.purchaserRefundable, 5000, 'overpaid 10,000 less 5,000 already requested');
+});
+
+test('a draft receipt alone keeps the deal unpaid', () => {
+  const summary = calculateSellAccountPaymentSummary({ sellAmount: 400000, payments: [{ side: 'PURCHASER_RECEIPT', amount: 400000, receiptStatus: 'DRAFT' }] });
+  assert.equal(summary.purchaserReceived, 0);
+  assert.equal(summary.purchaserPaymentStatus, 'UNPAID');
+  assert.equal(summary.purchaserBalance, 400000);
+});
+
+test('a cancelled deal expects nothing more and everything held is refundable', () => {
+  const summary = calculateSellAccountPaymentSummary({
+    sellAmount: 400000,
+    cancelled: true,
+    payments: [{ side: 'PURCHASER_RECEIPT', amount: 100000, receiptStatus: 'ISSUED' }],
+    refunds: [{ status: 'PAID', amount: 60000, forfeitAmount: 10000 }],
+  });
+  assert.equal(summary.customerCashReceivable, 0);
+  assert.equal(summary.purchaserBalance, 0);
+  assert.equal(summary.purchaserForfeited, 10000);
+  assert.equal(summary.purchaserReceived, 30000);
+  assert.equal(summary.purchaserRefundable, 30000);
+});

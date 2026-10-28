@@ -19,6 +19,8 @@ const deal = (overrides: Record<string, unknown> = {}) => ({
     { id: 'p1', side: 'SELLER_PAYMENT', amount: D(600000), paymentDate: at('2026-09-02'), method: 'BANK_TRANSFER', reference: null, note: null },
     { id: 'p2', side: 'PURCHASER_RECEIPT', amount: D(1200000), paymentDate: at('2026-10-12'), method: 'UPI', reference: null, note: null },
   ],
+  refunds: [],
+  cancelledAt: null,
   ...overrides,
 }) as unknown as Parameters<typeof summarizeDeal>[0];
 

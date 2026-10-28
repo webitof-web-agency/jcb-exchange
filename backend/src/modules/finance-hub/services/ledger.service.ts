@@ -328,6 +328,12 @@ export const postVoucher = async (id: string, access: LedgerAccess) =>
     if (voucher.status !== 'DRAFT') {
       throw badRequest(voucher.status === 'PENDING_APPROVAL' ? 'This voucher is waiting for approval.' : `A ${voucher.status.toLowerCase().replace('_', ' ')} voucher cannot be posted.`);
     }
+    // A draft money receipt stays a draft until it is converted on the Sold Vehicle.
+    const receiptId = voucher.sourceType === 'SELL_ACCOUNT' ? voucher.sourceEvent?.match(/^RECEIPT:(.+)$/)?.[1] : undefined;
+    if (receiptId) {
+      const receipt = await tx.sellAccountPayment.findUnique({ where: { id: receiptId }, select: { receiptStatus: true } });
+      if (receipt?.receiptStatus === 'DRAFT') throw badRequest('This is a draft money receipt. Convert it to a real receipt on the Sold Vehicle; the voucher is then posted automatically.');
+    }
     const { period, total, kinds } = await revalidateForPosting(tx, voucher, access);
     const settings = await tx.finSettings.findUnique({ where: { id: FIN_SETTINGS_ID } });
 

@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import axios from 'axios';
-import { CheckCircle2, ChevronDown, Eye, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Eye, RefreshCw, Search, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { getAbsoluteFileUrl } from '@/lib/fileUpload';
 import ReceiptMedia from '@/components/shared/ReceiptMedia';
-import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
+import FinancePageHeader from '@/components/financeWorkspace/FinancePageHeader';
+import { Badge, Button, buttonLinkClass, inputClass, Modal, tableHeadClass } from '@/components/financeWorkspace/ui';
 
 type PrimePaymentRecord = {
   id: string;
@@ -51,6 +53,10 @@ const formatPortalDate = (value?: string | null) => {
   });
 };
 
+const statusTone = { PENDING: 'amber', ACTIVE: 'green', REJECTED: 'red', EXPIRED: 'slate', CANCELLED: 'slate' } as const;
+const statusLabel = (status: string) => status.charAt(0) + status.slice(1).toLowerCase();
+const inr = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   if (axios.isAxiosError(error)) {
     return error.response?.data?.error || fallbackMessage;
@@ -60,6 +66,7 @@ const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
 };
 
 export default function CustomerPrimePaymentsPage() {
+  const pathname = usePathname();
   const [payments, setPayments] = useState<PrimePaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,26 +74,9 @@ export default function CustomerPrimePaymentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
-  const [openFilterDropdown, setOpenFilterDropdown] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
 
 
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement;
-      if (target?.closest?.('.filter-dropdown-container')) {
-        return;
-      }
-      setOpenFilterDropdown(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
 
   const loadPayments = async () => {
     try {
@@ -152,294 +142,119 @@ export default function CustomerPrimePaymentsPage() {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{error}</div>
-      ) : null}
-      {actionMessage ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">{actionMessage}</div>
-      ) : null}
+  const statusCount = (status: (typeof STATUS_OPTIONS)[number]) => (status === 'ALL' ? payments.length : payments.filter((payment) => payment.status === status).length);
+  const collected = payments.filter((payment) => payment.status === 'ACTIVE' || payment.status === 'EXPIRED').reduce((sum, payment) => sum + Number(payment.paidAmount || 0), 0);
+  const kpis: Array<[string, string, string]> = [
+    ['Waiting for review', String(statusCount('PENDING')), statusCount('PENDING') ? 'text-amber-700' : 'text-slate-900'],
+    ['Active members', String(statusCount('ACTIVE')), 'text-emerald-700'],
+    ['Rejected', String(statusCount('REJECTED')), 'text-slate-900'],
+    ['Collected (approved)', inr(collected), 'text-slate-900'],
+  ];
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Prime Payments</h2>
+  return (
+    <div className="space-y-3 tabular-nums">
+      <FinancePageHeader
+        page={{ href: pathname, label: 'Customer Prime Payments', group: 'Sales & Revenue' }}
+        actions={<Button icon={<RefreshCw />} onClick={() => void loadPayments()}>Refresh</Button>}
+      />
+
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</div> : null}
+      {actionMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">{actionMessage}</div> : null}
+
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 lg:grid-cols-4">
+        {kpis.map(([title, value, tone]) => (
+          <div key={title} className="bg-white px-3 py-2.5">
+            <p className="text-[11px] font-medium text-slate-500">{title}</p>
+            <p className={`mt-0.5 text-[15px] font-semibold ${tone}`}>{value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:w-auto filter-dropdown-container">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setOpenFilterDropdown(!openFilterDropdown);
-              }}
-              className="flex w-full min-w-[160px] items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] hover:bg-gray-50"
-            >
-              <span>{statusFilter === 'ALL' ? 'All Statuses' : statusFilter.charAt(0) + statusFilter.slice(1).toLowerCase()}</span>
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            </button>
-            
-            {openFilterDropdown && (
-              <div className="absolute left-0 z-50 mt-1 w-full min-w-[160px] origin-top-left rounded-xl border border-gray-100 bg-white p-1 shadow-lg outline-none">
-                {availableStatuses.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setStatusFilter(option);
-                      setOpenFilterDropdown(false);
-                    }}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 ${statusFilter === option ? 'bg-gray-50 font-semibold text-gray-900' : 'text-gray-700'}`}
-                  >
-                    {option === 'ALL'
-                      ? 'All Statuses'
-                      : option.charAt(0) + option.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            )}
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-col gap-2 border-b border-slate-100 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1">
+            {availableStatuses.map((option) => (
+              <button key={option} type="button" onClick={() => setStatusFilter(option)} className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition ${statusFilter === option ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {option === 'ALL' ? 'All' : statusLabel(option)}
+                <span className={`rounded px-1 text-[11px] ${statusFilter === option ? 'bg-white/15' : 'bg-slate-100 text-slate-500'}`}>{statusCount(option)}</span>
+              </button>
+            ))}
           </div>
-          <div className="relative w-full sm:max-w-xs">
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search payments..."
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 pl-10 text-sm font-medium text-gray-700 shadow-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-            />
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Customer, mobile, UPI, UTR…" className={`${inputClass} pl-8`} />
           </div>
         </div>
         {loading ? (
           <BrandLoader variant="section" size="sm" bg="light" text="Loading payment queue..." />
         ) : filteredPayments.length === 0 ? (
-          <div className="p-8">
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center">
-              <h3 className="text-lg font-semibold text-gray-900">No payment requests found</h3>
-            </div>
-          </div>
+          <p className="p-8 text-center text-[13px] text-slate-500">No payment requests found.</p>
         ) : (
-          <div className="overflow-x-auto min-h-[300px] pb-16">
-            <table className="w-full min-w-[980px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500">
-                  <th className="p-4 font-semibold">Customer</th>
-                  <th className="p-4 font-semibold">Payment</th>
-                  <th className="p-4 font-semibold">Receipt</th>
-                  <th className="p-4 font-semibold">Submitted</th>
-                  <th className="p-4 font-semibold">Status</th>
-                  <th className="p-4 font-semibold text-right">Actions</th>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-[13px]">
+              <thead className={tableHeadClass}>
+                <tr>
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 font-medium">UPI / reference</th>
+                  <th className="px-3 py-2 font-medium">Submitted</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredPayments.map((payment) => (
-                  <tr key={payment.id} className="align-top transition-colors hover:bg-gray-50">
-                    <td className="p-4">
-                      <div className="font-medium text-gray-900">{payment.user?.name || payment.user?.email || 'Unknown customer'}</div>
-                      <div className="mt-1 text-xs text-gray-500">{payment.user?.mobile || payment.user?.email || '-'}</div>
-                    </td>
-                    <td className="p-4 text-sm text-gray-700">
-                      <div className="font-semibold">Rs {payment.paidAmount}</div>
-                      <div className="mt-1 text-xs text-gray-500">{payment.paidUpiId || 'UPI not set'}</div>
-                    </td>
-                    <td className="p-4 text-sm text-gray-700">
-                      {payment.receiptUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedReceipt(getAbsoluteFileUrl(payment.receiptUrl))}
-                          className="inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-[#9A7600] transition hover:bg-yellow-50 cursor-pointer"
-                        >
-                          View Receipt
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">Receipt missing</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-sm text-gray-700">{formatPortalDate(payment.submittedAt)}</td>
-                    <td className="p-4">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          payment.status === 'ACTIVE'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : payment.status === 'REJECTED'
-                              ? 'bg-red-50 text-red-700'
-                              : payment.status === 'EXPIRED'
-                                ? 'bg-gray-100 text-gray-700'
-                                : 'bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        {payment.status}
-                      </span>
-                      {payment.expiresAt ? (
-                        <div className="mt-1 text-xs text-gray-500">Expires {formatPortalDate(payment.expiresAt)}</div>
-                      ) : null}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <PortalActionDropdown
-                          align="right"
-                          items={[
-                            ...(payment.receiptUrl ? [
-                              {
-                                label: 'View Receipt',
-                                icon: <Eye className="h-3.5 w-3.5" />,
-                                variant: 'default' as const,
-                                onClick: () => setSelectedReceipt(getAbsoluteFileUrl(payment.receiptUrl)),
-                              }
-                            ] : []),
-                            ...(payment.status === 'PENDING' ? [
-                              {
-                                label: 'Approve Payment',
-                                icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-                                variant: 'success' as const,
-                                disabled: paymentActionId === payment.id,
-                                onClick: () => void handlePaymentReview(payment.id, 'ACTIVE'),
-                              },
-                              {
-                                label: 'Reject Payment',
-                                icon: <XCircle className="h-3.5 w-3.5" />,
-                                variant: 'danger' as const,
-                                disabled: paymentActionId === payment.id,
-                                onClick: () => void handlePaymentReview(payment.id, 'REJECTED'),
-                              }
-                            ] : [])
-                          ]}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100">
+                {filteredPayments.map((payment) => {
+                  const busy = paymentActionId === payment.id;
+                  return (
+                    <tr key={payment.id} className="hover:bg-slate-50/70">
+                      <td className="px-3 py-1.5">
+                        <p className="font-medium text-slate-900">{payment.user?.name || payment.user?.email || 'Unknown customer'}</p>
+                        <p className="text-[11px] text-slate-500">{payment.user?.mobile || payment.user?.email || '—'}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium text-slate-900">{inr(payment.paidAmount)}</td>
+                      <td className="px-3 py-1.5">
+                        <p className="text-slate-700">{payment.paidUpiId || 'UPI not set'}</p>
+                        <p className="font-mono text-[11px] text-slate-500">{payment.transactionRef || '—'}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{formatPortalDate(payment.submittedAt)}</td>
+                      <td className="px-3 py-1.5">
+                        <Badge tone={statusTone[payment.status]}>{statusLabel(payment.status)}</Badge>
+                        {payment.expiresAt ? <p className="mt-0.5 text-[11px] text-slate-500">Expires {formatPortalDate(payment.expiresAt)}</p> : null}
+                        {payment.rejectionReason ? <p className="mt-0.5 max-w-[200px] truncate text-[11px] text-red-600" title={payment.rejectionReason}>{payment.rejectionReason}</p> : null}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div className="flex items-center justify-end gap-1">
+                          {payment.receiptUrl ? (
+                            <button type="button" onClick={() => setSelectedReceipt(getAbsoluteFileUrl(payment.receiptUrl))} className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50"><Eye className="h-3.5 w-3.5" />Receipt</button>
+                          ) : <span className="px-2 text-[11px] text-slate-400">No receipt</span>}
+                          {payment.status === 'PENDING' ? (
+                            <>
+                              <button type="button" disabled={busy} onClick={() => void handlePaymentReview(payment.id, 'ACTIVE')} className="inline-flex h-7 items-center gap-1 rounded-md bg-emerald-600 px-2 text-[12px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5" />Approve</button>
+                              <button type="button" disabled={busy} onClick={() => void handlePaymentReview(payment.id, 'REJECTED')} className="inline-flex h-7 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 text-[12px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"><XCircle className="h-3.5 w-3.5" />Reject</button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Premium Receipt Modal */}
-      {selectedReceipt && (
-        <div 
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(12px)' }}
-          onClick={() => setSelectedReceipt(null)}
-        >
-          <div 
-            className="relative w-full sm:max-w-2xl flex flex-col overflow-hidden bg-white"
-            style={{
-              borderRadius: '24px 24px 24px 24px',
-              height: '92vh',
-              maxHeight: '760px',
-              boxShadow: '0 32px 80px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
-              animation: 'receiptSlideUp 0.28s cubic-bezier(0.34,1.56,0.64,1) both',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <style>{`
-              @keyframes receiptSlideUp {
-                from { opacity: 0; transform: translateY(32px) scale(0.97); }
-                to   { opacity: 1; transform: translateY(0)    scale(1);    }
-              }
-            `}</style>
-
-            {/* ── Header ── */}
-            <div
-              className="flex shrink-0 items-center justify-between px-5 py-4"
-              style={{
-                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex h-9 w-9 items-center justify-center rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.12)' }}
-                >
-                  {/* Receipt icon */}
-                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-[15px] font-bold text-white leading-tight">Payment Receipt</h3>
-                  <p className="text-[11px] text-white/50 mt-0.5">Transaction verification document</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Open in new tab */}
-                <a
-                  href={selectedReceipt}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-                  title="Open in new tab"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-                {/* Close */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedReceipt(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-                  aria-label="Close"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* ── Thin accent bar ── */}
-            <div style={{ height: 3, background: 'linear-gradient(90deg, #FFC107, #FF6B35, #9C27B0)' }} />
-
-            {/* ── Receipt body ── */}
-            <div
-              className="flex-1 overflow-hidden flex items-center justify-center p-4"
-              style={{ background: 'linear-gradient(160deg, #f8fafc 0%, #f1f5f9 100%)' }}
-            >
-              <div
-                className="w-full h-full flex items-center justify-center rounded-2xl overflow-hidden"
-                style={{
-                  background: 'white',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-                  border: '1px solid rgba(0,0,0,0.06)',
-                }}
-              >
-                <ReceiptMedia
-                  url={selectedReceipt}
-                  alt="Payment Receipt"
-                  className="rounded-2xl"
-                  onClose={() => setSelectedReceipt(null)}
-                />
-              </div>
-            </div>
-
-            {/* ── Footer ── */}
-            <div
-              className="flex shrink-0 items-center justify-between px-5 py-3 border-t"
-              style={{ borderColor: 'rgba(0,0,0,0.06)', background: '#fafafa' }}
-            >
-              <p className="text-[11px] text-gray-400 select-none">
-                📎 Tap outside or press Esc to close
-              </p>
-              <button
-                type="button"
-                onClick={() => setSelectedReceipt(null)}
-                className="rounded-lg px-4 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 transition hover:bg-gray-100"
-              >
-                Close
-              </button>
-            </div>
+      {selectedReceipt ? (
+        <Modal title="Payment receipt" subtitle="Check the amount, UPI ID and reference before approving." onClose={() => setSelectedReceipt(null)}>
+          <div className="flex h-[70vh] max-h-[680px] items-center justify-center bg-slate-50 p-3">
+            <ReceiptMedia url={selectedReceipt} alt="Payment Receipt" className="rounded-lg" onClose={() => setSelectedReceipt(null)} />
           </div>
-        </div>
-      )}
-
+          <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-2.5">
+            <a href={selectedReceipt} target="_blank" rel="noopener noreferrer" className={buttonLinkClass('secondary')}><ExternalLink className="h-3.5 w-3.5" />Open in new tab</a>
+            <Button onClick={() => setSelectedReceipt(null)}>Close</Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

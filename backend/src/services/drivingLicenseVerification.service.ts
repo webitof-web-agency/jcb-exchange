@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import prisma from '../lib/prisma';
 import { decryptPanData, encryptPanData } from './panVerification.dataCrypto';
 import { getPanVerificationRuntimeConfig } from './panVerificationSettings.service';
+import { deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
 import {
   normalizeDateOfBirth,
   normalizeDrivingLicenseNumber,
@@ -32,16 +34,25 @@ type DrivingLicenseRecordRepository = {
   count: (args: any) => Promise<number>;
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
+  updateMany?: (args: any) => Promise<{ count: number }>;
 };
 
 type DrivingLicenseAuditRepository = { create: (args: any) => Promise<any> };
+type DrivingLicenseTemplateRepository = {
+  create: (args: any) => Promise<any>;
+  delete?: (args: any) => Promise<any>;
+};
+type DrivingLicenseTemplateUploader = (buffer: Buffer, mimeType: string, fileName: string) => Promise<{ fileId: string }>;
 
 type DrivingLicenseVerificationDependencies = {
   record?: DrivingLicenseRecordRepository;
+  template?: DrivingLicenseTemplateRepository;
   audit?: DrivingLicenseAuditRepository;
   provider?: ReturnType<typeof createSurepassClient>;
   dataSecret?: string;
   billing?: ApiBillingGateway;
+  uploadTemplateFile?: DrivingLicenseTemplateUploader;
+  deleteTemplateFile?: (fileId: string) => Promise<void>;
 };
 
 export class DrivingLicenseVerificationError extends Error {
@@ -110,6 +121,24 @@ export const maskDrivingLicenseNumber = (value: string) => {
   const normalized = normalizeDrivingLicenseNumber(value);
   if (normalized.length < 8) return '********';
   return `${normalized.slice(0, 4)}********${normalized.slice(-4)}`;
+};
+
+export const DRIVING_LICENSE_RAW_DATA_TTL_MS = 5 * 60 * 1000;
+export const MAX_DRIVING_LICENSE_TEMPLATE_SIZE = 5 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+export const getDrivingLicenseRawDataExpiresAt = (completedAt = new Date()) =>
+  new Date(completedAt.getTime() + DRIVING_LICENSE_RAW_DATA_TTL_MS);
+
+export const isDrivingLicenseRawDataAvailable = (
+  record: { encryptedResult?: unknown; rawDataExpiresAt?: unknown },
+  now = Date.now(),
+) => {
+  if (typeof record.encryptedResult !== 'string' || !record.encryptedResult) return false;
+  const expiresAt = record.rawDataExpiresAt instanceof Date
+    ? record.rawDataExpiresAt.getTime()
+    : new Date(String(record.rawDataExpiresAt ?? '')).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > now;
 };
 
 export type DrivingLicenseVerificationResult = Record<string, unknown>;
@@ -187,6 +216,20 @@ const normalizeProfileImage = (value: unknown) => {
   return null;
 };
 
+const drivingLicenseTemplateSummary = (template: any) => template ? {
+  id: template.id,
+  fileName: template.fileName,
+  mimeType: template.mimeType,
+  fileSize: template.fileSize,
+  sha256: template.sha256,
+  createdAt: template.createdAt instanceof Date ? template.createdAt.toISOString() : template.createdAt,
+} : null;
+
+const drivingLicenseTemplateFileName = (maskedLicenseNumber: string, recordId: string) => {
+  const safeNumber = maskedLicenseNumber.replace(/[^A-Z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toUpperCase();
+  return `driving-license-template-${safeNumber || recordId}.png`;
+};
+
 const recordSummary = (record: any) => ({
   id: record.id,
   status: record.status,
@@ -203,6 +246,8 @@ const recordSummary = (record: any) => ({
     : null,
   createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
   completedAt: record.completedAt instanceof Date ? record.completedAt.toISOString() : record.completedAt,
+  rawDataExpiresAt: record.rawDataExpiresAt instanceof Date ? record.rawDataExpiresAt.toISOString() : record.rawDataExpiresAt ?? null,
+  template: drivingLicenseTemplateSummary(record.template),
 });
 
 const providerFailure = (error: SurepassProviderError) => {
@@ -232,17 +277,26 @@ const ensureProviderData = (body: unknown) => {
 
 export class DrivingLicenseVerificationService {
   private readonly record: DrivingLicenseRecordRepository;
+  private readonly template: DrivingLicenseTemplateRepository;
   private readonly audit: DrivingLicenseAuditRepository | undefined;
   private readonly provider: ReturnType<typeof createSurepassClient> | undefined;
   private readonly dataSecret: string | undefined;
   private readonly billing: ApiBillingGateway | undefined;
+  private readonly uploadTemplateFile: DrivingLicenseTemplateUploader;
+  private readonly deleteTemplateFile: (fileId: string) => Promise<void>;
 
   constructor(dependencies: DrivingLicenseVerificationDependencies = {}) {
     this.record = dependencies.record || (prisma as any).drivingLicenseVerificationRecord;
+    this.template = dependencies.template || (prisma as any).drivingLicenseVerificationTemplate;
     this.audit = dependencies.audit || (!dependencies.record ? (prisma as any).auditLog : undefined);
     this.provider = dependencies.provider;
     this.dataSecret = dependencies.dataSecret?.trim() || undefined;
     this.billing = dependencies.billing ?? (!dependencies.record ? apiWalletBillingService : undefined);
+    this.uploadTemplateFile = dependencies.uploadTemplateFile || (async (buffer, mimeType, fileName) => {
+      const result = await uploadFileToDrive(buffer, mimeType, fileName, undefined, { access: 'private' });
+      return { fileId: result.fileId };
+    });
+    this.deleteTemplateFile = dependencies.deleteTemplateFile || deleteFileFromDrive;
   }
 
   private async getRuntime() {
@@ -280,17 +334,21 @@ export class DrivingLicenseVerificationService {
       where: {
         requestFingerprint,
         status: DL_STATUS.SUCCESS,
-        completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        rawDataExpiresAt: { gt: new Date() },
         encryptedResult: { not: null },
       },
       orderBy: { completedAt: 'desc' },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
     });
-    if (!cached || !isFreshVerificationResult(cached)) return null;
+    if (!cached || !isFreshVerificationResult(cached) || !isDrivingLicenseRawDataAvailable(cached)) return null;
     try {
       return {
         record: recordSummary(cached),
         result: JSON.parse(decryptPanData(cached.encryptedResult, dataSecret)),
+        template: drivingLicenseTemplateSummary(cached.template),
         cacheHit: true,
       };
     } catch {
@@ -324,8 +382,12 @@ export class DrivingLicenseVerificationService {
     const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret);
     if (cached) return cached;
     await this.ensureNoRecentDuplicate(requestFingerprint);
-    const existing = await this.record.findFirst({ where: { requestFingerprint }, orderBy: { completedAt: 'desc' } });
-    const pending = existing
+    const existing = await this.record.findFirst({
+      where: { requestFingerprint },
+      orderBy: { completedAt: 'desc' },
+      include: { template: true },
+    });
+    const pending = existing && !existing.template
       ? await this.record.update({
           where: { id: existing.id },
           data: {
@@ -337,10 +399,11 @@ export class DrivingLicenseVerificationService {
             safeMessage: null,
             messageCode: null,
             encryptedResult: null,
+            rawDataExpiresAt: null,
             completedAt: null,
           },
         })
-      : await this.record.create({ data: { status: DL_STATUS.PENDING, maskedLicenseNumber, requestFingerprint, requestedById } });
+      : await this.record.create({ data: { status: DL_STATUS.PENDING, maskedLicenseNumber, requestFingerprint, requestedById, rawDataExpiresAt: null } });
     await this.writeAudit(requestedById, 'DRIVING_LICENSE_VERIFICATION_REQUESTED', pending.id, { maskedLicenseNumber, status: DL_STATUS.PENDING });
 
     try {
@@ -355,6 +418,7 @@ export class DrivingLicenseVerificationService {
       const { response, data } = ensureProviderData(body);
       const normalized = normalizeDrivingLicenseVerificationResult({ ...data, license_number: data.license_number ?? licenseNumber });
       const encryptedResult = encryptPanData(JSON.stringify(normalized), runtime.dataSecret);
+      const completedAt = new Date();
       const completed = await this.record.update({
         where: { id: pending.id },
         data: {
@@ -365,9 +429,13 @@ export class DrivingLicenseVerificationService {
           providerClientId: typeof normalized.providerClientId === 'string' ? normalized.providerClientId : null,
           messageCode: typeof response.message_code === 'string' ? response.message_code : null,
           encryptedResult,
-          completedAt: new Date(),
+          rawDataExpiresAt: getDrivingLicenseRawDataExpiresAt(completedAt),
+          completedAt,
         },
-        include: { requestedBy: { select: { id: true, name: true, email: true } } },
+        include: {
+          requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
+        },
       });
       await this.writeAudit(requestedById, 'DRIVING_LICENSE_VERIFICATION_SUCCEEDED', pending.id, {
         maskedLicenseNumber,
@@ -375,7 +443,7 @@ export class DrivingLicenseVerificationService {
         currentStatus: completed.currentStatus ?? null,
       });
       const profileImage = normalizeProfileImage(data.profile_image ?? data.profileImage);
-      return { record: recordSummary(completed), result: profileImage ? { ...normalized, profileImage } : normalized, cacheHit: false, ...(billing ? { billing } : {}) };
+      return { record: recordSummary(completed), result: profileImage ? { ...normalized, profileImage } : normalized, template: drivingLicenseTemplateSummary(completed.template), cacheHit: false, ...(billing ? { billing } : {}) };
     } catch (error) {
       const normalizedError = isApiWalletBillingError(error)
         ? new DrivingLicenseVerificationError(error.message, error.statusCode, error.code)
@@ -421,7 +489,10 @@ export class DrivingLicenseVerificationService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { requestedBy: { select: { id: true, name: true, email: true } } },
+        include: {
+          requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
+        },
       }),
     ]);
     return { records: records.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
@@ -430,7 +501,10 @@ export class DrivingLicenseVerificationService {
   async getHistoryDetail(id: string) {
     const record = await this.record.findUnique({
       where: { id },
-      include: { requestedBy: { select: { id: true, name: true, email: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
     });
     if (!record) throw new DrivingLicenseVerificationError('Driving license verification record not found.', 404, 'record_not_found');
     let result: unknown = null;
@@ -445,6 +519,105 @@ export class DrivingLicenseVerificationService {
       }
     }
     return { record: recordSummary(record), result };
+  }
+
+  async cleanupExpiredRawData(now = new Date()) {
+    if (!this.record.updateMany) return 0;
+    const result = await this.record.updateMany({
+      where: {
+        status: DL_STATUS.SUCCESS,
+        encryptedResult: { not: null },
+        OR: [
+          { rawDataExpiresAt: null },
+          { rawDataExpiresAt: { lte: now } },
+        ],
+      },
+      data: { encryptedResult: null, rawDataExpiresAt: null },
+    });
+    return result.count;
+  }
+
+  async uploadTemplate(
+    recordId: string,
+    requestedById: string,
+    role: string,
+    buffer: Buffer,
+    mimeType: string,
+  ) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new DrivingLicenseVerificationError('A driving-license template file is required.', 400, 'template_file_required');
+    }
+    if (buffer.length > MAX_DRIVING_LICENSE_TEMPLATE_SIZE) {
+      throw new DrivingLicenseVerificationError('The driving-license template must be 5 MB or smaller.', 413, 'template_file_too_large');
+    }
+    if (mimeType !== 'image/png') {
+      throw new DrivingLicenseVerificationError('Only PNG driving-license templates are allowed.', 400, 'template_file_type_invalid');
+    }
+    if (buffer.length < PNG_SIGNATURE.length || !buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new DrivingLicenseVerificationError('The driving-license template file is invalid.', 400, 'template_file_signature_invalid');
+    }
+
+    const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
+    if (!record) throw new DrivingLicenseVerificationError('Driving license verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new DrivingLicenseVerificationError('You do not have access to this driving-license template.', 403, 'template_forbidden');
+    }
+    if (record.template) {
+      if (record.encryptedResult || record.rawDataExpiresAt) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      }
+      return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null }), result: null, template: drivingLicenseTemplateSummary(record.template), alreadyUploaded: true };
+    }
+    if (record.status !== DL_STATUS.SUCCESS || !isDrivingLicenseRawDataAvailable(record)) {
+      if (record.encryptedResult) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      }
+      throw new DrivingLicenseVerificationError('The driving-license template upload window has expired. Run verification again.', 409, 'template_result_unavailable');
+    }
+
+    const fileName = drivingLicenseTemplateFileName(record.maskedLicenseNumber, record.id);
+    let driveFileId: string | null = null;
+    let templateId: string | null = null;
+    try {
+      const stored = await this.uploadTemplateFile(buffer, mimeType, fileName);
+      driveFileId = stored.fileId;
+      const template = await this.template.create({
+        data: {
+          verificationRecordId: record.id,
+          requestedById: record.requestedById,
+          driveFileId,
+          fileName,
+          mimeType,
+          fileSize: buffer.length,
+          sha256: createHash('sha256').update(buffer).digest('hex'),
+        },
+      });
+      templateId = template.id;
+      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      return {
+        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
+        result: null,
+        template: drivingLicenseTemplateSummary(template),
+      };
+    } catch (error) {
+      if (templateId && this.template.delete) await this.template.delete({ where: { id: templateId } });
+      if (driveFileId) await this.deleteTemplateFile(driveFileId);
+      throw new DrivingLicenseVerificationError(
+        error instanceof DrivingLicenseVerificationError ? error.message : 'The driving-license template could not be stored securely.',
+        error instanceof DrivingLicenseVerificationError ? error.statusCode : 502,
+        error instanceof DrivingLicenseVerificationError ? error.code : 'template_storage_failed',
+      );
+    }
+  }
+
+  async getTemplateDownload(recordId: string, requestedById: string, role: string) {
+    const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
+    if (!record) throw new DrivingLicenseVerificationError('Driving license verification record not found.', 404, 'record_not_found');
+    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+      throw new DrivingLicenseVerificationError('You do not have access to this driving-license template.', 403, 'template_forbidden');
+    }
+    if (!record.template) throw new DrivingLicenseVerificationError('Driving-license template not found.', 404, 'template_not_found');
+    return { ...drivingLicenseTemplateSummary(record.template), driveFileId: record.template.driveFileId };
   }
 }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { SurepassProviderError } from './surepassClient';
 import {
   RcFullService,
   RcOwnerHistoryService,
@@ -85,7 +86,7 @@ test('persists an encrypted RC result and records an auditable success', async (
     record: recordRepository,
     audit: { create: async ({ data }: { data: Record<string, unknown> }) => { auditEvents.push(data); } },
     provider: {
-      verifyRcFull: async (request: Record<string, unknown>) => {
+      verifyRcOwnerHistory: async (request: Record<string, unknown>) => {
         payload = request;
         return {
           success: true,
@@ -115,6 +116,64 @@ test('persists an encrypted RC result and records an auditable success', async (
   assert.deepEqual(auditEvents.map((event) => event.action), [
     'RC_OWNER_HISTORY_REQUESTED',
     'RC_OWNER_HISTORY_SUCCEEDED',
+  ]);
+});
+
+test('uses the RC owner-history provider and preserves current owner history', async () => {
+  const records: any[] = [];
+  let providerCalls = 0;
+  const recordRepository = {
+    findFirst: async () => null,
+    findUnique: async () => null,
+    findMany: async () => records,
+    count: async () => records.length,
+    create: async ({ data }: { data: Record<string, unknown> }) => {
+      const record = { id: 'rc-owner-history-record-1', ...data, provider: 'SUREPASS', providerClientId: null, messageCode: null, safeMessage: null, encryptedResult: null, createdAt: new Date(), completedAt: null };
+      records.push(record);
+      return record;
+    },
+    update: async ({ data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      Object.assign(records[0], data);
+      return records[0];
+    },
+  };
+  const service = new RcOwnerHistoryService({
+    record: recordRepository,
+    provider: {
+      verifyRcOwnerHistory: async (request: Record<string, unknown>) => {
+        providerCalls += 1;
+        assert.deepEqual(request, { id_number: 'GJ01RV8999' });
+        return {
+          success: true,
+          status_code: 200,
+          message_code: 'success',
+          data: {
+            client_id: 'rc-owner-client-1',
+            rc_number: 'GJ01RV8123',
+            current_owner_name: 'MAHAMMADALI',
+            current_owner_number: '3',
+            owner_history: [
+              { owner_name: 'HEMPREET SINGH BAJAJ', owner_number: '1' },
+              { owner_name: 'VARUNKUMAR DINESHKUMAR GADHAVI', owner_number: '2' },
+              { owner_name: 'MAHAMMADALI', owner_number: '3' },
+            ],
+          },
+        };
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyRc({ id_number: 'GJ01RV8999' }, 'user-1');
+  const normalized = result.result as Record<string, unknown>;
+
+  assert.equal(providerCalls, 1);
+  assert.equal(normalized.ownerName, 'MAHAMMADALI');
+  assert.equal(normalized.ownerNumber, '3');
+  assert.deepEqual(normalized.ownerHistory, [
+    { ownerName: 'HEMPREET SINGH BAJAJ', ownerNumber: '1' },
+    { ownerName: 'VARUNKUMAR DINESHKUMAR GADHAVI', ownerNumber: '2' },
+    { ownerName: 'MAHAMMADALI', ownerNumber: '3' },
   ]);
 });
 
@@ -258,4 +317,51 @@ test('rejects a camelCase RC Full provider response with a different registratio
     () => service.verifyRc({ id_number: 'DL01AB1234' }, 'user-1'),
     { statusCode: 422, code: 'provider_identity_mismatch' },
   );
+});
+
+test('gracefully falls back to verifyRcFull when verifyRcOwnerHistory encounters 500 provider unavailable', async () => {
+  const records: any[] = [];
+  let fullCalled = false;
+  const service = new RcOwnerHistoryService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => null,
+      findMany: async () => records,
+      count: async () => records.length,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const record = { id: 'fallback-rec-1', ...data, provider: 'SUREPASS', providerClientId: null, messageCode: null, safeMessage: null, encryptedResult: null, createdAt: new Date(), completedAt: null, requestedBy: null, template: null };
+        records.push(record);
+        return record;
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(records[0], data);
+        return records[0];
+      },
+    } as any,
+    provider: {
+      verifyRcOwnerHistory: async () => {
+        throw new SurepassProviderError('Internal Server Error', 500, 'internal_server_error', 'PROVIDER_UNAVAILABLE', true);
+      },
+      verifyRcFull: async () => {
+        fullCalled = true;
+        return {
+          success: true,
+          status_code: 200,
+          message_code: 'success',
+          data: {
+            client_id: 'rc-fallback-client',
+            rc_number: 'CG04HY3874',
+            owner_name: 'DAULAT RAM DEWANGAN',
+            registration_date: '2015-09-23',
+          },
+        };
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyRc({ id_number: 'CG04HY3874' }, 'user-1');
+  assert.equal(fullCalled, true);
+  assert.equal(result.record.status, 'SUCCESS');
+  assert.equal((result.result as Record<string, unknown>).ownerName, 'DAULAT RAM DEWANGAN');
 });

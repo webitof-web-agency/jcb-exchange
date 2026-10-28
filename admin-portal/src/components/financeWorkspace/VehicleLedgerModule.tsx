@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
-import { EmptyState, ErrorBanner, Field, LoadingState, Panel, Toggle } from './ui';
+import { EmptyState, ErrorBanner, Field, LoadingState, Panel, selectButtonClass, Toggle } from './ui';
 import { useResource } from './useResource';
 import VehicleDetail from './VehicleDetail';
 
@@ -17,10 +17,10 @@ export default function VehicleLedgerModule() {
 
   return (
     <Panel title="Vehicle-wise ledger" description="Every book entry tagged to one vehicle, its cost sheet, and how the books compare with the Sold Vehicle record.">
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[2fr_auto] md:items-end">
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[2fr_auto] md:items-end">
         <Field label="Vehicle">
           {vehicles.loading ? <LoadingState label="Loading vehicles…" /> : vehicles.error ? <ErrorBanner message={vehicles.error} schemaMissing={vehicles.schemaMissing} /> : (
-            <SearchableSelect options={(vehicles.data ?? []).map((vehicle) => ({ id: vehicle.id, name: vehicle.label }))} value={vehicleId} onChange={(option) => setVehicleId(String(option.id))} placeholder="Search record no., vehicle no. or model" />
+            <SearchableSelect buttonClassName={selectButtonClass} options={(vehicles.data ?? []).map((vehicle) => ({ id: vehicle.id, name: vehicle.label }))} value={vehicleId} onChange={(option) => setVehicleId(String(option.id))} placeholder="Search record no., vehicle no. or model" />
           )}
         </Field>
         <div className="pb-2.5"><Toggle checked={includeDrafts} onChange={setIncludeDrafts} label="Include automatic drafts" /></div>

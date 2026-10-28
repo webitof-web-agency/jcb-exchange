@@ -23,6 +23,7 @@ export type BillOfSupplyTemplateData = {
   companyName: string;
   cin: string;
   companyAddressLine: string;
+  companyGstin?: string;
   invoiceNumber: string;
   invoiceDate: string;
   customerName: string;
@@ -220,7 +221,7 @@ export const fillBillOfSupplyTemplate = (
   xml = replaceTextAfterLabel(xml, 'Invoice Date', `Invoice Date: ${data.invoiceDate}`);
   const gstinIndexes = allParagraphs(xml).map((paragraph, index) => paragraph.text.toUpperCase().startsWith('GSTIN:') ? index : -1).filter((index) => index >= 0);
   if (gstinIndexes.length < 2) throw new Error('Bill of supply DOCX template is missing GSTIN fields.');
-  xml = replaceParagraphAtIndex(xml, gstinIndexes[0]!, 'GSTIN: -');
+  xml = replaceParagraphAtIndex(xml, gstinIndexes[0]!, `GSTIN: ${data.companyGstin || '-'}`);
   const placeIndex = findParagraphIndex(xml, (text) => text.toLowerCase().startsWith('place of supply'));
   if (placeIndex < 0) throw new Error('Bill of supply DOCX template is missing place of supply.');
   xml = replaceParagraphAtIndex(xml, placeIndex, `Place of Supply: ${data.placeOfSupply}`);

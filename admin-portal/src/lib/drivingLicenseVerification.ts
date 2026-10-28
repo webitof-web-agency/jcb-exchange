@@ -14,12 +14,24 @@ export type DrivingLicenseRecord = {
   requestedBy?: { id: string; name: string | null; email: string | null } | null;
   createdAt: string;
   completedAt: string | null;
+  rawDataExpiresAt?: string | null;
+  template?: DrivingLicenseTemplateSummary | null;
+};
+
+export type DrivingLicenseTemplateSummary = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sha256: string;
+  createdAt: string;
 };
 
 export type DrivingLicenseResultResponse = {
   success: boolean;
   record: DrivingLicenseRecord;
   result: Record<string, unknown> | null;
+  template?: DrivingLicenseTemplateSummary | null;
 };
 
 export const normalizeDrivingLicenseNumber = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');

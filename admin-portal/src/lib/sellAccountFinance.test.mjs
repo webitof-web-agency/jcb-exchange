@@ -199,3 +199,27 @@ test('derives the deal status from payments and linked RTO progress', () => {
   assert.equal(deriveSellAccountDealStatus({ purchaserPaymentStatus: 'FULL', rtoStatus: 'COMPLETED' }), 'DEAL_DONE');
   assert.equal(deriveSellAccountDealStatus({ purchaserPaymentStatus: 'PARTIAL', rtoStatus: 'REJECTED' }), 'RTO_WORK_FAILED');
 });
+
+test('counts only issued customer receipts and takes paid refunds off', () => {
+  const summary = calculateSellAccountPaymentSummary({
+    sellAmount: 400000,
+    payments: [
+      { side: 'PURCHASER_RECEIPT', amount: 150000, receiptStatus: 'ISSUED' },
+      { side: 'PURCHASER_RECEIPT', amount: 250000, receiptStatus: 'DRAFT' },
+      { side: 'PURCHASER_RECEIPT', amount: 50000, receiptStatus: 'CANCELLED' },
+    ],
+    refunds: [{ status: 'PAID', amount: 10000 }, { status: 'REQUESTED', amount: 1 }],
+  });
+  assert.equal(summary.purchaserReceived, 140000);
+  assert.equal(summary.purchaserDraftPending, 250000);
+  assert.equal(summary.purchaserBalance, 260000);
+  assert.equal(summary.purchaserPaymentStatus, 'PARTIAL');
+  assert.equal(summary.purchaserRefundable, 0);
+});
+
+test('a cancelled deal is CANCELLED and everything held is refundable', () => {
+  const summary = calculateSellAccountPaymentSummary({ sellAmount: 400000, cancelled: true, payments: [{ side: 'PURCHASER_RECEIPT', amount: 100000, receiptStatus: 'ISSUED' }] });
+  assert.equal(summary.purchaserBalance, 0);
+  assert.equal(summary.purchaserRefundable, 100000);
+  assert.equal(deriveSellAccountDealStatus({ purchaserPaymentStatus: 'FULL', cancelled: true }), 'CANCELLED');
+});

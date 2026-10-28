@@ -52,6 +52,7 @@ import {
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 import {
+  addRtoRecordTaskDocument,
   checkRtoRecordCompliance,
   checkRtoRecordComplianceWithRcApi,
   createRtoRecord,
@@ -62,6 +63,7 @@ import {
   listRtoRecords,
   lockRtoRecord,
   listAllRtoTransferTasks,
+  removeRtoRecordTaskDocument,
   updateRtoRecord,
   updateRtoRecordTask,
 } from '../controllers/rto.controller';
@@ -81,6 +83,16 @@ import {
   resendSellAccountInvoice,
   resendSellAccountPaymentReceipt,
   downloadSellAccountInvoice,
+  issueSellAccountReceiptRecord,
+  cancelSellAccountReceiptRecord,
+  downloadSellAccountPaymentReceipt,
+  cancelSellAccountSaleRecord,
+  downloadSellAccountCreditNote,
+  requestSellAccountRefundRecord,
+  approveSellAccountRefundRecord,
+  rejectSellAccountRefundRecord,
+  paySellAccountRefundRecord,
+  downloadSellAccountRefundAdvice,
 } from '../controllers/sellAccount.controller';
 
 const router = Router();
@@ -107,6 +119,8 @@ const canViewSell = requireAdminOrEmployeePermissions(['accounts.sell.read', 'ac
 const canCreateSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.create']);
 const canUpdateSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.update']);
 const canDeleteSell = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.delete']);
+// Approving and paying refunds is deliberately not part of accounts.sell.crud.
+const canApproveSellRefund = requireAdminOrEmployeePermissions(['accounts.sell.refund.approve']);
 const canViewApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.read']);
 const canUpdateApplicationStage = requireSuperAdminOrEmployeePermissions(['recruitment.applications.update_stage']);
 const canAssignApplications = requireSuperAdminOrEmployeePermissions(['recruitment.applications.assign']);
@@ -186,6 +200,8 @@ router.post('/admin/rto-records/:id/lock', canUpdateRto, lockRtoRecord);
 router.get('/admin/rto-records/:id/workspace', canViewRto, getRtoRecordWorkspace);
 router.post('/admin/rto-records/:id/transfer-tasks', canUpdateRto, initializeRtoRecordTasks);
 router.patch('/admin/rto-records/:id/transfer-tasks/:taskId', canUpdateRto, updateRtoRecordTask);
+router.post('/admin/rto-records/:id/transfer-tasks/:taskId/documents', canUpdateRto, addRtoRecordTaskDocument);
+router.delete('/admin/rto-records/:id/transfer-tasks/:taskId/documents/:documentId', canUpdateRto, removeRtoRecordTaskDocument);
 router.post('/admin/rto-records/:id/compliance', canUpdateRto, checkRtoRecordCompliance);
 // A fresh RC lookup is billed to the API wallet, so it also needs the RC verification permission.
 router.post('/admin/rto-records/:id/compliance/rc-api', canUpdateRto, requireAdminOrEmployeePermissions(['rc.full.read']), checkRtoRecordComplianceWithRcApi);
@@ -207,6 +223,16 @@ router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
 router.post('/admin/sell-accounts/:id/payments/:paymentId/receipt/resend', canUpdateSell, resendSellAccountPaymentReceipt);
 router.delete('/admin/sell-accounts/:id/payments/:paymentId', canDeleteSell, deleteSellAccountPaymentRecord);
+router.get('/admin/sell-accounts/:id/payments/:paymentId/receipt', canViewSell, downloadSellAccountPaymentReceipt);
+router.post('/admin/sell-accounts/:id/payments/:paymentId/issue', canUpdateSell, issueSellAccountReceiptRecord);
+router.post('/admin/sell-accounts/:id/payments/:paymentId/cancel', canDeleteSell, cancelSellAccountReceiptRecord);
+router.post('/admin/sell-accounts/:id/cancel-sale', canDeleteSell, cancelSellAccountSaleRecord);
+router.get('/admin/sell-accounts/:id/credit-note', canViewSell, downloadSellAccountCreditNote);
+router.post('/admin/sell-accounts/:id/refunds', canUpdateSell, requestSellAccountRefundRecord);
+router.post('/admin/sell-accounts/:id/refunds/:refundId/approve', canApproveSellRefund, approveSellAccountRefundRecord);
+router.post('/admin/sell-accounts/:id/refunds/:refundId/reject', canApproveSellRefund, rejectSellAccountRefundRecord);
+router.post('/admin/sell-accounts/:id/refunds/:refundId/pay', canApproveSellRefund, paySellAccountRefundRecord);
+router.get('/admin/sell-accounts/:id/refunds/:refundId/advice', canViewSell, downloadSellAccountRefundAdvice);
 
 // Applications
 router.get('/admin/applications', canViewApplications, getAdminApplications);

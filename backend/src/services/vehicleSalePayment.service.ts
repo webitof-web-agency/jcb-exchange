@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma';
+import { paymentSummaryForSellAccount } from './sellAccountFinance';
 import { dispatchConfiguredSms } from './smsIntegration.service';
 import { dispatchConfiguredWhatsApp } from './whatsappIntegration.service';
 import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
@@ -39,6 +40,7 @@ export const refreshVehicleSalePaymentReceiptToken = async (paymentId: string) =
       include: { sellAccount: { select: { id: true, deletedAt: true, purchaserCity: true } } },
     });
     if (!payment || payment.side !== 'PURCHASER_RECEIPT' || payment.sellAccount.deletedAt) return null;
+    if (payment.receiptStatus !== 'ISSUED') throw new Error('Convert the draft receipt to a real receipt before sending it.');
     const now = new Date();
     const persistedToken = payment.receiptTokenCiphertext && payment.receiptTokenExpiresAt && payment.receiptTokenExpiresAt > now
       ? decryptDocumentLinkToken(payment.receiptTokenCiphertext)
@@ -69,17 +71,14 @@ export const deliverVehicleSalePaymentReceipt = async (
 ) => {
   const payment = await prisma.sellAccountPayment.findUnique({
     where: { id: paymentId },
-    include: { sellAccount: { include: { payments: true } } },
+    include: { sellAccount: { include: { payments: true, refunds: true } } },
   });
-  if (!payment || payment.side !== 'PURCHASER_RECEIPT' || payment.sellAccount.deletedAt) {
+  if (!payment || payment.side !== 'PURCHASER_RECEIPT' || payment.sellAccount.deletedAt || payment.receiptStatus !== 'ISSUED') {
     return { invoiceUrl: null, channels: [], anySent: false };
   }
 
   const amount = Number(payment.amount);
-  const totalReceived = payment.sellAccount.payments
-    .filter((item) => item.side === 'PURCHASER_RECEIPT')
-    .reduce((total, item) => total + Number(item.amount), 0);
-  const balance = Math.max(0, Number(payment.sellAccount.sellAmount) - totalReceived);
+  const balance = paymentSummaryForSellAccount(payment.sellAccount, payment.sellAccount.payments, payment.sellAccount.refunds).purchaserBalance;
   const receiptUrl = buildPublicPaymentReceiptUrl(publicApiBaseUrl, token);
   const customerName = payment.sellAccount.purchaserName?.trim() || 'Customer';
   const vehicleTitle = vehicleTitleOf(payment.sellAccount);

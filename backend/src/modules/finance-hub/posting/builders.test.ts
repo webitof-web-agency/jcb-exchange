@@ -217,3 +217,72 @@ test('brokerage payable, brokerage income and partner share are separate balance
   const unsold = buildSellAccountVouchers(deal({ invoiceGeneratedAt: null, dealStatus: 'RTO_WORK_IN_PROGRESS', payments: [] }), ctx({ terms: terms({ partnerPartyId: 'partner', partnerShareAmount: D(50000) }) }));
   assert.ok(!unsold.some((voucher) => voucher.key === 'PARTNER_SHARE'), 'partner share waits for the sale');
 });
+
+test('a draft money receipt is a draft voucher and is not moved out of advances', () => {
+  const vouchers = buildSellAccountVouchers(deal({
+    invoiceGeneratedAt: null,
+    dealStatus: 'PARTIAL_PAYMENT_RECEIVED',
+    payments: [
+      { id: 'd1', side: 'PURCHASER_RECEIPT', amount: D(100000), paymentDate: at('2026-10-01'), method: 'UPI', reference: null, receiptStatus: 'DRAFT' },
+      { id: 'i1', side: 'PURCHASER_RECEIPT', amount: D(50000), paymentDate: at('2026-10-02'), method: 'UPI', reference: null, receiptStatus: 'ISSUED' },
+      { id: 'c1', side: 'PURCHASER_RECEIPT', amount: D(70000), paymentDate: at('2026-10-03'), method: 'CHEQUE', reference: '0001', receiptStatus: 'CANCELLED' },
+    ],
+  }), ctx());
+  assertBalanced(vouchers);
+  assert.equal(byKey(vouchers, 'RECEIPT:d1').draft, true);
+  assert.equal(byKey(vouchers, 'RECEIPT:i1').draft, undefined);
+  assert.ok(!vouchers.some((voucher) => voucher.key === 'RECEIPT:c1'), 'a cancelled receipt has no voucher');
+  // The draft flag never changes the content hash, so converting it posts the same voucher.
+  const { draft, ...posted } = byKey(vouchers, 'RECEIPT:d1');
+  assert.equal(draft, true);
+  assert.equal(voucherHash(posted), voucherHash(byKey(vouchers, 'RECEIPT:d1')));
+
+  const sold = buildSellAccountVouchers(deal({
+    payments: [
+      { id: 'd1', side: 'PURCHASER_RECEIPT', amount: D(100000), paymentDate: at('2026-10-01'), method: 'UPI', reference: null, receiptStatus: 'DRAFT' },
+      { id: 'i1', side: 'PURCHASER_RECEIPT', amount: D(50000), paymentDate: at('2026-10-02'), method: 'UPI', reference: null, receiptStatus: 'ISSUED' },
+    ],
+  }), ctx());
+  assert.equal(net([byKey(sold, 'ADVANCE_ADJUST')], 'S:CUSTOMER_ADVANCES').toNumber(), 50000, 'only the issued advance is adjusted');
+});
+
+test('refunds before the sale come out of advances, with the forfeited part kept as income', () => {
+  const vouchers = buildSellAccountVouchers(deal({
+    invoiceGeneratedAt: null,
+    dealStatus: 'CANCELLED',
+    cancelledAt: at('2026-10-05'),
+    payments: [{ id: 'i1', side: 'PURCHASER_RECEIPT', amount: D(100000), paymentDate: at('2026-10-01'), method: 'UPI', reference: null, receiptStatus: 'ISSUED' }],
+    refunds: [
+      { id: 'r1', status: 'PAID', amount: D(90000), forfeitAmount: D(10000), method: 'BANK_TRANSFER', reference: 'UTR9', refundDate: at('2026-10-06'), paidAt: at('2026-10-06') },
+      { id: 'r2', status: 'APPROVED', amount: D(5000), forfeitAmount: D(0), method: 'CASH', reference: null, refundDate: null, paidAt: null },
+    ],
+  }), ctx());
+  assertBalanced(vouchers);
+  assert.ok(!vouchers.some((voucher) => voucher.key === 'SALE' || voucher.key === 'SALE_CANCEL'), 'nothing was sold');
+  assert.ok(!vouchers.some((voucher) => voucher.key === 'REFUND:r2'), 'only paid refunds are posted');
+  const refund = byKey(vouchers, 'REFUND:r1');
+  assert.equal(refund.type, 'PAYMENT');
+  assert.equal(refund.lines[1]?.accountId, 'B:SELL_ACCOUNT_PAYMENT:BANK_TRANSFER');
+  assert.equal(net(vouchers, 'S:CUSTOMER_ADVANCES').toNumber(), 0, 'advance fully cleared');
+  assert.equal(net(vouchers, 'S:FORFEITED_ADVANCES').toNumber(), -10000);
+});
+
+test('cancelling a sale after the Bill of Supply reverses the sale with a credit note', () => {
+  const vouchers = buildSellAccountVouchers(deal({
+    dealStatus: 'CANCELLED',
+    cancelledAt: at('2026-10-20'),
+    creditNoteNumber: 'JCBX/CN/2026-27/0001',
+    creditNoteDate: at('2026-10-20'),
+    refunds: [{ id: 'r1', status: 'PAID', amount: D(1200000), forfeitAmount: D(0), method: 'BANK_TRANSFER', reference: 'UTR9', refundDate: at('2026-10-21'), paidAt: at('2026-10-21') }],
+  }), ctx());
+  assertBalanced(vouchers);
+  const note = byKey(vouchers, 'SALE_CANCEL');
+  assert.equal(note.type, 'CREDIT_NOTE');
+  assert.equal(note.reference, 'JCBX/CN/2026-27/0001');
+  assert.equal(net(vouchers, 'S:VEHICLE_SALES_MARGIN').toNumber(), 0, 'sale income reversed');
+  assert.equal(net(vouchers, 'S:GST_OUTPUT_CGST').toNumber(), 0, 'GST on margin reversed');
+  assert.equal(net(vouchers, 'S:COGS_VEHICLES').toNumber(), 0);
+  assert.equal(net(vouchers, 'S:VEHICLE_STOCK').toNumber(), 1035000, 'vehicle back in stock at cost');
+  assert.equal(byKey(vouchers, 'REFUND:r1').lines[0]?.accountId, 'S:DEBTORS_CONTROL');
+  assert.equal(net(vouchers, 'S:DEBTORS_CONTROL').toNumber(), 0, 'customer fully refunded');
+});

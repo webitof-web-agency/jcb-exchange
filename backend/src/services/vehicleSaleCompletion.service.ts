@@ -101,8 +101,8 @@ export const issueAndDeliverVehicleSaleInvoiceAfterFullPayment = async (
 ) => {
   const issued = issueInvoiceToken();
   const prepared = await prisma.$transaction(async (tx) => {
-    const current = await tx.sellAccount.findUnique({ where: { id: sellAccountId }, include: { payments: true } });
-    if (!current || current.deletedAt) return null;
+    const current = await tx.sellAccount.findUnique({ where: { id: sellAccountId }, include: { payments: true, refunds: true } });
+    if (!current || current.deletedAt || current.cancelledAt) return null;
     const payments = paymentSummaryForRecord(current, current.payments);
     if (payments.purchaserPaymentStatus !== 'FULL') return null;
     if (current.invoiceNumber && current.invoiceTokenHash) return { id: current.id, alreadyIssued: true };
@@ -138,10 +138,11 @@ export const completeVehicleSale = async (
   const completedId = await prisma.$transaction(async (tx) => {
     const current = await tx.sellAccount.findFirst({
       where: { OR: [{ id }, { recordNumber: id }], deletedAt: null },
-      include: { payments: true, rtoRecord: { include: { transferTasks: true } } },
+      include: { payments: true, refunds: true, rtoRecord: { include: { transferTasks: true } } },
     });
     if (!current) return null;
     if (current.isLocked) throw new VehicleSaleCompletionError('This sale is already completed and locked.', 423);
+    if (current.cancelledAt) throw new VehicleSaleCompletionError('This sale is cancelled.');
     if (current.isDraft) throw new VehicleSaleCompletionError('Save the Sold Vehicle record before completing the sale.');
     const rto = current.rtoRecord;
     if (!rto) throw new VehicleSaleCompletionError('Start RTO work before completing the sale.');
@@ -199,6 +200,7 @@ export const completeVehicleSale = async (
 export const resendVehicleSaleInvoice = async (id: string, publicApiBaseUrl: string) => {
   const record = await prisma.sellAccount.findFirst({ where: { OR: [{ id }, { recordNumber: id }], deletedAt: null } });
   if (!record) return null;
+  if (record.cancelledAt) throw new VehicleSaleCompletionError('This sale is cancelled; its Bill of Supply cannot be sent.');
   if (!isVehicleSaleInvoiceResendable(record)) throw new VehicleSaleCompletionError('Generate the invoice before sending it.');
   const previousTokenHash = record.invoiceTokenHash;
   const previousTokenExpiresAt = record.invoiceTokenExpiresAt;

@@ -3,14 +3,15 @@
 import { FormEvent, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Plus, RefreshCw, Upload } from 'lucide-react';
+import { FileSpreadsheet, Plus, RefreshCw, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { downloadTableFile } from '@/lib/tabularExport';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, enumLabel, formatDate, formatInr, useFinanceWorkspaceAccess } from '@/lib/financeWorkspaceClient';
 import GeneralLedgerModule from './GeneralLedgerModule';
 import { optionalChoices, todayIso, useLedgerLookups, type LedgerLookups } from './ledgerLookups';
-import { Badge, Button, cellClass, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, Tabs, tableHeadClass } from './ui';
+import { Badge, Button, cellClass, DatePresets, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, Panel, ReadOnlyNotice, selectButtonClass, tableHeadClass, Tabs } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -53,11 +54,11 @@ function BookFromStatement({ row, lookups, onClose, onSaved }: { row: StatementR
   };
   return (
     <Modal title="Book this statement entry" subtitle={`${formatDate(row.date)} · ${row.amount > 0 ? 'Money in' : 'Money out'} ${formatInr(Math.abs(row.amount))}`} onClose={() => { if (!busy) onClose(); }}>
-      <form onSubmit={submit} className="p-5 sm:p-7">
-        <p className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{row.narration}{row.reference ? ` · ${row.reference}` : ''}</p>
-        <div className="grid gap-4">
-          <Field label={row.amount > 0 ? 'Received for (ledger) *' : 'Paid for (ledger) *'}><SearchableSelect options={options} value={form.counterAccountId} onChange={(option) => setForm({ ...form, counterAccountId: String(option.id) })} placeholder="e.g. Bank Charges, Interest Income, Sundry Debtors" /></Field>
-          {counter?.requiresParty ? <Field label="Party *"><SearchableSelect options={optionalChoices(lookups.partyOptions, form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Required" /></Field> : null}
+      <form onSubmit={submit} className="p-4">
+        <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{row.narration}{row.reference ? ` · ${row.reference}` : ''}</p>
+        <div className="grid gap-3">
+          <Field label={row.amount > 0 ? 'Received for (ledger) *' : 'Paid for (ledger) *'}><SearchableSelect buttonClassName={selectButtonClass} options={options} value={form.counterAccountId} onChange={(option) => setForm({ ...form, counterAccountId: String(option.id) })} placeholder="e.g. Bank Charges, Interest Income, Sundry Debtors" /></Field>
+          {counter?.requiresParty ? <Field label="Party *"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(lookups.partyOptions, form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Required" /></Field> : null}
           <Field label="Narration"><input value={form.narration} onChange={(event) => setForm({ ...form, narration: event.target.value })} className={inputClass} maxLength={1000} /></Field>
         </div>
         <ModalFooter>
@@ -89,18 +90,18 @@ function MatchPicker({ row, book, onClose, onSaved }: { row: StatementRow; book:
     <Modal title="Match with a book entry" subtitle={`${formatDate(row.date)} · ${row.narration}`} onClose={onClose} wide>
       {!candidates.length ? <EmptyState title="No unmatched book entry in the same direction" description="Book a voucher for it instead." /> : (
         <div className="max-h-[60vh] overflow-auto">
-          <table className="w-full text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2">Date</th><th className="px-4 py-2">Voucher</th><th className="px-4 py-2">Narration</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2" /></tr></thead>
+          <table className="w-full text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {candidates.slice(0, 100).map((line) => {
                 const exact = Math.abs(line.amount - row.amount) < 0.005;
                 return (
                   <tr key={line.id} className={exact ? 'bg-emerald-50/50' : ''}>
-                    <td className="px-4 py-2">{formatDate(line.date)}</td>
-                    <td className="px-4 py-2 font-mono text-xs">{line.voucherNumber}</td>
-                    <td className="max-w-[360px] truncate px-4 py-2 text-xs" title={line.narration}>{line.narration}{line.party ? ` · ${line.party}` : ''}</td>
-                    <td className="px-4 py-2 text-right">{signed(line.amount)}</td>
-                    <td className="px-4 py-2 text-right"><Button variant={exact ? 'primary' : 'secondary'} busy={busy === line.id} disabled={!exact} title={exact ? undefined : 'Amounts must be equal; post the difference first'} onClick={() => void choose(line)}>Match</Button></td>
+                    <td className="px-3 py-2">{formatDate(line.date)}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{line.voucherNumber}</td>
+                    <td className="max-w-[360px] truncate px-3 py-2 text-xs" title={line.narration}>{line.narration}{line.party ? ` · ${line.party}` : ''}</td>
+                    <td className="px-3 py-2 text-right">{signed(line.amount)}</td>
+                    <td className="px-3 py-2 text-right"><Button variant={exact ? 'primary' : 'secondary'} busy={busy === line.id} disabled={!exact} title={exact ? undefined : 'Amounts must be equal; post the difference first'} onClick={() => void choose(line)}>Match</Button></td>
                   </tr>
                 );
               })}
@@ -159,6 +160,43 @@ export function BankReconModule({ types, title = 'Bank reconciliation', descript
 
   const statement = (recon.data?.statement ?? []).filter((row) => filter === 'all' || !row.recon);
   const book = (recon.data?.book ?? []).filter((line) => filter === 'all' || !line.recon);
+  const reconStatus = (item: { recon: Recon | null }) => (!item.recon ? 'Unmatched' : item.recon.status === 'IGNORED' ? 'Ignored' : 'Matched');
+  const exportRecon = () => {
+    if (!selected) return;
+    const suffix = `${selected.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${range.from}-to-${range.to}`;
+    if (tab === 'book') {
+      downloadTableFile({
+        columns: [
+          { header: 'Date', value: (line: BookLine) => formatDate(line.date) },
+          { header: 'Voucher', value: (line: BookLine) => line.voucherNumber ?? '' },
+          { header: 'Type', value: (line: BookLine) => enumLabel(line.voucherType) },
+          { header: 'Narration', value: (line: BookLine) => line.narration },
+          { header: 'Party', value: (line: BookLine) => line.party ?? '' },
+          { header: 'Reference', value: (line: BookLine) => line.reference ?? '' },
+          { header: 'Amount (+ in / - out)', value: (line: BookLine) => line.amount },
+          { header: 'Status', value: reconStatus },
+        ],
+        rows: book,
+        fileName: `bank-book-entries-${suffix}`,
+        format: 'csv',
+      });
+      return;
+    }
+    downloadTableFile({
+      columns: [
+        { header: 'Date', value: (row: StatementRow) => formatDate(row.date) },
+        { header: 'Narration', value: (row: StatementRow) => row.narration },
+        { header: 'Reference', value: (row: StatementRow) => row.reference ?? '' },
+        { header: 'Amount (+ in / - out)', value: (row: StatementRow) => row.amount },
+        { header: 'Balance', value: (row: StatementRow) => row.balance ?? '' },
+        { header: 'Status', value: reconStatus },
+        { header: 'Note', value: (row: StatementRow) => row.recon?.note ?? '' },
+      ],
+      rows: statement,
+      fileName: `bank-statement-${suffix}`,
+      format: 'csv',
+    });
+  };
 
   if (banks.loading) return <Panel title={title}><LoadingState /></Panel>;
   if (banks.error) return <Panel title={title}><ErrorBanner message={banks.error} schemaMissing={banks.schemaMissing} /></Panel>;
@@ -168,9 +206,14 @@ export function BankReconModule({ types, title = 'Bank reconciliation', descript
     <Panel
       title={title}
       description={description ?? 'Match the imported bank statement with the books. Statement rows come from the Expenses-page import, picked up by each bank account’s statement aliases.'}
-      actions={canReconcile && selected ? <Button variant="primary" icon={<RefreshCw className="h-4 w-4" />} busy={busy} onClick={() => void run(() => api.post(`/finance-hub/banking/${selected.id}/auto-match`, range), (data: { matched: number }) => `${data.matched} rows matched automatically.`)}>Auto-match</Button> : null}
+      actions={(
+        <>
+          {selected && tab !== 'brs' && (tab === 'book' ? book.length : statement.length) ? <Button icon={<FileSpreadsheet />} onClick={exportRecon}>Export CSV</Button> : null}
+          {canReconcile && selected ? <Button variant="primary" icon={<RefreshCw className="h-4 w-4" />} busy={busy} onClick={() => void run(() => api.post(`/finance-hub/banking/${selected.id}/auto-match`, range), (data: { matched: number }) => `${data.matched} rows matched automatically.`)}>Auto-match</Button> : null}
+        </>
+      )}
     >
-      <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1.5fr_160px_160px_160px]">
+      <div className="grid gap-3 border-b border-slate-100 p-3 md:grid-cols-[1.5fr_160px_160px_160px]">
         <Field label="Bank account">
           <select value={selected?.id ?? ''} onChange={(event) => setBankId(event.target.value)} className={inputClass}>
             {list.map((bank) => <option key={bank.id} value={bank.id}>{bank.displayName}{bank.accountNumber ? ` (${bank.accountNumber})` : ''}{bank.type === 'VIRTUAL' ? ' · virtual' : ''}</option>)}
@@ -181,31 +224,32 @@ export function BankReconModule({ types, title = 'Bank reconciliation', descript
         <Field label="Show">
           <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} className={inputClass}><option value="unmatched">Unmatched only</option><option value="all">Everything</option></select>
         </Field>
+        <div className="md:col-span-4"><DatePresets from={range.from} to={range.to} onSelect={setRange} /></div>
       </div>
       {selected ? (
-        <div className="grid gap-3 p-4 sm:grid-cols-4">
-          <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Balance in books</p><p className="text-base font-bold">{formatInr(selected.bookBalance)}</p><p className="text-[11px] text-slate-400">{selected.ledger.code} · {selected.ledger.name}</p></div>
-          <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Last statement balance</p><p className="text-base font-bold">{formatInr(selected.statementBalance)}</p><p className="text-[11px] text-slate-400">{selected.statementDate ? formatDate(selected.statementDate) : 'No import yet'}</p></div>
-          <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Statement rows</p><p className="text-base font-bold">{selected.statementRows}</p><p className="text-[11px] text-slate-400">Aliases: {selected.aliases.join(', ') || 'none — add one in Bank Accounts'}</p></div>
-          <div className={`rounded-xl p-3 ${selected.unreconciled ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-[11px] uppercase tracking-wide text-slate-500">To reconcile</p><p className="text-base font-bold">{selected.unreconciled}</p></div>
+        <div className="grid gap-3 p-3 sm:grid-cols-4">
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Balance in books</p><p className="text-[15px] font-semibold">{formatInr(selected.bookBalance)}</p><p className="text-[11px] text-slate-400">{selected.ledger.code} · {selected.ledger.name}</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Last statement balance</p><p className="text-[15px] font-semibold">{formatInr(selected.statementBalance)}</p><p className="text-[11px] text-slate-400">{selected.statementDate ? formatDate(selected.statementDate) : 'No import yet'}</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">Statement rows</p><p className="text-[15px] font-semibold">{selected.statementRows}</p><p className="text-[11px] text-slate-400">Aliases: {selected.aliases.join(', ') || 'none — add one in Bank Accounts'}</p></div>
+          <div className={`rounded-lg p-3 ${selected.unreconciled ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-[11px] uppercase tracking-wide text-slate-500">To reconcile</p><p className="text-[15px] font-semibold">{selected.unreconciled}</p></div>
         </div>
       ) : null}
       {!canReconcile ? <ReadOnlyNotice>Matching needs “Reconcile Bank”; booking vouchers needs “Manage Books”.</ReadOnlyNotice> : null}
       <Tabs<ReconTab> tabs={[{ key: 'statement', label: `Statement (${statement.length})` }, { key: 'book', label: `Book entries (${book.length})` }, { key: 'brs', label: 'Reconciliation statement' }]} active={tab} onChange={setTab} />
 
       {tab === 'brs' ? (
-        <div className="p-4">
+        <div className="p-3">
           <div className="mb-3 max-w-[200px]"><Field label="As of"><input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} className={inputClass} /></Field></div>
           {brs.loading ? <LoadingState /> : brs.error || !brs.data ? <ErrorBanner message={brs.error || 'Could not load.'} /> : (
-            <div className="max-w-xl space-y-1 text-sm">
+            <div className="max-w-xl space-y-1 text-[13px]">
               <div className="flex justify-between font-semibold"><span>Balance as per books</span><span>{formatInr(brs.data.bookBalance)}</span></div>
               <div className="flex justify-between"><span>Less: deposits in books, not yet in the bank</span><span>{formatInr(brs.data.depositsNotCredited)}</span></div>
               <div className="flex justify-between"><span>Add: payments in books, not yet presented</span><span>{formatInr(brs.data.paymentsNotPresented)}</span></div>
               <div className="flex justify-between"><span>Add: bank credits not in books</span><span>{formatInr(brs.data.bankCreditsNotInBooks)}</span></div>
               <div className="flex justify-between"><span>Less: bank debits not in books</span><span>{formatInr(brs.data.bankDebitsNotInBooks)}</span></div>
-              <div className="flex justify-between border-t border-slate-200 pt-1 font-bold"><span>Expected bank balance</span><span>{formatInr(brs.data.expectedStatement)}</span></div>
+              <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Expected bank balance</span><span>{formatInr(brs.data.expectedStatement)}</span></div>
               <div className="flex justify-between"><span>Balance as per statement{brs.data.statementBalanceDate ? ` (${formatDate(brs.data.statementBalanceDate)})` : ''}</span><span>{formatInr(brs.data.statementBalance)}</span></div>
-              <div className={`flex justify-between rounded-lg px-2 py-1 font-bold ${brs.data.difference ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}><span>Unexplained difference</span><span>{brs.data.difference === null ? 'No statement balance' : formatInr(brs.data.difference)}</span></div>
+              <div className={`flex justify-between rounded-lg px-2 py-1 font-semibold ${brs.data.difference ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}><span>Unexplained difference</span><span>{brs.data.difference === null ? 'No statement balance' : formatInr(brs.data.difference)}</span></div>
               <p className="pt-2 text-xs text-slate-500">Ignored statement rows count as reconciled but are not in the books, so they show up in the difference until booked.</p>
             </div>
           )}
@@ -213,8 +257,8 @@ export function BankReconModule({ types, title = 'Bank reconciliation', descript
       ) : recon.loading ? <LoadingState /> : recon.error ? <ErrorBanner message={recon.error} schemaMissing={recon.schemaMissing} /> : tab === 'statement' ? (
         !statement.length ? <EmptyState title={filter === 'unmatched' ? 'Everything in this period is reconciled' : 'No statement rows'} description="Import statements on the Expenses page; rows appear here when the account name matches a statement alias." /> : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Narration</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5 text-right">Balance</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" /></tr></thead>
+            <table className="w-full min-w-[960px] text-left text-[13px]">
+              <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" /></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {statement.map((row) => (
                   <tr key={row.id}>
@@ -237,8 +281,8 @@ export function BankReconModule({ types, title = 'Bank reconciliation', descript
         )
       ) : !book.length ? <EmptyState title="No book entries" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Voucher</th><th className="px-4 py-2.5">Narration</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5">Status</th></tr></thead>
+          <table className="w-full min-w-[900px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {book.map((line) => (
                 <tr key={line.id} onClick={() => setOpenVoucher(line.voucherId)} className="cursor-pointer hover:bg-amber-50/40">
@@ -283,20 +327,39 @@ export function UnmatchedModule() {
     }
   };
   return (
-    <Panel title="Unmatched transactions" description="Bank statement rows with no matching book entry. Match them on Bank Reconciliation, book a voucher here, or mark them as needing none.">
-      <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-[160px_160px]">
-        <Field label="From"><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={inputClass} /></Field>
-        <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={inputClass} /></Field>
+    <Panel
+      title="Unmatched transactions"
+      description="Bank statement rows with no matching book entry. Match them on Bank Reconciliation, book a voucher here, or mark them as needing none."
+      actions={list.data?.rows.length ? (
+        <Button icon={<FileSpreadsheet />} onClick={() => downloadTableFile({
+          columns: [
+            { header: 'Date', value: (row: StatementRow) => formatDate(row.date) },
+            { header: 'Bank', value: (row: StatementRow) => row.bank?.displayName ?? row.name },
+            { header: 'Narration', value: (row: StatementRow) => row.narration },
+            { header: 'Reference', value: (row: StatementRow) => row.reference ?? '' },
+            { header: 'Amount (+ in / - out)', value: (row: StatementRow) => row.amount },
+            { header: 'Balance', value: (row: StatementRow) => row.balance ?? '' },
+          ],
+          rows: list.data!.rows,
+          fileName: `unmatched-bank-rows-${range.from}-to-${range.to}`,
+          format: 'csv',
+        })}>Export CSV</Button>
+      ) : null}
+    >
+      <div className="flex flex-wrap items-end gap-2 border-b border-slate-100 px-3 py-2">
+        <Field label="From"><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={`${inputClass} w-[150px]`} /></Field>
+        <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={`${inputClass} w-[150px]`} /></Field>
+        <DatePresets from={range.from} to={range.to} onSelect={setRange} />
       </div>
       {list.data?.unmappedAccounts.length ? (
-        <div className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900">
           Imported statement accounts not linked to any bank account: {list.data.unmappedAccounts.map((item) => `${item.accountName} (${item.rows})`).join(', ')}. Add the name as a statement alias in Banking & Cash → Bank Accounts.
         </div>
       ) : null}
       {list.loading ? <LoadingState /> : list.error ? <ErrorBanner message={list.error} schemaMissing={list.schemaMissing} /> : !list.data?.rows.length ? <EmptyState title="Nothing unmatched" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Bank</th><th className="px-4 py-2.5">Narration</th><th className="px-4 py-2.5 text-right">Amount</th><th className="px-4 py-2.5" /></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Bank</th><th className="px-3 py-2">Narration</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2" /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {list.data.rows.map((row) => (
                 <tr key={row.id}>
@@ -312,7 +375,7 @@ export function UnmatchedModule() {
               ))}
             </tbody>
           </table>
-          {list.data.total > list.data.rows.length ? <p className="px-4 py-2 text-xs text-slate-500">Showing {list.data.rows.length} of {list.data.total}; narrow the dates.</p> : null}
+          {list.data.total > list.data.rows.length ? <p className="px-3 py-2 text-xs text-slate-500">Showing {list.data.rows.length} of {list.data.total}; narrow the dates.</p> : null}
         </div>
       )}
       {booking && !lookups.loading ? <BookFromStatement row={booking} lookups={lookups} onClose={() => setBooking(null)} onSaved={() => { setBooking(null); refresh(); }} /> : null}
@@ -331,12 +394,12 @@ export function StatementImportsModule() {
     <Panel
       title="Bank statement upload"
       description="Upload CSV / XLS statements on the existing Expenses & Transactions page (duplicate rows are skipped there). Each batch feeds reconciliation of the bank account whose statement alias matches its account name."
-      actions={<Link href={`${prefix}/finance/expenses`} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300"><Upload className="h-4 w-4" />Upload a statement</Link>}
+      actions={<Link href={`${prefix}/finance/expenses`} className="inline-flex items-center h-8 gap-1.5 rounded-lg bg-amber-400 px-3 text-[13px] font-semibold text-slate-950 hover:bg-amber-300"><Upload className="h-4 w-4" />Upload a statement</Link>}
     >
       {batches.loading ? <LoadingState /> : batches.error ? <ErrorBanner message={batches.error} schemaMissing={batches.schemaMissing} /> : !batches.data?.length ? <EmptyState title="No statements imported yet" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Imported</th><th className="px-4 py-2.5">File</th><th className="px-4 py-2.5">Account name</th><th className="px-4 py-2.5">Period</th><th className="px-4 py-2.5 text-right">Rows</th><th className="px-4 py-2.5 text-right">Closing</th><th className="px-4 py-2.5">Bank account</th></tr></thead>
+          <table className="w-full min-w-[960px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Imported</th><th className="px-3 py-2">File</th><th className="px-3 py-2">Account name</th><th className="px-3 py-2">Period</th><th className="px-3 py-2 text-right">Rows</th><th className="px-3 py-2 text-right">Closing</th><th className="px-3 py-2">Bank account</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {batches.data.map((batch) => (
                 <tr key={batch.id}>
@@ -365,7 +428,7 @@ type CashTab = 'book' | 'counts';
 export function CashBookModule() {
   const [tab, setTab] = useState<CashTab>('book');
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Panel><Tabs<CashTab> tabs={[{ key: 'book', label: 'Cash book' }, { key: 'counts', label: 'Cash counts' }]} active={tab} onChange={setTab} /></Panel>
       {tab === 'book' ? <GeneralLedgerModule accountKinds={['CASH', 'PETTY_CASH']} title="Cash book & petty cash" description="Every cash receipt and payment with the running balance. Petty cash top-ups are contra vouchers from the bank." /> : <CashCounts />}
     </div>
@@ -402,8 +465,8 @@ function CashCounts() {
     <Panel title="Cash counts" description="Physical cash verification against the book balance on the count date. A difference needs a voucher (shortage / excess) after review." actions={canCount ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} disabled={!cashAccounts.length} onClick={() => setForm({ accountId: cashAccounts[0]?.id ?? '', date: todayIso(), note: '', pieces: {}, coins: '' })}>Count cash</Button> : null}>
       {counts.loading ? <LoadingState /> : counts.error ? <ErrorBanner message={counts.error} schemaMissing={counts.schemaMissing} /> : !counts.data?.length ? <EmptyState title="No cash counts yet" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Ledger</th><th className="px-4 py-2.5 text-right">Counted</th><th className="px-4 py-2.5 text-right">Books</th><th className="px-4 py-2.5 text-right">Difference</th><th className="px-4 py-2.5">By</th></tr></thead>
+          <table className="w-full min-w-[820px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Ledger</th><th className="px-3 py-2 text-right">Counted</th><th className="px-3 py-2 text-right">Books</th><th className="px-3 py-2 text-right">Difference</th><th className="px-3 py-2">By</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {counts.data.map((count) => (
                 <tr key={count.id}>
@@ -421,17 +484,17 @@ function CashCounts() {
       )}
       {form ? (
         <Modal title="Count cash" subtitle="Enter the number of notes of each value." onClose={() => { if (!busy) setForm(null); }}>
-          <form onSubmit={submit} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={submit} className="p-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Cash ledger"><select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })} className={inputClass}>{cashAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>
               <Field label="Date"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className={inputClass} /></Field>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
+            <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5">
               {NOTES.map((note) => <Field key={note} label={`₹${note} ×`}><input type="number" min={0} step={1} value={form.pieces[note] ?? ''} onChange={(event) => setForm({ ...form, pieces: { ...form.pieces, [note]: event.target.value } })} className={inputClass} /></Field>)}
               <Field label="Coins (₹)"><input type="number" min={0} step="0.01" value={form.coins} onChange={(event) => setForm({ ...form, coins: event.target.value })} className={inputClass} /></Field>
             </div>
-            <div className="mt-4"><Field label="Note"><input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} className={inputClass} maxLength={1000} /></Field></div>
-            <p className="mt-4 text-right text-base font-bold">Counted {formatInr(counted)}</p>
+            <div className="mt-3"><Field label="Note"><input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} className={inputClass} maxLength={1000} /></Field></div>
+            <p className="mt-3 text-right text-[15px] font-semibold">Counted {formatInr(counted)}</p>
             <ModalFooter>
               <Button onClick={() => setForm(null)} disabled={busy}>Cancel</Button>
               <Button type="submit" variant="primary" busy={busy} disabled={!form.accountId}>Save count</Button>
@@ -513,19 +576,19 @@ export function GatewayModule() {
     <Panel title="UPI / gateway settlement" description="Online collections first land in a gateway clearing ledger; the settlement moves the net amount to the bank and books the fee and GST. Pending = collected but not yet settled." actions={canPost ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} disabled={!overview.data?.gateways.length || !banks.length} onClick={open}>Record settlement</Button> : null}>
       {overview.loading ? <LoadingState /> : overview.error ? <ErrorBanner message={overview.error} schemaMissing={overview.schemaMissing} /> : (
         <>
-          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
             {overview.data!.gateways.map((gateway) => (
-              <div key={gateway.id} className="rounded-xl border border-slate-200 p-3">
-                <p className="text-sm font-semibold">{gateway.name}</p>
+              <div key={gateway.id} className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[13px] font-semibold">{gateway.name}</p>
                 <p className="text-[11px] text-slate-500">Collected {formatInr(gateway.collected)} · Settled {formatInr(gateway.settled)}</p>
-                <p className={`mt-1 text-base font-bold ${gateway.pending ? 'text-amber-700' : 'text-emerald-700'}`}>Pending {formatInr(gateway.pending)}</p>
+                <p className={`mt-1 text-[15px] font-semibold ${gateway.pending ? 'text-amber-700' : 'text-emerald-700'}`}>Pending {formatInr(gateway.pending)}</p>
               </div>
             ))}
           </div>
           {!overview.data!.settlements.length ? <EmptyState title="No settlements yet" /> : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className={tableHeadClass}><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Voucher</th><th className="px-4 py-2.5">UTR</th><th className="px-4 py-2.5">Details</th><th className="px-4 py-2.5 text-right">Gross</th></tr></thead>
+              <table className="w-full min-w-[760px] text-left text-[13px]">
+                <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">UTR</th><th className="px-3 py-2">Details</th><th className="px-3 py-2 text-right">Gross</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {overview.data!.settlements.map((voucher) => (
                     <tr key={voucher.id} onClick={() => setOpenVoucher(voucher.id)} className="cursor-pointer hover:bg-amber-50/40">
@@ -544,15 +607,15 @@ export function GatewayModule() {
       )}
       {form ? (
         <Modal title="Record gateway settlement" subtitle="Net to bank = gross − fee − GST on fee. Each UTR can be posted once." onClose={() => { if (!busy) setForm(null); }} wide>
-          <form onSubmit={submit} className="p-5 sm:p-7">
-            <div className="grid gap-4 md:grid-cols-4">
+          <form onSubmit={submit} className="p-4">
+            <div className="grid gap-3 md:grid-cols-4">
               <Field label="Gateway ledger"><select value={form.gatewayAccountId} onChange={(event) => setForm({ ...form, gatewayAccountId: event.target.value })} className={inputClass}>{overview.data?.gateways.map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.name}</option>)}</select></Field>
               <Field label="Settled into"><select value={form.bankAccountId} onChange={(event) => setForm({ ...form, bankAccountId: event.target.value })} className={inputClass}>{banks.map((bank) => <option key={bank.id} value={bank.id}>{bank.code} · {bank.name}</option>)}</select></Field>
               <Field label="GST on fee"><select value={form.gstSplit} onChange={(event) => setForm({ ...form, gstSplit: event.target.value as 'IGST' | 'CGST_SGST' })} className={inputClass}><option value="IGST">IGST (other state)</option><option value="CGST_SGST">CGST + SGST</option></select></Field>
               <Field label="Settlement report (CSV)"><input type="file" accept=".csv,text/csv" onChange={(event) => void loadFile(event.target.files?.[0])} className="block w-full text-xs" /></Field>
             </div>
-            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[760px] text-left text-sm">
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[760px] text-left text-[13px]">
                 <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">UTR / settlement id</th><th className="px-3 py-2 text-right">Gross</th><th className="px-3 py-2 text-right">Fee</th><th className="px-3 py-2 text-right">GST on fee</th><th className="px-3 py-2 text-right">Net to bank</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {form.rows.map((row, index) => (

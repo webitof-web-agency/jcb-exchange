@@ -175,8 +175,12 @@ export const updateFinSettings = async (
 // ---------------------------------------------------------------------------
 
 export const POSTING_SOURCES = ['SELL_ACCOUNT', 'LISTING_PAYMENT', 'CUSTOMER_PRIME', 'PARTNER_DEPOSIT', 'API_WALLET', 'FINANCE_TRANSACTION'] as const;
-/** Sources that stay off until switched on (old Expenses-page entries may repeat money already posted from other sources). */
-const OFF_BY_DEFAULT: readonly string[] = ['FINANCE_TRANSACTION'];
+/**
+ * Sources that stay off until switched on. Empty: Expenses-page entries post by default (only manual
+ * entries; imported statement lines are matched in Bank Reconciliation instead), and the page shows
+ * each entry's book status so paid expenses are not entered again as bills or vouchers.
+ */
+const OFF_BY_DEFAULT: readonly string[] = [];
 export type PostingSource = (typeof POSTING_SOURCES)[number];
 
 export type PostingConfig = {

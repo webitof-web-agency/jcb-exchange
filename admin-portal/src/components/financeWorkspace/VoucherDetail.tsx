@@ -75,7 +75,7 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
   return (
     <Modal title={voucher ? `${enumLabel(voucher.type)} ${voucher.number ?? '(draft)'}` : 'Voucher'} subtitle={voucher ? `${formatDate(voucher.date)} · ${voucher.period.label}` : undefined} onClose={() => { if (!busy) onClose(); }} wide>
       {detail.loading ? <LoadingState /> : detail.error ? <ErrorBanner message={detail.error} /> : voucher ? (
-        <div className="p-5 sm:p-7">
+        <div className="p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone[voucher.status]}>{enumLabel(voucher.status)}</Badge>
             {voucher.sourceType ? <Badge tone="blue">Auto: {enumLabel(voucher.sourceType)}</Badge> : <Badge>Manual</Badge>}
@@ -85,13 +85,13 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
             {voucher.reversalOf ? <button type="button" onClick={() => onOpen(voucher.reversalOf!.id)} className="text-xs font-semibold text-blue-700 hover:underline">Reversal of {voucher.reversalOf.number}</button> : null}
             {voucher.reversal ? <button type="button" onClick={() => onOpen(voucher.reversal!.id)} className="text-xs font-semibold text-violet-700 hover:underline">Reversed by {voucher.reversal.number}</button> : null}
           </div>
-          <p className="mt-3 text-sm text-slate-800">{voucher.narration}</p>
-          {voucher.rejectReason && voucher.status === 'REJECTED' ? <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">Rejected: {voucher.rejectReason}</p> : null}
-          {voucher.reversalReason ? <p className="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-xs text-violet-700">Reversed: {voucher.reversalReason}</p> : null}
+          <p className="mt-3 text-[13px] text-slate-800">{voucher.narration}</p>
+          {voucher.rejectReason && voucher.status === 'REJECTED' ? <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">Rejected: {voucher.rejectReason}</p> : null}
+          {voucher.reversalReason ? <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-700">Reversed: {voucher.reversalReason}</p> : null}
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Vehicle</th><th className="px-3 py-2">Cost centre</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th></tr></thead>
+          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[760px] text-left text-[13px]">
+              <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Ledger</th><th className="px-3 py-2">Party</th><th className="px-3 py-2">Vehicle</th><th className="px-3 py-2">Cost centre</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {voucher.lines.map((line) => (
                   <tr key={line.id}>
@@ -104,12 +104,12 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-slate-50 font-bold text-slate-900"><tr><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right">{formatInr(totals.debit)}</td><td className="px-3 py-2 text-right">{formatInr(totals.credit)}</td></tr></tfoot>
+              <tfoot className="bg-slate-50 font-semibold text-slate-900"><tr><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right">{formatInr(totals.debit)}</td><td className="px-3 py-2 text-right">{formatInr(totals.credit)}</td></tr></tfoot>
             </table>
           </div>
 
-          <div className="mt-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Activity</p>
+          <div className="mt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Activity</p>
             <ol className="mt-2 space-y-1 text-xs text-slate-600">
               {voucher.activity.map((item) => <li key={item.id}><span className="font-semibold text-slate-800">{enumLabel(item.action)}</span> · {item.actor ?? 'System'} · {new Date(item.at).toLocaleString('en-IN')}{item.reason ? ` — ${item.reason}` : ''}</li>)}
             </ol>
@@ -129,7 +129,7 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
 
       {prompt ? (
         <Modal title={prompt === 'reject' ? 'Reject voucher' : prompt === 'reverse' ? 'Reverse voucher' : 'Delete draft'} subtitle={prompt === 'reverse' ? 'Posts a mirror voucher with debit and credit swapped. Both stay in the books.' : prompt === 'delete' ? 'Drafts are not in the books; deleting is recorded in the audit trail.' : 'The maker can edit and resubmit it.'} onClose={() => { if (!busy) setPrompt(null); }}>
-          <form onSubmit={submitPrompt} className="space-y-4 p-5 sm:p-7">
+          <form onSubmit={submitPrompt} className="space-y-3 p-4">
             {prompt !== 'delete' ? <Field label="Reason *"><textarea value={reason} onChange={(event) => setReason(event.target.value)} className={`${inputClass} min-h-20`} maxLength={500} required /></Field> : null}
             {prompt === 'reverse' ? <Field label="Reversal date" hint={`Blank = same date as the original (${voucher ? formatDate(voucher.date) : ''}). Use a date in an open month if that month is locked.`}><input type="date" value={reverseDate} min={voucher?.date} max={todayIso()} onChange={(event) => setReverseDate(event.target.value)} className={inputClass} /></Field> : null}
             <ModalFooter><Button onClick={() => setPrompt(null)} disabled={busy}>Cancel</Button><Button type="submit" variant={prompt === 'reject' ? 'danger' : 'primary'} busy={busy}>Confirm</Button></ModalFooter>

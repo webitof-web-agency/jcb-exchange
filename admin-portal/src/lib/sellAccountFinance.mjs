@@ -106,25 +106,40 @@ export const calculateSellAccountGst = ({
   };
 };
 
+// Same rules as backend/src/services/sellAccountFinance.ts: only ISSUED customer receipts count
+// (a missing status means ISSUED), DRAFT receipts are pending, paid refunds come off, and a
+// cancelled deal expects nothing more from the customer.
 export const calculateSellAccountPaymentSummary = ({
   sellAmount = 0,
   purchaseAmount = 0,
   saleExchangeValue = 0,
   purchaseExchangeValue = 0,
   payments = [],
+  refunds = [],
+  cancelled = false,
 } = {}) => {
   // Exchange vehicles are part of the deal value but not cash.
-  const expectedSale = roundMoney(Math.max(number(sellAmount) - number(saleExchangeValue), 0));
+  const expectedSale = cancelled ? 0 : roundMoney(Math.max(number(sellAmount) - number(saleExchangeValue), 0));
   const expectedPurchase = roundMoney(Math.max(number(purchaseAmount) - number(purchaseExchangeValue), 0));
   const safePayments = Array.isArray(payments) ? payments : [];
-  const purchaserReceived = roundMoney(safePayments
-    .filter((payment) => payment?.side === 'PURCHASER_RECEIPT')
-    .reduce((total, payment) => total + number(payment?.amount), 0));
-  const sellerPaid = roundMoney(safePayments
-    .filter((payment) => payment?.side === 'SELLER_PAYMENT')
-    .reduce((total, payment) => total + number(payment?.amount), 0));
+  const safeRefunds = Array.isArray(refunds) ? refunds : [];
+  const isIssued = (payment) => (payment?.receiptStatus ?? 'ISSUED') === 'ISSUED';
+  const sum = (items, pick = (item) => number(item?.amount)) => roundMoney(items.reduce((total, item) => total + pick(item), 0));
+  const customerReceipts = safePayments.filter((payment) => payment?.side === 'PURCHASER_RECEIPT');
+  const purchaserReceivedGross = sum(customerReceipts.filter(isIssued));
+  const purchaserDraftPending = sum(customerReceipts.filter((payment) => payment?.receiptStatus === 'DRAFT'));
+  const paidRefunds = safeRefunds.filter((refund) => refund?.status === 'PAID');
+  const purchaserRefunded = sum(paidRefunds);
+  const purchaserForfeited = sum(paidRefunds, (refund) => number(refund?.forfeitAmount));
+  const purchaserRefundPending = sum(
+    safeRefunds.filter((refund) => refund?.status === 'REQUESTED' || refund?.status === 'APPROVED'),
+    (refund) => number(refund?.amount) + number(refund?.forfeitAmount),
+  );
+  const purchaserReceived = roundMoney(Math.max(purchaserReceivedGross - purchaserRefunded - purchaserForfeited, 0));
+  const sellerPaid = sum(safePayments.filter((payment) => payment?.side === 'SELLER_PAYMENT' && isIssued(payment)));
   const purchaserBalance = roundMoney(Math.max(expectedSale - purchaserReceived, 0));
   const sellerBalance = roundMoney(Math.max(expectedPurchase - sellerPaid, 0));
+  const purchaserRefundable = roundMoney(Math.max(purchaserReceived - expectedSale - purchaserRefundPending, 0));
 
   const paymentStatus = (received, expected, dealValue) => {
     if (expected <= 0) return number(dealValue) > 0 ? 'FULL' : 'UNPAID';
@@ -136,9 +151,15 @@ export const calculateSellAccountPaymentSummary = ({
   return {
     customerCashReceivable: expectedSale,
     sellerCashPayable: expectedPurchase,
+    purchaserReceivedGross,
+    purchaserDraftPending,
+    purchaserRefunded,
+    purchaserForfeited,
+    purchaserRefundPending,
     purchaserReceived,
     purchaserBalance,
-    purchaserPaymentStatus: paymentStatus(purchaserReceived, expectedSale, sellAmount),
+    purchaserPaymentStatus: cancelled ? 'UNPAID' : paymentStatus(purchaserReceived, expectedSale, sellAmount),
+    purchaserRefundable,
     sellerPaid,
     sellerBalance,
     sellerPaymentStatus: paymentStatus(sellerPaid, expectedPurchase, purchaseAmount),
@@ -149,7 +170,9 @@ export const deriveSellAccountDealStatus = ({
   purchaserPaymentStatus = 'UNPAID',
   rtoStatus = 'PENDING',
   rtoLinked = false,
+  cancelled = false,
 } = {}) => {
+  if (cancelled) return 'CANCELLED';
   const normalizedRtoStatus = String(rtoStatus || 'PENDING').toUpperCase();
   if (['REJECTED', 'CANCELLED', 'FAILED', 'ERROR', 'RTO_WORK_FAILED'].includes(normalizedRtoStatus)) return 'RTO_WORK_FAILED';
   if (normalizedRtoStatus === 'DEAL_DONE') return 'DEAL_DONE';

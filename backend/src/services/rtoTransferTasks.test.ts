@@ -3,10 +3,31 @@ import test from 'node:test';
 import {
   assertRemark,
   buildInitialTransferTasks,
+  buildTaskDocument,
   deriveRtoStatusFromTasks,
+  readTaskDocuments,
   RTO_TRANSFER_TASK_DEFINITIONS,
   summarizeTransferTasks,
 } from './rtoTransferTasks';
+
+test('task documents accept only secure uploads of PDF or images', () => {
+  const now = new Date('2026-10-28T10:00:00Z');
+  const document = buildTaskDocument(
+    { fileUrl: '/api/documents/secure/drive-1AbC_d-9', originalName: 'RC copy/new.pdf', mimeType: 'application/pdf', size: 2048 },
+    { id: 'doc-1', uploadedById: 'user-1', now },
+  );
+  assert.deepEqual(document, {
+    id: 'doc-1', fileUrl: '/api/documents/secure/drive-1AbC_d-9', fileName: 'RC copy_new.pdf', mimeType: 'application/pdf',
+    size: 2048, uploadedAt: now.toISOString(), uploadedById: 'user-1',
+  });
+  assert.throws(() => buildTaskDocument({ fileUrl: 'https://evil.example/x.pdf', mimeType: 'application/pdf' }, { id: 'x' }), /Upload the file first/);
+  assert.throws(() => buildTaskDocument({ fileUrl: '/api/documents/secure/drive-abc', mimeType: 'text/html' }, { id: 'x' }), /Only PDF/);
+});
+
+test('stored task documents skip malformed entries', () => {
+  assert.deepEqual(readTaskDocuments(null), []);
+  assert.deepEqual(readTaskDocuments([{ id: 'a', fileUrl: '/x' }, { id: 1 }, null, 'text']).map((entry) => entry.id), ['a']);
+});
 
 test('creates the ownership transfer checklist with optional HSRP and fitness', () => {
   const tasks = buildInitialTransferTasks(null);

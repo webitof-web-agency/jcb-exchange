@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { apiErrorMessage, enumLabel, formatDate, formatInr } from '@/lib/financeWorkspaceClient';
 import { optionalChoices, todayIso, type PickerOption } from './ledgerLookups';
-import { Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, tableHeadClass } from './ui';
+import { Button, EmptyState, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, selectButtonClass, tableHeadClass } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
 
@@ -88,29 +88,29 @@ export function PartyStatementView({ partyId, from, to }: { partyId: string; fro
   const share = `Statement ${formatDate(data.from)} – ${formatDate(data.to)} for ${data.party.name}: closing balance ${drCrAmount(data.closing)} (Dr: due from you, Cr: due to you).`;
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <span className="text-sm text-slate-600">Opening <strong>{drCrAmount(data.opening)}</strong> · Debits {formatInr(data.totalDebit)} · Credits {formatInr(data.totalCredit)} · Closing <strong>{drCrAmount(data.closing)}</strong></span>
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2">
+        <span className="text-[13px] text-slate-600">Opening <strong>{drCrAmount(data.opening)}</strong> · Debits {formatInr(data.totalDebit)} · Credits {formatInr(data.totalCredit)} · Closing <strong>{drCrAmount(data.closing)}</strong></span>
         <span className="ml-auto flex flex-wrap gap-2">
           <Button icon={<Printer className="h-4 w-4" />} onClick={() => printStatement(data)}>Print / PDF</Button>
           <Button icon={<Download className="h-4 w-4" />} onClick={() => downloadCsv(data)}>CSV</Button>
-          {data.party.mobile ? <a href={whatsappLink(data.party.mobile, share)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"><MessageCircle className="h-4 w-4" />WhatsApp</a> : null}
+          {data.party.mobile ? <a href={whatsappLink(data.party.mobile, share)} target="_blank" rel="noreferrer" className="inline-flex items-center h-8 gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[13px] font-medium text-emerald-700 hover:bg-emerald-100"><MessageCircle className="h-4 w-4" />WhatsApp</a> : null}
         </span>
       </div>
-      {data.truncated ? <p className="px-4 pb-2 text-xs text-amber-700">Showing the first 5,000 entries; narrow the dates.</p> : null}
+      {data.truncated ? <p className="px-3 pb-2 text-xs text-amber-700">Showing the first 5,000 entries; narrow the dates.</p> : null}
       {!data.rows.length ? <EmptyState title="No entries in this period" description={`Opening and closing balance ${drCrAmount(data.opening)}.`} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className={tableHeadClass}><tr><th className="px-4 py-2">Date</th><th className="px-4 py-2">Voucher</th><th className="px-4 py-2">Particulars</th><th className="px-4 py-2 text-right">Debit</th><th className="px-4 py-2 text-right">Credit</th><th className="px-4 py-2 text-right">Balance</th></tr></thead>
+          <table className="w-full min-w-[860px] text-left text-[13px]">
+            <thead className={tableHeadClass}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Particulars</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th><th className="px-3 py-2 text-right">Balance</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              <tr className="bg-slate-50/60 text-xs text-slate-500"><td className="px-4 py-2">{formatDate(data.from)}</td><td /><td className="px-4 py-2">Opening balance</td><td /><td /><td className="px-4 py-2 text-right font-semibold">{drCrAmount(data.opening)}</td></tr>
+              <tr className="bg-slate-50/60 text-xs text-slate-500"><td className="px-3 py-2">{formatDate(data.from)}</td><td /><td className="px-3 py-2">Opening balance</td><td /><td /><td className="px-3 py-2 text-right font-semibold">{drCrAmount(data.opening)}</td></tr>
               {data.rows.map((row) => (
                 <tr key={row.id} onClick={() => setOpenVoucher(row.voucherId)} className="cursor-pointer hover:bg-amber-50/40">
-                  <td className="whitespace-nowrap px-4 py-2">{formatDate(row.date)}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{row.voucherNumber}<span className="block font-sans text-[11px] text-slate-400">{enumLabel(row.voucherType)}</span></td>
-                  <td className="max-w-[360px] px-4 py-2 text-xs"><span className="block truncate" title={row.narration}>{row.narration}</span><span className="block truncate text-slate-400">{row.lineNarration}{row.partyName ? ` · Ref ${row.partyName}` : ''}</span></td>
-                  <td className="px-4 py-2 text-right">{row.debit ? formatInr(row.debit) : ''}</td>
-                  <td className="px-4 py-2 text-right">{row.credit ? formatInr(row.credit) : ''}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">{drCrAmount(row.balance)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{formatDate(row.date)}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.voucherNumber}<span className="block font-sans text-[11px] text-slate-400">{enumLabel(row.voucherType)}</span></td>
+                  <td className="max-w-[360px] px-3 py-2 text-xs"><span className="block truncate" title={row.narration}>{row.narration}</span><span className="block truncate text-slate-400">{row.lineNarration}{row.partyName ? ` · Ref ${row.partyName}` : ''}</span></td>
+                  <td className="px-3 py-2 text-right">{row.debit ? formatInr(row.debit) : ''}</td>
+                  <td className="px-3 py-2 text-right">{row.credit ? formatInr(row.credit) : ''}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{drCrAmount(row.balance)}</td>
                 </tr>
               ))}
             </tbody>
@@ -126,7 +126,7 @@ export function PartyStatementModal({ party, onClose }: { party: PartyRef; onClo
   const [range, setRange] = useState({ from: '', to: todayIso() });
   return (
     <Modal title={`Statement: ${party.name}`} subtitle="All party ledgers (receivable, payable, advances, deposits). Dr = due from the party." onClose={onClose} wide>
-      <div className="grid gap-3 border-b border-slate-100 px-4 py-3 sm:grid-cols-[180px_180px_1fr]">
+      <div className="grid gap-3 border-b border-slate-100 px-3 py-2 sm:grid-cols-[180px_180px_1fr]">
         <Field label="From" hint="Blank: start of the financial year."><input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} className={inputClass} /></Field>
         <Field label="To"><input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} className={inputClass} /></Field>
       </div>
@@ -157,9 +157,9 @@ export function FollowUpModal({ party, parties, side, amount, onClose, onSaved }
   };
   return (
     <Modal title={party ? `Follow-up: ${party.name}` : 'New follow-up'} subtitle={amount ? `Outstanding ${formatInr(amount)}` : undefined} onClose={() => { if (!busy) onClose(); }}>
-      <form onSubmit={submit} className="p-5 sm:p-7">
-        <div className="grid gap-4 md:grid-cols-2">
-          {!party ? <Field label="Party *" wide><SearchableSelect options={optionalChoices(parties ?? [], form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Choose party" /></Field> : null}
+      <form onSubmit={submit} className="p-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          {!party ? <Field label="Party *" wide><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(parties ?? [], form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Choose party" /></Field> : null}
           <Field label="Type">
             <select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value })} className={inputClass}>
               {FOLLOW_UP_KINDS.map((kind) => <option key={kind} value={kind}>{enumLabel(kind)}</option>)}
@@ -169,10 +169,10 @@ export function FollowUpModal({ party, parties, side, amount, onClose, onSaved }
           <Field label="What was discussed / sent *" wide><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className={`${inputClass} min-h-[84px]`} maxLength={2000} required /></Field>
           <Field label="Promised to pay on"><input type="date" value={form.promisedDate} onChange={(event) => setForm({ ...form, promisedDate: event.target.value })} className={inputClass} /></Field>
           <Field label="Promised amount"><input type="number" min={0} step="0.01" value={form.promisedAmount} onChange={(event) => setForm({ ...form, promisedAmount: event.target.value })} className={inputClass} /></Field>
-          <label className="flex items-center gap-2 text-sm text-slate-600 md:col-span-2"><input type="checkbox" checked={form.done} onChange={(event) => setForm({ ...form, done: event.target.checked })} className="h-4 w-4 accent-amber-500" />Nothing more to do (log only)</label>
+          <label className="flex items-center gap-2 text-[13px] text-slate-600 md:col-span-2"><input type="checkbox" checked={form.done} onChange={(event) => setForm({ ...form, done: event.target.checked })} className="h-4 w-4 accent-amber-500" />Nothing more to do (log only)</label>
         </div>
         {party?.mobile && form.kind === 'WHATSAPP' ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-[13px]">
             <p className="text-xs text-emerald-800">{message}</p>
             <a href={whatsappLink(party.mobile, message)} target="_blank" rel="noreferrer" onClick={() => { if (!form.notes) setForm((previous) => ({ ...previous, notes: 'WhatsApp reminder sent' })); }} className="mt-2 inline-flex items-center gap-2 font-semibold text-emerald-700 hover:underline"><MessageCircle className="h-4 w-4" />Open WhatsApp with this message</a>
           </div>
@@ -210,8 +210,8 @@ export function ScheduleModal({ initial, party, side, parties, onClose, onSaved 
   };
   return (
     <Modal title={initial ? 'Edit scheduled payment' : 'Schedule a collection or payment'} subtitle="Planning only: money is recorded with a receipt or payment voucher." onClose={() => { if (!busy) onClose(); }}>
-      <form onSubmit={submit} className="p-5 sm:p-7">
-        <div className="grid gap-4 md:grid-cols-2">
+      <form onSubmit={submit} className="p-4">
+        <div className="grid gap-3 md:grid-cols-2">
           <Field label="Direction">
             <select value={form.side} onChange={(event) => setForm({ ...form, side: event.target.value as DueSide })} className={inputClass}>
               <option value="RECEIVABLE">Money in (collect)</option>
@@ -219,7 +219,7 @@ export function ScheduleModal({ initial, party, side, parties, onClose, onSaved 
             </select>
           </Field>
           {party ? <Field label="Party"><input value={party.name} className={inputClass} disabled /></Field> : (
-            <Field label="Party *"><SearchableSelect options={optionalChoices(parties ?? [], form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Choose party" /></Field>
+            <Field label="Party *"><SearchableSelect buttonClassName={selectButtonClass} options={optionalChoices(parties ?? [], form.partyId)} value={form.partyId} onChange={(option) => setForm({ ...form, partyId: String(option.id) })} placeholder="Choose party" /></Field>
           )}
           <Field label="Due date *"><input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} className={inputClass} required /></Field>
           <Field label="Amount *"><input type="number" min={0} step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} className={inputClass} required /></Field>

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { UploadedFileResult } from '@/lib/fileUpload';
 import { createEmptySellAccountDocuments, normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
@@ -52,7 +52,41 @@ export type SellAccountPayment = {
   paymentDate: string;
   method: 'CASH' | 'UPI' | 'BANK_TRANSFER' | 'CHEQUE' | 'OTHER';
   reference?: string;
+  drawnOn?: string;
   note?: string;
+  // Customer receipts: DRAFT until converted to a real (ISSUED) money receipt.
+  receiptStatus?: SellAccountReceiptStatus;
+  receiptNumber?: string | null;
+  issuedAt?: string | null;
+  cancelReason?: string | null;
+  hasPublicReceiptLink?: boolean;
+};
+export type SellAccountReceiptStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED';
+export type SellAccountRefundStatus = 'REQUESTED' | 'APPROVED' | 'PAID' | 'REJECTED';
+export type SellAccountRefundReason = 'DEAL_CANCELLED' | 'EXCESS_PAYMENT' | 'PRICE_REDUCTION' | 'VEHICLE_RETURN' | 'OTHER';
+export type SellAccountRefund = {
+  id: string;
+  refundNumber?: string | null;
+  status: SellAccountRefundStatus;
+  reason: SellAccountRefundReason;
+  amount: number;
+  forfeitAmount: number;
+  method: SellAccountPayment['method'];
+  reference?: string | null;
+  drawnOn?: string | null;
+  refundDate?: string | null;
+  note?: string | null;
+  requestedById?: string | null;
+  approvedById?: string | null;
+  rejectReason?: string | null;
+  createdAt?: string;
+};
+export const REFUND_REASON_LABELS: Record<SellAccountRefundReason, string> = {
+  DEAL_CANCELLED: 'Deal cancelled',
+  EXCESS_PAYMENT: 'Excess payment',
+  PRICE_REDUCTION: 'Price reduction',
+  VEHICLE_RETURN: 'Vehicle returned',
+  OTHER: 'Other',
 };
 export type SellAccountDealStatus =
   | 'OPEN'
@@ -62,7 +96,8 @@ export type SellAccountDealStatus =
   | 'RTO_WORK_IN_PROGRESS'
   | 'RTO_WORK_FAILED'
   | 'RTO_WORK_COMPLETED'
-  | 'DEAL_DONE';
+  | 'DEAL_DONE'
+  | 'CANCELLED';
 export type SellAccountSourceType = 'PARTNER' | 'AGENT' | 'DIRECT_CUSTOMER' | 'JCB_EXCHANGE';
 export type SellAccountPurchaseType = 'PURCHASE' | 'EXCHANGE';
 export type SellAccountSaleType = 'SELL' | 'EXCHANGE';
@@ -137,6 +172,11 @@ export interface SellAccountRecord {
   invoiceSentAt?: string | null;
   invoiceDelivery?: SellAccountInvoiceDelivery | null;
   hasPublicInvoiceLink?: boolean;
+  refunds?: SellAccountRefund[];
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  creditNoteNumber?: string | null;
+  creditNoteDate?: string | null;
   createdAt: string;
 }
 
@@ -153,6 +193,7 @@ export const DEAL_STATUS_CONFIG: Record<SellAccountDealStatus, { label: string; 
   RTO_WORK_FAILED: { label: 'RTO Work Failed / Errors', shortLabel: 'RTO Failed', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', icon: AlertTriangle },
   RTO_WORK_COMPLETED: { label: 'RTO Work Completed', shortLabel: 'RTO Completed', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
   DEAL_DONE: { label: 'Deal Done', shortLabel: 'Deal Done', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', icon: CheckCircle2 },
+  CANCELLED: { label: 'Sale Cancelled', shortLabel: 'Cancelled', bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300', icon: XCircle },
 };
 
 export const formatDisplayDate = (dateStr?: string | null) => {
@@ -186,7 +227,7 @@ export const normalizeSellAccountRecord = (record: StoredSellAccountRecord): Sel
   chassisNumber: normalizeSellAccountChassisNumber(record.chassisNumber),
   documents: normalizeSellAccountDocuments(record) as SellAccountDocuments,
   kyc: normalizeSellAccountKyc(record) as SellAccountKyc,
-  dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CANCELLED' || record.dealStatus === 'CLOSE'
+  dealStatus: record.dealStatus === 'COMPLETED' || record.dealStatus === 'CLOSE'
     ? 'DEAL_DONE'
     : record.dealStatus === 'PENDING'
       ? 'OPEN'
@@ -264,8 +305,35 @@ export const normalizeServerSellAccount = (record: SellAccountApiRecord): SellAc
     paymentDate: toDateInput(payment.paymentDate),
     method: String(payment.method) as SellAccountPayment['method'],
     reference: String(payment.reference || ''),
+    drawnOn: String(payment.drawnOn || ''),
     note: String(payment.note || ''),
+    receiptStatus: (['DRAFT', 'ISSUED', 'CANCELLED'].includes(String(payment.receiptStatus)) ? String(payment.receiptStatus) : 'ISSUED') as SellAccountReceiptStatus,
+    receiptNumber: optionalString(payment.receiptNumber),
+    issuedAt: optionalString(payment.issuedAt),
+    cancelReason: optionalString(payment.cancelReason),
+    hasPublicReceiptLink: payment.hasPublicReceiptLink === true,
   })) : [],
+  refunds: Array.isArray(record.refunds) ? (record.refunds as SellAccountApiRecord[]).map((refund) => ({
+    id: String(refund.id),
+    refundNumber: optionalString(refund.refundNumber),
+    status: String(refund.status) as SellAccountRefundStatus,
+    reason: String(refund.reason) as SellAccountRefundReason,
+    amount: Number(refund.amount || 0),
+    forfeitAmount: Number(refund.forfeitAmount || 0),
+    method: String(refund.method) as SellAccountPayment['method'],
+    reference: optionalString(refund.reference),
+    drawnOn: optionalString(refund.drawnOn),
+    refundDate: refund.refundDate ? toDateInput(refund.refundDate) : null,
+    note: optionalString(refund.note),
+    requestedById: optionalString(refund.requestedById),
+    approvedById: optionalString(refund.approvedById),
+    rejectReason: optionalString(refund.rejectReason),
+    createdAt: String(refund.createdAt || ''),
+  })) : [],
+  cancelledAt: optionalString(record.cancelledAt),
+  cancelReason: optionalString(record.cancelReason),
+  creditNoteNumber: optionalString(record.creditNoteNumber),
+  creditNoteDate: optionalString(record.creditNoteDate),
   rtoStatusSnapshot: String(record.rtoStatusSnapshot || 'PENDING'),
   rtoRecord: record.rtoRecord && typeof record.rtoRecord === 'object'
     ? (() => {

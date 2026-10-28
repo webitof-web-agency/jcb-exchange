@@ -16,10 +16,12 @@ import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
-import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from '@/lib/financeWorkspace';
+import { FINANCE_WORKSPACE_VIEW_PERMISSIONS, financeLegacyLinks, financeWorkspaceGroups, getVisibleFinanceWorkspaceGroups, matchFinanceModulePath } from '@/lib/financeWorkspace';
+import FinanceSidebarNav from '@/components/layout/FinanceSidebarNav';
+import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandPalette';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
-import { CalendarClock, Columns3, Contact, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
+import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
@@ -134,6 +136,11 @@ const getRequiredPermissionsForPath = (pathname: string) => {
     return matchedDirectVerificationRoute.permissions;
   }
 
+  // Vehicle Docs holds Sold Vehicle deeds and KYC copies: same access as Sold Vehicles.
+  if (/^\/(admin|employee)\/accounts\/vehicle-docs(\/|$)/.test(pathname)) {
+    return accountsNavItems.find((item) => item.key === 'sell-accounts')?.permissions || null;
+  }
+
   const matchedAccount = accountsNavItems.find((item) =>
     pathname === `/employee/accounts/${item.key}` ||
     pathname.startsWith(`/employee/accounts/${item.key}/`) ||
@@ -142,6 +149,12 @@ const getRequiredPermissionsForPath = (pathname: string) => {
   );
   if (matchedAccount) {
     return matchedAccount.permissions;
+  }
+
+  // Finance pages (/finance/{group}/{module}) need a permission of their workspace group.
+  const financePage = matchFinanceModulePath(pathname);
+  if (financePage) {
+    return financePage.group.permissions;
   }
 
   const matchedModule = employeeModuleNavItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
@@ -585,16 +598,18 @@ export default function AdminLayout({
     '/admin/analytics': t('admin.analytics'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/admin/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/admin/invoices': t('admin.invoices', 'Invoices'),
     '/admin/tasks': t('admin.tasks', 'Tasks'),
     '/admin/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
-    '/admin/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
+    '/admin/finance/workspace': t('admin.financeDashboard', 'Finance Dashboard'),
     '/employee/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/employee/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/employee/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/employee/invoices': t('admin.invoices', 'Invoices'),
     '/employee/tasks': t('admin.tasks', 'Tasks'),
     '/employee/finance/expenses': t('admin.expenses', 'Expenses & Transactions'),
-    '/employee/finance/workspace': t('admin.financeWorkspace', 'Financial Reports & CA Workspace'),
+    '/employee/finance/workspace': t('admin.financeDashboard', 'Finance Dashboard'),
     '/admin/verifications': t('admin.partnerVerifications'),
     '/admin/identity-hub': t('admin.identityHub', 'Identity Hub'),
     '/admin/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
@@ -665,8 +680,11 @@ export default function AdminLayout({
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
     if (pathname.includes('/accounts/sell-accounts/')) return t('admin.soldVehicle', 'Sold Vehicle');
+    if (pathname.includes('/accounts/vehicle-docs/')) return t('admin.vehicleDocs', 'Vehicle Docs');
     if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWork', 'RTO Work');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
+    const financePage = matchFinanceModulePath(pathname);
+    if (financePage) return financePage.module.label;
     if (pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');
     }
@@ -721,6 +739,9 @@ export default function AdminLayout({
       defaultLabel: item.defaultLabel,
       icon: accountsSidebarIcons[item.key],
     }));
+  if (visibleAccountsNavItems.some((item) => item.key === 'sell-accounts')) {
+    accountsSidebarItems.push({ href: `${routePrefix}/accounts/vehicle-docs`, labelKey: 'admin.vehicleDocs', defaultLabel: 'Vehicle Docs', icon: FileArchive });
+  }
   const hasDailyOperationsNav = accountsSidebarItems.length > 0 || [
     '/crm',
     '/listings',
@@ -730,7 +751,9 @@ export default function AdminLayout({
     '/vehicle-transport',
     '/visitors',
   ].some((suffix) => Boolean(getVisibleNavItem(suffix))) || canShowPartnersMenu;
-  const hasFinanceNav = ['/finance/workspace', '/finance/expenses', '/recurrence', '/invoices'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  // Workspace groups follow the same rule as the route guard: super admin sees all, others by permission.
+  const financeNavGroups = isSuperAdmin ? financeWorkspaceGroups : getVisibleFinanceWorkspaceGroups(userPermissions, false);
+  const hasFinanceNav = Boolean(getVisibleNavItem('/finance/workspace')) || financeNavGroups.length > 0 || financeLegacyLinks.some((link) => Boolean(getVisibleNavItem(link.suffix)));
   const hasReportsNav = Boolean(getVisibleNavItem('/analytics'));
   const hasCommunicationsNav = ['/whatsapp', '/sms'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
   const hasContentNav = ['/blogs', '/categories', '/brands', '/footer', '/translations'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
@@ -765,6 +788,11 @@ export default function AdminLayout({
     if (href.includes('recurrence')) return badges.recurrence || 0;
     return 0;
   };
+
+  const financeLegacyNavItems = financeLegacyLinks.flatMap((link) => {
+    const item = getVisibleNavItem(link.suffix);
+    return item ? [{ href: item.href, suffix: link.suffix, label: link.label, badge: getNavBadgeCount(item.href) }] : [];
+  });
 
   const renderSectionLabel = (label: string) => (
     <div className="px-3 pt-3.5 pb-1 flex items-center justify-between select-none">
@@ -1057,12 +1085,14 @@ export default function AdminLayout({
             <section className="space-y-1">
               {renderCollapsibleSectionLabel('finance', 'Finance & Accounts', badges.recurrence || 0)}
               {renderCollapsibleSectionBody('finance', (
-                <>
-                  {renderStandardNavItem(getVisibleNavItem('/finance/workspace'))}
-                  {renderStandardNavItem(getVisibleNavItem('/invoices'))}
-                  {renderStandardNavItem(getVisibleNavItem('/finance/expenses'))}
-                  {renderStandardNavItem(getVisibleNavItem('/recurrence'))}
-                </>
+                <FinanceSidebarNav
+                  pathname={pathname}
+                  prefix={routePrefix}
+                  showDashboard={Boolean(getVisibleNavItem('/finance/workspace'))}
+                  groups={financeNavGroups}
+                  legacyItems={financeLegacyNavItems}
+                  onNavigate={() => setIsMobileMenuOpen(false)}
+                />
               ))}
             </section>
           ) : null}
@@ -1596,6 +1626,14 @@ export default function AdminLayout({
           </div>
         </header>
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain p-3 sm:p-4 lg:p-4.5 pb-8">{children}</div>
+        {hasFinanceNav ? (
+          <FinanceCommandPalette
+            prefix={routePrefix}
+            groups={financeNavGroups}
+            legacyItems={financeLegacyNavItems}
+            showDashboard={Boolean(getVisibleNavItem('/finance/workspace'))}
+          />
+        ) : null}
       </main>
       <PushNotificationManager />
     </div>

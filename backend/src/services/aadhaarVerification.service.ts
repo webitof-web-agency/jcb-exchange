@@ -82,7 +82,7 @@ type AadhaarVerificationDependencies = {
   deleteTemplateFile?: (fileId: string) => Promise<void>;
 };
 
-export const AADHAAR_RAW_DATA_TTL_MS = 24 * 60 * 60 * 1000;
+export const AADHAAR_RAW_DATA_TTL_MS = 5 * 60 * 1000;
 export const MAX_AADHAAR_TEMPLATE_SIZE = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
