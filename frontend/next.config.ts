@@ -32,8 +32,26 @@ const shouldAllowLocalIpImages =
   process.env.NODE_ENV !== 'production' &&
   (!!dynamicPattern?.hostname && isLocalHostname(dynamicPattern.hostname));
 
+// Headers for every response, including static files. The Content-Security-Policy is set per request
+// in src/proxy.ts because it carries a nonce.
+const securityHeaders = [
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self), payment=(self), usb=(), interest-cohort=()' },
+  // Google sign-in and Razorpay talk to this page from their popups.
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+  ...(process.env.NODE_ENV === 'production'
+    ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' }]
+    : []),
+];
+
 const nextConfig: NextConfig = {
   turbopack: {},
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders }];
+  },
   images: {
     // Local development serves listing images from the backend on a private host.
     dangerouslyAllowLocalIP: shouldAllowLocalIpImages,

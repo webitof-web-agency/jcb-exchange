@@ -5,6 +5,7 @@ import { SITE_KEYWORDS, SITE_NAME, SITE_OG_IMAGE, SITE_URL } from '@/lib/site';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import { extractIdFromSlug, generateCategoryMachinesPath, parseMachineRouteParam, slugify } from '@/lib/seoUtils';
 import MachinesPageClient from './MachinesPageClient';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 
@@ -192,7 +193,7 @@ export default async function MachinesPage({ searchParams }: MachinesPageProps) 
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionSchema) }}
       />
       <Suspense fallback={<div className="min-h-screen bg-[#f3f4f6]" />}>
         <MachinesPageClient />

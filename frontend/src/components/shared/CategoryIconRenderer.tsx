@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { purifySvg } from '@/lib/safeHtml';
 
 type CategoryIconRendererProps = {
   svgData?: string | null;
@@ -60,7 +61,7 @@ export default function CategoryIconRenderer({
   return (
     <div
       className={`${className} [&_svg]:h-full [&_svg]:w-full [&_svg]:stroke-current [&_svg]:text-current [&_svg]:fill-none [&_svg_*]:[vector-effect:non-scaling-stroke] [&_svg_*]:[stroke-width:1.25px] [&_svg_*]:fill-none`}
-      dangerouslySetInnerHTML={{ __html: normalizedSvg }}
+      dangerouslySetInnerHTML={{ __html: purifySvg(normalizedSvg) }}
       aria-hidden="true"
     />
   );

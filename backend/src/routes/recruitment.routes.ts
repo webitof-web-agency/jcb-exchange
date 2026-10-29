@@ -50,6 +50,7 @@ import {
   deleteAdminDepartment,
 } from '../controllers/recruitment.controller';
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
+import { sanitizeRequestBody } from '../middlewares/sanitizeRequest.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 import {
   addRtoRecordTaskDocument,
@@ -95,6 +96,7 @@ import {
   downloadSellAccountRefundAdvice,
 } from '../controllers/sellAccount.controller';
 
+import { jobApplicationRateLimit } from '../middlewares/rateLimit.middleware';
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
 const offerLetterUpload = getDocumentUploadMiddleware('secure', 'offer-letter');
@@ -162,7 +164,7 @@ const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['re
 // Public endpoints
 router.get('/public/jobs', getPublicJobs);
 router.get('/public/jobs/:slug', getPublicJobBySlug);
-router.post('/public/jobs/:slug/apply', resumeUpload.single('resume'), applyForJob);
+router.post('/public/jobs/:slug/apply', jobApplicationRateLimit, resumeUpload.single('resume'), sanitizeRequestBody, applyForJob);
 
 // Applicant protected endpoints
 router.get('/my-applications', requireAuth, getMyApplications);
@@ -261,8 +263,8 @@ router.post('/admin/interviews/:id/feedback', canManageInterviewScorecards, subm
 
 // Offers
 router.get('/admin/offers', canViewOffers, getAdminOffers);
-router.post('/admin/offers', canCreateOffers, offerLetterUpload.single('offerPdf'), createOffer);
-router.patch('/admin/offers/:id', canUpdateOffers, offerLetterUpload.single('offerPdf'), updateOffer);
+router.post('/admin/offers', canCreateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, createOffer);
+router.patch('/admin/offers/:id', canUpdateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, updateOffer);
 router.patch('/admin/offers/:id/status', canChangeOfferStatus, updateOfferStatus);
 router.delete('/admin/offers/:id', canDeleteOffers, deleteOffer);
 

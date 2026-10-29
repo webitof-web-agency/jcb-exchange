@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import SoldVehiclesPageClient from './SoldVehiclesPageClient';
 import { getSiteBranding } from '@/lib/siteBranding';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 export const metadata: Metadata = {
   title: 'Sold Vehicles & Equipment',
@@ -43,7 +44,7 @@ export default async function SoldVehiclesPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionSchema) }}
       />
       <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC]" />}>
         <SoldVehiclesPageClient initialLogoUrl={branding.darkLogoUrl || branding.logoUrl} />

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import BlogArticleClient from '@/components/blog/BlogArticleClient';
 import { extractBlogFaq, faqAnswerToPlainText } from '@/lib/blogFaq';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://jcbexchange.com';
@@ -86,8 +87,8 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
   } : null;
 
   return <>
-    {articleSchema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema).replace(/</g, '\\u003c') }} /> : null}
-    {faqSchema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c') }} /> : null}
+    {articleSchema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(articleSchema) }} /> : null}
+    {faqSchema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqSchema) }} /> : null}
     <BlogArticleClient slug={slug} />
   </>;
 }

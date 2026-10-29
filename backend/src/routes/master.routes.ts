@@ -37,6 +37,7 @@ import {
   requirePortalOperator,
   requireSuperAdminOrEmployeePermissions,
 } from '../middlewares/auth.middleware';
+import { listingViewRateLimit, translationRegisterRateLimit } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
@@ -80,7 +81,7 @@ router.delete(
 );
 router.get('/models/:brandId', getModels);
 router.get('/icons', requireAuth, requirePortalOperator, getIcons);
-router.post('/icons', createIcon);
+router.post('/icons', requireAuth, requireSuperAdminOrEmployeePermissions(['categories.create']), createIcon);
 router.get('/dealers', getApprovedDealers);
 router.get('/dealers/:id', getDealerById);
 router.get('/dealers/:id/listings', getDealerListings);
@@ -91,10 +92,10 @@ router.get('/inspection-section', getInspectionSection);
 router.get('/site-logo', getSiteLogo);
 router.get('/mobile-app', getMobileAppSettings);
 router.get('/translations', getTranslationOverrides);
-router.post('/translations/register-missing', registerMissingTranslationKeys);
+router.post('/translations/register-missing', translationRegisterRateLimit, registerMissingTranslationKeys);
 router.get('/public-listings', getPublicListings);
 router.get('/public-listings/:id', getPublicListingById);
-router.post('/public-listings/:id/view', incrementListingView);
+router.post('/public-listings/:id/view', listingViewRateLimit, incrementListingView);
 router.get('/public-categories', getPublicCategories);
 router.get('/public-search-filters', getPublicSearchFilters);
 router.get('/recent-listings', getRecentListings);

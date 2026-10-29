@@ -9,10 +9,11 @@ import {
   addLeadActivity,
 } from '../controllers/lead.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import { publicLeadRateLimit } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
-router.post('/', createLead);
+router.post('/', publicLeadRateLimit, createLead);
 router.post('/public-contact', requireAuth, createPublicContactLead);
 router.get('/my-leads', requireAuth, getMyLeads);
 router.get('/badges', requireAuth, getMyLeadBadges);

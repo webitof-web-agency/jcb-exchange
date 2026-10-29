@@ -748,7 +748,7 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
           />
         </Field>
         <Field label="GSTIN">
-          <input
+          <input data-sanitize="gstin"
             value={form.gstNumber}
             onChange={(e) => setForm({ ...form, gstNumber: e.target.value.toUpperCase() })}
             className={inputClass}

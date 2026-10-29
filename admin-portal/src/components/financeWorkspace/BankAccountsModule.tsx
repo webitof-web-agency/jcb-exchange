@@ -119,7 +119,7 @@ export default function BankAccountsModule() {
               {isBank ? (
                 <>
                   <Field label="Account number *" hint={form.id ? 'Leave as shown to keep it unchanged.' : undefined}><input value={form.accountNumber} onChange={(event) => setForm({ ...form, accountNumber: event.target.value.replace(/\s/g, '').toUpperCase() })} className={`${inputClass} font-mono`} maxLength={34} required /></Field>
-                  <Field label="IFSC"><input value={form.ifsc} onChange={(event) => setForm({ ...form, ifsc: event.target.value.toUpperCase() })} className={`${inputClass} font-mono uppercase`} maxLength={11} /></Field>
+                  <Field label="IFSC"><input data-sanitize="ifsc" value={form.ifsc} onChange={(event) => setForm({ ...form, ifsc: event.target.value.toUpperCase() })} className={`${inputClass} font-mono uppercase`} maxLength={11} /></Field>
                   <Field label="Branch"><input value={form.branch} onChange={(event) => setForm({ ...form, branch: event.target.value })} className={inputClass} maxLength={100} /></Field>
                   <Field label="Account holder"><input value={form.holderName} onChange={(event) => setForm({ ...form, holderName: event.target.value })} className={inputClass} maxLength={120} /></Field>
                 </>

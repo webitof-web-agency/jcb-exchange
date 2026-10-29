@@ -23,6 +23,7 @@ import {
 import { RcOwnerHistoryError } from '../services/rcOwnerHistory.service';
 import { getAppSettings } from '../utils/appSettings';
 import { renderRtoTransferCertificatePdf } from '../utils/rtoTransferCertificate';
+import { validateField } from '../utils/fieldValidation';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -115,6 +116,17 @@ export const validateRtoPayload = (payload: ReturnType<typeof buildPayload>) => 
   return null;
 };
 
+/** Format checks (mobile numbers, vehicle number); unchanged stored values are accepted. Normalises in place. */
+export const validateRtoFormats = (payload: ReturnType<typeof buildPayload>, existing?: Record<string, any> | null) => {
+  const phones: Array<['customerNumber' | 'sellerNumber' | 'purchaserNumber' | 'rtoAgentNumber', string]> = [
+    ['customerNumber', 'Customer Number'], ['sellerNumber', 'Seller Number'], ['purchaserNumber', 'Purchaser Number'], ['rtoAgentNumber', 'RTO Agent Number'],
+  ];
+  for (const [key, label] of phones) {
+    payload[key] = validateField('mobile', payload[key], label, { previous: existing?.[key], field: key }) ?? '';
+  }
+  payload.vehicleNumber = validateField('vehicle', payload.vehicleNumber, 'Vehicle Number', { previous: existing?.vehicleNumber, field: 'vehicleNumber' }) ?? '';
+};
+
 export const listRtoRecords = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const q = text(req.query.q).toLowerCase();
@@ -165,6 +177,7 @@ export const createRtoRecord = async (req: Request, res: Response, next: NextFun
     const payload = buildPayload(req.body);
     const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
+    validateRtoFormats(payload);
     if (payload.listingId) {
       const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
       if (!listing) return res.status(400).json({ success: false, error: 'Linked listing was not found.' });
@@ -187,6 +200,7 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
     const payload = buildPayload(req.body, existing);
     const error = validateRtoPayload(payload);
     if (error) return res.status(400).json({ success: false, error });
+    validateRtoFormats(payload, existing);
     if (payload.listingId) {
       const listing = await prisma.listing.findUnique({ where: { id: payload.listingId }, select: { id: true } });
       if (!listing) return res.status(400).json({ success: false, error: 'Linked listing was not found.' });

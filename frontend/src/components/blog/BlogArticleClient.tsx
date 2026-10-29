@@ -7,6 +7,7 @@ import api, { getRemoteMediaUrl } from '@/lib/api';
 import type { PublicBlogPost } from './BlogPageClient';
 import { extractBlogFaq, removeBlogFaqSection } from '@/lib/blogFaq';
 import BlogQuestions from './BlogQuestions';
+import { purifyHtml } from '@/lib/safeHtml';
 
 function estimateReadTime(html: string): number {
   const text = html.replace(/<[^>]*>/g, ' ');
@@ -258,7 +259,7 @@ export default function BlogArticleClient({ slug }: { slug: string }) {
         <div className={tableOfContents.length ? 'order-1 lg:order-2 lg:col-span-9' : 'w-full'}>
           <div
             className="blog-content"
-            dangerouslySetInnerHTML={{ __html: preparedContent.html }}
+            dangerouslySetInnerHTML={{ __html: purifyHtml(preparedContent.html) }}
           />
 
           {faqItems.length > 0 && (
@@ -281,7 +282,7 @@ export default function BlogArticleClient({ slug }: { slug: string }) {
                       <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#fff8dc] text-xl font-normal leading-none text-[#a87500] transition group-open:rotate-45">+</span>
                     </summary>
                     <div className="border-t border-gray-100 px-5 pb-5 pt-4 sm:px-6">
-                      <div className="blog-content text-[0.98rem]" dangerouslySetInnerHTML={{ __html: item.answerHtml }} />
+                      <div className="blog-content text-[0.98rem]" dangerouslySetInnerHTML={{ __html: purifyHtml(item.answerHtml) }} />
                     </div>
                   </details>
                 ))}

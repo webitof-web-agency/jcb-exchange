@@ -276,7 +276,8 @@ export const addRtoTransferTaskDocument = async (
 
     await tx.rtoTransferTask.update({
       where: { id: task.id },
-      data: { documents: [...documents, document] as unknown as Prisma.InputJsonValue },
+      // Keep updatedAt: it records the last status change (shown on the task and the transfer certificate).
+      data: { documents: [...documents, document] as unknown as Prisma.InputJsonValue, updatedAt: task.updatedAt },
     });
     await tx.rtoTransferTaskLog.create({
       data: { taskId: task.id, oldStatus: null, newStatus: task.status, remark: `Document uploaded: ${document.fileName}`, changedById: actorId || null },
@@ -296,7 +297,7 @@ export const removeRtoTransferTaskDocument = async (rtoRecordId: string, taskId:
 
     await tx.rtoTransferTask.update({
       where: { id: task.id },
-      data: { documents: documents.filter((document) => document.id !== documentId) as unknown as Prisma.InputJsonValue },
+      data: { documents: documents.filter((document) => document.id !== documentId) as unknown as Prisma.InputJsonValue, updatedAt: task.updatedAt },
     });
     await tx.rtoTransferTaskLog.create({
       data: { taskId: task.id, oldStatus: null, newStatus: task.status, remark: `Document removed: ${removed.fileName}`, changedById: actorId || null },

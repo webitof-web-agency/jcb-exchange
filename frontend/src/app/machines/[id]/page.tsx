@@ -5,6 +5,7 @@ import { resolvePublicMachineListingId } from '@/lib/publicRouteResolvers';
 import MachineDetailClient from './MachineDetailClient';
 import { getAbsoluteMediaUrl, getMachineListing } from './data';
 import { formatListingLocation } from '@/lib/listingLocation';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,7 +153,7 @@ export default async function MachineDetailPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <MachineDetailClient listing={listing} />
     </>

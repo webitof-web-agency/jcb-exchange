@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { SITE_NAME, SITE_URL } from '@/lib/site';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout.mjs';
 import JobDetailClient from './JobDetailClient';
+import { serializeJsonLd } from '@/lib/jsonLd';
 
 interface JobDetailProps {
   params: Promise<{
@@ -119,7 +120,7 @@ export default async function JobDetailPage({ params }: JobDetailProps) {
       {/* Schema Injection */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jobPostingSchema) }}
       />
       <JobDetailClient job={job} relatedJobs={relatedJobs} />
     </>

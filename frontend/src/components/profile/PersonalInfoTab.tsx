@@ -388,7 +388,7 @@ export default function PersonalInfoTab() {
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
                   <Phone className="h-4 w-4 text-gray-400" />
                 </div>
-                <input
+                <input data-sanitize="mobile"
                   type="text"
                   name="mobile"
                   value={formData.mobile}
@@ -409,7 +409,7 @@ export default function PersonalInfoTab() {
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
                   <MessageCircle className="h-4 w-4 text-emerald-500" />
                 </div>
-                <input
+                <input data-sanitize="mobile"
                   type="text"
                   name="whatsappNumber"
                   value={formData.whatsappNumber}

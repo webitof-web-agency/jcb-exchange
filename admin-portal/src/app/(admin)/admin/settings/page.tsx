@@ -2405,7 +2405,7 @@ export default function SuperAdminSettingsPage() {
 
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-gray-700">GSTIN (GST Identification Number)</span>
-                      <input
+                      <input data-sanitize="gstin"
                         type="text"
                         value={companyInvoiceForm.gstin}
                         onChange={(e) => setCompanyInvoiceForm((prev) => ({ ...prev, gstin: e.target.value.toUpperCase() }))}

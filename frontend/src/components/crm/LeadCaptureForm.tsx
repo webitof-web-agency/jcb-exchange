@@ -91,7 +91,7 @@ export default function LeadCaptureForm({ mode }: { mode: Mode }) {
       <input type="text" name="website" value={form.website} onChange={(e) => set('website', e.target.value)} tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
       <div className="grid gap-4 sm:grid-cols-2">
         <div><label className={labelClass} htmlFor="crm-name">{t('crmForms.name', 'Your name')} *</label><input id="crm-name" required value={form.name} onChange={(e) => set('name', e.target.value)} className={inputClass} autoComplete="name" /></div>
-        <div><label className={labelClass} htmlFor="crm-mobile">{t('crmForms.mobile', 'Mobile number')} *</label><input id="crm-mobile" required inputMode="tel" pattern="[0-9+\s-]{10,15}" value={form.mobile} onChange={(e) => set('mobile', e.target.value)} className={inputClass} autoComplete="tel" placeholder="98765 43210" /></div>
+        <div><label className={labelClass} htmlFor="crm-mobile">{t('crmForms.mobile', 'Mobile number')} *</label><input data-sanitize="mobile" id="crm-mobile" required inputMode="tel" pattern="[0-9+\s-]{10,15}" value={form.mobile} onChange={(e) => set('mobile', e.target.value)} className={inputClass} autoComplete="tel" placeholder="98765 43210" /></div>
         <div><label className={labelClass} htmlFor="crm-city">{t('crmForms.city', 'City')} *</label><input id="crm-city" required value={form.city} onChange={(e) => set('city', e.target.value)} className={inputClass} autoComplete="address-level2" /></div>
         <div><label className={labelClass} htmlFor="crm-state">{t('crmForms.state', 'State')}</label><input id="crm-state" value={form.state} onChange={(e) => set('state', e.target.value)} className={inputClass} autoComplete="address-level1" /></div>
       </div>
@@ -130,7 +130,7 @@ export default function LeadCaptureForm({ mode }: { mode: Mode }) {
         <div className="grid gap-4 sm:grid-cols-4">
           <div><label className={labelClass} htmlFor="crm-year">{t('crmForms.year', 'Manufacturing year')}</label><input id="crm-year" type="number" min={1980} max={2100} value={form.year} onChange={(e) => set('year', e.target.value)} className={inputClass} /></div>
           <div><label className={labelClass} htmlFor="crm-hours">{t('crmForms.hours', 'Hours run')}</label><input id="crm-hours" type="number" min={0} value={form.operatingHours} onChange={(e) => set('operatingHours', e.target.value)} className={inputClass} /></div>
-          <div><label className={labelClass} htmlFor="crm-reg">{t('crmForms.registration', 'Registration no.')}</label><input id="crm-reg" value={form.registrationNumber} onChange={(e) => set('registrationNumber', e.target.value.toUpperCase())} className={inputClass} placeholder="CG04AB1234" /></div>
+          <div><label className={labelClass} htmlFor="crm-reg">{t('crmForms.registration', 'Registration no.')}</label><input data-sanitize="vehicle" id="crm-reg" value={form.registrationNumber} onChange={(e) => set('registrationNumber', e.target.value.toUpperCase())} className={inputClass} placeholder="CG04AB1234" /></div>
           <div><label className={labelClass} htmlFor="crm-price">{t('crmForms.expectedPrice', 'Expected price (₹)')}</label><input id="crm-price" type="number" min={0} value={form.expectedPrice} onChange={(e) => set('expectedPrice', e.target.value)} className={inputClass} /></div>
         </div>
       )}

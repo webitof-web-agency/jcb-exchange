@@ -22,6 +22,7 @@ import {
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
 import { allowedAdminPermissions } from '../utils/adminPermissions';
 import { sanitizeName, isValidEmail, sanitizePassword } from '../utils/authSanitization';
+import { validateField } from '../utils/fieldValidation';
 import {
   getLoginMobileCandidates,
   MOBILE_OTP_COOLDOWN_SECONDS,
@@ -113,6 +114,8 @@ import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
 import { aadhaarVerificationService } from '../services/aadhaarVerification.service';
 import { publicUploadDir } from '../utils/documentUpload';
+import { clearLoginFailures, loginLockRemainingMs, recordLoginFailure } from '../utils/loginLockout';
+import { authTokenLifetime } from '../utils/authTokenLifetime';
 import {
   AVATAR_MAX_BYTES,
   getAvatarFileName,
@@ -642,8 +645,12 @@ const signAuthToken = (user: any) =>
       authVersion: Number.isInteger(user.authVersion) && user.authVersion >= 0 ? user.authVersion : 0,
     },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: authTokenLifetime(user.role), algorithm: 'HS256' }
   );
+
+// Compared against when the email has no account, so a wrong email takes as long as a wrong password and
+// response time does not reveal which emails are registered.
+const UNKNOWN_ACCOUNT_HASH = bcrypt.hashSync('unknown-account-placeholder', 10);
 
 const assertAccountAccessOrRespond = (res: Response, user: unknown) => {
   const accessState = getAccountAccessState(user as any);
@@ -1090,6 +1097,10 @@ export const saveOnboardingData = async ({
       kycStatus: true,
       approvedById: true,
       approvedAt: true,
+      pinCode: true,
+      alternateMobile: true,
+      gstNumber: true,
+      user: { select: { email: true, whatsappNumber: true } },
       kycReviews: {
         where: {
           action: {
@@ -1154,13 +1165,23 @@ export const saveOnboardingData = async ({
       ? 'CHANGES_REQUESTED'
       : kycStatus;
 
+  // Format checks; values already stored (possibly from before these checks) are accepted unchanged.
+  const stored = currentPartnerProfile as { pinCode?: string | null; alternateMobile?: string | null; gstNumber?: string | null; user?: { email?: string | null; whatsappNumber?: string | null } } | null;
+  const checkedEmail = validateField('email', normalizeText(profile.email), 'Email', { previous: stored?.user?.email ?? userEmail, field: 'email' });
+  const checkedWhatsapp = validateField('mobile', normalizeText(profile.whatsappNumber), 'WhatsApp number', { previous: stored?.user?.whatsappNumber, field: 'whatsappNumber' });
+  const checkedPinCode = validateField('pincode', normalizeText(profile.pinCode), 'PIN code', { previous: stored?.pinCode, field: 'pinCode' });
+  const checkedAlternateMobile = validateField('mobile', normalizeText(profile.alternateMobile), 'Alternate mobile', { previous: stored?.alternateMobile, field: 'alternateMobile' });
+  const checkedGstNumber = Object.prototype.hasOwnProperty.call(profile, 'gstNumber')
+    ? validateField('gstin', normalizeText(profile.gstNumber), 'GST number', { previous: stored?.gstNumber, field: 'gstNumber' })
+    : undefined;
+
   await prisma.user.update({
     where: { id: userId },
     data: {
       name: normalizeText(profile.ownerName),
-      email: normalizeText(profile.email) || userEmail || null,
+      email: checkedEmail || userEmail || null,
       ...(normalizeText(profile.primaryContact) ? { mobile: normalizeText(profile.primaryContact) } : {}),
-      ...(normalizeText(profile.whatsappNumber) ? { whatsappNumber: normalizeText(profile.whatsappNumber) } : { whatsappNumber: null }),
+      ...(checkedWhatsapp ? { whatsappNumber: checkedWhatsapp } : { whatsappNumber: null }),
       ...(normalizeText(profile.city) ? { city: normalizeText(profile.city) } : { city: null }),
       ...(normalizeText(profile.state) ? { state: normalizeText(profile.state) } : { state: null }),
     },
@@ -1174,7 +1195,7 @@ export const saveOnboardingData = async ({
       partnerType: normalizedPartnerType,
       businessAddress: normalizeText(profile.businessAddress),
       district: normalizeText(profile.district),
-      pinCode: normalizeText(profile.pinCode),
+      pinCode: checkedPinCode,
       businessExperience: normalizeText(profile.businessExperience),
       expectedMonthlyListings: parseOptionalInt(profile.expectedMonthlyListings),
       referralCode: normalizeText(profile.referralCode),
@@ -1183,14 +1204,12 @@ export const saveOnboardingData = async ({
       googleMapsLocation: normalizeText(profile.googleMapsLocation),
       serviceAreas: normalizeText(profile.serviceAreas),
       workingHours: normalizeText(profile.workingHours),
-      alternateMobile: normalizeText(profile.alternateMobile),
+      alternateMobile: checkedAlternateMobile,
       websiteUrl: normalizeText(profile.websiteUrl),
       socialLinks: normalizeText(profile.socialLinks),
       yearsInBusiness: parseOptionalInt(profile.yearsInBusiness),
       teamSize: parseOptionalInt(profile.teamSize),
-      ...(Object.prototype.hasOwnProperty.call(profile, 'gstNumber')
-        ? { gstNumber: normalizeText(profile.gstNumber) }
-        : {}),
+      ...(checkedGstNumber !== undefined ? { gstNumber: checkedGstNumber } : {}),
       businessRegistrationNumber: normalizeText(profile.businessRegistrationNumber),
       contactPreference: normalizeText(profile.contactPreference),
       onboardingStatus: nextOnboardingStatus,
@@ -1449,17 +1468,23 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
+    const lockRemainingMs = loginLockRemainingMs(normalizedEmail);
+    if (lockRemainingMs > 0) {
+      res.setHeader('Retry-After', String(Math.ceil(lockRemainingMs / 1000)));
+      return res.status(429).json({
+        error: `Too many wrong passwords. Password login is locked for ${Math.ceil(lockRemainingMs / 60000)} minute(s); you can still sign in with OTP.`,
+      });
+    }
+
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!user || !user.password) {
+    const isMatch = await bcrypt.compare(password, user?.password || UNKNOWN_ACCOUNT_HASH);
+    if (!user || !user.password || !isMatch) {
+      recordLoginFailure(normalizedEmail);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    clearLoginFailures(normalizedEmail);
 
     const userRecord = user as any;
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
 
     const currentUser = await fetchAuthenticatedUserById(userRecord.id);
     if (assertAccountAccessOrRespond(res, currentUser)) {

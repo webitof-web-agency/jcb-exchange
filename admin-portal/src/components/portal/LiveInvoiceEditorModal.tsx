@@ -552,7 +552,7 @@ export default function LiveInvoiceEditorModal({
                   <Phone className="h-3 w-3 text-slate-400" />
                   <span>Mobile Number</span>
                 </label>
-                <input
+                <input data-sanitize="mobile"
                   type="text"
                   value={customerMobile}
                   onChange={(e) => setCustomerMobile(e.target.value)}

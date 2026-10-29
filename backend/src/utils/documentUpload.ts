@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import multer from 'multer';
 import path from 'path';
+import type { NextFunction, Request, Response } from 'express';
+import { contentMatchesMimeType, FILE_CONTENT_MISMATCH_MESSAGE } from './fileSignature';
 
 export type UploadVisibility = 'public' | 'secure';
 export type UploadPurpose =
@@ -172,11 +174,32 @@ export const getUploadFileSizeLimit = (purpose: UploadPurpose) => {
   return MAX_DOCUMENT_UPLOAD_SIZE;
 };
 
+// After multer has read the file into memory, its first bytes must match the declared type: the MIME type
+// and file name checked by the filters above are both chosen by the uploader.
+const withContentCheck = (upload: multer.Multer): multer.Multer => {
+  const single = upload.single.bind(upload);
+  upload.single = (fieldName: string) => {
+    const parse = single(fieldName);
+    return (req: Request, res: Response, next: NextFunction) => {
+      parse(req, res, (error?: unknown) => {
+        if (error) return next(error);
+        const file = req.file;
+        if (file && !contentMatchesMimeType(file.buffer, file.mimetype)) {
+          delete req.file;
+          return next(new Error(FILE_CONTENT_MISMATCH_MESSAGE));
+        }
+        return next();
+      });
+    };
+  };
+  return upload;
+};
+
 export const getDocumentUploadMiddleware = (
   visibility: UploadVisibility,
   purpose: UploadPurpose = 'document'
 ) =>
-  multer({
+  withContentCheck(multer({
     storage: multer.memoryStorage(),
     fileFilter: (_req, file, callback) => {
       const allowed =
@@ -234,10 +257,10 @@ export const getDocumentUploadMiddleware = (
             : MAX_DOCUMENT_UPLOAD_SIZE,
       files: 1,
     },
-  });
+  }));
 
 export const getAvatarUploadMiddleware = () =>
-  multer({
+  withContentCheck(multer({
     storage: multer.memoryStorage(),
     fileFilter: (_req, file, callback) => {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
@@ -251,7 +274,7 @@ export const getAvatarUploadMiddleware = () =>
       fileSize: MAX_AVATAR_UPLOAD_SIZE,
       files: 1,
     },
-  });
+  }));
 
 export const isPdfMimeType = (mimeType?: string | null) => mimeType === 'application/pdf';
 export const isVideoMimeType = (mimeType?: string | null) =>

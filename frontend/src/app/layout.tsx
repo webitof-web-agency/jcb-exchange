@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -24,6 +24,8 @@ import {
   DEFAULT_PWA_THEME_COLOR,
   getSiteBranding,
 } from '@/lib/siteBranding';
+import { serializeJsonLd } from '@/lib/jsonLd';
+import FormSanitizer from '@/components/FormSanitizer';
 
 export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
@@ -118,6 +120,8 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
   const branding = await getSiteBranding();
+  // Set by src/proxy.ts; inline scripts run only with this request's nonce.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   const siteSchema = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -152,14 +156,16 @@ export default async function RootLayout({
       <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased pb-16 lg:pb-0" suppressHydrationWarning>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteSchema) }}
         />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `(function(){if(typeof window==='undefined')return;document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});document.addEventListener('gesturechange',function(e){e.preventDefault();},{passive:false});document.addEventListener('gestureend',function(e){e.preventDefault();},{passive:false});})();`,
           }}
         />
         <LocaleSync />
+        <FormSanitizer />
         <Navbar />
         <div className="h-[53px] shrink-0 lg:hidden" aria-hidden="true" />
         <main className="flex-grow flex flex-col">

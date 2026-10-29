@@ -31,6 +31,7 @@ import {
   deleteProfileAvatar,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import { loginRateLimit, otpRateLimit, passwordResetRateLimit, registerRateLimit } from '../middlewares/rateLimit.middleware';
 import {
   cancelPartnerAadhaar,
   completePartnerAadhaar,
@@ -49,19 +50,19 @@ router.get('/setup-status', checkSetup);
 router.get('/google-config', getGoogleClientConfig);
 router.get('/mobile-otp/config', getMobileOtpConfig);
 router.get('/email-otp/config', getEmailOtpConfig);
-router.post('/register', register);
-router.post('/login', login);
-router.post('/login/mobile-otp/send', sendLoginOtp);
-router.post('/login/mobile-otp/verify', verifyLoginOtp);
-router.post('/login/mobile-otp/resend', resendLoginOtp);
-router.post('/password-reset/mobile-otp/send', sendPasswordResetOtp);
-router.post('/password-reset/mobile-otp/resend', resendPasswordResetOtp);
-router.post('/password-reset/mobile-otp/verify', verifyPasswordResetOtp);
-router.post('/password-reset/reset', resetPasswordWithToken);
-router.post('/login/email-otp/send', sendEmailLoginOtp);
-router.post('/login/email-otp/verify', verifyEmailLoginOtp);
-router.post('/login/email-otp/resend', resendEmailLoginOtp);
-router.post('/google', googleLogin);
+router.post('/register', registerRateLimit, register);
+router.post('/login', loginRateLimit, login);
+router.post('/login/mobile-otp/send', otpRateLimit, sendLoginOtp);
+router.post('/login/mobile-otp/verify', otpRateLimit, verifyLoginOtp);
+router.post('/login/mobile-otp/resend', otpRateLimit, resendLoginOtp);
+router.post('/password-reset/mobile-otp/send', otpRateLimit, sendPasswordResetOtp);
+router.post('/password-reset/mobile-otp/resend', otpRateLimit, resendPasswordResetOtp);
+router.post('/password-reset/mobile-otp/verify', otpRateLimit, verifyPasswordResetOtp);
+router.post('/password-reset/reset', passwordResetRateLimit, resetPasswordWithToken);
+router.post('/login/email-otp/send', otpRateLimit, sendEmailLoginOtp);
+router.post('/login/email-otp/verify', otpRateLimit, verifyEmailLoginOtp);
+router.post('/login/email-otp/resend', otpRateLimit, resendEmailLoginOtp);
+router.post('/google', loginRateLimit, googleLogin);
 router.get('/profile', requireAuth, getProfile);
 router.patch('/profile', requireAuth, updateProfile);
 router.patch('/profile/password', requireAuth, updatePassword);

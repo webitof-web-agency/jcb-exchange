@@ -43,6 +43,7 @@ import {
   isUsableRcFullVerification,
   syncListingVehicleVerification,
 } from '../services/listingVehicleVerification';
+import { validateField } from '../utils/fieldValidation';
 import {
   getListingFinalPrice,
   getListingPricing,
@@ -754,7 +755,7 @@ export const getListingVerificationPolicy = async (req: Request, res: Response, 
 const extractSaleRecordPayload = (body: any) => {
   const source = body?.buyerDetails || body || {};
   const buyerName = normalizeText(source.buyerName);
-  const buyerPhone = normalizeText(source.buyerPhone);
+  const buyerPhone = validateField('mobile', normalizeText(source.buyerPhone), 'Buyer Phone', { field: 'buyerPhone' }) || '';
   const buyerCity = normalizeText(source.buyerCity);
   const buyerState = normalizeText(source.buyerState);
   const soldPrice = source.soldPrice || source.agreedPrice || source.price;
@@ -925,6 +926,8 @@ const createCustomerListingNotifications = async ({
 
 export const createListing = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Buyer details are saved after the listing, so check their format before anything is written.
+    extractSaleRecordPayload(req.body);
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Authentication required.' });
     }
@@ -1389,6 +1392,8 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
 
 export const updateListing = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Buyer details are saved after the listing, so check their format before anything is written.
+    extractSaleRecordPayload(req.body);
     if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
     }
@@ -2034,6 +2039,8 @@ export const updateListingPricing = async (req: Request, res: Response, next: Ne
 
 export const updateListingAvailability = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Buyer details are saved after the listing, so check their format before anything is written.
+    extractSaleRecordPayload(req.body);
     if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Customer, partner, or admin access required.' });
     }

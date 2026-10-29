@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import LocaleSync from "@/components/LocaleSync";
+import FormSanitizer from "@/components/FormSanitizer";
 import ToastProvider from "@/components/ToastProvider";
 import "react-toastify/dist/ReactToastify.css";
 import "./globals.css";
@@ -66,6 +67,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
   const branding = await getPortalBranding();
+  // Set by src/proxy.ts; inline scripts run only with this request's nonce.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
 
   return (
     <html
@@ -78,6 +81,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <link rel="preload" as="image" href={branding.logoUrl || branding.darkLogoUrl || undefined} />
         )}
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `window.__JCB_PORTAL_LOGO__=${JSON.stringify({
               logoUrl: branding.logoUrl,
@@ -87,6 +91,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         />
         <SiteLogoProvider value={{ logoUrl: branding.logoUrl, darkLogoUrl: branding.darkLogoUrl }}>
           <LocaleSync />
+          <FormSanitizer />
           <ToastProvider>
             {children}
           </ToastProvider>

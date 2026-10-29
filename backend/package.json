@@ -39,6 +39,7 @@
     "ffprobe-static": "^3.1.0",
     "firebase-admin": "^14.5.0",
     "googleapis": "^178.0.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "node-cron": "^4.6.0",
@@ -47,6 +48,7 @@
     "pg": "^8.23.0",
     "pizzip": "^3.3.0",
     "prisma": "^7.9.1",
+    "sanitize-html": "^2.18.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
@@ -55,6 +57,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
     "@types/nodemailer": "^8.0.2",
+    "@types/sanitize-html": "^2.16.2",
     "@types/web-push": "^3.6.4",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
