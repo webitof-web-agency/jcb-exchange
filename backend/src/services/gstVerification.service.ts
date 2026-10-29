@@ -624,7 +624,7 @@ export class GstVerificationService {
       include: { template: true },
     });
     if (!record) throw new GstVerificationError('GST verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new GstVerificationError('You do not have access to this GST template.', 403, 'template_forbidden');
     }
     if (record.template) {
@@ -690,7 +690,7 @@ export class GstVerificationService {
       include: { template: true },
     });
     if (!record) throw new GstVerificationError('GST verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new GstVerificationError('You do not have access to this GST template.', 403, 'template_forbidden');
     }
     if (!record.template) throw new GstVerificationError('GST template not found.', 404, 'template_not_found');
@@ -706,7 +706,7 @@ export class GstVerificationService {
       },
     });
     if (!record) throw new GstVerificationError('GST verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && requestedById && record.requestedById !== requestedById) {
+    if (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && requestedById && record.requestedById !== requestedById) {
       throw new GstVerificationError('You do not have access to this GST history record.', 403, 'history_forbidden');
     }
     record = await this.clearExpiredRawData(record);

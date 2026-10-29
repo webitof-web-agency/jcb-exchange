@@ -770,7 +770,7 @@ export class PanVerificationService {
       include: { template: true },
     });
     if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new PanVerificationError('You do not have access to this PAN template.', 403, 'template_forbidden');
     }
     if (record.template) {
@@ -832,7 +832,7 @@ export class PanVerificationService {
       include: { template: true },
     });
     if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new PanVerificationError('You do not have access to this PAN template.', 403, 'template_forbidden');
     }
     if (!record.template) throw new PanVerificationError('PAN template not found.', 404, 'template_not_found');
@@ -845,7 +845,7 @@ export class PanVerificationService {
       include: { requestedBy: { select: { id: true, name: true, email: true } }, template: true },
     });
     if (!record) throw new PanVerificationError('PAN verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new PanVerificationError('You do not have access to this PAN history record.', 403, 'history_forbidden');
     }
 

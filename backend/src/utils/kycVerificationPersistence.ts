@@ -8,6 +8,7 @@ type KycVerificationRecord = {
   requestFingerprint?: unknown;
   encryptedResult?: unknown;
   completedAt?: unknown;
+  template?: { id?: unknown } | null;
 };
 
 type KycVerificationRecordInput = {
@@ -39,7 +40,9 @@ export const isKycVerificationRecordPersistable = ({
   record,
 }: KycVerificationRecordInput) => {
   if (!record || record.status !== 'SUCCESS') return false;
-  if (typeof record.encryptedResult !== 'string' || !record.encryptedResult) return false;
+  const hasEncryptedResult = typeof record.encryptedResult === 'string' && !!record.encryptedResult;
+  const hasSavedTemplate = typeof record.template?.id === 'string' && !!record.template.id;
+  if (!hasEncryptedResult && !hasSavedTemplate) return false;
 
   const normalizedNumber = documentType === 'PAN_CARD'
     ? normalizePan(documentNumber)

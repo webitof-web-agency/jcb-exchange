@@ -1,15 +1,14 @@
 export type RcChallanFormState = {
   rcNumber: string;
-  chassisNumber: string;
-  engineNumber: string;
 };
 
 export type RcChallanRequest = {
   rc_number: string;
-  chassis_number: string;
-  engine_number: string;
-  state_only?: boolean;
-  state_portal?: string[];
+};
+
+export type RcChallanOffense = {
+  offenseName: string | null;
+  providerData: Record<string, unknown>;
 };
 
 export type RcChallanRecord = {
@@ -17,8 +16,10 @@ export type RcChallanRecord = {
   number: number | null;
   challanNumber: string | null;
   offenseDetails: string | null;
+  offenseDetailsList: RcChallanOffense[];
   challanPlace: string | null;
   challanDate: string | null;
+  challanDateTime: string | null;
   state: string | null;
   rto: string | null;
   upstreamCode: string | null;
@@ -26,6 +27,8 @@ export type RcChallanRecord = {
   amount: number | null;
   challanStatus: string | null;
   courtChallan: boolean | null;
+  courtName: string | null;
+  providerData: Record<string, unknown>;
 };
 
 export type RcChallanSummary = {
@@ -39,6 +42,14 @@ export type RcChallanSummary = {
 
 export type RcChallanResult = {
   providerClientId: string | null;
+  rcNumber: string | null;
+  providerResponse: {
+    statusCode: number | null;
+    success: boolean | null;
+    message: string | null;
+    messageCode: string | null;
+  };
+  providerData: Record<string, unknown>;
   challans: RcChallanRecord[];
   blacklist: unknown[];
   summary: RcChallanSummary;
@@ -83,26 +94,18 @@ const normalizeIdentifier = (value: string) => value.trim().toUpperCase().replac
 export const normalizeRcChallanForm = (form: RcChallanFormState): RcChallanRequest => {
   return {
     rc_number: normalizeIdentifier(form.rcNumber),
-    chassis_number: normalizeIdentifier(form.chassisNumber),
-    engine_number: normalizeIdentifier(form.engineNumber),
   };
 };
 
 const validateIdentifier = (label: string, value: string) => {
   if (!value) return `${label} is required.`;
-  if (value.length > 100 || /[\u0000-\u001F\u007F]/.test(value)) return `${label} is invalid.`;
+  if (value.length > 30 || /[\u0000-\u001F\u007F]/.test(value)) return `${label} is invalid.`;
   return null;
 };
 
 export const validateRcChallanForm = (form: RcChallanFormState) => {
   const request = normalizeRcChallanForm(form);
-  const rcError = validateIdentifier('Registration number', request.rc_number);
-  if (rcError) return rcError;
-  const chassisError = validateIdentifier('Chassis number', request.chassis_number);
-  if (chassisError) return chassisError;
-  const engineError = validateIdentifier('Engine number', request.engine_number);
-  if (engineError) return engineError;
-  return null;
+  return validateIdentifier('Registration number', request.rc_number);
 };
 
 export const safeApiError = (error: unknown, fallback: string) => {

@@ -219,7 +219,7 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
   const canCreateRto = isAdmin || hasAnyPermission(permissions, getAccountCreatePermissions('rto-work-status'));
   const canUpdateRto = isAdmin || hasAnyPermission(permissions, getAccountUpdatePermissions('rto-work-status'));
   const canUpdateSell = isAdmin || hasAnyPermission(permissions, getAccountUpdatePermissions('sell-accounts'));
-  const canUseRcApi = isAdmin || hasAnyPermission(permissions, ['rc.full.read']);
+  const canUseRcApi = canUpdateRto;
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);

@@ -6,44 +6,23 @@ import {
   validateRcChallanRequest,
 } from './rcChallanVerification.validation';
 
-test('normalizes RC challan identifiers and supported state portals', () => {
+test('normalizes the advanced RC challan request to the provider contract', () => {
   const normalized = normalizeRcChallanRequest({
     rc_number: ' hr 55 ap 0244 ',
-    chassis_number: 'ma3 jmtb1spb851591',
-    engine_number: 'k10c nc265773',
-    state_only: true,
-    state_portal: ['dl', 'TS', 'DL'],
+    chassis_number: 'ignored',
+    engine_number: 'ignored',
   });
 
-  assert.deepEqual(normalized, {
-    rc_number: 'HR55AP0244',
-    chassis_number: 'MA3JMTB1SPB851591',
-    engine_number: 'K10CNC265773',
-    state_only: true,
-    state_portal: ['DL', 'TS'],
-  });
+  assert.deepEqual(normalized, { rc_number: 'HR55AP0244' });
 });
 
-test('requires all three RC challan identifiers', () => {
+test('requires the RC number for advanced RC challan verification', () => {
   assert.equal(
-    validateRcChallanRequest({ rc_number: 'HR55AP0244', chassis_number: '', engine_number: 'K10CNC265773' }),
-    'Chassis number is required.',
-  );
-  assert.equal(
-    validateRcChallanRequest({ rc_number: 'HR55AP0244', chassis_number: 'MA3JMTB1SPB851591', engine_number: '' }),
-    'Engine number is required.',
+    validateRcChallanRequest({ rc_number: '' }),
+    'Registration number is required.',
   );
 });
 
-test('rejects unsupported state portal values when filtering is enabled', () => {
-  assert.equal(
-    validateRcChallanRequest({
-      rc_number: 'HR55AP0244',
-      chassis_number: 'MA3JMTB1SPB851591',
-      engine_number: 'K10CNC265773',
-      state_only: true,
-      state_portal: ['MH'],
-    }),
-    'Select one or more supported state portals: DL, TS, KA, GJ.',
-  );
+test('accepts the advanced RC challan request with only an RC number', () => {
+  assert.equal(validateRcChallanRequest({ rc_number: 'HR55AP0244' }), null);
 });

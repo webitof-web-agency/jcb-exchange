@@ -34,10 +34,18 @@ test('AadhaarTemplatePreview component has calibrated coordinates and download h
   assert.ok(code.includes('backQr'), 'Must generate back card QR code');
   assert.ok(code.includes('qrJsonObject') && code.includes('JSON.stringify'), 'Must encode structured JSON for camera scan pop-up');
   assert.ok(code.includes('effectiveAadhaar'), 'Must support unmasked Aadhaar number');
+  assert.ok(code.includes('inputAadhaarNumber'), 'KYC preview must use the entered full Aadhaar number without persisting it');
   assert.ok(code.includes('setCustomAadhaar'), 'Must allow setting/editing unmasked Aadhaar number');
   assert.ok(code.includes('ctx.fillRect(550, 2260, 700, 80)'), 'Must include bottom margin canvas watermark safeguard');
   assert.ok(code.includes('downloadPng'), 'Must support PNG download');
   assert.ok(code.includes('downloadPdf'), 'Must support PDF download');
+});
+
+test('AadhaarTemplatePreview supports embedded rendering without duplicate action controls', () => {
+  const componentPath = path.resolve('src/components/identityHub/AadhaarTemplatePreview.tsx');
+  const code = fs.readFileSync(componentPath, 'utf8');
+  assert.ok(code.includes('hideActions'), 'Shared Aadhaar template must support embedded action controls');
+  assert.ok(code.includes('canvasRef?:'), 'Shared Aadhaar template must expose its rendered canvas for host exports');
 });
 
 test('Aadhaar downloads and saved uploads use the full number only when a complete number is available', () => {

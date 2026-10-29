@@ -696,6 +696,7 @@ model AadhaarVerificationRecord {
   safeMessage        String?                   @db.Text
   encryptedResult    String?                   @db.Text
   rawDataExpiresAt   DateTime?
+  ephemeralExpiresAt DateTime?
   requestedById      String
   createdAt          DateTime                  @default(now())
   completedAt        DateTime?
@@ -709,6 +710,7 @@ model AadhaarVerificationRecord {
   @@index([maskedAadhaar, createdAt])
   @@index([requestFingerprint, status, completedAt])
   @@index([rawDataExpiresAt])
+  @@index([ephemeralExpiresAt])
 }
 
 model AadhaarVerificationTemplate {
@@ -861,6 +863,7 @@ model RcOwnerHistoryRecord {
   safeMessage        String?              @db.Text
   encryptedResult    String?              @db.Text
   rawDataExpiresAt   DateTime?
+  ephemeralExpiresAt DateTime?
   requestedById      String
   createdAt          DateTime             @default(now())
   completedAt        DateTime?
@@ -876,6 +879,7 @@ model RcOwnerHistoryRecord {
   @@index([serviceKey, status, createdAt])
   @@index([serviceKey, requestFingerprint, status, completedAt])
   @@index([rawDataExpiresAt])
+  @@index([ephemeralExpiresAt])
 }
 
 model RcOwnerHistoryTemplate {

@@ -54,7 +54,6 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
   [
     'driving-license.verification.read',
     'rc.owner-history.read',
-    'rc.full.read',
     'rc.challan.verification.read',
     'rc.chassis-to-rc.read',
     'rc.to-mobile.read',
@@ -62,6 +61,8 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
   ].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
   });
+
+  assert.equal(allowedAdminPermissions.has('rc.full.read'), false, 'RC Full should not be exposed as a role permission');
 
   [
     'driving-license.verification.verify',

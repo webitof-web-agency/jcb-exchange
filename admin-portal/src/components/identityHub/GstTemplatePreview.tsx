@@ -31,9 +31,10 @@ const toPdfBlob = async (response: GstResultResponse) => {
 type Props = {
   response: GstResultResponse;
   onUploaded?: (response: GstResultResponse) => void;
+  templateEndpointBase?: string;
 };
 
-export default function GstTemplatePreview({ response, onUploaded }: Props) {
+export default function GstTemplatePreview({ response, onUploaded, templateEndpointBase = '/gst-verification' }: Props) {
   const template = response.template ?? response.record.template;
   const [remaining, setRemaining] = useState(() => response.record.rawDataExpiresAt ? new Date(response.record.rawDataExpiresAt).getTime() - Date.now() : 0);
   const [templateBlob, setTemplateBlob] = useState<Blob | null>(null);
@@ -59,7 +60,7 @@ export default function GstTemplatePreview({ response, onUploaded }: Props) {
       try {
         const blob = template
           ? await getVerificationTemplateBlob(`${response.record.id}:${template.id}`, async () => {
-              const result = await api.get<Blob>(`/gst-verification/${response.record.id}/template`, { responseType: 'blob' });
+              const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
               return result.data;
             })
           : response.result
@@ -78,7 +79,7 @@ export default function GstTemplatePreview({ response, onUploaded }: Props) {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [response, response.record.id, template]);
+  }, [response, response.record.id, template, templateEndpointBase]);
 
   const downloadPdf = async () => {
     setDownloadBusy(true);
@@ -86,7 +87,7 @@ export default function GstTemplatePreview({ response, onUploaded }: Props) {
     try {
       const blob = templateBlob || (template
         ? await getVerificationTemplateBlob(`${response.record.id}:${template.id}`, async () => {
-            const result = await api.get<Blob>(`/gst-verification/${response.record.id}/template`, { responseType: 'blob' });
+            const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
             return result.data;
           })
         : await toPdfBlob(response));
@@ -116,7 +117,7 @@ export default function GstTemplatePreview({ response, onUploaded }: Props) {
       const blob = templateBlob || await toPdfBlob(response);
       const formData = new FormData();
       formData.append('template', blob, `gst-${response.record.maskedGstin.replace(/[^A-Z0-9]/gi, '')}.pdf`);
-      const result = await api.post<GstResultResponse>(`/gst-verification/${response.record.id}/template`, formData, {
+      const result = await api.post<GstResultResponse>(`${templateEndpointBase}/${response.record.id}/template`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       uploadedRef.current = true;

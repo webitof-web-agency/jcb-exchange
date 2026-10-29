@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildPanCardData } from './panCardVerification.mjs';
 import { buildPanCardExportSvg } from './panCardExport.mjs';
-import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
+import { buildAadhaarCardData, buildSharedAadhaarTemplateData, getAadhaarVerificationRecordId, hasAadhaarCardData } from './aadhaarVerification.mjs';
 import { DEFAULT_PAN_SIGNATURE_URL, resolvePanCardSignatureUrl } from '../../pancard/panCardDisplay.mjs';
 
 test('maps the verified PAN response into the real PAN card template fields', () => {
@@ -75,4 +75,58 @@ test('maps only fetched Aadhaar fields and never injects template demo data', ()
   assert.equal(data.addressEnglish, 'Jaipur, Rajasthan, 302001');
   assert.equal(hasAadhaarCardData(data), true);
   assert.equal(hasAadhaarCardData(buildAadhaarCardData({ number: '', response: {} }, {})), false);
+});
+
+test('uses the verified 12-digit number entered in the current preview over the masked provider value', () => {
+  const data = buildAadhaarCardData(
+    { number: '943189456659', response: {} },
+    { maskedAadhaar: 'XXXXXXXX5659', fullName: 'MEGHRAJ DEWANGAN' },
+  );
+
+  assert.equal(data.aadhaarNumber, '943189456659');
+});
+
+test('maps sold-vehicle Aadhaar data into the shared Identity Hub template contract', () => {
+  const data = buildSharedAadhaarTemplateData(
+    { number: 'XXXXXXXX5043', response: {} },
+    {
+      fullName: 'HITESH KUMAR',
+      fatherName: 'RAJ KUMAR',
+      maskedAadhaar: 'XXXXXXXX5043',
+      dob: '1998-08-20',
+      gender: 'M',
+      mobileNumber: '9876543210',
+      profileImage: 'data:image/jpeg;base64,abc',
+      address: {
+        house: '12',
+        street: 'Main Road',
+        locality: 'Civil Lines',
+        vtc: 'Jaipur',
+        district: 'Jaipur',
+        state: 'Rajasthan',
+        pincode: '302001',
+      },
+    },
+  );
+
+  assert.equal(data.fullName, 'HITESH KUMAR');
+  assert.equal(data.fatherName, 'RAJ KUMAR');
+  assert.equal(data.maskedAadhaar, 'XXXXXXXX5043');
+  assert.equal(data.mobileNumber, '9876543210');
+  assert.deepEqual(data.address, {
+    house: '12',
+    street: 'Main Road',
+    locality: 'Civil Lines',
+    vtc: 'Jaipur',
+    district: 'Jaipur',
+    state: 'Rajasthan',
+    pincode: '302001',
+  });
+});
+
+test('extracts only the persisted Aadhaar verification record id for template upload', () => {
+  assert.equal(getAadhaarVerificationRecordId({ response: { record: { id: 'aadhaar-record-1', maskedAadhaar: 'XXXXXXXX1231' } } }), 'aadhaar-record-1');
+  assert.equal(getAadhaarVerificationRecordId({ response: { record: { id: 'aadhaar-record-1', maskedPan: 'ABCDE1234F' } } }), '');
+  assert.equal(getAadhaarVerificationRecordId({ response: { record: { id: 42, maskedAadhaar: 'XXXXXXXX1231' } } }), '');
+  assert.equal(getAadhaarVerificationRecordId({ response: { result: { id: 'provider-result' } } }), '');
 });

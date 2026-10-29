@@ -57,10 +57,12 @@ export function DigilockerVerificationModal({
   session,
   onSuccess,
   onClose,
+  statusEndpointBase = '/aadhaar-verification',
 }: {
   session: DigilockerVerificationSession;
   onSuccess: (clientId: string) => void;
   onClose: () => void;
+  statusEndpointBase?: string;
 }) {
   const [sdkReady, setSdkReady] = useState(Boolean(typeof window !== 'undefined' && window.DigiboostSdk));
   const [sdkError, setSdkError] = useState('');
@@ -92,7 +94,7 @@ export function DigilockerVerificationModal({
         ready?: boolean;
         status?: string;
         record?: { providerClientId?: string | null };
-      }>(`/aadhaar-verification/status/${session.recordId}`);
+      }>(`${statusEndpointBase}/status/${session.recordId}`);
 
       if (response.data?.ready || response.data?.status === 'SUCCESS') {
         const remoteClientId = response.data.record?.providerClientId?.trim() || session.clientId;
@@ -101,7 +103,7 @@ export function DigilockerVerificationModal({
     } catch {
       // Ignore background poll errors while transaction is in-flight
     }
-  }, [handleSuccessTrigger, session.clientId, session.recordId]);
+  }, [handleSuccessTrigger, session.clientId, session.recordId, statusEndpointBase]);
 
   useEffect(() => {
     if (window.DigiboostSdk) return;

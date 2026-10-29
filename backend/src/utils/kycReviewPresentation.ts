@@ -28,6 +28,7 @@ export type KycReviewDocumentInput = {
 type VerificationDetail = {
   record?: VerificationRecordSummary | null;
   result?: Record<string, unknown> | null;
+  template?: Record<string, unknown> | null;
 } | null;
 
 const isoDate = (value: DateLike) => {
@@ -40,23 +41,27 @@ export const buildKycReviewDocument = (
   document: KycReviewDocumentInput,
   detail: VerificationDetail,
 ) => {
-  const hasSuccessfulResult = detail?.record?.status === 'SUCCESS' && !!detail.result;
-  const status = hasSuccessfulResult
+  const hasSuccessfulRecord = detail?.record?.status === 'SUCCESS';
+  const hasSavedTemplate = Boolean(detail?.template);
+  const status = hasSuccessfulRecord && hasSavedTemplate
     ? 'VERIFIED'
     : detail?.record?.status === 'FAILED'
       ? 'FAILED'
-      : document.verificationStatus || 'NOT_STARTED';
+      : hasSuccessfulRecord
+        ? 'NOT_STARTED'
+        : document.verificationStatus || 'NOT_STARTED';
 
   return {
     ...document,
     issueDate: isoDate(document.issueDate),
     expiryDate: isoDate(document.expiryDate),
     verificationStatus: status,
-    verificationRecordId: document.verificationRecordId || '',
+    verificationRecordId: hasSuccessfulRecord && !hasSavedTemplate ? '' : document.verificationRecordId || '',
     verificationCacheHit: document.verificationCacheHit === true,
-    verificationMessage: hasSuccessfulResult ? null : document.verificationMessage,
+    verificationMessage: hasSuccessfulRecord && hasSavedTemplate ? null : document.verificationMessage,
     verificationRequestedAt: isoDate(detail?.record?.createdAt),
     verificationCompletedAt: isoDate(detail?.record?.completedAt) || isoDate(document.verificationCompletedAt),
-    verificationResult: hasSuccessfulResult ? detail.result : null,
+    verificationResult: null,
+    verificationTemplate: detail?.template || null,
   };
 };

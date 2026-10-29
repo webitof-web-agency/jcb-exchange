@@ -11,6 +11,24 @@ const freshSuccess = (requestFingerprint: string, requestedById = 'partner-1') =
   completedAt: new Date(),
 });
 
+test('accepts a saved template after the encrypted verification result is purged', () => {
+  const record = {
+    ...freshSuccess(createVerificationFingerprint('PAN_COMPREHENSIVE_V2', { id_number: 'ABCDE1234F' })),
+    encryptedResult: null,
+    template: { id: 'template-1' },
+  };
+
+  assert.equal(
+    isKycVerificationRecordPersistable({
+      documentType: 'PAN_CARD',
+      documentNumber: 'ABCDE1234F',
+      requestedById: 'partner-1',
+      record,
+    }),
+    true,
+  );
+});
+
 test('accepts a fresh successful PAN record for the same partner and number', () => {
   const record = freshSuccess(createVerificationFingerprint('PAN_COMPREHENSIVE_V2', { id_number: 'ABCDE1234F' }));
 

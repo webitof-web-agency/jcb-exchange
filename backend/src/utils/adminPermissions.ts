@@ -118,7 +118,6 @@ export const allowedAdminPermissions = new Set([
   'aadhaar.digilocker.read',
   'driving-license.verification.read',
   'rc.owner-history.read',
-  'rc.full.read',
   'rc.challan.verification.read',
   'rc.chassis-to-rc.read',
   'rc.to-mobile.read',

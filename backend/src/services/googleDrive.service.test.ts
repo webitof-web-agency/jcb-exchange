@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Readable } from 'node:stream';
 import { listBackupFilesRecursively, resolveYearMonthUploadFolder } from './googleDrive.service';
+import * as googleDrive from './googleDrive.service';
+
+test('reads a Drive stream into a buffer and fails stalled downloads within the timeout', async () => {
+  assert.equal(typeof googleDrive.readDriveStreamToBuffer, 'function');
+  const buffer = await googleDrive.readDriveStreamToBuffer(Readable.from([Buffer.from('template')]), 100);
+  assert.equal(buffer.toString(), 'template');
+
+  const stalled = new Readable({ read() {} });
+  await assert.rejects(
+    googleDrive.readDriveStreamToBuffer(stalled, 5),
+    /timed out/i,
+  );
+});
 
 test('reuses the existing year and month folders under the configured root', async () => {
   const listCalls: Array<Record<string, unknown>> = [];

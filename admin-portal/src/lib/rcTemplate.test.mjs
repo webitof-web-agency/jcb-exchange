@@ -32,94 +32,94 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Front card', (
 
   // Regn Validity
   assert.match(previewSource, /rcData\.registrationUpto/);
-  assert.match(previewSource, /drawText\(validityDate,\s*325,\s*112/);
+  assert.match(previewSource, /drawText\(validityDate,\s*320,\s*112/);
 
-  // Owner Serial
+  // Owner Serial (centered inside circle at 475, 108)
   assert.match(previewSource, /rcData\.ownerNumber/);
-  assert.match(previewSource, /drawText\(ownerSerial,\s*468,\s*113/);
+  assert.match(previewSource, /drawText\(ownerSerial,\s*475,\s*108/);
 
-  // Chassis No
+  // Chassis No (below label at x=149, y=145)
   assert.match(previewSource, /rcData\.vehicleChasiNumber/);
-  assert.match(previewSource, /drawText\(chassisNo,\s*220,\s*131/);
+  assert.match(previewSource, /drawText\(chassisNo,\s*149,\s*145/);
 
-  // Engine/Motor No
+  // Engine/Motor No (below label at x=149, y=179)
   assert.match(previewSource, /rcData\.vehicleEngineNumber/);
-  assert.match(previewSource, /drawText\(engineNo,\s*246,\s*165/);
+  assert.match(previewSource, /drawText\(engineNo,\s*149,\s*179/);
 
-  // Owner Name
+  // Owner Name (below label at x=149, y=212)
   assert.match(previewSource, /rcData\.ownerName/);
-  assert.match(previewSource, /drawText\(ownerName,\s*228,\s*198/);
+  assert.match(previewSource, /drawText\(ownerName,\s*149,\s*212/);
 
-  // Son/Daughter/Wife of
+  // Son/Daughter/Wife of (below label at x=149, y=247)
   assert.match(previewSource, /rcData\.fatherName/);
-  assert.match(previewSource, /drawText\(fatherName,\s*148,\s*250/);
+  assert.match(previewSource, /drawText\(fatherName,\s*149,\s*247/);
 
-  // Address
+  // Address (below label at x=149, y=282)
   assert.match(previewSource, /rcData\.presentAddress/);
-  assert.match(previewSource, /drawText\(addrLines\[0\],\s*205,\s*269/);
+  assert.match(previewSource, /drawText\(addrLines\[0\],\s*149,\s*282/);
 
-  // Fuel
+  // Fuel (below label flush at start x=30, y=231)
   assert.match(previewSource, /rcData\.fuelType/);
-  assert.match(previewSource, /drawText\(fuel,\s*20,\s*242/);
+  assert.match(previewSource, /drawText\(fuel,\s*30,\s*231/);
 
-  // Emission Norms
+  // Emission Norms (below label flush at start x=30, y=270)
   assert.match(previewSource, /rcData\.normsType/);
-  assert.match(previewSource, /drawText\(norms,\s*20,\s*287/);
+  assert.match(previewSource, /drawText\(norms,\s*30,\s*270/);
 });
 
 test('RcCardTemplatePreview binds all dynamic API placeholders on Back card', () => {
-  // Vehicle Class
+  // Vehicle Class (aligned with baseline y=46 with clean gap after colon at x=722)
   assert.match(previewSource, /rcData\.vehicleCategoryDescription/);
-  assert.match(previewSource, /drawText\(vClass,\s*700,\s*34/);
+  assert.match(previewSource, /drawText\(vClass,\s*722,\s*46/);
 
-  // Regn Number on back
-  assert.match(previewSource, /drawText\(regNoFormatted,\s*526,\s*98/);
+  // Regn Number on back (aligned flush at x=532)
+  assert.match(previewSource, /drawText\(regNoFormatted,\s*532,\s*98/);
 
-  // Month - Year of Mfg
+  // Month - Year of Mfg (aligned flush at x=532)
   assert.match(previewSource, /rcData\.manufacturingDate/);
-  assert.match(previewSource, /drawText\(mfgDate,\s*536,\s*286/);
+  assert.match(previewSource, /drawText\(mfgDate,\s*532,\s*286/);
 
-  // No of Cylinders
+  // No of Cylinders (next to colon at x=624)
   assert.match(previewSource, /rcData\.noCylinders/);
-  assert.match(previewSource, /drawText\(cylinders,\s*625,\s*303/);
+  assert.match(previewSource, /drawText\(cylinders,\s*624,\s*302/);
 
-  // Maker
+  // Maker (below label at x=691, y=97)
   assert.match(previewSource, /rcData\.makerDescription/);
-  assert.match(previewSource, /drawText\(maker,\s*745,\s*80/);
+  assert.match(previewSource, /drawText\(maker,\s*691,\s*97/);
 
-  // Model
+  // Model (below label at x=691, y=132)
   assert.match(previewSource, /rcData\.makerModel/);
-  assert.match(previewSource, /drawText\(model,\s*735,\s*118/);
+  assert.match(previewSource, /drawText\(model,\s*691,\s*132/);
 
-  // Color
+  // Color (below label at x=691, y=163)
   assert.match(previewSource, /rcData\.color/);
-  assert.match(previewSource, /drawText\(color,\s*728,\s*149/);
+  assert.match(previewSource, /drawText\(color,\s*691,\s*163/);
 
-  // Body Type
+  // Body Type (below label at x=808, y=163)
   assert.match(previewSource, /rcData\.bodyType/);
-  assert.match(previewSource, /drawText\(bodyType,\s*848,\s*149/);
+  assert.match(previewSource, /drawText\(bodyType,\s*808,\s*163/);
 
-  // Seating Capacity
+  // Seating Capacity (below label at x=691, y=196)
   assert.match(previewSource, /rcData\.seatCapacity/);
-  assert.match(previewSource, /drawText\(seating,\s*808,\s*181/);
+  assert.match(previewSource, /drawText\(seating,\s*691,\s*196/);
 
-  // Unladen Weight
+  // Unladen Weight (below label at x=691, y=227)
   assert.match(previewSource, /rcData\.unladenWeight/);
-  assert.match(previewSource, /drawText\(unladenWeight,\s*805,\s*211/);
+  assert.match(previewSource, /drawText\(unladenWeight,\s*691,\s*227/);
 
-  // Cubic Cap / Horse Power / Wheel Base
+  // Cubic Cap / Horse Power / Wheel Base (below label at x=691, y=258)
   assert.match(previewSource, /rcData\.cubicCapacity/);
   assert.match(previewSource, /rcData\.horsePower/);
   assert.match(previewSource, /rcData\.wheelbase/);
-  assert.match(previewSource, /drawText\(specLine,\s*690,\s*259/);
+  assert.match(previewSource, /drawText\(specLine,\s*691,\s*258/);
 
-  // Financier
+  // Financier (below label at x=691, y=290)
   assert.match(previewSource, /rcData\.financer/);
-  assert.match(previewSource, /drawText\(financierText\.toUpperCase\(\),\s*748,\s*276/);
+  assert.match(previewSource, /drawText\(financierText\.toUpperCase\(\),\s*691,\s*290/);
 
-  // Registration Authority
+  // Registration Authority (below label at x=884, y=307)
   assert.match(previewSource, /rcData\.registeredAt/);
-  assert.match(previewSource, /drawText\(regAuthority,\s*865,\s*306/);
+  assert.match(previewSource, /drawText\(regAuthority,\s*884,\s*307/);
 });
 
 test('RcCardTemplatePreview generates dynamic QR code and supports click modal popup', () => {
@@ -130,13 +130,11 @@ test('RcCardTemplatePreview generates dynamic QR code and supports click modal p
   assert.match(previewSource, /mParivahan RC QR Code Data/);
 });
 
-test('RcCardTemplatePreview provides Download PNG, Download PDF, and Print actions', () => {
+test('RcCardTemplatePreview provides Download PNG and Download PDF actions', () => {
   assert.match(previewSource, /downloadPng/);
   assert.match(previewSource, /downloadPdf/);
-  assert.match(previewSource, /handlePrint/);
   assert.match(previewSource, />PNG<\/span>/);
   assert.match(previewSource, />PDF Card<\/span>/);
-  assert.match(previewSource, />Print<\/span>/);
 });
 
 test('RcCardPdfDocument generates standard A4 Landscape PDF with card image', () => {
@@ -148,5 +146,14 @@ test('RcCardPdfDocument generates standard A4 Landscape PDF with card image', ()
 });
 
 test('RcLookupPage renders RcCardTemplatePreview on successful verification', () => {
-  assert.match(pageSource, /<RcCardTemplatePreview response=\{response\} \/>/);
+  assert.match(pageSource, /<RcCardTemplatePreview\s+response=\{response\}/);
+  assert.equal(pageSource.includes('RcOwnerHistoryTemplatePreview'), false);
+  assert.equal(pageSource.includes('ResultPanel'), false);
+});
+
+test('RcCardTemplatePreview supports uploading and saving templates to history', () => {
+  assert.match(previewSource, /onUploaded\?/);
+  assert.match(previewSource, /Upload & Save Template/);
+  assert.match(previewSource, /\/rc-owner-history\/\$\{response\.record\.id\}\/template/);
+  assert.match(previewSource, /getVerificationTemplateBlob/);
 });

@@ -23,6 +23,7 @@ const baseRecord = (overrides: Record<string, unknown> = {}) => ({
   requestedById: 'user-1',
   createdAt: new Date('2026-10-28T10:00:00.000Z'),
   completedAt: new Date('2026-10-28T10:00:00.000Z'),
+  ephemeralExpiresAt: new Date('2026-10-28T10:15:00.000Z'),
   template: null,
   ...overrides,
 });
@@ -100,7 +101,7 @@ test('successful Aadhaar template upload saves metadata and clears only encrypte
   const result = await service.uploadTemplate(record.id, 'user-1', 'EMPLOYEE', validPng, 'image/png');
   assert.equal(result.result, null);
   assert.equal(result.template?.id, template.id);
-  assert.deepEqual(updates, [{ encryptedResult: null, rawDataExpiresAt: null }]);
+  assert.deepEqual(updates, [{ encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null }]);
 });
 
 test('Aadhaar template upload preserves a safe complete-number filename supplied by the authorized UI', async () => {
@@ -152,6 +153,28 @@ test('Aadhaar history returns saved template metadata and scopes employee record
 
   const result = await service.listHistory({ page: 1, limit: 20 }, 'user-1', 'EMPLOYEE');
   assert.equal(result.records[0]?.template?.id, 'aadhaar-template-1');
-  assert.deepEqual(countWhere, { requestedById: 'user-1' });
-  assert.deepEqual(findWhere, { requestedById: 'user-1' });
+  assert.deepEqual(countWhere, { requestedById: 'user-1', template: { isNot: null } });
+  assert.deepEqual(findWhere, { requestedById: 'user-1', template: { isNot: null } });
+});
+
+test('Aadhaar cleanup deletes expired unsaved verification sessions', async () => {
+  let deleteWhere: Record<string, unknown> | undefined;
+  const service = new AadhaarVerificationService({
+    record: {
+      updateMany: async () => ({ count: 0 }),
+      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+        deleteWhere = where;
+        return { count: 2 };
+      },
+    } as any,
+    dataSecret: 'test-secret',
+  });
+
+  const count = await service.cleanupExpiredRawData(new Date('2026-10-28T10:20:00.000Z'));
+
+  assert.equal(count, 2);
+  assert.deepEqual(deleteWhere, {
+    template: { is: null },
+    ephemeralExpiresAt: { lte: new Date('2026-10-28T10:20:00.000Z') },
+  });
 });

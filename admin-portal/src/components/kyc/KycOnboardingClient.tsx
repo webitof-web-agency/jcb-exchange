@@ -82,6 +82,12 @@ import {
 } from '@/lib/fileUpload';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import { ApiSparkleIcon } from '@/components/ui/ApiFillBadge';
+import { normalizeAadhaarInput, validateAadhaarNumber } from '@/lib/aadhaarVerification';
+import { DigilockerVerificationModal, type DigilockerVerificationSession } from '@/components/accounts/sold-vehicle/DigilockerVerificationModal';
+import PartnerKycTemplateModal, {
+  type PartnerAadhaarTemplateResponse,
+  type PartnerTemplateResponse,
+} from '@/components/kyc/PartnerKycTemplateModal';
 
 const toTitleCase = (str: string) => {
   if (!str) return str;
@@ -187,7 +193,23 @@ type KycDocumentForm = {
   verificationRecordId?: string;
   verificationCacheHit?: boolean;
   verificationResult?: Record<string, unknown> | null;
+  verificationTemplate?: VerificationTemplateSummary | null;
   verificationMessage?: string;
+};
+
+type VerificationTemplateSummary = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sha256: string;
+  createdAt: string;
+};
+
+type AadhaarVerificationApiResponse = PartnerAadhaarTemplateResponse & {
+  sdkToken?: string;
+  gateway?: 'sandbox' | 'production';
+  expirySeconds?: number;
 };
 
 type AgreementForm = {
@@ -382,6 +404,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
   // Preview & Modal states
   const [previewingDoc, setPreviewingDoc] = useState<{ url: string; title: string; isPdf?: boolean } | null>(null);
+  const [templatePreview, setTemplatePreview] = useState<{
+    documentType: 'PAN_CARD' | 'GST_CERTIFICATE' | 'AADHAAR_CARD';
+    documentNumber: string;
+    response: PartnerTemplateResponse;
+  } | null>(null);
+  const [aadhaarSession, setAadhaarSession] = useState<DigilockerVerificationSession | null>(null);
   const [readingAgreement, setReadingAgreement] = useState<AgreementForm | null>(null);
   const [showAadhaarNumber, setShowAadhaarNumber] = useState(false);
 
@@ -538,6 +566,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           submittedNote: '',
           status: 'NOT_UPLOADED',
           reviewComment: '',
+          verificationTemplate: null,
         }
       );
     });
@@ -559,6 +588,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           submittedNote: '',
           status: 'NOT_UPLOADED',
           reviewComment: '',
+          verificationTemplate: null,
         }
       );
     });
@@ -610,7 +640,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     () => [
       { label: 'Account & Signatory Identity', stepIndex: 0, done: isAccountComplete, subtitle: profile.ownerName || 'Not configured' },
       { label: 'Business & Operating Profile', stepIndex: 1, done: isBusinessComplete, subtitle: profile.businessName ? `${profile.businessName} · ${profile.city || ''}` : 'Location pending' },
-      { label: 'Mandatory KYC Documents', stepIndex: 2, done: progress.documentsComplete, subtitle: `${documentsByType.filter(d => d.fileUrl).length} of ${documentsByType.length} uploaded` },
+      { label: 'Mandatory KYC Documents', stepIndex: 2, done: progress.documentsComplete, subtitle: `${documentsByType.filter(d => d.fileUrl || d.verificationTemplate).length} of ${documentsByType.length} ready` },
       { label: 'Compliance & Declarations', stepIndex: 3, done: progress.agreementsComplete && areAgreementsComplete, subtitle: `${agreements.filter(a => a.checked).length} of ${agreements.length} accepted` },
     ],
     [progress, isAccountComplete, isBusinessComplete, areAgreementsComplete, profile, documentsByType, agreements]
@@ -792,7 +822,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const buildReviewTrailComment = (stepIndex: number, mode: 'draft' | 'submit') => {
     const stepId = steps[stepIndex]?.id;
     const stepName = steps[stepIndex]?.title || 'Onboarding form';
-    const uploadedDocuments = kycDocuments.filter((document) => document.fileUrl || document.fileName || document.documentNumber);
+    const uploadedDocuments = kycDocuments.filter((document) => document.fileUrl || document.verificationTemplate);
     const acceptedAgreements = agreements.filter((agreement) => agreement.checked).length;
     const totalAgreements = agreements.length;
 
@@ -839,7 +869,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         pinCode: profile.pinCode.replace(/[^0-9]/g, '').slice(0, 6),
         partnerType: profile.partnerType || '',
       },
-      kycDocuments: documentsByType,
+      kycDocuments: documentsByType.map((document) => ({
+        ...document,
+        verificationTemplateId: document.verificationTemplate?.id || '',
+      })),
       agreements: checkedAgreementTypes,
     };
   };
@@ -961,10 +994,139 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     });
   };
 
+  const getTemplatePreviewResponse = (document: KycDocumentForm): PartnerTemplateResponse | null => {
+    const recordId = document.verificationRecordId?.trim();
+    const template = document.verificationTemplate;
+    if (!recordId || !template) return null;
+
+    if (document.documentType === 'PAN_CARD') {
+      return {
+        success: true,
+        record: {
+          id: recordId,
+          operation: 'PAN_COMPREHENSIVE_V2',
+          status: 'SUCCESS',
+          maskedPan: document.documentNumber || 'SAVED',
+          provider: 'saved-template',
+          providerClientId: null,
+          messageCode: null,
+          safeMessage: null,
+          createdAt: template.createdAt,
+          completedAt: template.createdAt,
+          rawDataExpiresAt: null,
+          template,
+        },
+        result: null,
+        template,
+      } as PartnerTemplateResponse;
+    }
+
+    if (document.documentType === 'GST_CERTIFICATE') {
+      return {
+        success: true,
+        record: {
+          id: recordId,
+          status: 'SUCCESS',
+          maskedGstin: document.documentNumber || 'SAVED',
+          gstinStatus: 'ACTIVE',
+          businessName: document.nameOnDocument || null,
+          legalName: document.nameOnDocument || null,
+          provider: 'saved-template',
+          providerClientId: null,
+          messageCode: null,
+          safeMessage: null,
+          createdAt: template.createdAt,
+          completedAt: template.createdAt,
+          rawDataExpiresAt: null,
+          template,
+        },
+        result: null,
+        template,
+      } as PartnerTemplateResponse;
+    }
+
+    return {
+      success: true,
+      record: {
+        id: recordId,
+        status: 'SUCCESS',
+        maskedAadhaar: document.documentNumber || 'SAVED',
+        providerClientId: null,
+        rawDataExpiresAt: null,
+        template,
+      },
+      result: null,
+      template,
+    };
+  };
+
+  const openTemplatePreview = (document: KycDocumentForm, response?: PartnerTemplateResponse | null) => {
+    const previewResponse = response || getTemplatePreviewResponse(document);
+    if (!previewResponse) {
+      setError('Saved template is not available for this document.');
+      return;
+    }
+    setTemplatePreview({
+      documentType: document.documentType as 'PAN_CARD' | 'GST_CERTIFICATE' | 'AADHAAR_CARD',
+      documentNumber: document.documentNumber,
+      response: previewResponse,
+    });
+  };
+
+  const completeAadhaarVerification = async (clientId: string) => {
+    const session = aadhaarSession;
+    if (!session) return;
+    setVerifyingDocumentType('AADHAAR_CARD');
+    setError('');
+    try {
+      const endpointBase = isAdminMode && (resolvedPartnerId || requestedPartnerId)
+        ? '/aadhaar-verification'
+        : '/auth/partner/kyc/verify-aadhaar';
+      const response = await api.post<AadhaarVerificationApiResponse>(`${endpointBase}/complete`, {
+        recordId: session.recordId,
+        clientId,
+      });
+      if (!response.data.result || !response.data.record?.id) {
+        throw new Error('Aadhaar data was not returned by DigiLocker.');
+      }
+      const template = response.data.template || response.data.record.template || null;
+      const document = documentsByType.find((item) => item.documentType === 'AADHAAR_CARD');
+      updateDocument('AADHAAR_CARD', {
+        documentNumber: document?.documentNumber || '',
+        nameOnDocument: response.data.result.fullName || document?.nameOnDocument || '',
+        verificationStatus: 'VERIFIED',
+        verificationRecordId: response.data.record.id,
+        verificationCacheHit: response.data.cacheHit === true,
+        verificationResult: response.data.result as Record<string, unknown>,
+        verificationTemplate: template,
+        verificationMessage: '',
+      });
+      setTemplatePreview({
+        documentType: 'AADHAAR_CARD',
+        documentNumber: document?.documentNumber || '',
+        response: { ...response.data, result: response.data.result, template },
+      });
+      setSuccess('Aadhaar verified successfully. Review the template, then upload it to save securely.');
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || 'Aadhaar verification could not be completed.'
+        : err instanceof Error ? err.message : 'Aadhaar verification could not be completed.';
+      updateDocument('AADHAAR_CARD', { verificationStatus: 'FAILED', verificationMessage: message });
+      setError(message);
+    } finally {
+      setAadhaarSession(null);
+      setVerifyingDocumentType(null);
+    }
+  };
+
   const verifyKycDocument = async (documentType: KycVerificationDocumentType) => {
     const document = documentsByType.find((item) => item.documentType === documentType);
-    const documentNumber = normalizeKycDocumentNumber(documentType, document?.documentNumber || '');
-    const validationError = validateKycDocumentNumber(documentType, documentNumber);
+    const documentNumber = documentType === 'AADHAAR_CARD'
+      ? normalizeAadhaarInput(document?.documentNumber || '')
+      : normalizeKycDocumentNumber(documentType, document?.documentNumber || '');
+    const validationError = documentType === 'AADHAAR_CARD'
+      ? validateAadhaarNumber(documentNumber)
+      : validateKycDocumentNumber(documentType, documentNumber);
     if (validationError) {
       updateDocument(documentType, { verificationStatus: 'FAILED', verificationMessage: validationError });
       setError(validationError);
@@ -979,6 +1141,44 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
     try {
       const targetPartnerId = isAdminMode ? resolvedPartnerId || requestedPartnerId : null;
+      if (documentType === 'AADHAAR_CARD') {
+        const endpointBase = isAdminMode && targetPartnerId
+          ? '/aadhaar-verification'
+          : '/auth/partner/kyc/verify-aadhaar';
+        const response = await api.post<AadhaarVerificationApiResponse>(`${endpointBase}/initialize`, {
+          aadhaarNumber: documentNumber,
+          side: 'SALE',
+        });
+        const template = response.data.template || response.data.record?.template || null;
+        if (response.data.cacheHit && response.data.result && response.data.record?.id) {
+          updateDocument(documentType, {
+            documentNumber,
+            nameOnDocument: response.data.result.fullName || document?.nameOnDocument || '',
+            verificationStatus: 'VERIFIED',
+            verificationRecordId: response.data.record.id,
+            verificationCacheHit: true,
+            verificationResult: response.data.result as Record<string, unknown>,
+            verificationTemplate: template,
+            verificationMessage: '',
+          });
+          openTemplatePreview(document || { documentType, documentNumber, fileUrl: '', fileName: '', nameOnDocument: '', issueDate: '', expiryDate: '', submittedNote: '' }, { ...response.data, result: response.data.result, template });
+          setSuccess('Loaded verified Aadhaar. Review the template, then upload it to save securely.');
+          return;
+        }
+        const recordId = response.data.record?.id?.trim();
+        const clientId = response.data.record?.providerClientId?.trim();
+        if (!recordId || !clientId || !response.data.sdkToken) {
+          throw new Error('DigiLocker session was not created.');
+        }
+        setAadhaarSession({
+          recordId,
+          clientId,
+          sdkToken: response.data.sdkToken,
+          gateway: response.data.gateway === 'production' ? 'production' : 'sandbox',
+          expirySeconds: response.data.expirySeconds,
+        });
+        return;
+      }
       const endpoint = isAdminMode && targetPartnerId
         ? documentType === 'PAN_CARD' ? '/pan-verification/comprehensive-v2' : '/gst-verification/verify'
         : documentType === 'PAN_CARD' ? '/auth/partner/kyc/verify-pan' : '/auth/partner/kyc/verify-gstin';
@@ -995,6 +1195,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         verificationRecordId: response.data?.record?.id || '',
         verificationCacheHit: cacheHit,
         verificationResult,
+        verificationTemplate: response.data?.template || response.data?.record?.template || null,
         verificationMessage: verified
           ? ''
           : 'Official record retrieved, but requires manual team sign-off before approval.',
@@ -1006,6 +1207,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
             : `${documentType === 'PAN_CARD' ? 'Company PAN' : 'GSTIN'} verified successfully via Government portal.`
           : 'Verification result stored for review.',
       );
+      if (verified) {
+        openTemplatePreview(
+          { ...(document || { documentType, fileUrl: '', fileName: '', documentNumber, nameOnDocument: '', issueDate: '', expiryDate: '', submittedNote: '' }), documentNumber },
+          response.data as PartnerTemplateResponse,
+        );
+      }
     } catch (err) {
       const message = axios.isAxiosError(err)
         ? err.response?.data?.error || 'Verification could not be completed.'
@@ -1621,13 +1828,13 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   <CreditCard className="h-4 w-4 text-amber-500" />
                   <span className="text-xs font-semibold text-slate-800">KYC Verification Vault:</span>
                   <span className="text-xs font-normal text-slate-600">
-                    {documentsByType.filter(d => d.fileUrl).length} of {documentsByType.length} Required Documents Ready
+                    {documentsByType.filter(d => d.fileUrl || d.verificationTemplate).length} of {documentsByType.length} Required Documents Ready
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {documentsByType.map(doc => {
-                    const isUploaded = Boolean(doc.fileUrl);
+                    const isUploaded = Boolean(doc.fileUrl || doc.verificationTemplate);
                     const isVerified = doc.verificationStatus === 'VERIFIED';
                     return (
                       <span
@@ -1651,11 +1858,9 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               {/* Document Cards Grid */}
               <div className="grid gap-3.5 lg:grid-cols-2">
                 {documentsByType.map((document) => {
-                  const canVerify = document.documentType === 'PAN_CARD' || document.documentType === 'GST_CERTIFICATE';
+                  const canVerify = ['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType);
                   const isVerifying = verifyingDocumentType === document.documentType;
-                  const verDisplay = document.verificationResult
-                    ? getKycVerificationDisplay(document.documentType as KycVerificationDocumentType, document.verificationResult)
-                    : null;
+                  const verDisplay = null;
                   const docLabel = document.documentType === 'PAN_CARD'
                     ? 'Company PAN number'
                     : document.documentType === 'GST_CERTIFICATE'
@@ -1679,6 +1884,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                       }}
                       onUpdate={(patch) => updateDocument(document.documentType, patch)}
                       onVerify={() => void verifyKycDocument(document.documentType as KycVerificationDocumentType)}
+                      onOpenTemplate={() => openTemplatePreview(document)}
+                      isTemplateBacked={canVerify}
                       onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
                       showAadhaarNumber={showAadhaarNumber}
                       onToggleAadhaarVisibility={() => setShowAadhaarNumber(!showAadhaarNumber)}
@@ -1707,6 +1914,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                         sensitiveInputRef={() => {}}
                         onUpdate={(patch) => updateDocument(document.documentType, patch)}
                         onVerify={() => {}}
+                        onOpenTemplate={() => {}}
+                        isTemplateBacked={false}
                         onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
                         showAadhaarNumber={false}
                         onToggleAadhaarVisibility={() => {}}
@@ -2084,6 +2293,49 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       </div>
 
       {/* ── 5. LIGHTBOX DOCUMENT PREVIEW MODAL ── */}
+      {templatePreview ? (
+        <PartnerKycTemplateModal
+          documentType={templatePreview.documentType}
+          documentNumber={templatePreview.documentNumber}
+          response={templatePreview.response}
+          isPartnerMode={!isAdminMode}
+          onClose={() => setTemplatePreview(null)}
+          onSaved={(response) => {
+            const template = response.template || response.record.template || null;
+            const recordId = response.record.id;
+            updateDocument(templatePreview.documentType, {
+              verificationRecordId: recordId,
+              verificationStatus: 'VERIFIED',
+              verificationTemplate: template,
+              verificationResult: null,
+              verificationMessage: '',
+              fileUrl: '',
+              fileName: '',
+              status: 'UPLOADED',
+            });
+            setTemplatePreview((current) => current ? {
+              ...current,
+              response: { ...response, result: null, template, record: { ...response.record, template } } as PartnerTemplateResponse,
+            } : current);
+            setSuccess('Template uploaded securely. The verification result was removed from the database.');
+          }}
+        />
+      ) : null}
+
+      {aadhaarSession ? (
+        <DigilockerVerificationModal
+          session={aadhaarSession}
+          statusEndpointBase={isAdminMode ? '/aadhaar-verification' : '/auth/partner/kyc/verify-aadhaar'}
+          onSuccess={(clientId) => void completeAadhaarVerification(clientId)}
+          onClose={() => {
+            const sessionToCancel = aadhaarSession;
+            setAadhaarSession(null);
+            const endpointBase = isAdminMode ? '/aadhaar-verification' : '/auth/partner/kyc/verify-aadhaar';
+            void api.post(`${endpointBase}/cancel`, { recordId: sessionToCancel.recordId }).catch(() => undefined);
+          }}
+        />
+      ) : null}
+
       {previewingDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -2220,9 +2472,11 @@ type CompactKycDocumentCardProps = {
   canVerify: boolean;
   isVerifying: boolean;
   verDisplay: ReturnType<typeof getKycVerificationDisplay> | null;
+  isTemplateBacked: boolean;
   sensitiveInputRef: (el: HTMLInputElement | null) => void;
   onUpdate: (patch: Partial<KycDocumentForm>) => void;
   onVerify: () => void;
+  onOpenTemplate: () => void;
   onPreview: (url: string, title: string, isPdf?: boolean) => void;
   showAadhaarNumber: boolean;
   onToggleAadhaarVisibility: () => void;
@@ -2236,9 +2490,11 @@ function CompactKycDocumentCard({
   canVerify,
   isVerifying,
   verDisplay,
+  isTemplateBacked,
   sensitiveInputRef,
   onUpdate,
   onVerify,
+  onOpenTemplate,
   onPreview,
   showAadhaarNumber,
   onToggleAadhaarVisibility,
@@ -2261,7 +2517,6 @@ function CompactKycDocumentCard({
   // Load preview blob securely
   useEffect(() => {
     if (!document.fileUrl || isPdf) {
-      setPreviewObjectUrl('');
       return;
     }
 
@@ -2377,22 +2632,20 @@ function CompactKycDocumentCard({
 
   const effectivePreviewUrl = localInstantPreviewUrl || previewObjectUrl || document.fileUrl;
 
-  const getDocIcon = () => {
+  const renderDocIcon = () => {
     switch (document.documentType) {
       case 'PAN_CARD':
-        return CreditCard;
+        return <CreditCard className="h-3.5 w-3.5" />;
       case 'GST_CERTIFICATE':
-        return Building2;
+        return <Building2 className="h-3.5 w-3.5" />;
       case 'AADHAAR_CARD':
-        return Shield;
+        return <Shield className="h-3.5 w-3.5" />;
       case 'PASSPORT_PHOTO':
-        return User;
+        return <User className="h-3.5 w-3.5" />;
       default:
-        return FileText;
+        return <FileText className="h-3.5 w-3.5" />;
     }
   };
-
-  const DocIcon = getDocIcon();
 
   return (
     <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden flex flex-col justify-between">
@@ -2400,7 +2653,7 @@ function CompactKycDocumentCard({
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-400/10 text-amber-700 border border-amber-200/60 shadow-2xs">
-            <DocIcon className="h-3.5 w-3.5" />
+            {renderDocIcon()}
           </div>
           <div>
             <h4 className="text-xs font-bold text-slate-900 leading-tight">{title}</h4>
@@ -2458,30 +2711,33 @@ function CompactKycDocumentCard({
                     ref={sensitiveInputRef}
                     value={document.documentNumber}
                     onChange={(event) => {
-                      const nextValue = normalizeKycDocumentNumber(document.documentType as KycVerificationDocumentType, event.target.value);
+                      const nextValue = isAadhaar
+                        ? normalizeAadhaarInput(event.target.value)
+                        : normalizeKycDocumentNumber(document.documentType as KycVerificationDocumentType, event.target.value);
                       onUpdate({
                         documentNumber: nextValue,
                         verificationStatus: 'NOT_STARTED',
                         verificationRecordId: '',
                         verificationCacheHit: false,
                         verificationResult: null,
+                        verificationTemplate: null,
                         verificationMessage: '',
                       });
                     }}
                     disabled={!canEdit}
                     className={`${inputCompactClassName} pl-8.5 font-mono uppercase tracking-wider text-xs font-medium`}
-                    placeholder={document.documentType === 'PAN_CARD' ? 'ABCDE1234F' : '22AADCW3373Q1ZW'}
-                    maxLength={document.documentType === 'PAN_CARD' ? 10 : 15}
+                    placeholder={document.documentType === 'PAN_CARD' ? 'ABCDE1234F' : document.documentType === 'GST_CERTIFICATE' ? '22AADCW3373Q1ZW' : '1234 5678 9012'}
+                    maxLength={document.documentType === 'PAN_CARD' ? 10 : document.documentType === 'GST_CERTIFICATE' ? 15 : 12}
                   />
                   <ApiSparkleIcon
-                    label={document.documentType === 'PAN_CARD' ? 'PAN API Verification' : 'GSTIN API Verification'}
+                    label={document.documentType === 'PAN_CARD' ? 'PAN API Verification' : document.documentType === 'GST_CERTIFICATE' ? 'GSTIN API Verification' : 'Aadhaar DigiLocker Verification'}
                     className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 drop-shadow-[0_1px_1px_rgba(59,97,217,0.22)]"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={onVerify}
-                  disabled={!canEdit || isVerifying || document.verificationStatus === 'VERIFIED' || !document.documentNumber}
+                  disabled={!canEdit || isVerifying || Boolean(document.verificationTemplate) || !document.documentNumber}
                   className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shadow-2xs disabled:opacity-40 ${
                     document.verificationStatus === 'VERIFIED'
                       ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
@@ -2582,8 +2838,20 @@ function CompactKycDocumentCard({
           </div>
         )}
 
+        {isTemplateBacked && document.verificationStatus === 'VERIFIED' ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-emerald-800">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+              <span className="truncate font-semibold">{document.verificationTemplate ? 'Template saved securely' : 'Verified — template not saved'}</span>
+            </div>
+            <button type="button" onClick={onOpenTemplate} className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 shadow-2xs ring-1 ring-emerald-200 transition hover:bg-emerald-100">
+              {document.verificationTemplate ? 'View template' : 'Preview & upload'}
+            </button>
+          </div>
+        ) : null}
+
         {/* File Upload Section */}
-        <div>
+        {!isTemplateBacked ? <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">
             {isPassportPhoto ? 'Passport-size photo' : 'Official document copy (PDF / Image)'}
           </label>
@@ -2775,7 +3043,7 @@ function CompactKycDocumentCard({
               <AlertCircle className="h-3 w-3 shrink-0" /> {uploadError}
             </p>
           )}
-        </div>
+        </div> : null}
       </div>
     </div>
   );

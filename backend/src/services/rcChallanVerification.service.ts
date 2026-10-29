@@ -84,7 +84,7 @@ const safeInteger = (value: unknown) => {
 };
 
 const safeStructuredValue = (value: unknown, depth = 0): unknown => {
-  if (depth > 3 || value === null || value === undefined) return null;
+  if (depth > 5 || value === null || value === undefined) return null;
   if (typeof value === 'string') return value.trim().slice(0, 500) || null;
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (Array.isArray(value)) {
@@ -104,6 +104,14 @@ const safeStructuredValue = (value: unknown, depth = 0): unknown => {
   );
 };
 
+const safeStructuredObject = (value: unknown): Record<string, unknown> =>
+  objectValue(safeStructuredValue(value)) || {};
+
+export type RcChallanOffense = {
+  offenseName: string | null;
+  providerData: Record<string, unknown>;
+};
+
 export type RcChallanRecord = {
   recordKey: string;
   number: number | null;
@@ -118,6 +126,10 @@ export type RcChallanRecord = {
   amount: number | null;
   challanStatus: string | null;
   courtChallan: boolean | null;
+  offenseDetailsList: RcChallanOffense[];
+  challanDateTime: string | null;
+  courtName: string | null;
+  providerData: Record<string, unknown>;
 };
 
 export type RcChallanSummary = {
@@ -131,6 +143,14 @@ export type RcChallanSummary = {
 
 export type RcChallanProviderResult = {
   providerClientId: string | null;
+  rcNumber: string | null;
+  providerResponse: {
+    statusCode: number | null;
+    success: boolean | null;
+    message: string | null;
+    messageCode: string | null;
+  };
+  providerData: Record<string, unknown>;
   challans: RcChallanRecord[];
   blacklist: unknown[];
   summary: RcChallanSummary;
@@ -139,6 +159,22 @@ export type RcChallanProviderResult = {
 const normalizeChallan = (value: unknown, index: number): RcChallanRecord | null => {
   const data = objectValue(value);
   if (!data) return null;
+
+  const offenseDetailsValue = data.offense_details_list ?? data.offenseDetailsList;
+  const offenseDetailsList = Array.isArray(offenseDetailsValue)
+    ? offenseDetailsValue.map((item): RcChallanOffense => {
+      const offense = objectValue(item);
+      return {
+        offenseName: safeText(
+          offense?.offense_name
+          ?? offense?.offenseName
+          ?? (typeof item === 'string' ? item : null),
+          500,
+        ),
+        providerData: safeStructuredObject(item),
+      };
+    })
+    : [];
 
   const record = {
     number: safeInteger(data.number),
@@ -157,6 +193,10 @@ const normalizeChallan = (value: unknown, index: number): RcChallanRecord | null
       : typeof data.courtChallan === 'boolean'
         ? data.courtChallan
         : null,
+    offenseDetailsList,
+    challanDateTime: safeText(data.challan_date_time ?? data.challanDateTime, 80),
+    courtName: safeText(data.court_name ?? data.courtName, 250),
+    providerData: safeStructuredObject(data),
   } satisfies Omit<RcChallanRecord, 'recordKey'>;
 
   const recordKey = crypto
@@ -168,15 +208,23 @@ const normalizeChallan = (value: unknown, index: number): RcChallanRecord | null
   return { recordKey, ...record };
 };
 
-export const normalizeRcChallanProviderResult = (value: unknown): RcChallanProviderResult => {
+export const normalizeRcChallanProviderResult = (value: unknown, responseValue?: unknown): RcChallanProviderResult => {
   const data = objectValue(value) || {};
-  const details = objectValue(data.challan_details ?? data.challanDetails) || {};
-  const challans = Array.isArray(details.challans)
-    ? details.challans.map(normalizeChallan).filter((item): item is RcChallanRecord => item !== null)
-    : [];
-  const blacklist = Array.isArray(details.blacklist)
-    ? details.blacklist.map((item) => safeStructuredValue(item)).filter((item) => item !== null)
-    : [];
+  const detailsValue = data.challan_details ?? data.challanDetails;
+  const details = objectValue(detailsValue);
+  const challanValues = Array.isArray(detailsValue)
+    ? detailsValue
+    : details && Array.isArray(details.challans)
+      ? details.challans
+      : [];
+  const challans = challanValues
+    .map(normalizeChallan)
+    .filter((item): item is RcChallanRecord => item !== null);
+  const blacklistValues = details && Array.isArray(details.blacklist) ? details.blacklist : [];
+  const blacklist = blacklistValues
+    .map((item) => safeStructuredValue(item))
+    .filter((item) => item !== null);
+  const providerResponse = objectValue(responseValue);
 
   const totalReturnedAmount = challans.reduce((total, challan) => total + (challan.amount ?? 0), 0);
   const pendingChallans = challans.filter((challan) => challan.challanStatus?.trim().toLowerCase() === 'pending');
@@ -184,6 +232,14 @@ export const normalizeRcChallanProviderResult = (value: unknown): RcChallanProvi
 
   return {
     providerClientId: safeText(data.client_id ?? data.clientId, 150),
+    rcNumber: safeText(data.rc_number ?? data.rcNumber, 50),
+    providerResponse: {
+      statusCode: safeInteger(providerResponse?.status_code ?? providerResponse?.statusCode),
+      success: typeof providerResponse?.success === 'boolean' ? providerResponse.success : null,
+      message: safeText(providerResponse?.message, 500),
+      messageCode: safeText(providerResponse?.message_code ?? providerResponse?.messageCode, 150),
+    },
+    providerData: safeStructuredObject(data),
     challans,
     blacklist,
     summary: {
@@ -250,8 +306,8 @@ const providerEnvironment = (baseUrl?: string) => {
 const ensureProviderData = (body: unknown) => {
   const response = objectValue(body);
   const data = objectValue(response?.data);
-  const details = objectValue(data?.challan_details ?? data?.challanDetails);
-  if (!response || !data || !details) {
+  const details = data?.challan_details ?? data?.challanDetails;
+  if (!response || !data || (!Array.isArray(details) && !objectValue(details))) {
     throw new RcChallanVerificationError('Surepass returned an invalid RC Challan response.', 502, 'provider_malformed_response');
   }
   return { response, data };
@@ -414,7 +470,7 @@ export class RcChallanVerificationService {
         : undefined;
       const body = await runtime.provider.verifyRcChallan(input);
       const { response, data } = ensureProviderData(body);
-      const normalized = normalizeRcChallanProviderResult(data);
+      const normalized = normalizeRcChallanProviderResult(data, response);
       const encryptedResult = encryptPanData(JSON.stringify(normalized), runtime.dataSecret);
       const completed = await this.record.update({
         where: { id: pending.id },

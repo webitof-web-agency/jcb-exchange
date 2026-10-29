@@ -242,12 +242,8 @@ export class SurepassClient {
 
   verifyRcChallan(payload: {
     rc_number: string;
-    chassis_number: string;
-    engine_number: string;
-    state_only?: boolean;
-    state_portal?: string[];
   }) {
-    return this.post('/api/v1/rc/rc-related/challan-details', payload);
+    return this.post('/api/v1/rc/rc-related/challan-advanced', payload);
   }
 
   getPanLinkedAadhaar(payload: { pan_number: string }) {

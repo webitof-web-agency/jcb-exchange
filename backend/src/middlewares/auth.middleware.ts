@@ -15,6 +15,7 @@ import {
 import prisma from '../lib/prisma';
 import { isAuthVersionCurrent } from '../utils/authVersion';
 import { resolveJwtSecret } from '../utils/jwtSecret';
+import { allowedAdminPermissions } from '../utils/adminPermissions';
 
 const JWT_SECRET = resolveJwtSecret();
 
@@ -150,9 +151,10 @@ export const requireSuperAdminOrEmployeePermissions =
         },
       });
 
-      const permissions = Array.isArray(employee?.customRole?.permissions)
+      const permissions = (Array.isArray(employee?.customRole?.permissions)
         ? employee.customRole.permissions
-        : (employee?.adminPermissions || []).map((item) => item.permission);
+        : (employee?.adminPermissions || []).map((item) => item.permission))
+        .filter((permission): permission is string => allowedAdminPermissions.has(permission));
 
       const isAllowed =
         permissions.includes('ALL_ACCESS') ||

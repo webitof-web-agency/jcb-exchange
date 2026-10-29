@@ -21,7 +21,7 @@ const baseDocument = {
   verificationCompletedAt: null,
 };
 
-test('review document preserves the file and exposes verified safe result metadata', () => {
+test('review document exposes only the saved template metadata after verification', () => {
   const completedAt = new Date('2026-10-16T10:30:00.000Z');
   const result = {
     pan: 'RZGPS****N',
@@ -35,12 +35,21 @@ test('review document preserves the file and exposes verified safe result metada
   const reviewDocument = buildKycReviewDocument(baseDocument, {
     record: { status: 'SUCCESS', createdAt: new Date('2026-10-16T10:29:00.000Z'), completedAt },
     result,
+    template: {
+      id: 'template-1',
+      fileName: 'pan-template.png',
+      mimeType: 'image/png',
+      fileSize: 1024,
+      sha256: 'hash',
+      createdAt: completedAt.toISOString(),
+    },
   });
 
   assert.equal(reviewDocument.fileUrl, baseDocument.fileUrl);
   assert.equal(reviewDocument.verificationStatus, 'VERIFIED');
   assert.equal(reviewDocument.verificationCompletedAt, completedAt.toISOString());
-  assert.deepEqual(reviewDocument.verificationResult, result);
+  assert.equal(reviewDocument.verificationResult, null);
+  assert.equal(reviewDocument.verificationTemplate?.id, 'template-1');
 });
 
 test('review document preserves a failed provider status when the stored result is unavailable', () => {
@@ -51,4 +60,20 @@ test('review document preserves a failed provider status when the stored result 
 
   assert.equal(reviewDocument.verificationStatus, 'FAILED');
   assert.equal(reviewDocument.verificationResult, null);
+});
+
+test('review document does not persist a successful verification without a saved template', () => {
+  const reviewDocument = buildKycReviewDocument({
+    ...baseDocument,
+    verificationStatus: 'VERIFIED',
+  }, {
+    record: { status: 'SUCCESS', createdAt: new Date(), completedAt: new Date() },
+    result: null,
+    template: null,
+  });
+
+  assert.equal(reviewDocument.verificationStatus, 'NOT_STARTED');
+  assert.equal(reviewDocument.verificationRecordId, '');
+  assert.equal(reviewDocument.verificationResult, null);
+  assert.equal(reviewDocument.verificationTemplate, null);
 });

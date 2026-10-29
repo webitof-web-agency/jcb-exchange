@@ -56,6 +56,7 @@ import { validateGstin } from '@/lib/gstVerification';
 import { validateAadhaarNumber } from '@/lib/aadhaarVerification';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
+import { hasPersistedVerificationPreview } from './verificationHistoryPreview.mjs';
 import {
   accountsPortalBase,
   createInitialSellAccountForm,
@@ -540,7 +541,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           : `/aadhaar-verification/history/${encodeURIComponent(recordId)}`;
       const response = await api.get<Record<string, unknown>>(endpoint);
       const data = response.data;
-      if (cancelled || !data || !isRecord(data.result)) return;
+      if (cancelled || !hasPersistedVerificationPreview(data)) return;
       const preview: KycVerificationPreview = { side, kind, number, response: data };
       setVerificationCache(buildVerificationCacheKey(kind, number), preview);
       setVerificationPreviews((current) => ({ ...current, [`${side}-${kind}`]: preview }));
@@ -650,14 +651,14 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     }
   };
 
-  const buildAadhaarPreview = (side: 'purchase' | 'sell', response: Record<string, unknown>): KycVerificationPreview | null => {
+  const buildAadhaarPreview = (side: 'purchase' | 'sell', response: Record<string, unknown>, preferredNumber = ''): KycVerificationPreview | null => {
     const result = isRecord(response.result) ? response.result : {};
     const data = buildAadhaarCardData({ side, kind: 'aadhaar', number: '', response }, result);
     if (!hasAadhaarCardData(data)) return null;
     return {
       side,
       kind: 'aadhaar',
-      number: data.aadhaarNumber === '—' ? '' : data.aadhaarNumber || '',
+      number: preferredNumber || (data.aadhaarNumber === '—' ? '' : data.aadhaarNumber || ''),
       response,
     };
   };
@@ -687,7 +688,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           const result = responseData.result;
           const verifiedNumber = typeof result.maskedAadhaar === 'string' ? result.maskedAadhaar : normalized;
           const nextState = createVerificationState({ kind: 'AADHAAR', number: verifiedNumber, response: responseData });
-          const preview = buildAadhaarPreview(side, responseData);
+          const preview = buildAadhaarPreview(side, responseData, normalized);
           updateKycState(side, kind, nextState as SellAccountKycState);
           if (preview) {
             setVerificationPreviews((current) => ({ ...current, [`${side}-aadhaar`]: preview }));
@@ -803,7 +804,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       const result = responseData.result;
       const verifiedNumber = typeof result.maskedAadhaar === 'string' ? result.maskedAadhaar : normalized;
       const nextState = createVerificationState({ kind: 'AADHAAR', number: verifiedNumber, response: responseData });
-      const preview = buildAadhaarPreview(session.side, responseData);
+      const preview = buildAadhaarPreview(session.side, responseData, normalized);
       updateKycState(session.side, 'aadhaar', nextState as SellAccountKycState);
       if (preview) {
         setVerificationPreviews((current) => ({ ...current, [`${session.side}-aadhaar`]: preview }));
@@ -1656,8 +1657,6 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
                 aadhaarPreviewAvailable={Boolean(verificationPreviews[`${group.side}-aadhaar`])}
                 onPreview={(kind) => openVerificationPreview(group.side, kind)}
               />
-              <DeedDocumentPreview label={`${group.title} PAN verification`} document={documents[group.panKey]} onRemove={() => replaceDocument(group.panKey, null)} />
-              <DeedDocumentPreview label={`${group.title} Aadhaar verification`} document={documents[group.aadhaarKey]} onRemove={() => replaceDocument(group.aadhaarKey, null)} />
             </div>
           ))}
         </div>

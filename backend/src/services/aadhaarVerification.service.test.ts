@@ -8,6 +8,7 @@ import {
   normalizeAadhaarDownloadResult,
   validateAadhaarNumber,
 } from './aadhaarVerification.service';
+import { encryptPanData } from './panVerification.dataCrypto';
 
 test('validates an Aadhaar number with length and Verhoeff checksum', () => {
   assert.equal(validateAadhaarNumber('3114 8765 1231'), null);
@@ -184,6 +185,54 @@ test('allows direct DigiLocker initialization without upfront Aadhaar number', a
   const initResult = await service.initialize({ side: 'SALE' }, 'user-1');
   assert.equal(initResult.sdkToken, 'sdk-token-2');
   assert.equal(initResult.record.id, 'aadhaar-record-2');
+});
+
+test('does not reuse an unsaved Aadhaar result on a later initialization', async () => {
+  let providerCalls = 0;
+  const pendingRecord: Record<string, unknown> = {
+    id: 'aadhaar-record-fresh',
+    side: 'SALE',
+    status: 'PENDING',
+    maskedAadhaar: 'XXXXXXXX1231',
+    provider: 'SUREPASS',
+    providerClientId: null,
+    messageCode: null,
+    safeMessage: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    completedAt: null,
+    ephemeralExpiresAt: new Date('2026-01-01T00:15:00.000Z'),
+    template: null,
+  };
+  const service = new AadhaarVerificationService({
+    record: {
+      findFirst: async () => ({
+        ...pendingRecord,
+        status: 'SUCCESS',
+        encryptedResult: encryptPanData(JSON.stringify({ fullName: 'Unsaved result' }), 'a'.repeat(64)),
+        rawDataExpiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+      findUnique: async () => null,
+      create: async () => pendingRecord,
+      update: async ({ data }: { data: Record<string, unknown> }) => ({ ...pendingRecord, ...data }),
+    },
+    provider: {
+      initializeDigilocker: async () => {
+        providerCalls += 1;
+        return {
+          success: true,
+          status_code: 200,
+          data: { client_id: 'fresh-client', token: 'fresh-token', expiry_seconds: 600 },
+        };
+      },
+    } as any,
+    dataSecret: 'a'.repeat(64),
+  });
+
+  const result = await service.initialize({ aadhaarNumber: '311487651231', side: 'SALE' }, 'user-1');
+
+  assert.equal('cacheHit' in result, false);
+  assert.equal(providerCalls, 1);
+  assert.equal(result.record.id, 'aadhaar-record-fresh');
 });
 
 test('checkStatus returns pending without failing when user has not completed OTP in popup', async () => {

@@ -59,6 +59,7 @@ type AadhaarRecordRepository = {
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
   updateMany?: (args: any) => Promise<{ count: number }>;
+  deleteMany?: (args: any) => Promise<{ count: number }>;
 };
 
 type AadhaarTemplateRepository = {
@@ -83,6 +84,7 @@ type AadhaarVerificationDependencies = {
 };
 
 export const AADHAAR_RAW_DATA_TTL_MS = 5 * 60 * 1000;
+export const AADHAAR_EPHEMERAL_SESSION_TTL_MS = 15 * 60 * 1000;
 export const MAX_AADHAAR_TEMPLATE_SIZE = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -380,17 +382,16 @@ export class AadhaarVerificationService {
       ? createVerificationFingerprint('AADHAAR_DIGILOCKER', { aadhaarNumber, side })
       : createVerificationFingerprint('AADHAAR_DIGILOCKER', { side, requestedById, nonce: Date.now() });
     const runtime = await this.getRuntime();
-    if (hasAadhaar) {
-      const cached = await this.record.findFirst({ where: { side, requestFingerprint, status: AadhaarVerificationStatus.SUCCESS, encryptedResult: { not: null }, rawDataExpiresAt: { gt: new Date() } }, orderBy: { completedAt: 'desc' }, include: { template: true } });
-      if (cached && isAadhaarRawDataAvailable(cached)) {
-        try {
-          return { record: recordSummary(cached), result: JSON.parse(decryptPanData(cached.encryptedResult, runtime.dataSecret)), template: aadhaarTemplateSummary(cached.template), cacheHit: true as const };
-        } catch {
-          // A corrupt cache is ignored and a fresh provider session is started.
-        }
-      }
-    }
-    const pending = await this.record.create({ data: { status: AadhaarVerificationStatus.PENDING, side, maskedAadhaar, requestFingerprint, requestedById } });
+    const pending = await this.record.create({
+      data: {
+        status: AadhaarVerificationStatus.PENDING,
+        side,
+        maskedAadhaar,
+        requestFingerprint,
+        requestedById,
+        ephemeralExpiresAt: new Date(Date.now() + AADHAAR_EPHEMERAL_SESSION_TTL_MS),
+      },
+    });
     let billing: Awaited<ReturnType<NonNullable<ApiBillingGateway['chargeForProviderCall']>>> | undefined;
     try {
       billing = this.billing
@@ -474,7 +475,7 @@ export class AadhaarVerificationService {
     if (!recordId) throw new AadhaarVerificationError('Aadhaar verification session is invalid.', 400, 'invalid_session');
     const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
     if (!record) throw new AadhaarVerificationError('Aadhaar verification session was not found.', 404, 'session_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new AadhaarVerificationError('Aadhaar verification session was not found.', 404, 'session_not_found');
     }
 
@@ -595,6 +596,7 @@ export class AadhaarVerificationService {
     const search = typeof filters.search === 'string' ? filters.search.trim().slice(0, 30) : '';
     const where = {
       ...(role === 'EMPLOYEE' && requestedById ? { requestedById } : {}),
+      template: { isNot: null },
       ...(status ? { status } : {}),
       ...(search ? { maskedAadhaar: { contains: search, mode: 'insensitive' } } : {}),
     };
@@ -627,19 +629,28 @@ export class AadhaarVerificationService {
   }
 
   async cleanupExpiredRawData(now = new Date()) {
-    if (!this.record.updateMany) return 0;
-    const result = await this.record.updateMany({
-      where: {
-        status: AadhaarVerificationStatus.SUCCESS,
-        encryptedResult: { not: null },
-        OR: [
-          { rawDataExpiresAt: null },
-          { rawDataExpiresAt: { lte: now } },
-        ],
-      },
-      data: { encryptedResult: null, rawDataExpiresAt: null },
-    });
-    return result.count;
+    const expiredEphemeral = this.record.deleteMany
+      ? await this.record.deleteMany({
+          where: {
+            template: { is: null },
+            ephemeralExpiresAt: { lte: now },
+          },
+        })
+      : { count: 0 };
+    const result = this.record.updateMany
+      ? await this.record.updateMany({
+          where: {
+            status: AadhaarVerificationStatus.SUCCESS,
+            encryptedResult: { not: null },
+            OR: [
+              { rawDataExpiresAt: null },
+              { rawDataExpiresAt: { lte: now } },
+            ],
+          },
+          data: { encryptedResult: null, rawDataExpiresAt: null },
+        })
+      : { count: 0 };
+    return expiredEphemeral.count + result.count;
   }
 
   async uploadTemplate(
@@ -665,14 +676,15 @@ export class AadhaarVerificationService {
 
     const record = await this.record.findUnique({ where: { id: recordId }, include: { template: true } });
     if (!record) throw new AadhaarVerificationError('Aadhaar verification record not found.', 404, 'record_not_found');
-    if (role === 'EMPLOYEE' && record.requestedById !== requestedById) {
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new AadhaarVerificationError('You do not have access to this Aadhaar template.', 403, 'template_forbidden');
     }
     if (record.template) {
-      if (record.encryptedResult) {
-        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      if (record.encryptedResult || record.ephemeralExpiresAt) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
         record.encryptedResult = null;
         record.rawDataExpiresAt = null;
+        record.ephemeralExpiresAt = null;
       }
       return { record: recordSummary(record), result: null, template: aadhaarTemplateSummary(record.template), alreadyUploaded: true };
     }
@@ -698,9 +710,9 @@ export class AadhaarVerificationService {
         },
       });
       templateId = template.id;
-      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
       return {
-        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
+        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null, template }),
         result: null,
         template: aadhaarTemplateSummary(template),
       };
@@ -727,7 +739,7 @@ export class AadhaarVerificationService {
 
   async getHistoryDetail(id: string, requestedById: string, role = 'EMPLOYEE') {
     let record = await this.record.findUnique({ where: { id }, include: { template: true } });
-    if (!record || (role === 'EMPLOYEE' && record.requestedById !== requestedById)) throw new AadhaarVerificationError('Aadhaar verification record not found.', 404, 'record_not_found');
+    if (!record || !record.template || (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById)) throw new AadhaarVerificationError('Aadhaar verification record not found.', 404, 'record_not_found');
     record = await this.clearExpiredRawData(record);
     let result: SafeResult | null = null;
     if (record.status === AadhaarVerificationStatus.SUCCESS && isAadhaarRawDataAvailable(record)) {

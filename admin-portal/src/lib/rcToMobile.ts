@@ -14,11 +14,18 @@ export type RcToMobileRecord = {
   completedAt: string | null;
 };
 
+export type RcToMobileResult = {
+  rcNumber?: string | null;
+  mobileNumber?: string | null;
+  providerClientId?: string | null;
+  [key: string]: unknown;
+};
+
 export type RcToMobileResponse = {
   success: boolean;
   cacheHit?: boolean;
   record: RcToMobileRecord;
-  result: Record<string, unknown> | null;
+  result: RcToMobileResult | null;
 };
 
 export const normalizeRcNumber = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');

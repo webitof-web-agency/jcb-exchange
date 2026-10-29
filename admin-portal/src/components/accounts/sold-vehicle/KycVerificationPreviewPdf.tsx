@@ -155,7 +155,7 @@ export function KycVerificationPreviewPdf({ preview, panCardImage, aadhaarCardIm
           {/* PDF images do not expose HTML alt text; this is the visual Aadhaar card export. */}
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image src={aadhaarCardImage} style={styles.aadhaarImage} />
-          <Text style={styles.footer}>This digital copy contains the fetched Aadhaar front and back card previews for audit and record-keeping.</Text>
+          <Text style={styles.footer}>This digital copy contains the shared Aadhaar template rendered from fetched verification data for audit and record-keeping.</Text>
         </Page>
       </Document>
     );

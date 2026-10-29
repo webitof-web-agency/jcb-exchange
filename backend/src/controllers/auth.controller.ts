@@ -20,6 +20,7 @@ import {
   resolveEffectiveUserRole,
 } from '../utils/accountAccess';
 import { getAppSettings, getRuntimeGoogleClientId } from '../utils/appSettings';
+import { allowedAdminPermissions } from '../utils/adminPermissions';
 import { sanitizeName, isValidEmail, sanitizePassword } from '../utils/authSanitization';
 import {
   getLoginMobileCandidates,
@@ -110,6 +111,7 @@ import {
 } from '../utils/profileSecurity';
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
+import { aadhaarVerificationService } from '../services/aadhaarVerification.service';
 import { publicUploadDir } from '../utils/documentUpload';
 import {
   AVATAR_MAX_BYTES,
@@ -178,6 +180,7 @@ type PartnerDocumentInput = {
   verificationStatus?: string;
   verificationCacheHit?: boolean;
   verificationMessage?: string;
+  verificationTemplateId?: string;
 };
 
 type ExistingKycDocumentForPreservation = {
@@ -325,6 +328,7 @@ const normalizeDocuments = (documents: PartnerDocumentInput[], partnerType?: str
       verificationStatus: normalizeText(document.verificationStatus) || 'NOT_STARTED',
       verificationCacheHit: document.verificationCacheHit === true,
       verificationMessage: normalizeText(document.verificationMessage),
+      verificationTemplateId: normalizeText(document.verificationTemplateId),
       verificationCompletedAt: null,
     }))
     .filter(hasPartnerDocumentDraftData);
@@ -336,14 +340,48 @@ const resetVerificationMetadata = () => ({
   verificationCacheHit: false,
   verificationMessage: null,
   verificationCompletedAt: null,
+  verificationTemplateId: null,
 });
 
 const validateVerificationMetadata = async <T extends ReturnType<typeof normalizeDocuments>[number]>(
   document: T,
   requestedById: string,
+  additionalRequesterIds: string[] = [],
 ) => {
   if (!['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
-    return { ...document, ...resetVerificationMetadata() };
+    if (document.documentType !== 'AADHAAR_CARD') {
+      return { ...document, ...resetVerificationMetadata() };
+    }
+
+    const aadhaarRecord = document.verificationRecordId
+      ? await prismaAny.aadhaarVerificationRecord.findUnique({
+        where: { id: document.verificationRecordId },
+        select: {
+          id: true,
+          status: true,
+          requestedById: true,
+          completedAt: true,
+          template: { select: { id: true } },
+        },
+      })
+      : null;
+    if (
+      !aadhaarRecord ||
+      aadhaarRecord.status !== 'SUCCESS' ||
+      ![requestedById, ...additionalRequesterIds].includes(aadhaarRecord.requestedById) ||
+      !aadhaarRecord.template?.id
+    ) {
+      return { ...document, ...resetVerificationMetadata() };
+    }
+
+    return {
+      ...document,
+      verificationRecordId: aadhaarRecord.id,
+      verificationStatus: 'VERIFIED',
+      verificationTemplateId: aadhaarRecord.template.id,
+      verificationMessage: null,
+      verificationCompletedAt: aadhaarRecord.completedAt,
+    };
   }
 
   const select = {
@@ -353,6 +391,7 @@ const validateVerificationMetadata = async <T extends ReturnType<typeof normaliz
     requestFingerprint: true,
     encryptedResult: true,
     completedAt: true,
+    template: { select: { id: true } },
   };
   const namespace = document.documentType === 'PAN_CARD' ? 'PAN_COMPREHENSIVE_V2' : 'GST_VERIFY';
   const normalizedNumber = document.documentType === 'PAN_CARD'
@@ -393,6 +432,7 @@ const validateVerificationMetadata = async <T extends ReturnType<typeof normaliz
     verificationStatus: 'VERIFIED',
     verificationCacheHit: document.verificationCacheHit === true,
     verificationMessage: null,
+    verificationTemplateId: record.template?.id || null,
     verificationCompletedAt: record.completedAt,
   };
 };
@@ -400,12 +440,13 @@ const validateVerificationMetadata = async <T extends ReturnType<typeof normaliz
 const validateVerificationMetadataForDocuments = async (
   documents: ReturnType<typeof normalizeDocuments>,
   requestedById: string,
-) => Promise.all(documents.map((document) => validateVerificationMetadata(document, requestedById)));
+  additionalRequesterIds: string[] = [],
+) => Promise.all(documents.map((document) => validateVerificationMetadata(document, requestedById, additionalRequesterIds)));
 
 const areDocumentsComplete = (documents: ReturnType<typeof normalizeDocuments>, partnerType?: string | null) => {
   const uploadedTypes = new Set(
     documents
-      .filter((document) => !!document.fileUrl)
+      .filter((document) => !!document.fileUrl || !!document.verificationTemplateId)
       .map((document) => document.documentType),
   );
   return getRequiredDocuments(partnerType).every((documentType) => uploadedTypes.has(documentType));
@@ -534,7 +575,7 @@ export const buildAuthUserPayload = async (user: any) => {
 
     return {
       ...baseUser,
-      permissions: resolvedPermissions,
+      permissions: resolvedPermissions.filter((permission: unknown): permission is string => typeof permission === 'string' && allowedAdminPermissions.has(permission)),
       customRoleId: customRole?.id ?? null,
       customRoleName: customRole?.name ?? null,
       title: user.adminProfile?.title ?? (user.role === 'EMPLOYEE' ? 'Employee' : 'Admin'),
@@ -761,7 +802,10 @@ export const getPartnerOnboardingContext = async (userId: string) => {
   return user as any;
 };
 
-export const buildOnboardingResponse = async (partnerUser: any) => {
+export const buildOnboardingResponse = async (
+  partnerUser: any,
+  viewer?: { id?: string | null; role?: string | null },
+) => {
   const profile = partnerUser.partnerProfile;
   const agreementDefinitions = await getActivePartnerAgreementDefinitions(profile.partnerType);
   const acceptedAgreements = new Set<string>(
@@ -787,7 +831,14 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
   });
 
   const normalizedDocs = normalizeDocuments(profile.kycDocuments || [], profile.partnerType);
-  const documentsComplete = areDocumentsComplete(normalizedDocs, profile.partnerType);
+  const verificationRequesterId = viewer?.id || partnerUser.id;
+  const verificationRole = viewer?.role || partnerUser.role || 'PARTNER';
+  const validatedDocs = await validateVerificationMetadataForDocuments(
+    normalizedDocs,
+    partnerUser.id,
+    viewer?.id && viewer.id !== partnerUser.id ? [viewer.id] : [],
+  );
+  const documentsComplete = areDocumentsComplete(validatedDocs, profile.partnerType);
   const agreementsComplete = areRequiredPartnerAgreementsAccepted(
     agreementDefinitions,
     profile.agreements || [],
@@ -809,6 +860,7 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
       verificationRecordId: document.verificationRecordId || '',
       verificationCacheHit: document.verificationCacheHit === true,
       verificationResult: null as Record<string, unknown> | null,
+      verificationTemplate: null as Record<string, unknown> | null,
       verificationMessage: document.verificationMessage || '',
     };
 
@@ -834,21 +886,31 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
       }
     }
 
-    if (!verificationRecordId || !['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
+    if (!verificationRecordId || !['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType)) {
       return base;
     }
 
     try {
       const detail = document.documentType === 'PAN_CARD'
-        ? await panVerificationService.getHistoryDetail(verificationRecordId, partnerUser.id, 'PARTNER')
-        : await gstVerificationService.getHistoryDetail(verificationRecordId);
-      if (detail.record?.status !== 'SUCCESS' || !detail.result) {
+        ? await panVerificationService.getHistoryDetail(verificationRecordId, verificationRequesterId, verificationRole)
+        : document.documentType === 'GST_CERTIFICATE'
+          ? await gstVerificationService.getHistoryDetail(verificationRecordId, verificationRequesterId, verificationRole)
+          : await aadhaarVerificationService.getHistoryDetail(verificationRecordId, verificationRequesterId, verificationRole);
+      if (detail.record?.status !== 'SUCCESS') {
         return {
           ...base,
-          verificationStatus: 'NOT_STARTED',
+          verificationTemplate: detail.template as Record<string, unknown> | null,
+        };
+      }
+
+      if (!detail.template) {
+        return {
+          ...base,
           verificationRecordId: '',
+          verificationStatus: 'NOT_STARTED',
           verificationCacheHit: false,
           verificationResult: null,
+          verificationTemplate: null,
           verificationMessage: '',
         };
       }
@@ -867,8 +929,9 @@ export const buildOnboardingResponse = async (partnerUser: any) => {
       return {
         ...base,
         verificationRecordId,
-        verificationStatus: 'VERIFIED',
-        verificationResult: detail.result as Record<string, unknown>,
+        verificationStatus: detail.template ? 'VERIFIED' : base.verificationStatus,
+        verificationTemplate: detail.template as Record<string, unknown> | null,
+        verificationResult: null,
         verificationMessage: '',
       };
     } catch {
@@ -971,7 +1034,11 @@ export const saveOnboardingData = async ({
   const normalizedPartnerType = isValidPartnerType(profile.partnerType) ? profile.partnerType : undefined;
   const agreementDefinitions = await getActivePartnerAgreementDefinitions(normalizedPartnerType);
   const normalizedDocs = normalizeDocuments(kycDocuments, normalizedPartnerType);
-  const documentsWithVerification = await validateVerificationMetadataForDocuments(normalizedDocs, userId);
+  const documentsWithVerification = await validateVerificationMetadataForDocuments(
+    normalizedDocs,
+    userId,
+    actorUserId && actorUserId !== userId ? [actorUserId] : [],
+  );
   const profileComplete = isPartnerProfileComplete({
     ownerName: profile.ownerName,
     businessName: profile.businessName,
@@ -986,7 +1053,7 @@ export const saveOnboardingData = async ({
     expectedMonthlyListings: profile.expectedMonthlyListings,
     contactPreference: profile.contactPreference,
   });
-  const documentsComplete = areDocumentsComplete(normalizedDocs, normalizedPartnerType);
+  const documentsComplete = areDocumentsComplete(documentsWithVerification, normalizedPartnerType);
   const selectedAgreementDefinitions = agreementDefinitions.filter((definition: any) =>
     agreementTypes.includes(definition.agreementType)
   );
@@ -1154,6 +1221,7 @@ export const saveOnboardingData = async ({
     verificationCacheHit: boolean;
     verificationMessage: string | null;
     verificationCompletedAt: Date | null;
+    verificationTemplateId: string | null;
   }> = existingKycDocs
     .filter((document: ExistingKycDocumentForPreservation) =>
       ['CANCELLED_CHEQUE', 'AUTHORIZED_PERSON_ID'].includes(document.documentType)
@@ -1172,6 +1240,7 @@ export const saveOnboardingData = async ({
       verificationCacheHit: false,
       verificationMessage: null,
       verificationCompletedAt: null,
+      verificationTemplateId: null,
     }));
   const documentsToPersist = [
     ...documentsWithVerification,
@@ -1201,7 +1270,7 @@ export const saveOnboardingData = async ({
         issueDate: document.issueDate,
         expiryDate: document.expiryDate,
         submittedNote: document.submittedNote,
-        status: document.fileUrl ? 'UPLOADED' : 'NOT_UPLOADED',
+        status: document.fileUrl || document.verificationTemplateId ? 'UPLOADED' : 'NOT_UPLOADED',
         verificationRecordId: document.verificationRecordId,
         verificationStatus: document.verificationStatus,
         verificationCacheHit: document.verificationCacheHit,

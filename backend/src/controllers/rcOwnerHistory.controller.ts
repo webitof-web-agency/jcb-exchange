@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { RcOwnerHistoryError, rcOwnerHistoryService } from '../services/rcOwnerHistory.service';
-import { streamFileFromDrive } from '../services/googleDrive.service';
+import { getDriveFileBuffer } from '../services/googleDrive.service';
 
 const bodyOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -74,15 +74,17 @@ export const getRcOwnerHistoryTemplate = async (req: Request, res: Response, nex
       return res.status(400).json({ success: false, error: 'A valid RC owner history record id is required.', code: 'invalid_record_id' });
     }
     const template = await rcOwnerHistoryService.getTemplateDownload(recordId, req.user!.id, req.user!.role);
-    const stream = await streamFileFromDrive(template.driveFileId);
+    const buffer = await getDriveFileBuffer(template.driveFileId, 25_000);
     res.setHeader('Content-Type', template.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${template.fileName}"`);
-    res.setHeader('Content-Length', String(template.fileSize));
-    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Content-Disposition', `inline; filename="${template.fileName}"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    // The template is already access-controlled by this route. A short private
+    // browser cache avoids downloading the same Drive file on every history view.
+    res.setHeader('Cache-Control', 'private, max-age=300, must-revalidate');
+    if (template.sha256) res.setHeader('ETag', `"${template.sha256}"`);
+    if (template.createdAt) res.setHeader('Last-Modified', new Date(template.createdAt).toUTCString());
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    stream.on('error', next);
-    stream.pipe(res);
+    return res.end(buffer);
   } catch (error) {
     return sendError(error, res, next);
   }

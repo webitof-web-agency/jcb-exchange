@@ -22,7 +22,7 @@ export const initializeAadhaarVerification = async (req: Request, res: Response,
       aadhaarNumber: body.aadhaarNumber ?? body.aadhaar_number,
       side: body.side,
     }, req.user!.id);
-    return res.status(result.cacheHit ? 200 : 201).json({ success: true, ...result });
+    return res.status(201).json({ success: true, ...result });
   } catch (error) {
     return sendError(error, res, next);
   }

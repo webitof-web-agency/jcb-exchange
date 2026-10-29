@@ -74,8 +74,8 @@ import {
   getPartnerDocumentKind,
   type PartnerDocumentKind,
 } from '@/lib/partnerDetailPresentation';
-import { getKycVerificationFields, type KycVerificationDocumentType } from '@/lib/kycVerification';
 import { createSecureDocumentPreviewUrl, downloadSecureDocument } from '@/lib/secureDownload';
+import PartnerKycTemplateModal, { type PartnerTemplateResponse } from '@/components/kyc/PartnerKycTemplateModal';
 
 interface PartnerListing {
   id: string;
@@ -164,9 +164,18 @@ interface VerificationDetailDocument {
   nameOnDocument: string | null;
   status: string;
   verificationStatus: string | null;
+  verificationRecordId: string | null;
   verificationMessage: string | null;
   verificationCompletedAt: string | null;
   verificationResult: Record<string, unknown> | null;
+  verificationTemplate: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    sha256: string;
+    createdAt: string;
+  } | null;
 }
 
 interface VerificationDetail {
@@ -238,6 +247,11 @@ export default function PartnerDetailPage({
     previewUrl: string | null;
     loading: boolean;
     error: string;
+  } | null>(null);
+  const [templatePreview, setTemplatePreview] = useState<{
+    documentType: 'PAN_CARD' | 'GST_CERTIFICATE' | 'AADHAAR_CARD';
+    documentNumber: string;
+    response: PartnerTemplateResponse;
   } | null>(null);
 
   // Modals
@@ -460,6 +474,89 @@ export default function PartnerDetailPage({
     },
     [downloadDocument, openDocumentPreview],
   );
+
+  const openTemplatePreview = useCallback((document: VerificationDetailDocument) => {
+    const template = document.verificationTemplate;
+    const recordId = document.verificationRecordId;
+    if (!template || !recordId) {
+      toast.error('Saved template is not available for this document.');
+      return;
+    }
+
+    if (document.documentType === 'PAN_CARD') {
+      setTemplatePreview({
+        documentType: 'PAN_CARD',
+        documentNumber: document.documentNumber || '',
+        response: {
+          success: true,
+          record: {
+            id: recordId,
+            operation: 'PAN_COMPREHENSIVE_V2',
+            status: 'SUCCESS',
+            maskedPan: document.documentNumber || 'SAVED',
+            provider: 'saved-template',
+            providerClientId: null,
+            messageCode: null,
+            safeMessage: null,
+            createdAt: template.createdAt,
+            completedAt: template.createdAt,
+            rawDataExpiresAt: null,
+            template,
+          },
+          result: null,
+          template,
+        } as PartnerTemplateResponse,
+      });
+      return;
+    }
+
+    if (document.documentType === 'GST_CERTIFICATE') {
+      setTemplatePreview({
+        documentType: 'GST_CERTIFICATE',
+        documentNumber: document.documentNumber || '',
+        response: {
+          success: true,
+          record: {
+            id: recordId,
+            status: 'SUCCESS',
+            maskedGstin: document.documentNumber || 'SAVED',
+            gstinStatus: 'ACTIVE',
+            businessName: document.nameOnDocument || null,
+            legalName: document.nameOnDocument || null,
+            provider: 'saved-template',
+            providerClientId: null,
+            messageCode: null,
+            safeMessage: null,
+            createdAt: template.createdAt,
+            completedAt: template.createdAt,
+            rawDataExpiresAt: null,
+            template,
+          },
+          result: null,
+          template,
+        } as PartnerTemplateResponse,
+      });
+      return;
+    }
+
+    setTemplatePreview({
+      documentType: 'AADHAAR_CARD',
+      documentNumber: document.documentNumber || '',
+      response: {
+        success: true,
+        record: {
+          id: recordId,
+          status: 'SUCCESS',
+          maskedAadhaar: document.documentNumber || 'SAVED',
+          providerClientId: null,
+          rawDataExpiresAt: null,
+          template,
+        },
+        result: null,
+        template,
+      },
+    });
+  }, []);
 
   // Status Modal Action
   const handleToggleStatus = async () => {
@@ -1054,7 +1151,7 @@ export default function PartnerDetailPage({
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sort:</span>
                   <select
                     value={listingSort}
-                    onChange={(e) => setListingSort(e.target.value as any)}
+                    onChange={(e) => setListingSort(e.target.value as 'newest' | 'price_desc' | 'price_asc')}
                     className="rounded-lg border border-slate-200 bg-white py-1 px-2 text-xs font-semibold text-slate-700 outline-none"
                   >
                     <option value="newest">Recently Listed</option>
@@ -1419,12 +1516,6 @@ export default function PartnerDetailPage({
                 ) : (
                   <div className="grid gap-2.5 sm:grid-cols-2">
                     {verificationDetail.documents.map((document) => {
-                      const documentType = document.documentType as KycVerificationDocumentType;
-                      const safeFields =
-                        document.verificationResult &&
-                        ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)
-                          ? getKycVerificationFields(documentType, document.verificationResult)
-                          : [];
                       const status = formatPartnerDocumentStatus(document.verificationStatus);
 
                       return (
@@ -1438,7 +1529,9 @@ export default function PartnerDetailPage({
                                 {document.documentType.replaceAll('_', ' ')}
                               </p>
                               <p className="mt-0.5 truncate text-[10px] text-slate-500 font-medium">
-                                {document.fileName || 'No file attached'}
+                                {document.verificationTemplate
+                                  ? `Saved template · ${document.verificationTemplate.fileName}`
+                                  : document.fileName || 'No file attached'}
                               </p>
                             </div>
                             <span
@@ -1483,7 +1576,16 @@ export default function PartnerDetailPage({
                                 : 'Pending verification'}
                             </span>
 
-                            {document.fileUrl ? (
+                            {document.verificationTemplate ? (
+                              <button
+                                type="button"
+                                onClick={() => openTemplatePreview(document)}
+                                className="inline-flex items-center gap-1 font-bold text-indigo-700 hover:text-indigo-900"
+                              >
+                                <Eye className="h-3 w-3" />
+                                <span>View template</span>
+                              </button>
+                            ) : document.fileUrl ? (
                               <button
                                 type="button"
                                 onClick={() => void openOrDownloadDocument(document)}
@@ -1502,7 +1604,7 @@ export default function PartnerDetailPage({
                                 )}
                               </button>
                             ) : (
-                              <span className="text-[10px] text-slate-400 italic">No file attached</span>
+                              <span className="text-[10px] text-slate-400 italic">No saved template</span>
                             )}
                           </div>
                         </div>
@@ -1820,6 +1922,18 @@ export default function PartnerDetailPage({
       </div>
 
       {/* 4. MODALS */}
+
+      {templatePreview ? (
+        <PartnerKycTemplateModal
+          documentType={templatePreview.documentType}
+          documentNumber={templatePreview.documentNumber}
+          response={templatePreview.response}
+          isPartnerMode={false}
+          templateEndpointBaseOverride={`/superadmin/verifications/${resolvedPartnerId || partnerId}/${templatePreview.documentType}/${templatePreview.response.record.id}`}
+          onClose={() => setTemplatePreview(null)}
+          onSaved={() => undefined}
+        />
+      ) : null}
 
       {/* Document Preview Modal */}
       {documentPreview ? (

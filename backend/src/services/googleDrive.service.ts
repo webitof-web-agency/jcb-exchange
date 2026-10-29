@@ -12,8 +12,14 @@ type DriveClient = ReturnType<typeof google.drive>;
 
 export type DriveFileAccess = 'public' | 'private';
 
-const getDriveClient = async () => {
-  const settings = await getAppSettings();
+const UPLOAD_FOLDER_CACHE_TTL_MS = 5 * 60 * 1000;
+const uploadFolderCache = new Map<string, { folderId: string; expiresAt: number }>();
+const DRIVE_TEMPLATE_CACHE_TTL_MS = 10 * 60 * 1000;
+const DRIVE_TEMPLATE_CACHE_MAX_ENTRIES = 20;
+const driveTemplateCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
+
+const getDriveClient = async (settingsOverride?: Awaited<ReturnType<typeof getAppSettings>>) => {
+  const settings = settingsOverride ?? await getAppSettings();
   const { clientId, clientSecret, refreshToken } = settings.googleDrive;
 
   if (!clientId || !clientSecret || !refreshToken) {
@@ -149,9 +155,10 @@ export const uploadFileToDrive = async (
   folderId?: string,
   options: { access?: DriveFileAccess } = {},
 ): Promise<{ fileId: string; viewLink: string }> => {
+  let uploadFolderCacheKey: string | null = null;
   try {
-    const drive = await getDriveClient();
     const settings = await getAppSettings();
+    const drive = await getDriveClient(settings);
 
     const fileMetadata: any = {
       name: filename,
@@ -160,21 +167,33 @@ export const uploadFileToDrive = async (
     const targetFolderId = folderId?.trim() || settings.googleDrive.backupFolderId?.trim();
     let uploadFolderId: string | undefined;
     if (targetFolderId) {
-      const targetFolder = await drive.files.get({
-        fileId: targetFolderId,
-        fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
-        supportsAllDrives: true,
-      });
+      const { year, month } = getYearMonthFolderNames(new Date());
+      uploadFolderCacheKey = `${targetFolderId}:${year}:${month}`;
+      const cachedFolder = uploadFolderCache.get(uploadFolderCacheKey);
+      if (cachedFolder && cachedFolder.expiresAt > Date.now()) {
+        uploadFolderId = cachedFolder.folderId;
+      } else {
+        if (cachedFolder) uploadFolderCache.delete(uploadFolderCacheKey);
+        const targetFolder = await drive.files.get({
+          fileId: targetFolderId,
+          fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+          supportsAllDrives: true,
+        });
 
-      if (
-        targetFolder.data.mimeType !== DRIVE_FOLDER_MIME_TYPE ||
-        targetFolder.data.trashed ||
-        targetFolder.data.capabilities?.canAddChildren !== true
-      ) {
-        throw new Error('Configured Google Drive upload folder is invalid or is not writable.');
+        if (
+          targetFolder.data.mimeType !== DRIVE_FOLDER_MIME_TYPE ||
+          targetFolder.data.trashed ||
+          targetFolder.data.capabilities?.canAddChildren !== true
+        ) {
+          throw new Error('Configured Google Drive upload folder is invalid or is not writable.');
+        }
+
+        uploadFolderId = await resolveYearMonthUploadFolder(drive, targetFolderId);
+        uploadFolderCache.set(uploadFolderCacheKey, {
+          folderId: uploadFolderId,
+          expiresAt: Date.now() + UPLOAD_FOLDER_CACHE_TTL_MS,
+        });
       }
-
-      uploadFolderId = await resolveYearMonthUploadFolder(drive, targetFolderId);
       fileMetadata.parents = [uploadFolderId];
     }
 
@@ -218,6 +237,7 @@ export const uploadFileToDrive = async (
       viewLink: `https://drive.google.com/uc?id=${fileId}`,
     };
   } catch (error) {
+    if (uploadFolderCacheKey) uploadFolderCache.delete(uploadFolderCacheKey);
     console.error('Error uploading file to Google Drive:', error instanceof Error ? error.message : error);
     throw new Error(error instanceof Error ? error.message : 'Failed to upload file to Google Drive');
   }
@@ -363,6 +383,69 @@ export const streamFileFromDrive = async (fileId: string): Promise<Readable> => 
   );
 
   return response.data as unknown as Readable;
+};
+
+export const cacheDriveFileBuffer = (fileId: string, buffer: Buffer) => {
+  if (!fileId || !Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return;
+  driveTemplateCache.set(fileId, { buffer, expiresAt: Date.now() + DRIVE_TEMPLATE_CACHE_TTL_MS });
+  while (driveTemplateCache.size > DRIVE_TEMPLATE_CACHE_MAX_ENTRIES) {
+    const oldestKey = driveTemplateCache.keys().next().value;
+    if (!oldestKey) break;
+    driveTemplateCache.delete(oldestKey);
+  }
+};
+
+export const clearCachedDriveFileBuffer = (fileId: string) => {
+  if (fileId) driveTemplateCache.delete(fileId);
+};
+
+export const readDriveStreamToBuffer = async (
+  stream: NodeJS.ReadableStream,
+  timeoutMs = 10_000,
+): Promise<Buffer> => new Promise((resolve, reject) => {
+  const chunks: Buffer[] = [];
+  let settled = false;
+  const cleanup = () => {
+    clearTimeout(timer);
+    stream.removeListener('data', onData);
+    stream.removeListener('end', onEnd);
+    stream.removeListener('error', onError);
+  };
+  const finish = (error?: Error) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    if (error) reject(error);
+    else resolve(Buffer.concat(chunks));
+  };
+  const onData = (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const onEnd = () => finish();
+  const onError = (error: Error) => finish(error);
+  const timer = setTimeout(() => {
+    const timeoutError = new Error('Google Drive template download timed out.');
+    const destroyable = stream as NodeJS.ReadableStream & { destroy?: (error?: Error) => void };
+    destroyable.destroy?.();
+    finish(timeoutError);
+  }, timeoutMs);
+
+  stream.on('data', onData);
+  stream.once('end', onEnd);
+  stream.once('error', onError);
+});
+
+export const getDriveFileBuffer = async (fileId: string, timeoutMs = 10_000): Promise<Buffer> => {
+  const cached = driveTemplateCache.get(fileId);
+  if (cached && cached.expiresAt > Date.now()) return cached.buffer;
+  if (cached) driveTemplateCache.delete(fileId);
+
+  const streamPromise = streamFileFromDrive(fileId);
+  const stream = await new Promise<Readable>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Google Drive template request timed out.')), timeoutMs);
+    streamPromise.then((value) => { clearTimeout(timer); resolve(value); }, (error) => { clearTimeout(timer); reject(error); });
+  });
+  const buffer = await readDriveStreamToBuffer(stream, timeoutMs);
+  cacheDriveFileBuffer(fileId, buffer);
+  return buffer;
 };
 
 export const streamDriveMediaWithHeaders = async (fileId: string, range?: string) => {

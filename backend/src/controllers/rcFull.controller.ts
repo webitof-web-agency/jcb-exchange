@@ -21,15 +21,6 @@ const sendError = (error: unknown, res: Response, next: NextFunction) => {
 
 const listingVerificationRoles = new Set(['CUSTOMER', 'PARTNER', 'EMPLOYEE', 'ADMIN', 'SUPER_ADMIN']);
 
-export const verifyRcFull = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const result = await rcFullService.verifyRc(bodyOf(req.body), req.user!.id);
-    return res.status(201).json({ success: true, ...result });
-  } catch (error) {
-    return sendError(error, res, next);
-  }
-};
-
 export const verifyRcFullForListing = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.role || !listingVerificationRoles.has(req.user.role)) {
@@ -70,24 +61,3 @@ export const verifyRcFullForListing = async (req: Request, res: Response, next: 
   }
 };
 
-export const getRcFull = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const result = await rcFullService.listHistory(req.query);
-    return res.json({ success: true, ...result });
-  } catch (error) {
-    return sendError(error, res, next);
-  }
-};
-
-export const getRcFullDetail = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-    if (!id || id.length > 100) {
-      return res.status(400).json({ success: false, error: 'A valid RC Full record id is required.', code: 'invalid_record_id' });
-    }
-    const result = await rcFullService.getHistoryDetail(id);
-    return res.json({ success: true, ...result });
-  } catch (error) {
-    return sendError(error, res, next);
-  }
-};

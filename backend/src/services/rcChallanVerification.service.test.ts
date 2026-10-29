@@ -55,6 +55,43 @@ test('normalizes challans, calculates explicit-status totals, and creates collis
   assert.equal(normalized.challans[1]?.courtChallan, null);
 });
 
+test('normalizes the RC Challan Advanced array response without dropping provider fields', () => {
+  const normalized = normalizeRcChallanProviderResult({
+    rc_number: 'HR55AP0244',
+    client_id: 'rc_challan_advanced_fZjEyLJOVdtgBWbWBgTA',
+    challan_details: [{
+      number: 1,
+      challan_number: 'MH114168240703225216',
+      offense_details: 'Reflectors not fitted',
+      challan_place: '',
+      offense_details_list: [{ offense_name: 'Reflectors not fitted' }],
+      challan_date: '2024-07-03',
+      challan_date_time: '2024-07-03T22:52:16',
+      state: 'MH',
+      rto: '',
+      accused_name: 'M***J',
+      amount: '1000',
+      challan_status: 'Disposed',
+      court_challan: false,
+      court_name: '',
+      upstream_code: 'CENTRAL_3',
+    }],
+  });
+
+  assert.equal(normalized.providerClientId, 'rc_challan_advanced_fZjEyLJOVdtgBWbWBgTA');
+  assert.equal(normalized.rcNumber, 'HR55AP0244');
+  assert.equal(normalized.challans.length, 1);
+  assert.equal(normalized.challans[0]?.challanDateTime, '2024-07-03T22:52:16');
+  assert.equal(normalized.challans[0]?.courtName, null);
+  assert.deepEqual(normalized.challans[0]?.offenseDetailsList, [{ offenseName: 'Reflectors not fitted', providerData: { offense_name: 'Reflectors not fitted' } }]);
+  assert.equal(normalized.challans[0]?.providerData.challan_number, 'MH114168240703225216');
+  assert.equal(
+    (((normalized.providerData.challan_details as unknown[])?.[0] as Record<string, unknown>)?.offense_details_list as unknown[])?.[0] &&
+      ((((normalized.providerData.challan_details as unknown[])?.[0] as Record<string, unknown>)?.offense_details_list as unknown[])?.[0] as Record<string, unknown>).offense_name,
+    'Reflectors not fitted',
+  );
+});
+
 test('treats an empty provider challan list as a completed lookup with no returned records', () => {
   const normalized = normalizeRcChallanProviderResult({
     challan_details: { challans: [], blacklist: [] },
@@ -88,7 +125,7 @@ test('does not call Surepass when an identifier is missing', async () => {
   });
 
   await assert.rejects(
-    () => service.verifyRcChallan({ rc_number: 'HR55AP0244', chassis_number: '', engine_number: 'K10CNC265773' }, 'user-1'),
+    () => service.verifyRcChallan({ rc_number: '' }, 'user-1'),
     { statusCode: 400 },
   );
   assert.equal(calls, 0);
@@ -138,11 +175,7 @@ test('reuses a fresh successful database result instead of calling Surepass agai
     baseUrl: 'https://kyc-api.surepass.io',
   });
 
-  const result = await service.verifyRcChallan({
-    rc_number: 'HR55AP0244',
-    chassis_number: 'MA3JMTB1SPB851591',
-    engine_number: 'K10CNC265773',
-  }, 'user-1');
+  const result = await service.verifyRcChallan({ rc_number: 'HR55AP0244' }, 'user-1');
 
   assert.equal(calls, 0);
   assert.equal(creates, 0);
@@ -198,7 +231,7 @@ test('refreshes an expired result in the same database record', async () => {
     baseUrl: 'https://kyc-api.surepass.io',
   });
 
-  const result = await service.verifyRcChallan({ rc_number: 'HR55AP0244', chassis_number: 'MA3JMTB1SPB851591', engine_number: 'K10CNC265773' }, 'user-1');
+  const result = await service.verifyRcChallan({ rc_number: 'HR55AP0244' }, 'user-1');
 
   assert.equal(calls, 1);
   assert.equal(result.record.id, 'expired-record-1');
@@ -250,21 +283,9 @@ test('persists a minimal encrypted history record and sends normalized provider 
     baseUrl: 'https://kyc-api.surepass.io',
   });
 
-  const result = await service.verifyRcChallan({
-    rc_number: ' hr55 ap0244 ',
-    chassis_number: 'ma3 jmtb1spb851591',
-    engine_number: 'k10c nc265773',
-    state_only: true,
-    state_portal: ['dl'],
-  }, 'user-1');
+  const result = await service.verifyRcChallan({ rc_number: ' hr55 ap0244 ' }, 'user-1');
 
-  assert.deepEqual(payload, {
-    rc_number: 'HR55AP0244',
-    chassis_number: 'MA3JMTB1SPB851591',
-    engine_number: 'K10CNC265773',
-    state_only: true,
-    state_portal: ['DL'],
-  });
+  assert.deepEqual(payload, { rc_number: 'HR55AP0244' });
   assert.equal(result.record.status, 'SUCCESS');
   assert.equal(result.record.providerEnvironment, 'PRODUCTION');
   assert.equal(records[0].encryptedResult.includes('MA3JMTB1SPB851591'), false);
@@ -297,7 +318,7 @@ test('maps provider authentication failures to a safe configuration error', asyn
   });
 
   await assert.rejects(
-    () => service.verifyRcChallan({ rc_number: 'HR55AP0244', chassis_number: 'MA3JMTB1SPB851591', engine_number: 'K10CNC265773' }, 'user-1'),
+    () => service.verifyRcChallan({ rc_number: 'HR55AP0244' }, 'user-1'),
     (error: unknown) => error instanceof Error && 'code' in error && (error as { code?: string }).code === 'provider_configuration_error',
   );
   assert.equal(records[0]?.status, 'FAILED');

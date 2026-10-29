@@ -8,8 +8,71 @@ import {
   normalizeRcOwnerHistoryResult,
   sanitizeRcFullResultForListing,
 } from './rcOwnerHistory.service';
+import { encryptPanData } from './panVerification.dataCrypto';
 
 const dataSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+test('does not reuse an unsaved RC owner-history result from the verification cache', async () => {
+  let providerCalls = 0;
+  let createCalls = 0;
+  const cached = {
+    id: 'old-unsaved-record',
+    serviceKey: 'RC_OWNER_HISTORY',
+    status: 'SUCCESS',
+    maskedRcNumber: 'RJ12********1234',
+    requestedById: 'user-1',
+    encryptedResult: encryptPanData(JSON.stringify({ rcNumber: 'RJ12XJ1234' }), dataSecret),
+    rawDataExpiresAt: new Date(Date.now() + 60_000),
+    completedAt: new Date(),
+    createdAt: new Date(),
+    template: null,
+  };
+  const service = new RcOwnerHistoryService({
+    record: {
+      findFirst: async ({ where }: { where: { status?: string } }) => where.status === 'PENDING' ? null : cached,
+      findUnique: async () => null,
+      findMany: async () => [],
+      count: async () => 0,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createCalls += 1;
+        return { id: 'new-record', ...data, createdAt: new Date(), completedAt: null, template: null };
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'new-record', ...data, createdAt: new Date(), template: null }),
+    } as any,
+    provider: {
+      verifyRcOwnerHistory: async () => {
+        providerCalls += 1;
+        return { success: true, status_code: 200, data: { rc_number: 'RJ12XJ1234' } };
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyRc({ id_number: 'RJ12XJ1234' }, 'user-1');
+
+  assert.equal(providerCalls, 1);
+  assert.equal(createCalls, 1);
+  assert.equal(result.cacheHit, false);
+});
+
+test('RC owner-history details are unavailable unless a template was saved', async () => {
+  const service = new RcOwnerHistoryService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => ({ id: 'unsaved-record', serviceKey: 'RC_OWNER_HISTORY', status: 'SUCCESS', encryptedResult: 'encrypted', template: null }),
+      findMany: async () => [],
+      count: async () => 0,
+      create: async () => null,
+      update: async () => null,
+    },
+    dataSecret,
+  });
+
+  await assert.rejects(
+    () => service.getHistoryDetail('unsaved-record'),
+    { statusCode: 404, code: 'record_not_found' },
+  );
+});
 
 test('masks RC data and drops malformed provider dates', () => {
   assert.equal(maskRcNumber('RJ12XJ1234'), 'RJ12********1234');

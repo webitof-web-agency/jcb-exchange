@@ -257,7 +257,6 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       permissions: [
         { id: 'driving-license.verification.read', label: 'View Driving License Verification' },
         { id: 'rc.owner-history.read', label: 'View RC Owner History' },
-        { id: 'rc.full.read', label: 'View RC Full' },
         { id: 'rc.challan.verification.read', label: 'View RC Challan' },
         { id: 'rc.chassis-to-rc.read', label: 'View Chassis to RC Verification' },
         { id: 'rc.to-mobile.read', label: 'View RC to Mobile' },

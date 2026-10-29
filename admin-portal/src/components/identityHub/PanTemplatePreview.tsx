@@ -173,9 +173,11 @@ type Props = {
   response: PanResultResponse;
   onUploaded?: (response: PanResultResponse) => void;
   panNumber?: string;
+  templateEndpointBase?: string;
+  allowOptionalAssets?: boolean;
 };
 
-export default function PanTemplatePreview({ response, onUploaded, panNumber }: Props) {
+export default function PanTemplatePreview({ response, onUploaded, panNumber, templateEndpointBase = '/pan-verification', allowOptionalAssets = true }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hasUploadedRef = useRef(false);
   const [remaining, setRemaining] = useState(() =>
@@ -379,7 +381,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
     let objectUrl = '';
     const cacheKey = response.record.id + ':' + templateId;
     getPanTemplateBlob(cacheKey, async () => {
-      const result = await api.get<Blob>(`/pan-verification/${response.record.id}/template`, { responseType: 'blob' });
+      const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
       return result.data;
     })
       .then((blob) => {
@@ -396,7 +398,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [response.record.id, templateId]);
+  }, [response.record.id, templateId, templateEndpointBase]);
   const selectOptionalImage = (kind: 'photo' | 'signature', file: File | null) => {
     if (!file) return;
     const label = kind === 'photo' ? 'Photo' : 'Signature';
@@ -435,7 +437,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
       if (!blob) throw new Error('The PAN template could not be prepared.');
       const formData = new FormData();
       formData.append('template', blob, `pan-${response.record.maskedPan.replace(/[^A-Z0-9]/gi, '')}.png`);
-      const result = await api.post<PanResultResponse>(`/pan-verification/${response.record.id}/template`, formData, {
+      const result = await api.post<PanResultResponse>(`${templateEndpointBase}/${response.record.id}/template`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
           hasUploadedRef.current = true;
@@ -464,7 +466,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
       let sourceBlob = templateBlob;
       if (response.template && !sourceBlob) {
         sourceBlob = await getPanTemplateBlob(response.record.id + ':' + response.template.id, async () => {
-          const result = await api.get<Blob>(`/pan-verification/${response.record.id}/template`, { responseType: 'blob' });
+          const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
           return result.data;
         });
       }
@@ -510,7 +512,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
         shouldRevoke = true;
       } else if (response.template) {
         const blob = await getPanTemplateBlob(response.record.id + ':' + response.template.id, async () => {
-          const result = await api.get<Blob>(`/pan-verification/${response.record.id}/template`, { responseType: 'blob' });
+          const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
           return result.data;
         });
         setTemplateBlob(blob);
@@ -584,7 +586,7 @@ export default function PanTemplatePreview({ response, onUploaded, panNumber }: 
         </div>
       ) : null}
 
-      {!response.template && response.result ? (
+      {!response.template && response.result && allowOptionalAssets ? (
         <div className="mt-3 grid gap-3 border-b border-slate-200/60 pb-3.5 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <div className="flex items-center justify-between gap-2">

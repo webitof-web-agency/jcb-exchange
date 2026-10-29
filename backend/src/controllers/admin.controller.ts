@@ -2,7 +2,7 @@ import { ListingStatus, Role } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
-import { deleteFileFromDrive, extractDriveFileId } from '../services/googleDrive.service';
+import { deleteFileFromDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
 import {
   buildAuthUserPayload,
   buildOnboardingResponse,
@@ -52,6 +52,7 @@ import { canCreateListing } from '../utils/listingAccess';
 import type { VehicleListingVerificationSettings } from '../utils/listingVerificationPolicy';
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
+import { aadhaarVerificationService } from '../services/aadhaarVerification.service';
 import { buildKycReviewDocument } from '../utils/kycReviewPresentation';
 import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
@@ -62,6 +63,8 @@ const MASKED_SECRET = '********';
 
 const maskSecret = (value?: string | null) => (value ? MASKED_SECRET : '');
 const isMaskedSecret = (value?: string | null) => /^\*+$/.test(String(value || '').trim());
+
+const partnerTemplateTypes = new Set(['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD']);
 
 const serializeListingPaymentSettingsForAdmin = (settings: ListingPaymentSettings) => ({
   ...settings,
@@ -2555,17 +2558,30 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
           let verificationDetail: {
             record?: { status?: string | null; createdAt?: Date | null; completedAt?: Date | null } | null;
             result?: Record<string, unknown> | null;
+            template?: Record<string, unknown> | null;
           } | null = null;
 
-          if (document.verificationRecordId && ['PAN_CARD', 'GST_CERTIFICATE'].includes(document.documentType)) {
+          if (document.verificationRecordId && ['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType)) {
             try {
-              const detail = document.documentType === 'PAN_CARD'
-                ? await panVerificationService.getHistoryDetail(document.verificationRecordId, req.user!.id, req.user!.role)
-                : await gstVerificationService.getHistoryDetail(document.verificationRecordId);
+              const primaryRequesterId = req.user!.role === 'EMPLOYEE' ? partner.id : req.user!.id;
+              const primaryRole = req.user!.role === 'EMPLOYEE' ? 'PARTNER' : req.user!.role;
+              const loadDetail = (requesterId: string, role: string) => document.documentType === 'PAN_CARD'
+                ? panVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role)
+                : document.documentType === 'GST_CERTIFICATE'
+                  ? gstVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role)
+                  : aadhaarVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role);
+              let detail;
+              try {
+                detail = await loadDetail(primaryRequesterId, primaryRole);
+              } catch (primaryError) {
+                if (primaryRequesterId === req.user!.id) throw primaryError;
+                detail = await loadDetail(req.user!.id, req.user!.role);
+              }
               verificationDetail = {
                 record: detail.record,
-                result: detail.result && typeof detail.result === 'object' && !Array.isArray(detail.result)
-                  ? detail.result as Record<string, unknown>
+                result: null,
+                template: detail.template && typeof detail.template === 'object' && !Array.isArray(detail.template)
+                  ? detail.template as Record<string, unknown>
                   : null,
               };
             } catch {
@@ -2605,6 +2621,62 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
         })),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPartnerVerificationTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const partnerId = typeof req.params.partnerId === 'string' ? req.params.partnerId.trim() : '';
+    const documentType = typeof req.params.documentType === 'string' ? req.params.documentType.trim().toUpperCase() : '';
+    const recordId = typeof req.params.recordId === 'string' ? req.params.recordId.trim() : '';
+    if (!partnerId || !recordId || recordId.length > 100 || !partnerTemplateTypes.has(documentType)) {
+      return res.status(400).json({ error: 'A valid partner template is required.' });
+    }
+
+    const partner = await prismaAny.user.findUnique({
+      where: { id: partnerId },
+      select: { id: true, partnerProfile: { select: { id: true } } },
+    });
+    if (!partner?.partnerProfile?.id) {
+      return res.status(404).json({ error: 'Partner verification record not found.' });
+    }
+
+    const document = await prismaAny.kycDocument.findFirst({
+      where: {
+        partnerProfileId: partner.partnerProfile.id,
+        documentType,
+        verificationRecordId: recordId,
+      },
+      select: { verificationRecordId: true },
+    });
+    if (!document?.verificationRecordId) {
+      return res.status(404).json({ error: 'Saved KYC template not found.' });
+    }
+
+    const service = documentType === 'PAN_CARD'
+      ? panVerificationService
+      : documentType === 'GST_CERTIFICATE'
+        ? gstVerificationService
+        : aadhaarVerificationService;
+    let template: { driveFileId: string; mimeType: string; fileName: string; fileSize: number };
+    try {
+      template = await service.getTemplateDownload(recordId, partner.id, 'PARTNER') as typeof template;
+    } catch (partnerAccessError) {
+      if (!req.user?.id || !['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) throw partnerAccessError;
+      template = await service.getTemplateDownload(recordId, req.user.id, req.user.role) as typeof template;
+    }
+
+    const stream = await streamFileFromDrive(template.driveFileId);
+    res.setHeader('Content-Type', template.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${template.fileName}"`);
+    res.setHeader('Content-Length', String(template.fileSize));
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    stream.on('error', next);
+    stream.pipe(res);
   } catch (error) {
     next(error);
   }
@@ -3193,7 +3265,7 @@ export const getAdminPartnerOnboarding = async (req: Request, res: Response, nex
 
     res.json({
       user: authUser,
-      ...(await buildOnboardingResponse(partnerUser)),
+      ...(await buildOnboardingResponse(partnerUser, req.user)),
     });
   } catch (error) {
     next(error);
@@ -3257,7 +3329,7 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
     res.json({
       message: 'Partner onboarding updated successfully.',
       user: authUser,
-      onboarding: await buildOnboardingResponse(refreshedPartnerUser),
+      onboarding: await buildOnboardingResponse(refreshedPartnerUser, req.user),
     });
   } catch (error) {
     next(error);
@@ -3315,7 +3387,7 @@ export const submitAdminPartnerOnboarding = async (req: Request, res: Response, 
     res.json({
       message: 'Partner onboarding submitted for review successfully.',
       user: authUser,
-      onboarding: await buildOnboardingResponse(refreshedPartnerUser),
+      onboarding: await buildOnboardingResponse(refreshedPartnerUser, req.user),
     });
   } catch (error) {
     next(error);

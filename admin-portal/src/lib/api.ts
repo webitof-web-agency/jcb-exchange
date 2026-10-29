@@ -25,7 +25,6 @@ const DIRECT_PROVIDER_REQUEST_PATHS = [
   '/aadhaar-verification/initialize',
   '/driving-license-verification/verify',
   '/rc-owner-history/verify',
-  '/rc-full/verify',
   '/rc-challan-verification/verify',
   '/chassis-to-rc/verify',
   '/rc-to-mobile/verify',

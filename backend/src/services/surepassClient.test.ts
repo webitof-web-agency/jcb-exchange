@@ -255,34 +255,26 @@ test('sends RC Mobile Number Check to the documented endpoint', async () => {
   assert.deepEqual(JSON.parse(String(sent.init.body)), { rc_number: 'UP10AB1234', mobile_number: '9999000123' });
 });
 
-test('sends RC challan verification with all required identifiers and state filters', async () => {
+test('sends RC Challan Advanced verification with the documented RC number payload', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({
     baseUrl: 'https://kyc-api.surepass.io',
     token: 'server-only-token',
     fetchImpl: async (url, init) => {
       request = { url, init: init ?? {} };
-      return response({ success: true, status_code: 200, data: { challan_details: { challans: [], blacklist: [] } } });
+      return response({ success: true, status_code: 200, data: { rc_number: 'HR55AP0244', challan_details: [] } });
     },
   });
 
   await client.verifyRcChallan({
     rc_number: 'HR55AP0244',
-    chassis_number: 'MA3JMTB1SPB851591',
-    engine_number: 'K10CNC265773',
-    state_only: true,
-    state_portal: ['DL', 'TS'],
   });
 
   const sent = request as unknown as { url: string; init: RequestInit };
   assert.ok(sent);
-  assert.equal(sent.url, 'https://kyc-api.surepass.io/api/v1/rc/rc-related/challan-details');
+  assert.equal(sent.url, 'https://kyc-api.surepass.io/api/v1/rc/rc-related/challan-advanced');
   assert.deepEqual(JSON.parse(String(sent.init.body)), {
     rc_number: 'HR55AP0244',
-    chassis_number: 'MA3JMTB1SPB851591',
-    engine_number: 'K10CNC265773',
-    state_only: true,
-    state_portal: ['DL', 'TS'],
   });
   assert.equal((sent.init.headers as Record<string, string>).Authorization, 'Bearer server-only-token');
 });

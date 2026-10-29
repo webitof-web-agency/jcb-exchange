@@ -31,8 +31,17 @@ import {
   deleteProfileAvatar,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
-import { verifyPartnerGstin, verifyPartnerPan } from '../controllers/partnerKycVerification.controller';
-import { getAvatarUploadMiddleware } from '../utils/documentUpload';
+import {
+  cancelPartnerAadhaar,
+  completePartnerAadhaar,
+  getPartnerAadhaarStatus,
+  getPartnerKycTemplate,
+  initializePartnerAadhaar,
+  uploadPartnerKycTemplate,
+  verifyPartnerGstin,
+  verifyPartnerPan,
+} from '../controllers/partnerKycVerification.controller';
+import { getAvatarUploadMiddleware, getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
 
@@ -66,6 +75,12 @@ router.put('/partner/onboarding', requireAuth, savePartnerOnboarding);
 router.post('/partner/onboarding/submit', requireAuth, submitPartnerOnboarding);
 router.post('/partner/kyc/verify-pan', requireAuth, verifyPartnerPan);
 router.post('/partner/kyc/verify-gstin', requireAuth, verifyPartnerGstin);
+router.post('/partner/kyc/verify-aadhaar/initialize', requireAuth, initializePartnerAadhaar);
+router.post('/partner/kyc/verify-aadhaar/complete', requireAuth, completePartnerAadhaar);
+router.post('/partner/kyc/verify-aadhaar/cancel', requireAuth, cancelPartnerAadhaar);
+router.get('/partner/kyc/verify-aadhaar/status/:id', requireAuth, getPartnerAadhaarStatus);
+router.post('/partner/kyc/:documentType/:id/template', requireAuth, getDocumentUploadMiddleware('secure').single('template'), uploadPartnerKycTemplate);
+router.get('/partner/kyc/:documentType/:id/template', requireAuth, getPartnerKycTemplate);
 router.post('/partner/kyc', requireAuth, submitKyc);
 
 export default router;

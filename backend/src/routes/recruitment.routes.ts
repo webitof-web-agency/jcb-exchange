@@ -203,8 +203,8 @@ router.patch('/admin/rto-records/:id/transfer-tasks/:taskId', canUpdateRto, upda
 router.post('/admin/rto-records/:id/transfer-tasks/:taskId/documents', canUpdateRto, addRtoRecordTaskDocument);
 router.delete('/admin/rto-records/:id/transfer-tasks/:taskId/documents/:documentId', canUpdateRto, removeRtoRecordTaskDocument);
 router.post('/admin/rto-records/:id/compliance', canUpdateRto, checkRtoRecordCompliance);
-// A fresh RC lookup is billed to the API wallet, so it also needs the RC verification permission.
-router.post('/admin/rto-records/:id/compliance/rc-api', canUpdateRto, requireAdminOrEmployeePermissions(['rc.full.read']), checkRtoRecordComplianceWithRcApi);
+// A fresh RC lookup is part of RTO transfer readiness and follows the existing RTO update permission.
+router.post('/admin/rto-records/:id/compliance/rc-api', canUpdateRto, checkRtoRecordComplianceWithRcApi);
 router.get('/admin/rto-records/:id/transfer-certificate', canViewRto, downloadRtoTransferCertificate);
 
 // Sell Account records and normalized payment ledger

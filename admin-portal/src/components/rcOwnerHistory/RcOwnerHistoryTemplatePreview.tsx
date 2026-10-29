@@ -245,7 +245,7 @@ export default function RcOwnerHistoryTemplatePreview({ response, onUploaded }: 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 pb-3.5">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-amber-600" /> RC Owner History Template</h3>
-          <p className="mt-1 text-xs text-slate-500">Dynamic ownership history template from the Surepass result</p>
+          <p className="mt-1 text-xs text-slate-500">{template ? 'Saved ownership history template from Google Drive' : 'Download now, or upload & save to keep this template in history'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {template ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" /> Template saved ({formatFileSize(template.fileSize)})</span> : <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${expired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}><ShieldCheck className="h-3.5 w-3.5" /> {expired ? 'Upload window expired' : `Upload within ${formatRemaining(remaining)}`}</span>}

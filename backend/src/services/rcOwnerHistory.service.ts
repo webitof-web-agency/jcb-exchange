@@ -15,7 +15,7 @@ import {
   type ApiBillingGateway,
   type ApiBillableServiceKey,
 } from './apiWalletBilling.service';
-import { deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
+import { cacheDriveFileBuffer, clearCachedDriveFileBuffer, deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
 
 const RC_STATUS = {
   PENDING: 'PENDING',
@@ -24,6 +24,7 @@ const RC_STATUS = {
 } as const;
 
 export const RC_OWNER_HISTORY_RAW_DATA_TTL_MS = 5 * 60 * 1000;
+export const RC_OWNER_HISTORY_EPHEMERAL_SESSION_TTL_MS = 15 * 60 * 1000;
 export const MAX_RC_OWNER_HISTORY_TEMPLATE_SIZE = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -46,9 +47,11 @@ type RcOwnerHistoryRecordRepository = {
   findUnique: (args: any) => Promise<any>;
   findMany: (args: any) => Promise<any[]>;
   count: (args: any) => Promise<number>;
+  groupBy?: (args: any) => Promise<any[]>;
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
   updateMany?: (args: any) => Promise<{ count: number }>;
+  deleteMany?: (args: any) => Promise<{ count: number }>;
 };
 
 type RcOwnerHistoryTemplateRepository = {
@@ -428,14 +431,13 @@ export class RcOwnerHistoryService {
   }
 
   private async findFreshCachedResult(requestFingerprint: string, dataSecret: string) {
+    if (this.serviceKey === 'RC_OWNER_HISTORY') return null;
     const cached = await this.record.findFirst({
       where: {
         serviceKey: this.serviceKey,
         requestFingerprint,
         status: RC_STATUS.SUCCESS,
-        ...(this.serviceKey === 'RC_OWNER_HISTORY'
-          ? { rawDataExpiresAt: { gt: new Date() } }
-          : { completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+        completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
         encryptedResult: { not: null },
       },
       orderBy: { completedAt: 'desc' },
@@ -444,7 +446,7 @@ export class RcOwnerHistoryService {
         template: true,
       },
     });
-    if (!cached || !isFreshVerificationResult(cached) || (this.serviceKey === 'RC_OWNER_HISTORY' && !isRcOwnerHistoryRawDataAvailable(cached))) return null;
+    if (!cached || !isFreshVerificationResult(cached)) return null;
     try {
       return {
         record: recordSummary(cached),
@@ -488,7 +490,7 @@ export class RcOwnerHistoryService {
       orderBy: { completedAt: 'desc' },
       include: { template: true },
     });
-    const reusableExisting = existing && (this.serviceKey === 'RC_FULL' || !existing.template) ? existing : null;
+    const reusableExisting = existing && this.serviceKey === 'RC_FULL' ? existing : null;
     const pending = reusableExisting
       ? await this.record.update({
           where: { id: reusableExisting.id },
@@ -506,7 +508,19 @@ export class RcOwnerHistoryService {
             completedAt: null,
           },
         })
-      : await this.record.create({ data: { status: RC_STATUS.PENDING, serviceKey: this.serviceKey, maskedRcNumber, requestFingerprint, requestedById, rawDataExpiresAt: null } });
+      : await this.record.create({
+          data: {
+            status: RC_STATUS.PENDING,
+            serviceKey: this.serviceKey,
+            maskedRcNumber,
+            requestFingerprint,
+            requestedById,
+            rawDataExpiresAt: null,
+            ...(this.serviceKey === 'RC_OWNER_HISTORY'
+              ? { ephemeralExpiresAt: new Date(Date.now() + RC_OWNER_HISTORY_EPHEMERAL_SESSION_TTL_MS) }
+              : {}),
+          },
+        });
     await this.writeAudit(requestedById, `${this.auditActionPrefix}_REQUESTED`, pending.id, { maskedRcNumber, status: RC_STATUS.PENDING });
 
     let billing: { charged: boolean; usageId?: string } | undefined;
@@ -626,26 +640,59 @@ export class RcOwnerHistoryService {
       ? filters.status as typeof RC_STATUS[keyof typeof RC_STATUS]
       : undefined;
     const search = typeof filters.search === 'string' ? filters.search.trim().slice(0, 50) : '';
-    const where = { serviceKey: this.serviceKey, ...(status ? { status } : {}), ...(search ? { maskedRcNumber: { contains: search, mode: 'insensitive' } } : {}) };
-    const [total, records] = await Promise.all([
-      this.record.count({ where }),
+    const where = {
+      serviceKey: this.serviceKey,
+      ...(this.serviceKey === 'RC_OWNER_HISTORY' ? { template: { isNot: null } } : {}),
+      ...(status ? { status } : {}),
+      ...(search ? { maskedRcNumber: { contains: search, mode: 'insensitive' } } : {}),
+    };
+    const historyOnly = this.serviceKey === 'RC_OWNER_HISTORY';
+    const [totalResult, records] = await Promise.all([
+      historyOnly && this.record.groupBy
+        ? this.record.groupBy({ where, by: ['maskedRcNumber'] })
+        : this.record.count({ where }),
       this.record.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
+        ...(historyOnly ? { distinct: ['maskedRcNumber'] } : {}),
         include: {
           requestedBy: { select: { id: true, name: true, email: true } },
           template: true,
         },
       }),
     ]);
-    return { records: records.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    const latestByMaskedRc = historyOnly
+      ? new Map<string, any>()
+      : null;
+    if (latestByMaskedRc) {
+      for (const record of records) {
+        const key = String(record.maskedRcNumber || record.id);
+        const current = latestByMaskedRc.get(key);
+        if (!current || new Date(record.createdAt).getTime() > new Date(current.createdAt).getTime()) {
+          latestByMaskedRc.set(key, record);
+        }
+      }
+    }
+    const visibleRecords = latestByMaskedRc ? [...latestByMaskedRc.values()] : records;
+    const total = Array.isArray(totalResult) ? totalResult.length : totalResult;
+    return { records: visibleRecords.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   async cleanupExpiredRawData(now = new Date()) {
-    if (this.serviceKey !== 'RC_OWNER_HISTORY' || !this.record.updateMany) return 0;
-    const result = await this.record.updateMany({
+    if (this.serviceKey !== 'RC_OWNER_HISTORY') return 0;
+    const expiredEphemeral = this.record.deleteMany
+      ? await this.record.deleteMany({
+          where: {
+            serviceKey: 'RC_OWNER_HISTORY',
+            template: { is: null },
+            ephemeralExpiresAt: { lte: now },
+          },
+        })
+      : { count: 0 };
+    const result = this.record.updateMany
+      ? await this.record.updateMany({
       where: {
         serviceKey: 'RC_OWNER_HISTORY',
         status: RC_STATUS.SUCCESS,
@@ -656,8 +703,9 @@ export class RcOwnerHistoryService {
         ],
       },
       data: { encryptedResult: null, rawDataExpiresAt: null },
-    });
-    return result.count;
+      })
+      : { count: 0 };
+    return expiredEphemeral.count + result.count;
   }
 
   async uploadTemplate(
@@ -689,14 +737,44 @@ export class RcOwnerHistoryService {
       throw new RcOwnerHistoryError('You do not have access to this RC owner-history template.', 403, 'template_forbidden');
     }
     if (record.template) {
-      if (record.encryptedResult || record.rawDataExpiresAt) {
-        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      if (record.encryptedResult || record.rawDataExpiresAt || record.ephemeralExpiresAt) {
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
       }
-      return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null }), result: null, template: rcOwnerHistoryTemplateSummary(record.template), alreadyUploaded: true };
+      return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null }), result: null, template: rcOwnerHistoryTemplateSummary(record.template), alreadyUploaded: true };
+    }
+
+    // A user may verify the same RC again before saving the new result. Reuse
+    // the newest saved template for that RC instead of creating another Drive
+    // file and another history row.
+    const existingSavedTemplate = await this.record.findFirst({
+      where: {
+        serviceKey: 'RC_OWNER_HISTORY',
+        maskedRcNumber: record.maskedRcNumber,
+        template: { isNot: null },
+        ...(role === 'EMPLOYEE' ? { requestedById } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
+    });
+    if (existingSavedTemplate && existingSavedTemplate.id !== record.id) {
+      await this.record.update({
+        where: { id: record.id },
+        data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null },
+      });
+      return {
+        record: recordSummary(existingSavedTemplate),
+        result: null,
+        template: rcOwnerHistoryTemplateSummary(existingSavedTemplate.template),
+        alreadyUploaded: true,
+        deduplicated: true,
+      };
     }
     if (record.status !== RC_STATUS.SUCCESS || !isRcOwnerHistoryRawDataAvailable(record)) {
       if (record.encryptedResult) {
-        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
       }
       throw new RcOwnerHistoryError('The RC owner-history template upload window has expired. Run verification again.', 409, 'template_result_unavailable');
     }
@@ -707,6 +785,7 @@ export class RcOwnerHistoryService {
     try {
       const stored = await this.uploadTemplateFile(buffer, mimeType, fileName);
       driveFileId = stored.fileId;
+      cacheDriveFileBuffer(driveFileId, buffer);
       const template = await this.template.create({
         data: {
           verificationRecordId: record.id,
@@ -719,15 +798,18 @@ export class RcOwnerHistoryService {
         },
       });
       templateId = template.id;
-      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
       return {
-        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
+        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null, template }),
         result: null,
         template: rcOwnerHistoryTemplateSummary(template),
       };
     } catch (error) {
       if (templateId && this.template.delete) await this.template.delete({ where: { id: templateId } });
-      if (driveFileId) await this.deleteTemplateFile(driveFileId);
+      if (driveFileId) {
+        clearCachedDriveFileBuffer(driveFileId);
+        await this.deleteTemplateFile(driveFileId);
+      }
       throw new RcOwnerHistoryError(
         error instanceof RcOwnerHistoryError ? error.message : 'The RC owner-history template could not be stored securely.',
         error instanceof RcOwnerHistoryError ? error.statusCode : 502,
@@ -754,7 +836,9 @@ export class RcOwnerHistoryService {
         template: true,
       },
     });
-    if (!record) throw new RcOwnerHistoryError('Vehicle verification record not found.', 404, 'record_not_found');
+    if (!record || (this.serviceKey === 'RC_OWNER_HISTORY' && !record.template)) {
+      throw new RcOwnerHistoryError('Vehicle verification record not found.', 404, 'record_not_found');
+    }
     let result: unknown = null;
     if (record.status === RC_STATUS.SUCCESS && record.encryptedResult) {
       try {

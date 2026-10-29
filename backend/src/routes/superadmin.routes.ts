@@ -20,6 +20,7 @@ import {
   getModuleBadges,
   getPendingVerifications,
   getVerificationDetail,
+  getPartnerVerificationTemplate,
   getCustomerPrimePayments,
   getListingPaymentSubmissionById,
   getListingPaymentSubmissions,
@@ -170,6 +171,7 @@ router.put('/partners/:id/onboarding', canEditPartnerOnboarding, saveAdminPartne
 router.post('/partners/:id/onboarding/submit', canUpdatePartners, submitAdminPartnerOnboarding);
 router.get('/verifications', canViewVerifications, getPendingVerifications);
 router.get('/verifications/:id', canViewVerifications, getVerificationDetail);
+router.get('/verifications/:partnerId/:documentType/:recordId/template', canViewVerifications, getPartnerVerificationTemplate);
 router.get('/listings', canManageListings, getAdminListings);
 router.patch('/verifications/:id/status', canManageVerifications, updateVerificationStatus);
 router.patch('/listings/:id/status', canManageListings, updateAdminListingStatus);

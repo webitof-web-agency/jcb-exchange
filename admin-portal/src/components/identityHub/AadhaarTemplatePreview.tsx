@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { CheckCircle2, Download, Loader2, ShieldCheck, XCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import api from '@/lib/api';
@@ -57,8 +57,8 @@ const FIELD = {
   backStreet:  { x: 930, y: 1964, maxWidth: 395 },
   backPoDist:  { x: 930, y: 1990, maxWidth: 395 },
   backStatePin:{ x: 930, y: 2016, maxWidth: 395 },
-  backQr:      { x: 1340, y: 1780, size: 280 },
-  backBottomWhiteout: { x: 1050, y: 2075, width: 460, height: 105 },
+  backQr:      { x: 1350, y: 1825, size: 245 },
+  backBottomWhiteout: { x: 1050, y: 2078, width: 460, height: 102 },
   backAadhaar: { x: 1280, y: 2115 },
   backDottedLine: { x1: 1060, y: 2138, x2: 1500 },
   backVid:     { x: 1280, y: 2165 },
@@ -284,10 +284,14 @@ export type AadhaarData = {
 
 type Props = {
   data?: AadhaarData | null;
+  inputAadhaarNumber?: string | null;
   recordId?: string;
   recordMaskedAadhaar?: string | null;
   template?: AadhaarTemplateInfo | null;
   onUploaded?: (template: AadhaarTemplateInfo) => void;
+  hideActions?: boolean;
+  canvasRef?: RefObject<HTMLCanvasElement | null>;
+  templateEndpointBase?: string;
 };
 
 export type AadhaarTemplateInfo = {
@@ -316,8 +320,9 @@ function formatVid(vid?: string | null): string {
   return vid;
 }
 
-export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAadhaar, template, onUploaded }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recordId, recordMaskedAadhaar, template, onUploaded, hideActions = false, canvasRef, templateEndpointBase = '/aadhaar-verification' }: Props) {
+  const internalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const targetCanvasRef = canvasRef ?? internalCanvasRef;
   const [customAadhaar, setCustomAadhaar] = useState<string>('');
   const [downloadPdfBusy, setDownloadPdfBusy] = useState(false);
   const [downloadPngBusy, setDownloadPngBusy] = useState(false);
@@ -338,7 +343,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
     if (!recordId || !templateId) return;
     let active = true;
     getAadhaarTemplateBlob(`${recordId}:${templateId}`, async () => {
-      const response = await api.get<Blob>(`/aadhaar-verification/${recordId}/template`, { responseType: 'blob' });
+      const response = await api.get<Blob>(`${templateEndpointBase}/${recordId}/template`, { responseType: 'blob' });
       return response.data;
     })
       .then((blob) => {
@@ -350,12 +355,12 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
         if (active) setError('Saved Aadhaar template could not be loaded.');
       });
     return () => { active = false; };
-  }, [recordId, templateId, savedTemplateRetry]);
+  }, [recordId, templateId, savedTemplateRetry, templateEndpointBase]);
 
   const sourceData = data ?? {};
 
   const fullName         = safe(sourceData.fullName).toUpperCase();
-  const rawAadhaar       = customAadhaar.trim() || safe(sourceData.aadhaarNumber) || safe(sourceData.aadhaar) || safe(sourceData.maskedAadhaar);
+  const rawAadhaar       = customAadhaar.trim() || safe(inputAadhaarNumber) || safe(sourceData.aadhaarNumber) || safe(sourceData.aadhaar) || safe(sourceData.maskedAadhaar);
   const effectiveAadhaar = formatAadhaarDisplay(rawAadhaar);
   const isUnmasked       = Boolean(effectiveAadhaar && !effectiveAadhaar.includes('X') && !effectiveAadhaar.includes('*'));
   const fileToken         = getAadhaarFileToken(effectiveAadhaar, isUnmasked, safe(sourceData.maskedAadhaar) || safe(recordMaskedAadhaar) || effectiveAadhaar);
@@ -438,7 +443,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
   // ── Render canvas whenever data or photo changes ──────────────────────────
   useEffect(() => {
     if (!data) return;
-    const canvas = canvasRef.current;
+    const canvas = targetCanvasRef.current;
     if (!canvas) return;
     let active = true;
 
@@ -450,7 +455,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
           margin: 1, width: 210, errorCorrectionLevel: 'M',
         });
         cardQrUrl = await QRCode.toDataURL(qrText || 'UIDAI Aadhaar', {
-          margin: 1, width: 280, errorCorrectionLevel: 'M',
+          margin: 1, width: FIELD.backQr.size, errorCorrectionLevel: 'M',
         });
       } catch { /* QR codes are optional */ }
 
@@ -670,6 +675,10 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
         fitAndDraw(ctx, engLine4, FIELD.backStatePin.x, FIELD.backStatePin.y, FIELD.backStatePin.maxWidth, 16, 12);
       }
 
+      // Back Card Bottom background white-out
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(FIELD.backBottomWhiteout.x, FIELD.backBottomWhiteout.y, FIELD.backBottomWhiteout.width, FIELD.backBottomWhiteout.height);
+
       // Back Card Large QR Code
       if (cardQrUrl) {
         const qrCardImg = await loadImage(cardQrUrl).catch(() => null);
@@ -681,8 +690,6 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
       }
 
       // 7. Back Card Bottom - 12-digit Aadhaar Number + Dotted Line + VID (Matching Image 4 exactly)
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(FIELD.backBottomWhiteout.x, FIELD.backBottomWhiteout.y, FIELD.backBottomWhiteout.width, FIELD.backBottomWhiteout.height);
 
       // Large bold 12-digit Aadhaar number centered above dotted line
       if (effectiveAadhaar) {
@@ -722,7 +729,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
 
     return () => { active = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fullName, effectiveAadhaar, dob, gender, mobile, effectivePhoto, qrText,
+  }, [targetCanvasRef, fullName, effectiveAadhaar, dob, gender, mobile, effectivePhoto, qrText,
       careOf, hNo, streetLoc, vtc, po, subDist, district, state, pinCode, enrolmentNo, vid, issueDate]);
 
   // ── Download actions ─────────────────────────────────────────────────────
@@ -844,7 +851,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
 
   const getCanvasBlob = () =>
     new Promise<Blob>((resolve, reject) => {
-      const canvas = canvasRef.current;
+      const canvas = targetCanvasRef.current;
       if (!canvas || canvas.width !== CANVAS_WIDTH) {
         reject(new Error('Aadhaar template is still preparing. Please wait a moment.'));
         return;
@@ -915,7 +922,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
       const blob = await getCanvasBlob();
       const formData = new FormData();
       formData.append('template', new File([blob], `${downloadBaseName}.png`, { type: 'image/png' }));
-      const response = await api.post<{ template?: AadhaarTemplateInfo }>(`/aadhaar-verification/${recordId}/template`, formData, {
+      const response = await api.post<{ template?: AadhaarTemplateInfo }>(`${templateEndpointBase}/${recordId}/template`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const savedTemplate = response.data.template;
@@ -943,9 +950,13 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 pb-3.5">
         <div>
           <h3 className="text-sm font-bold text-slate-900">Aadhaar Card Template</h3>
-          <p className="mt-1 text-xs text-slate-500">Official UIDAI layout with dynamic DigiLocker data</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {template
+              ? 'Official UIDAI layout saved securely for later access.'
+              : 'Download now, or upload to keep this template in verification history.'}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {!hideActions ? <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
             <CheckCircle2 className="h-3.5 w-3.5" /> {template ? 'Template saved securely' : 'DigiLocker verified'}
           </span>
@@ -980,7 +991,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
             {downloadPdfBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {downloadPdfBusy ? 'Preparing PDF...' : 'Download PDF'}
           </button>
-        </div>
+        </div> : null}
       </div>
 
       {error ? (
@@ -1033,7 +1044,7 @@ export default function AadhaarTemplatePreview({ data, recordId, recordMaskedAad
             <img src={savedTemplateUrl} alt="Saved Aadhaar template" className="block h-auto w-[460px] max-w-full select-none" />
           ) : (
             <canvas
-              ref={canvasRef}
+              ref={targetCanvasRef}
               className="block h-auto w-[460px] max-w-full select-none"
               aria-label="Generated Aadhaar template"
             />
