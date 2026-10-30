@@ -52,7 +52,7 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Front card', (
 
   // Son/Daughter/Wife of (below label at x=149, y=247)
   assert.match(previewSource, /rcData\.fatherName/);
-  assert.match(previewSource, /drawText\(fatherName,\s*149,\s*247/);
+  assert.match(previewSource, /drawText\(fatherName,\s*149,\s*252/);
 
   // Address (below label at x=149, y=282)
   assert.match(previewSource, /rcData\.presentAddress/);
@@ -60,11 +60,28 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Front card', (
 
   // Fuel (below label flush at start x=30, y=231)
   assert.match(previewSource, /rcData\.fuelType/);
-  assert.match(previewSource, /drawText\(fuel,\s*30,\s*231/);
+  assert.match(previewSource, /drawText\(fuel,\s*31,\s*233/);
 
   // Emission Norms (below label flush at start x=30, y=270)
   assert.match(previewSource, /rcData\.normsType/);
-  assert.match(previewSource, /drawText\(norms,\s*30,\s*270/);
+  assert.match(previewSource, /drawText\(norms,\s*31,\s*270/);
+});
+
+test('RcCardTemplatePreview renders crisp vector keys for Back card from reference template', () => {
+  assert.match(previewSource, /drawText\('Vehicle Class:',\s*640,\s*46/);
+  assert.match(previewSource, /drawText\('Regn\. Number',\s*532,\s*71/);
+  assert.match(previewSource, /drawText\('Month -Year of Mfg\.',\s*534,\s*265/);
+  assert.match(previewSource, /drawText\('No of Cylinders:',\s*534,\s*294/);
+  assert.match(previewSource, /drawText\('Maker:',\s*694,\s*86/);
+  assert.match(previewSource, /drawText\('Model:',\s*694,\s*117/);
+  assert.match(previewSource, /drawText\('Color:',\s*694,\s*145/);
+  assert.match(previewSource, /drawText\('\/Body Type:',\s*814,\s*145/);
+  assert.match(previewSource, /drawText\('Seating\(in all\) Capacity',\s*694,\s*177/);
+  assert.match(previewSource, /drawText\('Unladen Weight \(Kg\)',\s*694,\s*205/);
+  assert.match(previewSource, /drawText\('Cubic Cap\. \/Horse Power \(BHP\/Kw\) \/Wheel Base \(mm\)',\s*694,\s*236/);
+  assert.match(previewSource, /drawText\('Financier',\s*694,\s*268/);
+  assert.match(previewSource, /drawText\('Registration Authority',\s*879,\s*292/);
+  assert.match(previewSource, /fillText\('Form 23A',\s*0,\s*0\)/);
 });
 
 test('RcCardTemplatePreview binds all dynamic API placeholders on Back card', () => {
@@ -73,53 +90,55 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Back card', ()
   assert.match(previewSource, /drawText\(vClass,\s*722,\s*46/);
 
   // Regn Number on back (aligned flush at x=532)
-  assert.match(previewSource, /drawText\(regNoFormatted,\s*532,\s*98/);
+  assert.match(previewSource, /drawText\(regNoFormatted,\s*532,\s*84/);
 
   // Month - Year of Mfg (aligned flush at x=532)
   assert.match(previewSource, /rcData\.manufacturingDate/);
-  assert.match(previewSource, /drawText\(mfgDate,\s*532,\s*286/);
+  assert.match(previewSource, /drawText\(mfgDate,\s*534,\s*278/);
 
   // No of Cylinders (next to colon at x=624)
   assert.match(previewSource, /rcData\.noCylinders/);
-  assert.match(previewSource, /drawText\(cylinders,\s*624,\s*302/);
+  assert.match(previewSource, /drawText\(cylinders,\s*627,\s*294/);
 
   // Maker (below label at x=691, y=97)
   assert.match(previewSource, /rcData\.makerDescription/);
-  assert.match(previewSource, /drawText\(maker,\s*691,\s*97/);
+  assert.match(previewSource, /drawText\(maker,\s*694,\s*97/);
 
   // Model (below label at x=691, y=132)
   assert.match(previewSource, /rcData\.makerModel/);
-  assert.match(previewSource, /drawText\(model,\s*691,\s*132/);
+  assert.match(previewSource, /drawText\(model,\s*694,\s*128/);
 
   // Color (below label at x=691, y=163)
   assert.match(previewSource, /rcData\.color/);
-  assert.match(previewSource, /drawText\(color,\s*691,\s*163/);
+  assert.match(previewSource, /drawText\(color,\s*694,\s*158/);
 
   // Body Type (below label at x=808, y=163)
   assert.match(previewSource, /rcData\.bodyType/);
-  assert.match(previewSource, /drawText\(bodyType,\s*808,\s*163/);
+  assert.match(previewSource, /drawText\(bodyType,\s*814,\s*158/);
 
   // Seating Capacity (below label at x=691, y=196)
   assert.match(previewSource, /rcData\.seatCapacity/);
-  assert.match(previewSource, /drawText\(seating,\s*691,\s*196/);
+  assert.match(previewSource, /drawText\(seating,\s*694,\s*190/);
 
   // Unladen Weight (below label at x=691, y=227)
   assert.match(previewSource, /rcData\.unladenWeight/);
-  assert.match(previewSource, /drawText\(unladenWeight,\s*691,\s*227/);
+  assert.match(previewSource, /drawText\(unladenWeight,\s*694,\s*218/);
 
   // Cubic Cap / Horse Power / Wheel Base (below label at x=691, y=258)
   assert.match(previewSource, /rcData\.cubicCapacity/);
   assert.match(previewSource, /rcData\.horsePower/);
   assert.match(previewSource, /rcData\.wheelbase/);
-  assert.match(previewSource, /drawText\(specLine,\s*691,\s*258/);
+  assert.match(previewSource, /drawText\(cc,\s*694,\s*248/);
+  assert.match(previewSource, /drawText\(hp,\s*785,\s*248/);
+  assert.match(previewSource, /drawText\(wb,\s*910,\s*248/);
 
   // Financier (below label at x=691, y=290)
   assert.match(previewSource, /rcData\.financer/);
-  assert.match(previewSource, /drawText\(financierText\.toUpperCase\(\),\s*691,\s*290/);
+  assert.match(previewSource, /drawText\(financierText\.toUpperCase\(\),\s*694,\s*282/);
 
   // Registration Authority (below label at x=884, y=307)
   assert.match(previewSource, /rcData\.registeredAt/);
-  assert.match(previewSource, /drawText\(regAuthority,\s*884,\s*307/);
+  assert.match(previewSource, /drawText\(regAuthority,\s*879,\s*307/);
 });
 
 test('RcCardTemplatePreview generates dynamic QR code and supports click modal popup', () => {
@@ -156,4 +175,8 @@ test('RcCardTemplatePreview supports uploading and saving templates to history',
   assert.match(previewSource, /Upload & Save Template/);
   assert.match(previewSource, /\/rc-owner-history\/\$\{response\.record\.id\}\/template/);
   assert.match(previewSource, /getVerificationTemplateBlob/);
+});
+
+test('RcCardTemplatePreview renders the card canvas in a sharp rectangular frame without rounded clipping', () => {
+  assert.match(previewSource, /overflow-hidden\s+rounded-none\s+border/);
 });

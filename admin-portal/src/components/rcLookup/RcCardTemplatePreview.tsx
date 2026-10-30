@@ -394,7 +394,7 @@ export default function RcCardTemplatePreview({
       // Son/Daughter/Wife of: directly below label
       const rawFather = safeStr(rcData.fatherName);
       const fatherName = rawFather ? rawFather.toUpperCase() : '-';
-      drawText(fatherName, 149, 247, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
+      drawText(fatherName, 149, 252, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
 
       // Address: multi-line directly below label 'Address'
       const rawAddr = safeStr(rcData.presentAddress) || safeStr(rcData.permanentAddress) || '-';
@@ -413,83 +413,109 @@ export default function RcCardTemplatePreview({
 
       // Fuel: directly below label 'Fuel' (starts flush at x=30 where label starts, baseline y=231)
       const fuel = (safeStr(rcData.fuelType) || '-').toUpperCase();
-      drawText(fuel, 30, 231, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
+      drawText(fuel, 31, 233, 'bold 9px Arial, Helvetica, sans-serif', '#000000');
 
       // Emission Norms: directly below label 'Emission Norms' (starts flush at x=30 where label starts, baseline y=270)
       const norms = (safeStr(rcData.normsType) || '-').toUpperCase();
-      drawText(norms, 30, 270, 'bold 9px Arial, Helvetica, sans-serif', '#000000');
+      drawText(norms, 31, 270, 'bold 8.5px Arial, Helvetica, sans-serif', '#000000');
 
       // Card Issue Date: vertical rotated along right border of front card
       const cardIssueDate = formatRcDate(rcData.registrationDate) || 'DD-MM-YYYY';
       ctx.save();
-      ctx.translate(492, 240);
+      ctx.translate(495, 170);
       ctx.rotate(-Math.PI / 2);
       ctx.font = 'bold 8px Arial, Helvetica, sans-serif';
       ctx.fillStyle = '#475569';
-      ctx.fillText(`Card Issue Date  (${cardIssueDate})`, 0, 0);
+      ctx.fillText(`(${cardIssueDate})`, 0, 0);
       ctx.restore();
 
       // ─────────────────────────────────────────────────────────────
       // BACK CARD FIELDS (Right Side: 512..1024)
       // ─────────────────────────────────────────────────────────────
 
+      // 1. Pre-printed Vector Keys (from reference Image 2)
+      drawText('Vehicle Class:', 640, 46, 'bold 10px Arial, Helvetica, sans-serif', '#0f172a');
+      drawText('Regn. Number', 532, 71, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Month -Year of Mfg.', 534, 265, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('No of Cylinders:', 534, 294, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Maker:', 694, 86, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Model:', 694, 117, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Color:', 694, 145, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('/Body Type:', 814, 145, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Seating(in all) Capacity', 694, 177, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Unladen Weight (Kg)', 694, 205, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Cubic Cap. /Horse Power (BHP/Kw) /Wheel Base (mm)', 694, 236, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Financier', 694, 268, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText('Registration Authority', 879, 292, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+
+      ctx.save();
+      ctx.translate(1008, 240);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = 'bold 8.5px Arial, Helvetica, sans-serif';
+      ctx.fillStyle = '#000000';
+      ctx.fillText('Form 23A', 0, 0);
+      ctx.restore();
+
+      // 2. Dynamic Values from API
       // Vehicle Class: top banner beside label 'Vehicle Class:' with clean gap after colon (starts at x=722, exact baseline y=46)
       const vClass = (safeStr(rcData.vehicleCategoryDescription) || safeStr(rcData.vehicleCategory) || '-').toUpperCase();
       drawText(vClass, 722, 46, 'bold 10px Arial, Helvetica, sans-serif', '#0f172a', 'left', 'alphabetic', 265);
 
       // Regn. Number: directly below label 'Regn. Number' (starts flush at x=532)
-      drawText(regNoFormatted, 532, 98, 'bold 11px Arial, Helvetica, sans-serif', '#000000');
+      drawText(regNoFormatted, 532, 84, 'bold 11px Arial, Helvetica, sans-serif', '#000000');
 
       // Month -Year of Mfg: directly below label (starts flush at x=532)
       const mfgDate = safeStr(rcData.manufacturingDateFormatted) || safeStr(rcData.manufacturingDate) || '-';
-      drawText(mfgDate, 532, 286, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText(mfgDate, 534, 278, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
 
       // No of Cylinders: next to colon of 'No of Cylinders:' (colon ends at x=618, starts at x=624)
       const cylinders = safeStr(rcData.noCylinders) || '-';
-      drawText(cylinders, 624, 302, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText(cylinders, 627, 294, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
 
       // Maker: directly below label 'Maker:' (starts flush at x=691)
       const maker = (safeStr(rcData.makerDescription) || '-').toUpperCase();
-      drawText(maker, 691, 97, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 305);
+      drawText(maker, 694, 97, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 305);
 
       // Model: directly below label 'Model:' (starts flush at x=691)
       const model = (safeStr(rcData.makerModel) || '-').toUpperCase();
-      drawText(model, 691, 132, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 305);
+      drawText(model, 694, 128, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 305);
 
       // Color: directly below label 'Color:' (starts flush at x=691)
       const color = (safeStr(rcData.color) || '-').toUpperCase();
-      drawText(color, 691, 163, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 110);
+      drawText(color, 694, 158, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 114);
 
       // Body Type: directly below label '/Body Type:' (starts flush at x=808)
       const bodyType = (safeStr(rcData.bodyType) || '-').toUpperCase();
-      drawText(bodyType, 808, 163, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 185);
+      drawText(bodyType, 814, 158, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 185);
 
       // Seating Capacity: directly below label 'Seating(in all) Capacity' (starts flush at x=691)
       const seating = safeStr(rcData.seatCapacity) || '-';
-      drawText(seating, 691, 196, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText(seating, 694, 190, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
 
       // Unladen Weight: directly below label 'Unladen Weight (Kg)' (starts flush at x=691)
       const rawWeight = safeStr(rcData.unladenWeight);
       const unladenWeight = rawWeight ? (rawWeight.toUpperCase().includes('KG') ? rawWeight : `${rawWeight} Kg`) : '-';
-      drawText(unladenWeight, 691, 227, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      drawText(unladenWeight, 694, 218, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
 
       // Cubic Cap / HP / Wheel Base: directly below label (starts flush at x=691)
       const cc = safeStr(rcData.cubicCapacity) || '-';
       const hp = safeStr(rcData.horsePower) || '-';
       const wb = safeStr(rcData.wheelbase) || '-';
+      drawText(cc, 694, 248, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
+      drawText(hp, 785, 248, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
+      drawText(wb, 910, 248, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
       const specLine = `${cc}        ${hp}        ${wb}`;
-      drawText(specLine, 691, 258, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
 
       // Financier: directly below label 'Financier' (starts flush at x=691)
       let financierText = safeStr(rcData.financer);
       if (!financierText) {
         financierText = rcData.financed === false ? 'NOT FINANCED' : (rcData.financed === true ? 'FINANCED' : '-');
       }
-      drawText(financierText.toUpperCase(), 691, 290, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 170);
+      drawText(financierText.toUpperCase(), 694, 282, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 170);
 
       // Registration Authority: directly below label 'Registration Authority' (starts flush at x=884)
       const regAuthority = (safeStr(rcData.registeredAt) || 'RAIPUR RTO, CHHATTISGARH').toUpperCase();
-      drawText(regAuthority, 884, 307, 'bold 9px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 120);
+      drawText(regAuthority, 879, 307, 'bold 8.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 124);
 
       ctx.restore();
     };
@@ -718,7 +744,7 @@ export default function RcCardTemplatePreview({
 
       {/* Canvas Card Preview Container */}
       <div className="mt-5 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-5">
-        <div className="relative w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-md transition-shadow hover:shadow-lg">
+        <div className="relative w-full max-w-4xl overflow-hidden rounded-none border border-slate-300 bg-white shadow-md transition-shadow hover:shadow-lg">
           {template ? (
             templateError ? (
               <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 p-6 text-center text-xs text-red-600">
