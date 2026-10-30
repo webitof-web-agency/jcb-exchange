@@ -7,6 +7,10 @@ import { GstVerificationError, gstVerificationService } from '../services/gstVer
 import { PanVerificationError, panVerificationService } from '../services/panVerification.service';
 import { streamFileFromDrive } from '../services/googleDrive.service';
 import prisma from '../lib/prisma';
+import {
+  buildVerifiedKycDocumentState,
+  type PartnerKycDocumentType,
+} from '../utils/partnerKycPersistence';
 
 const bodyOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -42,9 +46,6 @@ const partnerTemplateTypeOf = (value: unknown): PartnerTemplateType | null => {
   return PARTNER_TEMPLATE_TYPES.has(documentType as PartnerTemplateType) ? documentType as PartnerTemplateType : null;
 };
 
-const normalizePartnerDocumentNumber = (value: unknown) =>
-  typeof value === 'string' ? value.trim().replace(/\s+/g, '').toUpperCase() : '';
-
 const persistPartnerVerificationDocument = async ({
   userId,
   documentType,
@@ -52,14 +53,16 @@ const persistPartnerVerificationDocument = async ({
   documentNumber,
   nameOnDocument,
   templateSaved,
+  cacheHit,
   completedAt,
 }: {
   userId: string;
-  documentType: PartnerTemplateType;
+  documentType: PartnerKycDocumentType;
   recordId: string;
   documentNumber?: unknown;
   nameOnDocument?: unknown;
   templateSaved: boolean;
+  cacheHit?: boolean;
   completedAt?: unknown;
 }) => {
   const partnerProfile = await prisma.partnerProfile.findUnique({
@@ -70,26 +73,27 @@ const persistPartnerVerificationDocument = async ({
 
   const existing = await prisma.kycDocument.findFirst({
     where: { partnerProfileId: partnerProfile.id, documentType },
-    select: { id: true },
+    select: {
+      id: true,
+      documentNumber: true,
+      nameOnDocument: true,
+      verificationCacheHit: true,
+    },
   });
-  const number = normalizePartnerDocumentNumber(documentNumber);
-  const name = typeof nameOnDocument === 'string' && nameOnDocument.trim()
-    ? nameOnDocument.trim()
-    : undefined;
-  const completed = completedAt ? new Date(String(completedAt)) : new Date();
-  const safeCompletedAt = Number.isNaN(completed.getTime()) ? new Date() : completed;
+  const nextData = buildVerifiedKycDocumentState({
+    documentType,
+    recordId,
+    documentNumber,
+    nameOnDocument,
+    templateSaved,
+    cacheHit: cacheHit ?? existing?.verificationCacheHit,
+    completedAt,
+  });
   const data = {
-    fileUrl: null,
-    fileName: null,
-    ...(number ? { documentNumber: number } : {}),
-    ...(name ? { nameOnDocument: name } : {}),
-    verificationRecordId: recordId,
-    verificationStatus: 'VERIFIED',
-    verificationCacheHit: false,
-    verificationCompletedAt: safeCompletedAt,
-    verificationMessage: null,
-    status: templateSaved ? 'UPLOADED' : 'NOT_UPLOADED',
-  } as const;
+    ...nextData,
+    documentNumber: nextData.documentNumber ?? existing?.documentNumber ?? null,
+    nameOnDocument: nextData.nameOnDocument ?? existing?.nameOnDocument ?? null,
+  };
 
   if (existing) {
     return prisma.kycDocument.update({ where: { id: existing.id }, data });
@@ -98,7 +102,6 @@ const persistPartnerVerificationDocument = async ({
   return prisma.kycDocument.create({
     data: {
       partnerProfileId: partnerProfile.id,
-      documentType,
       ...data,
     },
   });
@@ -142,6 +145,7 @@ export const completePartnerAadhaar = async (req: Request, res: Response, next: 
         documentNumber: (result.result as Record<string, unknown> | null)?.aadhaarNumber,
         nameOnDocument: (result.result as Record<string, unknown> | null)?.fullName,
         templateSaved: Boolean(result.template),
+        cacheHit: result.cacheHit === true,
         completedAt: result.record.completedAt,
       });
     }
@@ -242,38 +246,19 @@ export const verifyPartnerPan = async (req: Request, res: Response, next: NextFu
   try {
     const result = await panVerificationService.getPanComprehensiveV2(bodyOf(req.body), req.user!.id);
 
-    // Auto-persist verification into partner profile immediately so it is never lost on refresh
     if (result.record?.id && result.record?.status === 'SUCCESS') {
-      try {
-        const partnerProfile = await prisma.partnerProfile.findUnique({
-          where: { userId: req.user!.id },
-          select: { id: true },
-        });
-        if (partnerProfile) {
-          const panNumber = String(req.body.id_number || '').trim().toUpperCase();
-          const fullName = (result.result as any)?.panDetails?.fullName || undefined;
-
-          const existingDoc = await prisma.kycDocument.findFirst({
-            where: { partnerProfileId: partnerProfile.id, documentType: 'PAN_CARD' },
-          });
-          if (existingDoc) {
-            await prisma.kycDocument.update({
-              where: { id: existingDoc.id },
-              data: {
-                ...(panNumber ? { documentNumber: panNumber } : {}),
-                ...(fullName ? { nameOnDocument: fullName } : {}),
-                verificationRecordId: result.record.id,
-                verificationStatus: 'VERIFIED',
-                verificationCacheHit: result.cacheHit === true,
-                verificationCompletedAt: result.record.completedAt ? new Date(result.record.completedAt) : new Date(),
-                verificationMessage: null,
-              },
-            });
-          }
-        }
-      } catch (persistErr) {
-        console.error('Failed to auto-update KYC document after PAN verification:', persistErr);
-      }
+      const panResult = bodyOf(result.result);
+      const panDetails = bodyOf(panResult.panDetails);
+      await persistPartnerVerificationDocument({
+        userId: req.user!.id,
+        documentType: 'PAN_CARD',
+        recordId: result.record.id,
+        documentNumber: bodyOf(req.body).id_number,
+        nameOnDocument: panDetails.fullName,
+        templateSaved: Boolean(result.template),
+        cacheHit: result.cacheHit === true,
+        completedAt: result.record.completedAt,
+      });
     }
 
     return res.status(result.cacheHit ? 200 : 201).json({ success: true, ...result });
@@ -288,38 +273,18 @@ export const verifyPartnerGstin = async (req: Request, res: Response, next: Next
   try {
     const result = await gstVerificationService.verifyGstin(bodyOf(req.body), req.user!.id);
 
-    // Auto-persist verification into partner profile immediately so it is never lost on refresh
     if (result.record?.id && result.record?.status === 'SUCCESS') {
-      try {
-        const partnerProfile = await prisma.partnerProfile.findUnique({
-          where: { userId: req.user!.id },
-          select: { id: true },
-        });
-        if (partnerProfile) {
-          const gstinNumber = String(req.body.id_number || req.body.gstin || '').trim().toUpperCase();
-          const legalName = (result.result as any)?.legalName || (result.result as any)?.businessName || undefined;
-
-          const existingDoc = await prisma.kycDocument.findFirst({
-            where: { partnerProfileId: partnerProfile.id, documentType: 'GST_CERTIFICATE' },
-          });
-          if (existingDoc) {
-            await prisma.kycDocument.update({
-              where: { id: existingDoc.id },
-              data: {
-                ...(gstinNumber ? { documentNumber: gstinNumber } : {}),
-                ...(legalName ? { nameOnDocument: legalName } : {}),
-                verificationRecordId: result.record.id,
-                verificationStatus: 'VERIFIED',
-                verificationCacheHit: result.cacheHit === true,
-                verificationCompletedAt: result.record.completedAt ? new Date(result.record.completedAt) : new Date(),
-                verificationMessage: null,
-              },
-            });
-          }
-        }
-      } catch (persistErr) {
-        console.error('Failed to auto-update KYC document after GST verification:', persistErr);
-      }
+      const gstResult = bodyOf(result.result);
+      await persistPartnerVerificationDocument({
+        userId: req.user!.id,
+        documentType: 'GST_CERTIFICATE',
+        recordId: result.record.id,
+        documentNumber: bodyOf(req.body).id_number ?? bodyOf(req.body).gstin,
+        nameOnDocument: gstResult.legalName ?? gstResult.businessName,
+        templateSaved: Boolean(result.template),
+        cacheHit: result.cacheHit === true,
+        completedAt: result.record.completedAt,
+      });
     }
 
     return res.status(result.cacheHit ? 200 : 201).json({ success: true, ...result });

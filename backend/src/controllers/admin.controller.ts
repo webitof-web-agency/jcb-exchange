@@ -58,6 +58,7 @@ import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
 import { normalizeProfileEmail } from '../utils/profileSecurity';
 import { validateField } from '../utils/fieldValidation';
+import { normalizePartnerInventory } from '../utils/partnerInventory';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -222,7 +223,11 @@ const managedUserInclude = {
   },
   _count: {
     select: {
-      listings: true,
+      listings: {
+        where: {
+          status: ListingStatus.PUBLISHED,
+        },
+      },
     },
   },
   customerPrimeSubscriptions: {
@@ -271,6 +276,16 @@ const managedUserCompactInclude = {
       onboardingStatus: true,
       accountStatus: true,
       district: true,
+      listingLimit: true,
+    },
+  },
+  _count: {
+    select: {
+      listings: {
+        where: {
+          status: ListingStatus.PUBLISHED,
+        },
+      },
     },
   },
   createdBy: {
@@ -379,6 +394,10 @@ const mapManagedUser = (user: any) => {
     kycStatus: user.partnerProfile?.kycStatus || null,
     onboardingStatus: user.partnerProfile?.onboardingStatus || null,
     accountStatus: user.partnerProfile?.accountStatus || null,
+    ...normalizePartnerInventory({
+      publishedListings: user._count?.listings,
+      listingLimit: user.partnerProfile?.listingLimit,
+    }),
     createdAt: user.createdAt,
     createdBy: user.createdBy || null,
     partnerProfile: user.partnerProfile || null,

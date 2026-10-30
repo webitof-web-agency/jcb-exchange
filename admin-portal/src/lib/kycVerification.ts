@@ -58,6 +58,19 @@ export const isKycVerificationSuccessful = (
   return false;
 };
 
+export const isKycVerificationResponseSuccessful = (
+  documentType: KycVerificationDocumentType,
+  result: Record<string, unknown> | null | undefined,
+  options?: { recordStatus?: unknown; templateSaved?: boolean },
+) => {
+  if (isKycVerificationSuccessful(documentType, result)) return true;
+
+  // Verification results are intentionally removed after a generated template
+  // is uploaded. A successful record with that saved template remains verified.
+  return options?.templateSaved === true
+    && stringOf(options.recordStatus).toUpperCase() === 'SUCCESS';
+};
+
 export const getKycVerificationDisplay = (
   documentType: KycVerificationDocumentType,
   result: Record<string, unknown> | null | undefined,
@@ -72,6 +85,16 @@ export const getKycVerificationDisplay = (
       status: stringOf(details.panStatusDescription || details.status),
       category: stringOf(details.category),
       extra: seedingStatus === 'Y' ? 'Aadhaar seeded' : seedingStatus === 'R' ? 'Aadhaar not seeded' : '',
+    };
+  }
+
+  if (documentType === 'AADHAAR_CARD') {
+    return {
+      maskedNumber: stringOf(value.maskedAadhaar || value.aadhaarNumber || value.aadhaar),
+      displayName: stringOf(value.fullName || value.name),
+      status: 'Verified',
+      category: stringOf(value.gender),
+      extra: '',
     };
   }
 

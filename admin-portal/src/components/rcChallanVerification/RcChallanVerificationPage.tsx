@@ -92,9 +92,9 @@ function SafeValue({ value }: { value: unknown }) {
     return (
       <dl className="space-y-1 text-xs">
         {Object.entries(value as Record<string, unknown>).map(([key, item]) => (
-          <div key={key} className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 py-1 border-b border-slate-100 last:border-none">
+          <div key={key} className="flex flex-col gap-0.5 py-1 border-b border-slate-100 last:border-none">
             <dt className="font-semibold text-slate-500 shrink-0">{titleize(key)}:</dt>
-            <dd className="font-medium text-slate-900 break-words text-left sm:text-right">
+            <dd className="font-medium text-slate-900 break-words">
               <SafeValue value={item} />
             </dd>
           </div>

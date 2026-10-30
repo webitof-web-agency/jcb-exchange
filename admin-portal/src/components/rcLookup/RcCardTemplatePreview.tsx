@@ -168,13 +168,17 @@ export default function RcCardTemplatePreview({
   );
   const expired = remaining <= 0;
 
-  // Revoke object URL when previewUrl changes or component unmounts
+  // Revoke previous object URL when previewUrl is replaced, NOT on the same render cycle as the set.
+  // We keep a ref to the previous URL so we can revoke it only after the img has had a chance to load.
+  const prevPreviewUrlRef = useRef('');
   useEffect(() => {
-    return () => {
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
+    const prev = prevPreviewUrlRef.current;
+    prevPreviewUrlRef.current = previewUrl;
+    if (prev && prev.startsWith('blob:') && prev !== previewUrl) {
+      // Delay revoke so the browser can paint the new image first
+      const t = window.setTimeout(() => URL.revokeObjectURL(prev), 5000);
+      return () => window.clearTimeout(t);
+    }
   }, [previewUrl]);
 
   // Countdown timer for template upload window
@@ -325,8 +329,8 @@ export default function RcCardTemplatePreview({
         });
 
         if (active) {
-          // QR box at x=535, y=108, size=130x130 (generous gap from left border line at x=520)
-          ctx.drawImage(qrImg, 535, 108, 130, 130);
+          // QR box at x=530, y=105, size=130x130 (centered within card left frame)
+          ctx.drawImage(qrImg, 530, 105, 130, 130);
         }
       }
 
@@ -458,7 +462,7 @@ export default function RcCardTemplatePreview({
 
       // Body Type: directly below label '/Body Type:' (starts flush at x=808)
       const bodyType = (safeStr(rcData.bodyType) || '-').toUpperCase();
-      drawText(bodyType, 808, 163, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 190);
+      drawText(bodyType, 808, 163, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 185);
 
       // Seating Capacity: directly below label 'Seating(in all) Capacity' (starts flush at x=691)
       const seating = safeStr(rcData.seatCapacity) || '-';
@@ -485,7 +489,7 @@ export default function RcCardTemplatePreview({
 
       // Registration Authority: directly below label 'Registration Authority' (starts flush at x=884)
       const regAuthority = (safeStr(rcData.registeredAt) || 'RAIPUR RTO, CHHATTISGARH').toUpperCase();
-      drawText(regAuthority, 884, 307, 'bold 9px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 115);
+      drawText(regAuthority, 884, 307, 'bold 9px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 120);
 
       ctx.restore();
     };

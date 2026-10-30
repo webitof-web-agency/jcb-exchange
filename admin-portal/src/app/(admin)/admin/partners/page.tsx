@@ -16,6 +16,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 import { generateAdminPartnerDetailPath, generateAdminPartnerEditPath } from '@/lib/routePaths';
+import { getPartnerInventoryDisplay } from '@/lib/partnerInventoryDisplay.mjs';
 
 interface ManagedUser {
   id: string;
@@ -32,7 +33,7 @@ interface ManagedUser {
   kycStatus: string | null;
   onboardingStatus: string | null;
   accountStatus: string | null;
-  listingLimit: number;
+  listingLimit: number | null;
   listingCount: number;
   createdAt: string;
   partnerProfile?: {
@@ -255,6 +256,8 @@ export default function SuperAdminPartnersPage() {
   }, [canViewPartners]);
 
   useEffect(() => {
+    // The fetch callback owns loading/error state for this client-side directory.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchPartners();
   }, [fetchPartners]);
 
@@ -327,6 +330,8 @@ export default function SuperAdminPartnersPage() {
   const totalPages = Math.ceil(filteredPartners.length / pageSize) || 1;
 
   useEffect(() => {
+    // Reset pagination when filters change so the next result set starts on page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [search, statusFilter, typeFilter, sortBy]);
 
@@ -814,6 +819,7 @@ export default function SuperAdminPartnersPage() {
               <tbody className="divide-y divide-slate-100">
                 {paginatedPartners.map((partner) => {
                   const partnerStatus = getPartnerStatus(partner);
+                  const inventory = getPartnerInventoryDisplay(partner);
                   const whatsappUrl = getWhatsAppUrl(partner.mobile);
                   const detailPath = generateAdminPartnerDetailPath(routeBase, {
                     id: partner.id,
@@ -926,17 +932,18 @@ export default function SuperAdminPartnersPage() {
 
                       {/* Inventory Count */}
                       <td className="py-2.5 px-3.5">
-                        <div className="w-24">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 mb-0.5">
-                            <span>{partner.listingCount || 0}</span>
-                            <span className="text-slate-400 font-normal">/ {partner.listingLimit || '∞'}</span>
+                        <div
+                          className="w-24"
+                          title={`${inventory.listingCount} published machine${inventory.listingCount === 1 ? '' : 's'} · unlimited inventory`}
+                        >
+                          <div className="mb-0.5 flex items-center justify-between text-[11px] font-bold text-slate-800">
+                            <span>{inventory.listingCount}</span>
+                            <span className="font-normal text-slate-400">/ ∞</span>
                           </div>
-                          <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div
-                              className="h-full bg-amber-400 transition-all"
-                              style={{ width: `${Math.min(100, ((partner.listingCount || 0) / (partner.listingLimit || 20)) * 100)}%` }}
-                            />
-                          </div>
+                          <div
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+                            aria-hidden="true"
+                          />
                         </div>
                       </td>
 
@@ -1106,6 +1113,7 @@ export default function SuperAdminPartnersPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
             {paginatedPartners.map((partner) => {
               const partnerStatus = getPartnerStatus(partner);
+              const inventory = getPartnerInventoryDisplay(partner);
               const whatsappUrl = getWhatsAppUrl(partner.mobile);
               const detailPath = generateAdminPartnerDetailPath(routeBase, {
                 id: partner.id,
@@ -1187,7 +1195,7 @@ export default function SuperAdminPartnersPage() {
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 font-medium block">Inventory</span>
                       <span className="text-xs font-bold text-slate-900">
-                        {partner.listingCount || 0} / {partner.listingLimit || '∞'}
+                        {inventory.listingCount} / ∞
                       </span>
                     </div>
                   </div>

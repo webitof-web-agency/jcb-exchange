@@ -739,7 +739,7 @@ export class AadhaarVerificationService {
 
   async getHistoryDetail(id: string, requestedById: string, role = 'EMPLOYEE') {
     let record = await this.record.findUnique({ where: { id }, include: { template: true } });
-    if (!record || !record.template || (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById)) throw new AadhaarVerificationError('Aadhaar verification record not found.', 404, 'record_not_found');
+    if (!record || (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById)) throw new AadhaarVerificationError('Aadhaar verification record not found.', 404, 'record_not_found');
     record = await this.clearExpiredRawData(record);
     let result: SafeResult | null = null;
     if (record.status === AadhaarVerificationStatus.SUCCESS && isAadhaarRawDataAvailable(record)) {

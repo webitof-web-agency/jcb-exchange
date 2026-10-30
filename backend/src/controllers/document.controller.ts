@@ -22,7 +22,6 @@ import {
   deleteFileFromDrive,
   uploadFileToDrive,
   extractDriveFileId,
-  streamFileFromDrive,
   streamDriveMediaWithHeaders,
 } from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
@@ -451,7 +450,13 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
 
     const driveFileId = extractDriveFileId(fileUrl);
     if (driveFileId) {
-      const stream = await streamFileFromDrive(driveFileId);
+      const { stream, headers } = await streamDriveMediaWithHeaders(driveFileId);
+      const contentType = String(headers['content-type'] || 'application/octet-stream');
+      const contentLength = headers['content-length'];
+      res.setHeader('Content-Type', contentType);
+      if (contentLength) {
+        res.setHeader('Content-Length', String(contentLength));
+      }
       stream.on('error', next);
       stream.pipe(res);
       return;

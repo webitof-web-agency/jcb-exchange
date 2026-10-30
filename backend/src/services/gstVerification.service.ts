@@ -428,6 +428,28 @@ export class GstVerificationService {
   }
 
   private async run(gstin: string, requestedById: string, requestFingerprint: string) {
+    const savedTemplateRecord = await this.record.findFirst({
+      where: {
+        requestFingerprint,
+        requestedById,
+        status: GST_STATUS.SUCCESS,
+        template: { isNot: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+        template: true,
+      },
+    });
+    if (savedTemplateRecord?.template) {
+      return {
+        record: recordSummary(savedTemplateRecord),
+        result: null,
+        template: gstTemplateSummary(savedTemplateRecord.template),
+        cacheHit: true,
+      };
+    }
+
     const runtime = await this.getRuntime();
     const maskedGstin = maskGstin(gstin);
     const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret);
@@ -708,6 +730,22 @@ export class GstVerificationService {
     if (!record) throw new GstVerificationError('GST verification record not found.', 404, 'record_not_found');
     if (typeof role === 'string' && ['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && requestedById && record.requestedById !== requestedById) {
       throw new GstVerificationError('You do not have access to this GST history record.', 403, 'history_forbidden');
+    }
+    if (!record.template && record.requestFingerprint && record.requestedById) {
+      const savedTemplateRecord = await this.record.findFirst({
+        where: {
+          requestFingerprint: record.requestFingerprint,
+          requestedById: record.requestedById,
+          status: GST_STATUS.SUCCESS,
+          template: { isNot: null },
+        },
+        orderBy: { completedAt: 'desc' },
+        include: {
+          requestedBy: { select: { id: true, name: true, email: true } },
+          template: true,
+        },
+      });
+      if (savedTemplateRecord?.template) record = savedTemplateRecord;
     }
     record = await this.clearExpiredRawData(record);
     let result: unknown = null;

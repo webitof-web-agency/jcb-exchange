@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   getKycVerificationFields,
   getKycVerificationDisplay,
+  isKycVerificationResponseSuccessful,
   normalizeKycDocumentNumber,
   validateKycDocumentNumber,
 } from './kycVerification';
@@ -57,6 +58,23 @@ test('maps safe PAN Advanced V2 and GST verification summaries for the KYC card'
   );
 });
 
+test('maps Aadhaar verification summaries for the KYC card', () => {
+  assert.deepEqual(
+    getKycVerificationDisplay('AADHAAR_CARD', {
+      fullName: 'EXAMPLE PARTNER',
+      maskedAadhaar: 'XXXX XXXX 9012',
+      gender: 'MALE',
+    }),
+    {
+      maskedNumber: 'XXXX XXXX 9012',
+      displayName: 'EXAMPLE PARTNER',
+      status: 'Verified',
+      category: 'MALE',
+      extra: '',
+    },
+  );
+});
+
 test('maps verified PAN and GST results into review-safe fields', () => {
   assert.deepEqual(
     getKycVerificationFields('PAN_CARD', {
@@ -96,5 +114,24 @@ test('maps verified PAN and GST results into review-safe fields', () => {
       { label: 'Taxpayer type', value: 'Regular' },
       { label: 'Address', value: 'Main Road, City' },
     ],
+  );
+});
+
+test('treats a saved successful template as verified after raw result cleanup', () => {
+  assert.equal(
+    isKycVerificationResponseSuccessful('GST_CERTIFICATE', null, {
+      recordStatus: 'SUCCESS',
+      templateSaved: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isKycVerificationResponseSuccessful('GST_CERTIFICATE', {
+      gstinStatus: 'Inactive',
+    }, {
+      recordStatus: 'SUCCESS',
+      templateSaved: false,
+    }),
+    false,
   );
 });

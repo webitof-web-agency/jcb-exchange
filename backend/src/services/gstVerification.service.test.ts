@@ -69,6 +69,61 @@ test('stores a GST template privately and clears the encrypted result after uplo
   assert.equal(records[0].rawDataExpiresAt, null);
 });
 
+test('reuses a saved GST template record instead of starting a new verification', async () => {
+  let providerCalls = 0;
+  let createCalls = 0;
+  const savedRecord = {
+    id: 'gst-saved-template-record',
+    status: 'SUCCESS',
+    maskedGstin: '22AA********1ZR',
+    requestedById: 'user-1',
+    provider: 'SUREPASS',
+    encryptedResult: null,
+    rawDataExpiresAt: null,
+    requestedBy: null,
+    template: {
+      id: 'gst-template-1',
+      fileName: 'gst-template.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 128,
+      sha256: 'template-sha',
+      createdAt: new Date(),
+    },
+    createdAt: new Date(),
+    completedAt: new Date(),
+  };
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async ({ where }: { where: Record<string, any> }) => {
+        if (where.template) return savedRecord;
+        return null;
+      },
+      findUnique: async () => null,
+      findMany: async () => [savedRecord],
+      count: async () => 1,
+      create: async () => {
+        createCalls += 1;
+        throw new Error('a saved template must prevent a new record');
+      },
+      update: async () => savedRecord,
+    },
+    provider: {
+      verifyGstin: async () => {
+        providerCalls += 1;
+        throw new Error('provider must not be called for a saved template');
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyGstin({ id_number: '22AAHCJ5752E1ZR' }, 'user-1');
+
+  assert.equal(result.record.id, 'gst-saved-template-record');
+  assert.equal(result.template?.id, 'gst-template-1');
+  assert.equal(providerCalls, 0);
+  assert.equal(createCalls, 0);
+});
+
 test('masks GSTIN and normalizes documented GST business fields', () => {
   assert.equal(maskGstin('08AKWPJ1234H1ZN'), '08AK********1ZN');
   assert.deepEqual(normalizeGstVerificationResult({
@@ -252,4 +307,48 @@ test('loads a saved GST detail with the configured encryption secret', async () 
     filing_status: [],
     hsn_info: {},
   });
+});
+
+test('recovers the previously saved GST template when a later record has no template', async () => {
+  const savedTemplate = {
+    id: 'gst-template-previous',
+    fileName: 'gst-template-previous.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 128,
+    sha256: 'previous-template-sha',
+    createdAt: new Date(),
+  };
+  const currentRecord = {
+    id: 'gst-record-current',
+    requestFingerprint: 'gst-fingerprint',
+    requestedById: 'user-1',
+    status: 'SUCCESS',
+    encryptedResult: null,
+    rawDataExpiresAt: null,
+    template: null,
+    requestedBy: null,
+    createdAt: new Date(),
+    completedAt: new Date(),
+  };
+  const previousRecord = {
+    ...currentRecord,
+    id: 'gst-record-previous',
+    template: savedTemplate,
+  };
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async ({ where }: { where: Record<string, any> }) => where.template ? previousRecord : null,
+      findUnique: async () => currentRecord,
+      findMany: async () => [currentRecord, previousRecord],
+      count: async () => 2,
+      create: async () => ({}),
+      update: async () => currentRecord,
+    },
+    dataSecret,
+  });
+
+  const detail = await service.getHistoryDetail('gst-record-current', 'user-1', 'PARTNER');
+
+  assert.equal(detail.record.id, 'gst-record-previous');
+  assert.equal(detail.template?.id, 'gst-template-previous');
 });

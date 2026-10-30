@@ -63,13 +63,14 @@ import {
   getPartnerOnboardingStepError,
   getStepToKeepAfterDraftSave,
 } from '@/lib/partnerOnboardingValidation';
+import { saveBeforeStepAdvance } from '@/lib/partnerOnboardingNavigation.mjs';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import { findLocationOptionId, normalizeLocationOptions } from '@/lib/locationSelection.mjs';
 import {
   getKycVerificationDisplay,
-  isKycVerificationSuccessful,
+  isKycVerificationResponseSuccessful,
   normalizeKycDocumentNumber,
   validateKycDocumentNumber,
   type KycVerificationDocumentType,
@@ -81,6 +82,10 @@ import {
   getUploadValidationError,
 } from '@/lib/fileUpload';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
+import {
+  getDocumentPreviewMimeType,
+  getSafeDocumentPreviewSource,
+} from '@/lib/documentPreview.mjs';
 import { ApiSparkleIcon } from '@/components/ui/ApiFillBadge';
 import { normalizeAadhaarInput, validateAadhaarNumber } from '@/lib/aadhaarVerification';
 import { DigilockerVerificationModal, type DigilockerVerificationSession } from '@/components/accounts/sold-vehicle/DigilockerVerificationModal';
@@ -194,6 +199,7 @@ type KycDocumentForm = {
   verificationCacheHit?: boolean;
   verificationResult?: Record<string, unknown> | null;
   verificationTemplate?: VerificationTemplateSummary | null;
+  verificationRawDataExpiresAt?: string | null;
   verificationMessage?: string;
 };
 
@@ -204,6 +210,17 @@ type VerificationTemplateSummary = {
   fileSize: number;
   sha256: string;
   createdAt: string;
+};
+
+type DocumentPreviewState = {
+  url: string;
+  sourceUrl?: string;
+  fileName?: string;
+  title: string;
+  isPdf?: boolean;
+  loading?: boolean;
+  error?: string;
+  ownsObjectUrl?: boolean;
 };
 
 type AadhaarVerificationApiResponse = PartnerAadhaarTemplateResponse & {
@@ -403,7 +420,9 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const sensitiveInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Preview & Modal states
-  const [previewingDoc, setPreviewingDoc] = useState<{ url: string; title: string; isPdf?: boolean } | null>(null);
+  const [previewingDoc, setPreviewingDoc] = useState<DocumentPreviewState | null>(null);
+  const previewingDocRef = useRef<DocumentPreviewState | null>(null);
+  const previewRequestIdRef = useRef(0);
   const [templatePreview, setTemplatePreview] = useState<{
     documentType: 'PAN_CARD' | 'GST_CERTIFICATE' | 'AADHAAR_CARD';
     documentNumber: string;
@@ -877,23 +896,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     };
   };
 
-  const handleStepNavigation = (targetIndex: number) => {
-    if (!isAdminMode && targetIndex > currentStep) {
-      const stepError = getPartnerOnboardingStepError(steps[currentStep]?.id || '', profile);
-      if (stepError) {
-        setError(stepError);
-        return;
-      }
-    }
-
-    setError('');
-    setCurrentStep(targetIndex);
-  };
-
-  const handleSaveDraft = async () => {
-    if (isAdminMode && !canEdit) {
-      setError('You do not have permission to edit this partner KYC record.');
-      return;
+  const handleSaveDraft = async (options?: { advanceToStep?: number }) => {
+    if (!canEdit) {
+      setError(isAdminMode
+        ? 'You do not have permission to edit this partner KYC record.'
+        : 'Onboarding is locked while your application is under review.');
+      return false;
     }
 
     setSaving(true);
@@ -916,18 +924,51 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       refreshWithResponse(response.data, true);
       if (isAdminMode) {
         router.push(editorReturnPath);
-        return;
+        return true;
       }
 
       setSuccess(response.data.message || 'Onboarding draft saved successfully.');
+      if (options?.advanceToStep !== undefined) {
+        setCurrentStep(options.advanceToStep);
+      }
+      return true;
     } catch (err) {
       if (axios.isAxiosError(err)) {
         setError(err.response?.data?.error || 'Unable to save onboarding draft.');
       } else {
         setError('Unable to save onboarding draft.');
       }
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStepNavigation = async (targetIndex: number) => {
+    if (saving || targetIndex === currentStep) {
+      return;
+    }
+
+    if (isAdminMode || targetIndex < currentStep) {
+      setError('');
+      setCurrentStep(targetIndex);
+      return;
+    }
+
+    if (!canEdit) {
+      setError('Onboarding is locked while your application is under review.');
+      return;
+    }
+
+    const result = await saveBeforeStepAdvance({
+      currentStep,
+      targetStep: targetIndex,
+      validate: () => getPartnerOnboardingStepError(steps[currentStep]?.id || '', profile),
+      save: () => handleSaveDraft({ advanceToStep: targetIndex }),
+    });
+
+    if (result.error) {
+      setError(result.error);
     }
   };
 
@@ -997,7 +1038,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const getTemplatePreviewResponse = (document: KycDocumentForm): PartnerTemplateResponse | null => {
     const recordId = document.verificationRecordId?.trim();
     const template = document.verificationTemplate;
-    if (!recordId || !template) return null;
+    const verificationResult = document.verificationResult || null;
+    if (!recordId || (!template && !verificationResult)) return null;
 
     if (document.documentType === 'PAN_CARD') {
       return {
@@ -1011,12 +1053,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           providerClientId: null,
           messageCode: null,
           safeMessage: null,
-          createdAt: template.createdAt,
-          completedAt: template.createdAt,
-          rawDataExpiresAt: null,
+          createdAt: template?.createdAt || new Date().toISOString(),
+          completedAt: template?.createdAt || null,
+          rawDataExpiresAt: document.verificationRawDataExpiresAt || null,
           template,
         },
-        result: null,
+        result: verificationResult,
         template,
       } as PartnerTemplateResponse;
     }
@@ -1035,12 +1077,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           providerClientId: null,
           messageCode: null,
           safeMessage: null,
-          createdAt: template.createdAt,
-          completedAt: template.createdAt,
-          rawDataExpiresAt: null,
+          createdAt: template?.createdAt || new Date().toISOString(),
+          completedAt: template?.createdAt || null,
+          rawDataExpiresAt: document.verificationRawDataExpiresAt || null,
           template,
         },
-        result: null,
+        result: verificationResult,
         template,
       } as PartnerTemplateResponse;
     }
@@ -1052,10 +1094,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         status: 'SUCCESS',
         maskedAadhaar: document.documentNumber || 'SAVED',
         providerClientId: null,
-        rawDataExpiresAt: null,
+        rawDataExpiresAt: document.verificationRawDataExpiresAt || null,
         template,
       },
-      result: null,
+      result: verificationResult,
       template,
     };
   };
@@ -1072,6 +1114,87 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       response: previewResponse,
     });
   };
+
+  const releaseOwnedPreviewUrl = (preview: DocumentPreviewState | null) => {
+    if (preview?.ownsObjectUrl && preview.url) {
+      URL.revokeObjectURL(preview.url);
+    }
+  };
+
+  const setDocumentPreview = (next: DocumentPreviewState | null) => {
+    setPreviewingDoc((current) => {
+      if (current && current.url !== next?.url) {
+        releaseOwnedPreviewUrl(current);
+      }
+      previewingDocRef.current = next;
+      return next;
+    });
+  };
+
+  const closeDocumentPreview = () => {
+    previewRequestIdRef.current += 1;
+    setDocumentPreview(null);
+  };
+
+  const openDocumentPreview = async (
+    url: string,
+    title: string,
+    isPdf = false,
+    fileName = '',
+  ) => {
+    const source = url.trim();
+    if (!source) {
+      setError('This uploaded file is not available for preview.');
+      return;
+    }
+
+    const requestId = ++previewRequestIdRef.current;
+    if (/^blob:/i.test(source)) {
+      setDocumentPreview({ url: source, sourceUrl: source, fileName, title, isPdf });
+      return;
+    }
+
+    setDocumentPreview({ url: '', sourceUrl: source, fileName, title, isPdf, loading: true });
+    try {
+      const response = await api.get(normalizeSecureDocumentPath(source), { responseType: 'blob' });
+      const responseBlob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data]);
+      const mimeType = responseBlob.type.startsWith('image/') || responseBlob.type === 'application/pdf'
+        ? responseBlob.type
+        : getDocumentPreviewMimeType(fileName || source, isPdf);
+      const previewUrl = URL.createObjectURL(new Blob([responseBlob], { type: mimeType }));
+
+      if (requestId !== previewRequestIdRef.current) {
+        URL.revokeObjectURL(previewUrl);
+        return;
+      }
+
+      setDocumentPreview({
+        url: previewUrl,
+        sourceUrl: source,
+        fileName,
+        title,
+        isPdf,
+        ownsObjectUrl: true,
+      });
+    } catch {
+      if (requestId === previewRequestIdRef.current) {
+        setDocumentPreview({
+          url: '',
+          sourceUrl: source,
+          fileName,
+          title,
+          isPdf,
+          error: 'Preview could not be loaded. Please try again.',
+        });
+      }
+    }
+  };
+
+  useEffect(() => () => {
+    releaseOwnedPreviewUrl(previewingDocRef.current);
+  }, []);
 
   const completeAadhaarVerification = async (clientId: string) => {
     const session = aadhaarSession;
@@ -1185,7 +1308,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       const response = await api.post(endpoint, { id_number: documentNumber });
       const verificationResult = (response.data?.result || null) as Record<string, unknown> | null;
       const display = getKycVerificationDisplay(documentType, verificationResult);
-      const verified = isKycVerificationSuccessful(documentType, verificationResult);
+      const verificationTemplate = response.data?.template || response.data?.record?.template || null;
+      const verified = isKycVerificationResponseSuccessful(documentType, verificationResult, {
+        recordStatus: response.data?.record?.status,
+        templateSaved: Boolean(verificationTemplate),
+      });
       const cacheHit = response.data?.cacheHit === true;
 
       updateDocument(documentType, {
@@ -1195,7 +1322,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         verificationRecordId: response.data?.record?.id || '',
         verificationCacheHit: cacheHit,
         verificationResult,
-        verificationTemplate: response.data?.template || response.data?.record?.template || null,
+        verificationTemplate,
         verificationMessage: verified
           ? ''
           : 'Official record retrieved, but requires manual team sign-off before approval.',
@@ -1303,7 +1430,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               <span className="text-xs font-semibold text-slate-800">{completedStepsCount} of {totalSteps} Complete ({progressPercent}%)</span>
             </div>
 
-            {canEdit && (
+            {isAdminMode && canEdit && (
               <button
                 type="button"
                 onClick={() => void handleSaveDraft()}
@@ -1358,7 +1485,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 <button
                   key={step.id}
                   type="button"
-                  onClick={() => handleStepNavigation(index)}
+                  onClick={() => void handleStepNavigation(index)}
+                  disabled={saving}
                   className={`group relative flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all ${
                     isActive
                       ? 'border-[#FFC107] bg-amber-50/50 shadow-2xs ring-1 ring-[#FFC107]/40'
@@ -1860,7 +1988,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 {documentsByType.map((document) => {
                   const canVerify = ['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType);
                   const isVerifying = verifyingDocumentType === document.documentType;
-                  const verDisplay = null;
+                  const verDisplay = document.verificationResult
+                    ? getKycVerificationDisplay(
+                      document.documentType as KycVerificationDocumentType,
+                      document.verificationResult,
+                    )
+                    : null;
                   const docLabel = document.documentType === 'PAN_CARD'
                     ? 'Company PAN number'
                     : document.documentType === 'GST_CERTIFICATE'
@@ -1886,7 +2019,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                       onVerify={() => void verifyKycDocument(document.documentType as KycVerificationDocumentType)}
                       onOpenTemplate={() => openTemplatePreview(document)}
                       isTemplateBacked={canVerify}
-                      onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
+                      onPreview={(url, title, isPdf, fileName) => void openDocumentPreview(url, title, isPdf, fileName)}
                       showAadhaarNumber={showAadhaarNumber}
                       onToggleAadhaarVisibility={() => setShowAadhaarNumber(!showAadhaarNumber)}
                     />
@@ -1916,7 +2049,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                         onVerify={() => {}}
                         onOpenTemplate={() => {}}
                         isTemplateBacked={false}
-                        onPreview={(url, title, isPdf) => setPreviewingDoc({ url, title, isPdf })}
+                        onPreview={(url, title, isPdf, fileName) => void openDocumentPreview(url, title, isPdf, fileName)}
                         showAadhaarNumber={false}
                         onToggleAadhaarVisibility={() => {}}
                       />
@@ -2097,7 +2230,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
                     <button
                       type="button"
-                      onClick={() => handleStepNavigation(item.stepIndex)}
+                      onClick={() => void handleStepNavigation(item.stepIndex)}
                       className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800"
                     >
                       <span>Review Details</span>
@@ -2211,7 +2344,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
             {currentStep < steps.length - 1 && (
               <button
                 type="button"
-                onClick={() => handleStepNavigation(Math.min(steps.length - 1, currentStep + 1))}
+                onClick={() => void handleStepNavigation(Math.min(steps.length - 1, currentStep + 1))}
+                disabled={saving || (!isAdminMode && !canEdit)}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-all shadow-2xs"
               >
                 <span>Next Step</span>
@@ -2241,27 +2375,6 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 </button>
               </>
             ) : null}
-
-            {!isAdminMode && currentStep < steps.length - 1 && canEdit && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleSaveDraft()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-all shadow-2xs disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                    <span>Save Progress</span>
-                  </>
-                )}
-              </button>
-            )}
 
             {!isAdminMode && currentStep === steps.length - 1 && (
               <button
@@ -2345,7 +2458,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 <h3 className="text-sm font-bold text-slate-900">{previewingDoc.title}</h3>
               </div>
               <div className="flex items-center gap-2">
-                {previewingDoc.url && (
+                {previewingDoc.url && !previewingDoc.loading && !previewingDoc.error && (
                   <a
                     href={previewingDoc.url}
                     target="_blank"
@@ -2359,7 +2472,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 )}
                 <button
                   type="button"
-                  onClick={() => setPreviewingDoc(null)}
+                  onClick={closeDocumentPreview}
                   className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 >
                   <X className="h-4 w-4" />
@@ -2368,7 +2481,29 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
             </div>
 
             <div className="mt-4 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-900/5 p-4 min-h-[300px] max-h-[500px] overflow-auto">
-              {previewingDoc.isPdf ? (
+              {previewingDoc.loading ? (
+                <div className="flex flex-col items-center gap-2 p-8 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+                  <p className="text-xs font-semibold text-slate-700">Loading secure preview…</p>
+                </div>
+              ) : previewingDoc.error ? (
+                <div className="flex flex-col items-center gap-2 p-8 text-center">
+                  <AlertCircle className="h-8 w-8 text-rose-500" />
+                  <p className="text-xs font-semibold text-slate-700">{previewingDoc.error}</p>
+                  <button
+                    type="button"
+                    onClick={() => void openDocumentPreview(
+                      previewingDoc.sourceUrl || '',
+                      previewingDoc.title,
+                      previewingDoc.isPdf,
+                      previewingDoc.fileName,
+                    )}
+                    className="rounded-lg bg-[#FFC107] px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-[#E5AD06]"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : previewingDoc.isPdf ? (
                 <div className="text-center p-6 space-y-3">
                   <FileText className="mx-auto h-16 w-16 text-slate-400" />
                   <p className="text-xs font-bold text-slate-700">PDF Document Stored Securely</p>
@@ -2389,6 +2524,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   width={800}
                   height={600}
                   unoptimized
+                  onError={() => setPreviewingDoc((current) => current ? {
+                    ...current,
+                    error: 'Preview could not be decoded. Please try again.',
+                  } : current)}
                   className="max-h-[460px] w-auto rounded-lg object-contain"
                 />
               )}
@@ -2477,9 +2616,19 @@ type CompactKycDocumentCardProps = {
   onUpdate: (patch: Partial<KycDocumentForm>) => void;
   onVerify: () => void;
   onOpenTemplate: () => void;
-  onPreview: (url: string, title: string, isPdf?: boolean) => void;
+  onPreview: (url: string, title: string, isPdf?: boolean, fileName?: string) => void;
   showAadhaarNumber: boolean;
   onToggleAadhaarVisibility: () => void;
+};
+
+type PreviewObjectUrl = {
+  key: string;
+  url: string;
+};
+
+type PreviewRequest = {
+  key: string;
+  promise: Promise<string>;
 };
 
 function CompactKycDocumentCard({
@@ -2507,7 +2656,10 @@ function CompactKycDocumentCard({
   const [uploadError, setUploadError] = useState('');
   const [previewObjectUrl, setPreviewObjectUrl] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewObjectUrlRef = useRef<PreviewObjectUrl | null>(null);
+  const previewRequestRef = useRef<PreviewRequest | null>(null);
 
   const title = getDocumentLabel(document.documentType, partnerType);
   const isPassportPhoto = document.documentType === 'PASSPORT_PHOTO';
@@ -2521,39 +2673,96 @@ function CompactKycDocumentCard({
     }
 
     let cancelled = false;
-    let objectUrl = '';
+    const previewKey = normalizeSecureDocumentPath(document.fileUrl);
+    const cachedPreviewEntry = previewObjectUrlRef.current;
+    const cachedPreview = cachedPreviewEntry && cachedPreviewEntry.key === previewKey
+      ? cachedPreviewEntry.url
+      : '';
 
-    const loadPreview = async () => {
-      setPreviewLoading(true);
-      try {
-        const response = await api.get(normalizeSecureDocumentPath(document.fileUrl), { responseType: 'blob' });
-        const mimeType = response.data.type || 'image/jpeg';
-        objectUrl = URL.createObjectURL(new Blob([response.data], { type: mimeType }));
-        if (!cancelled) {
-          setPreviewObjectUrl(objectUrl);
-        } else {
-          URL.revokeObjectURL(objectUrl);
-        }
-      } catch {
-        if (!cancelled) {
-          setPreviewObjectUrl('');
-        }
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
+    const loadPreview = () => {
+      setPreviewError(false);
+      if (cachedPreview) {
+        return Promise.resolve(cachedPreview);
       }
+
+      const inFlightRequest = previewRequestRef.current;
+      if (inFlightRequest && inFlightRequest.key === previewKey) {
+        return inFlightRequest.promise;
+      }
+
+      setPreviewLoading(true);
+      setPreviewObjectUrl('');
+      const request = (async () => {
+        const response = await api.get(normalizeSecureDocumentPath(document.fileUrl), { responseType: 'blob' });
+        const responseBlob = response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data]);
+        const mimeType = responseBlob.type.startsWith('image/')
+          ? responseBlob.type
+          : getDocumentPreviewMimeType(document.fileName);
+        const objectUrl = URL.createObjectURL(new Blob([responseBlob], { type: mimeType }));
+        const previousPreview = previewObjectUrlRef.current;
+        if (previousPreview && previousPreview.key !== previewKey) {
+          URL.revokeObjectURL(previousPreview.url);
+        }
+        previewObjectUrlRef.current = { key: previewKey, url: objectUrl };
+        return objectUrl;
+      })();
+
+      previewRequestRef.current = { key: previewKey, promise: request };
+      void request.then(
+        () => {
+          if (previewRequestRef.current?.promise === request) {
+            previewRequestRef.current = null;
+          }
+        },
+        () => {
+          if (previewRequestRef.current?.promise === request) {
+            previewRequestRef.current = null;
+          }
+        },
+      );
+      return request;
     };
 
-    void loadPreview();
+    void loadPreview()
+      .then((objectUrl) => {
+        if (!cancelled) {
+          setPreviewObjectUrl(objectUrl);
+          setPreviewLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewObjectUrl('');
+          setPreviewLoading(false);
+          setPreviewError(true);
+        }
+      });
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [document.fileUrl, isPdf]);
+  }, [document.fileUrl, document.fileName, isPdf]);
+
+  useEffect(() => () => {
+    const preview = previewObjectUrlRef.current;
+    if (preview) {
+      URL.revokeObjectURL(preview.url);
+      previewObjectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (localInstantPreviewUrl) URL.revokeObjectURL(localInstantPreviewUrl);
+  }, [localInstantPreviewUrl]);
 
   const handleFileChange = async (file?: File) => {
     if (!file) return;
     setUploadError('');
+    setPreviewObjectUrl('');
+    setPreviewLoading(false);
+    setPreviewError(false);
 
     const validationError = isPassportPhoto
       ? getPassportPhotoUploadValidationError(file)
@@ -2630,7 +2839,10 @@ function CompactKycDocumentCard({
     }
   };
 
-  const effectivePreviewUrl = localInstantPreviewUrl || previewObjectUrl || document.fileUrl;
+  const effectivePreviewUrl = getSafeDocumentPreviewSource({
+    localObjectUrl: localInstantPreviewUrl,
+    fetchedObjectUrl: previewObjectUrl,
+  });
 
   const renderDocIcon = () => {
     switch (document.documentType) {
@@ -2751,8 +2963,8 @@ function CompactKycDocumentCard({
                     </>
                   ) : document.verificationStatus === 'VERIFIED' ? (
                     <>
-                      <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                      <span>Verified</span>
+                      {document.verificationTemplate ? <Check className="h-3.5 w-3.5 stroke-[2.5]" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      <span>{document.verificationTemplate ? 'Verified' : 'Re-verify'}</span>
                     </>
                   ) : (
                     <>
@@ -2844,8 +3056,13 @@ function CompactKycDocumentCard({
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
               <span className="truncate font-semibold">{document.verificationTemplate ? 'Template saved securely' : 'Verified — template not saved'}</span>
             </div>
-            <button type="button" onClick={onOpenTemplate} className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 shadow-2xs ring-1 ring-emerald-200 transition hover:bg-emerald-100">
-              {document.verificationTemplate ? 'View template' : 'Preview & upload'}
+            <button
+              type="button"
+              onClick={document.verificationResult ? onOpenTemplate : onVerify}
+              disabled={!canEdit && !document.verificationTemplate}
+              className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 shadow-2xs ring-1 ring-emerald-200 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {document.verificationTemplate ? 'View template' : document.verificationResult ? 'Preview & upload' : 'Re-verify'}
             </button>
           </div>
         ) : null}
@@ -2947,7 +3164,7 @@ function CompactKycDocumentCard({
               <div className="flex items-center gap-2.5 min-w-0">
                 {/* Thumbnail */}
                 <div
-                  onClick={() => onPreview(effectivePreviewUrl, title, isPdf)}
+                  onClick={() => onPreview(effectivePreviewUrl || document.fileUrl, title, isPdf, document.fileName)}
                   className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white overflow-hidden group shadow-2xs"
                   title="Click to view full preview"
                 >
@@ -2964,6 +3181,8 @@ function CompactKycDocumentCard({
                       unoptimized
                       className="h-full w-full object-cover transition group-hover:scale-105"
                     />
+                  ) : previewError ? (
+                    <AlertCircle className="h-4 w-4 text-rose-500" />
                   ) : (
                     <FileText className="h-4 w-4 text-slate-400" />
                   )}
@@ -2986,7 +3205,7 @@ function CompactKycDocumentCard({
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
-                  onClick={() => onPreview(effectivePreviewUrl, title, isPdf)}
+                  onClick={() => onPreview(effectivePreviewUrl || document.fileUrl, title, isPdf, document.fileName)}
                   className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs transition-colors"
                   title="View Full Preview"
                 >

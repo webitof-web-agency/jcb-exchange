@@ -104,6 +104,7 @@ import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsA
 import { hasPartnerDocumentDraftData, isPartnerProfileComplete } from '../utils/partnerOnboarding';
 import { hasKycDocumentChanges, type KycDocumentSnapshot } from '../utils/kycEditPolicy';
 import { isKycVerificationRecordPersistable } from '../utils/kycVerificationPersistence';
+import { mergeVerifiedKycResponseState } from '../utils/partnerKycPersistence';
 import { createVerificationFingerprint } from '../services/verificationCache';
 import { hasAuthCredentialChange } from '../utils/authCredentialChange';
 import {
@@ -868,6 +869,7 @@ export const buildOnboardingResponse = async (
       verificationCacheHit: document.verificationCacheHit === true,
       verificationResult: null as Record<string, unknown> | null,
       verificationTemplate: null as Record<string, unknown> | null,
+      verificationRawDataExpiresAt: null as string | null,
       verificationMessage: document.verificationMessage || '',
     };
 
@@ -910,37 +912,35 @@ export const buildOnboardingResponse = async (
         };
       }
 
-      if (!detail.template) {
-        return {
-          ...base,
-          verificationRecordId: '',
-          verificationStatus: 'NOT_STARTED',
-          verificationCacheHit: false,
-          verificationResult: null,
-          verificationTemplate: null,
-          verificationMessage: '',
-        };
-      }
+      const detailRecordId = typeof detail.record?.id === 'string' && detail.record.id
+        ? detail.record.id
+        : verificationRecordId;
 
-      if (!document.verificationRecordId && verificationRecordId && document.id) {
+      const shouldPersistVerifiedDocument = detailRecordId && document.id && (
+        detailRecordId !== document.verificationRecordId ||
+        (Boolean(detail.template) && document.status !== 'UPLOADED')
+      );
+
+      if (shouldPersistVerifiedDocument) {
         void prismaAny.kycDocument.update({
           where: { id: document.id },
           data: {
-            verificationRecordId,
+            verificationRecordId: detailRecordId,
             verificationStatus: 'VERIFIED',
+            status: detail.template ? 'UPLOADED' : document.status,
             verificationCompletedAt: detail.record?.completedAt ? new Date(detail.record.completedAt) : new Date(),
           },
         }).catch(() => {});
       }
 
-      return {
-        ...base,
-        verificationRecordId,
-        verificationStatus: detail.template ? 'VERIFIED' : base.verificationStatus,
-        verificationTemplate: detail.template as Record<string, unknown> | null,
-        verificationResult: null,
-        verificationMessage: '',
-      };
+      return mergeVerifiedKycResponseState({
+        base,
+        recordId: detailRecordId,
+        recordStatus: detail.record?.status,
+        result: detail.result as Record<string, unknown> | null,
+        template: detail.template as Record<string, unknown> | null,
+        rawDataExpiresAt: detail.record?.rawDataExpiresAt,
+      });
     } catch {
       return {
         ...base,
