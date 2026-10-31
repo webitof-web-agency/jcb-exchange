@@ -162,6 +162,11 @@ export const normalizeDrivingLicenseVerificationResult = (value: unknown): Drivi
     ['gender', data.gender, 50],
     ['fatherOrHusbandName', data.father_or_husband_name ?? data.fatherOrHusbandName, 250],
     ['bloodGroup', data.blood_group ?? data.bloodGroup, 30],
+    ['organDonor', data.organ_donor ?? data.organDonor, 50],
+    ['hazardousValidity', data.hazardous_validity ?? data.hazardousValidity, 50],
+    ['hillValidity', data.hill_validity ?? data.hillValidity, 50],
+    ['mobileNumber', data.mobile_number ?? data.mobileNumber, 30],
+    ['adpvNumber', data.adpv_number ?? data.adpvNumber, 100],
   ];
   for (const [key, rawValue, maxLength] of textFields) {
     const normalized = safeText(rawValue, maxLength);
@@ -481,7 +486,11 @@ export class DrivingLicenseVerificationService {
       ? filters.status as typeof DL_STATUS[keyof typeof DL_STATUS]
       : undefined;
     const search = typeof filters.search === 'string' ? filters.search.trim().slice(0, 50) : '';
-    const where = { ...(status ? { status } : {}), ...(search ? { maskedLicenseNumber: { contains: search, mode: 'insensitive' } } : {}) };
+    const where = {
+      template: { isNot: null },
+      ...(status ? { status } : {}),
+      ...(search ? { maskedLicenseNumber: { contains: search, mode: 'insensitive' } } : {}),
+    };
     const [total, records] = await Promise.all([
       this.record.count({ where }),
       this.record.findMany({

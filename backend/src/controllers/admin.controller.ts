@@ -2,7 +2,12 @@ import { ListingStatus, Role } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
-import { deleteFileFromDrive, extractDriveFileId, streamFileFromDrive } from '../services/googleDrive.service';
+import {
+  checkGoogleDriveConnection,
+  deleteFileFromDrive,
+  extractDriveFileId,
+  streamFileFromDrive,
+} from '../services/googleDrive.service';
 import {
   buildAuthUserPayload,
   buildOnboardingResponse,
@@ -3509,6 +3514,81 @@ export const getGoogleDriveSettings = async (req: Request, res: Response, next: 
     res.status(200).json({ success: true, googleDrive: settings.googleDrive });
   } catch (error) {
     next(error);
+  }
+};
+
+const getGoogleDriveConnectionErrorMessage = (error: unknown): string => {
+  const candidate = error as {
+    code?: number | string;
+    response?: { status?: number; data?: { error?: string | { status?: string } } };
+    message?: string;
+  };
+  const status = candidate.response?.status;
+  const code = candidate.code;
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+
+  if (status === 401 || code === 401 || message.includes('invalid_grant')) {
+    return 'Google Drive refresh token is invalid or expired. Generate a new refresh token and save it.';
+  }
+
+  if (status === 403 || code === 403) {
+    return 'Google Drive access was denied. Check the Drive API, OAuth scope, and account permissions.';
+  }
+
+  if (message.includes('backup folder')) {
+    return 'Google Drive connected, but the configured backup folder is invalid or not writable.';
+  }
+
+  return 'Unable to connect to Google Drive. Check the credentials and try again.';
+};
+
+export const checkGoogleDrive = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentSettings = await getAppSettings();
+    const body = (req.body || {}) as Record<string, unknown>;
+    const readString = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+    const readCredential = (value: unknown, existingValue: string | null) => {
+      if (value === undefined) return existingValue;
+      if (typeof value !== 'string') return null;
+      const candidate = value.trim();
+      return isMaskedSecret(candidate) ? existingValue : candidate || null;
+    };
+
+    const driveSettings = {
+      ...currentSettings.googleDrive,
+      clientId: readCredential(body.clientId, currentSettings.googleDrive.clientId),
+      clientSecret: readCredential(body.clientSecret, currentSettings.googleDrive.clientSecret),
+      refreshToken: readCredential(body.refreshToken, currentSettings.googleDrive.refreshToken),
+      backupFolderId: body.backupFolderId === undefined
+        ? currentSettings.googleDrive.backupFolderId
+        : readString(body.backupFolderId) || null,
+    };
+
+    if (!driveSettings.clientId || !driveSettings.clientSecret || !driveSettings.refreshToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google Client ID, Client Secret, and Refresh Token are required.',
+      });
+    }
+
+    const result = await checkGoogleDriveConnection({
+      ...currentSettings,
+      googleDrive: driveSettings,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.backupFolder.configured
+        ? 'Google Drive is connected and the backup folder is writable.'
+        : 'Google Drive is connected and readable.',
+      connection: result,
+    });
+  } catch (error) {
+    console.error('Google Drive connection check failed:', error instanceof Error ? error.message : error);
+    return res.status(502).json({
+      success: false,
+      error: getGoogleDriveConnectionErrorMessage(error),
+    });
   }
 };
 

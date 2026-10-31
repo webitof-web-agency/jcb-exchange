@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, MessagesSquare, Phone, Save, ScanLine, ShieldCheck } from 'lucide-react';
+import { Building2, CheckCircle2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, MessagesSquare, Phone, Save, ScanLine, ShieldCheck, XCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
@@ -194,6 +194,11 @@ type MobileAppFormState = {
   appStoreLink: string;
 };
 
+type GoogleDriveCheckState = {
+  status: 'idle' | 'checking' | 'success' | 'error';
+  message: string;
+};
+
 type LeadRoutingFormState = {
   useSellerContact: boolean;
   adminCallNumber: string;
@@ -363,6 +368,8 @@ export default function SuperAdminSettingsPage() {
   const [paymentsSaving, setPaymentsSaving] = useState(false);
   const [listingPaymentSaving, setListingPaymentSaving] = useState(false);
   const [googleDriveSaving, setGoogleDriveSaving] = useState(false);
+  const [googleDriveChecking, setGoogleDriveChecking] = useState(false);
+  const [googleDriveCheck, setGoogleDriveCheck] = useState<GoogleDriveCheckState>({ status: 'idle', message: '' });
   const [showGoogleClientId, setShowGoogleClientId] = useState(false);
   const [showGoogleDriveClientId, setShowGoogleDriveClientId] = useState(false);
   const [showGoogleDriveClientSecret, setShowGoogleDriveClientSecret] = useState(false);
@@ -1040,6 +1047,32 @@ export default function SuperAdminSettingsPage() {
       toast.error(getApiErrorMessage(error, 'Unable to save Google Drive settings.'));
     } finally {
       setGoogleDriveSaving(false);
+    }
+  };
+
+  const updateGoogleDriveField = (field: keyof typeof googleDriveSettings, value: string) => {
+    setGoogleDriveSettings((current) => ({ ...current, [field]: value }));
+    setGoogleDriveCheck({ status: 'idle', message: '' });
+  };
+
+  const handleGoogleDriveCheck = async () => {
+    setGoogleDriveChecking(true);
+    setGoogleDriveCheck({ status: 'checking', message: 'Checking credentials and Drive access...' });
+
+    try {
+      const response = await api.post<{
+        success: boolean;
+        message: string;
+      }>('/superadmin/google-drive/check', googleDriveSettings);
+
+      setGoogleDriveCheck({ status: 'success', message: response.data.message });
+      toast.success(response.data.message);
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Unable to connect to Google Drive.');
+      setGoogleDriveCheck({ status: 'error', message });
+      toast.error(message);
+    } finally {
+      setGoogleDriveChecking(false);
     }
   };
 
@@ -2910,7 +2943,7 @@ export default function SuperAdminSettingsPage() {
                         <input
                           type={showGoogleDriveClientId ? 'text' : 'password'}
                           value={googleDriveSettings.clientId}
-                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientId: e.target.value })}
+                          onChange={(e) => updateGoogleDriveField('clientId', e.target.value)}
                           placeholder="Client ID"
                           autoComplete="new-password"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -2935,7 +2968,7 @@ export default function SuperAdminSettingsPage() {
                         <input
                           type={showGoogleDriveClientSecret ? 'text' : 'password'}
                           value={googleDriveSettings.clientSecret}
-                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, clientSecret: e.target.value })}
+                          onChange={(e) => updateGoogleDriveField('clientSecret', e.target.value)}
                           placeholder="Client Secret"
                           autoComplete="new-password"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -2960,7 +2993,7 @@ export default function SuperAdminSettingsPage() {
                         <input
                           type={showGoogleDriveRefreshToken ? 'text' : 'password'}
                           value={googleDriveSettings.refreshToken}
-                          onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, refreshToken: e.target.value })}
+                          onChange={(e) => updateGoogleDriveField('refreshToken', e.target.value)}
                           placeholder="Refresh Token (from OAuth2 Playground)"
                           autoComplete="new-password"
                           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-11 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
@@ -2984,7 +3017,7 @@ export default function SuperAdminSettingsPage() {
                       <input
                         type="text"
                         value={googleDriveSettings.backupFolderId}
-                        onChange={(e) => setGoogleDriveSettings({ ...googleDriveSettings, backupFolderId: e.target.value })}
+                        onChange={(e) => updateGoogleDriveField('backupFolderId', e.target.value)}
                         placeholder="e.g. 1A2B3C4D5E6F7G8H9I0J"
                         className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                       />
@@ -2993,10 +3026,40 @@ export default function SuperAdminSettingsPage() {
                       </p>
                     </label>
                   </div>
-                  <div className="flex justify-end">
+                  {googleDriveCheck.status !== 'idle' ? (
+                    <div
+                      className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${googleDriveCheck.status === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : googleDriveCheck.status === 'error'
+                          ? 'border-red-200 bg-red-50 text-red-800'
+                          : 'border-blue-200 bg-blue-50 text-blue-800'
+                        }`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {googleDriveCheck.status === 'success' ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : googleDriveCheck.status === 'error' ? (
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : (
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                      )}
+                      <span>{googleDriveCheck.message}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleGoogleDriveCheck()}
+                      disabled={googleDriveSaving || googleDriveChecking}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {googleDriveChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />}
+                      {googleDriveChecking ? 'Checking...' : 'Check Connection'}
+                    </button>
                     <button
                       type="submit"
-                      disabled={googleDriveSaving}
+                      disabled={googleDriveSaving || googleDriveChecking}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#FFC107] px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />

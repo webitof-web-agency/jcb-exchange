@@ -25,6 +25,7 @@ import {
   getListingPaymentSubmissionById,
   getListingPaymentSubmissions,
   getGoogleDriveSettings,
+  checkGoogleDrive,
   updateGoogleDrive,
   updatePlatformSettings,
   saveAdminPartnerOnboarding,
@@ -137,6 +138,7 @@ router.put('/inspection-section', canManageSettings, updateInspectionSectionCont
 router.get('/site-logo', canManageSettings, getSiteLogoContent);
 router.put('/site-logo', canManageSettings, updateSiteLogoContent);
 router.get('/google-drive', canManageSettings, getGoogleDriveSettings);
+router.post('/google-drive/check', canManageSettings, checkGoogleDrive);
 router.put('/google-drive', canManageSettings, updateGoogleDrive);
 router.get('/pan-verification-settings', canManageSettings, getPanVerificationSettingsController);
 router.put('/pan-verification-settings', canManageSettings, updatePanVerificationSettingsController);

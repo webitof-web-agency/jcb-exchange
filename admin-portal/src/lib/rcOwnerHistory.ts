@@ -33,6 +33,7 @@ export type RcOwnerHistoryResponse = {
   record: RcOwnerHistoryRecord;
   result: Record<string, unknown> | null;
   template?: RcOwnerHistoryTemplateSummary | null;
+  publicVerificationUrl?: string | null;
 };
 
 export const normalizeRcNumber = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');

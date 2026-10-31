@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { RcOwnerHistoryError, rcOwnerHistoryService } from '../services/rcOwnerHistory.service';
 import { getDriveFileBuffer } from '../services/googleDrive.service';
+import { buildRcPublicVerificationUrl } from '../utils/rcPublicVerification';
 
 const bodyOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -15,7 +16,7 @@ const sendError = (error: unknown, res: Response, next: NextFunction) => {
 export const verifyRcOwnerHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await rcOwnerHistoryService.verifyRc(bodyOf(req.body), req.user!.id);
-    return res.status(201).json({ success: true, ...result });
+    return res.status(201).json({ success: true, ...result, publicVerificationUrl: buildRcPublicVerificationUrl(result.record.id) });
   } catch (error) {
     return sendError(error, res, next);
   }
@@ -37,7 +38,7 @@ export const getRcOwnerHistoryDetail = async (req: Request, res: Response, next:
       return res.status(400).json({ success: false, error: 'A valid RC owner history record id is required.', code: 'invalid_record_id' });
     }
     const result = await rcOwnerHistoryService.getHistoryDetail(id);
-    return res.json({ success: true, ...result });
+    return res.json({ success: true, ...result, publicVerificationUrl: buildRcPublicVerificationUrl(result.record.id) });
   } catch (error) {
     return sendError(error, res, next);
   }
@@ -61,7 +62,7 @@ export const uploadRcOwnerHistoryTemplate = async (req: Request, res: Response, 
       req.file.buffer,
       req.file.mimetype,
     );
-    return res.status(201).json({ success: true, ...result });
+    return res.status(201).json({ success: true, ...result, publicVerificationUrl: buildRcPublicVerificationUrl(result.record.id) });
   } catch (error) {
     return sendError(error, res, next);
   }

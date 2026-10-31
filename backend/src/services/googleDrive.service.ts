@@ -12,6 +12,19 @@ type DriveClient = ReturnType<typeof google.drive>;
 
 export type DriveFileAccess = 'public' | 'private';
 
+export type GoogleDriveConnectionResult = {
+  account: {
+    name: string | null;
+    email: string | null;
+  };
+  backupFolder: {
+    configured: boolean;
+    idPresent: boolean;
+    name: string | null;
+    writable: boolean | null;
+  };
+};
+
 const UPLOAD_FOLDER_CACHE_TTL_MS = 5 * 60 * 1000;
 const uploadFolderCache = new Map<string, { folderId: string; expiresAt: number }>();
 const DRIVE_TEMPLATE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -30,6 +43,72 @@ const getDriveClient = async (settingsOverride?: Awaited<ReturnType<typeof getAp
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 
   return google.drive({ version: 'v3', auth: oauth2Client });
+};
+
+export const inspectGoogleDriveConnection = async (
+  drive: DriveClient,
+  backupFolderId?: string | null,
+): Promise<GoogleDriveConnectionResult> => {
+  const accountResponse = await drive.about.get({ fields: 'user(displayName,emailAddress)' });
+  const user = accountResponse.data.user;
+  const normalizedBackupFolderId = backupFolderId?.trim();
+
+  if (!normalizedBackupFolderId) {
+    await drive.files.list({
+      pageSize: 1,
+      q: 'trashed = false',
+      fields: 'files(id)',
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    return {
+      account: {
+        name: user?.displayName || null,
+        email: user?.emailAddress || null,
+      },
+      backupFolder: {
+        configured: false,
+        idPresent: false,
+        name: null,
+        writable: null,
+      },
+    };
+  }
+
+  const folderResponse = await drive.files.get({
+    fileId: normalizedBackupFolderId,
+    fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+    supportsAllDrives: true,
+  });
+  const folder = folderResponse.data;
+  const isFolder = folder.mimeType === DRIVE_FOLDER_MIME_TYPE;
+  const isWritable = folder.trashed !== true && folder.capabilities?.canAddChildren === true;
+
+  if (!folder.id || !isFolder || folder.trashed === true || !isWritable) {
+    throw new Error('Configured Google Drive backup folder is invalid or not writable.');
+  }
+
+  return {
+    account: {
+      name: user?.displayName || null,
+      email: user?.emailAddress || null,
+    },
+    backupFolder: {
+      configured: true,
+      idPresent: true,
+      name: folder.name || null,
+      writable: true,
+    },
+  };
+};
+
+export const checkGoogleDriveConnection = async (
+  settingsOverride?: Awaited<ReturnType<typeof getAppSettings>>,
+): Promise<GoogleDriveConnectionResult> => {
+  const settings = settingsOverride ?? await getAppSettings();
+  const drive = await getDriveClient(settings);
+  return inspectGoogleDriveConnection(drive, settings.googleDrive.backupFolderId);
 };
 
 const escapeDriveQueryValue = (value: string) => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");

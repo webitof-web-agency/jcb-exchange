@@ -20,12 +20,15 @@ import api from '@/lib/api';
 import { getVerificationTemplateBlob, primeVerificationTemplateBlob } from '@/lib/panTemplateCache';
 import type { RcOwnerHistoryResponse } from '@/lib/rcOwnerHistory';
 
-const TEMPLATE_SRC = '/templates/rc/rc-blank-template.png';
+const TEMPLATE_SRC = '/templates/rc/rc-blank-template.png?v=4';
 const BASE_WIDTH = 1024;
-const BASE_HEIGHT = 342;
+const BASE_HEIGHT = 348;
 const CANVAS_WIDTH = 2048; // 2x high-resolution rendering
-const CANVAS_HEIGHT = 684;
+const CANVAS_HEIGHT = 696;
 const TEMPLATE_REQUEST_TIMEOUT_MS = 30_000;
+const KEY_FONT = '750 11.5px Arial, Helvetica, sans-serif';
+const COMPACT_KEY_FONT = '750 10.5px Arial, Helvetica, sans-serif';
+const VERTICAL_KEY_FONT = '700 9px Arial, Helvetica, sans-serif';
 
 export type RcCardData = {
   rcNumber?: string | null;
@@ -135,6 +138,28 @@ const wrapText = (
     lines.push(currentLine);
   }
   return lines;
+};
+
+const createRoundedRectPath = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) => {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.lineTo(x + width - safeRadius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  ctx.lineTo(x + width, y + height - safeRadius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  ctx.lineTo(x + safeRadius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  ctx.lineTo(x, y + safeRadius);
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  ctx.closePath();
 };
 
 export default function RcCardTemplatePreview({
@@ -259,12 +284,13 @@ export default function RcCardTemplatePreview({
   }, [effectiveRcNumber, rcData]);
 
   const qrJsonText = useMemo(() => JSON.stringify(qrObject, null, 2), [qrObject]);
+  const qrPayload = response?.publicVerificationUrl || qrJsonText;
 
   // Generate QR Data URL
   useEffect(() => {
     let active = true;
 
-    QRCode.toDataURL(qrJsonText, {
+    QRCode.toDataURL(qrPayload, {
       margin: 0,
       width: 270, // 2x of 135
       errorCorrectionLevel: 'M',
@@ -280,7 +306,7 @@ export default function RcCardTemplatePreview({
     return () => {
       active = false;
     };
-  }, [qrJsonText]);
+  }, [qrPayload]);
 
   // Render High-DPI Canvas
   useEffect(() => {
@@ -318,6 +344,7 @@ export default function RcCardTemplatePreview({
       // 1. Draw Template background
       ctx.drawImage(bgImg, 0, 0, BASE_WIDTH, BASE_HEIGHT);
 
+
       // 2. Draw Dynamic QR Code on Back Card
       if (qrDataUrl) {
         const qrImg = new Image();
@@ -329,8 +356,10 @@ export default function RcCardTemplatePreview({
         });
 
         if (active) {
-          // QR box at x=530, y=105, size=130x130 (centered within card left frame)
-          ctx.drawImage(qrImg, 530, 105, 130, 130);
+          // Remove the template's printed QR with a clean background slice first.
+          ctx.drawImage(bgImg, 665, 90, 1, 140, 530, 90, 130, 140);
+          // QR box aligned to the template's original QR position.
+          ctx.drawImage(qrImg, 530, 93, 130, 130);
         }
       }
 
@@ -359,44 +388,111 @@ export default function RcCardTemplatePreview({
         ctx.restore();
       };
 
+      // Helper function to draw circular badges (NT and CG)
+      const drawBadgeCircle = (text: string, cx: number, cy: number, fillColor: string) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, 12.5, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = '#111827';
+        ctx.stroke();
+        ctx.font = 'bold 10.5px Arial, Helvetica, sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, cx, cy + 0.3);
+        ctx.restore();
+      };
+
       // ─────────────────────────────────────────────────────────────
       // FRONT CARD FIELDS (Left Side: 0..512)
       // ─────────────────────────────────────────────────────────────
 
-      // Regn No: right under label 'Regn No'
+      // Top circular badges on Front Card: NT (Blue) and CG (Orange)
+      drawBadgeCircle('NT', 451, 44, '#1cb9e6');
+      drawBadgeCircle('CG', 482, 44, '#e8892f');
+
+      // 1. Pre-printed Vector Keys (from reference Image 1)
+      drawText('Regn No', 149, 99, KEY_FONT, '#000000');
+      drawText('Date of Regn.', 241, 99, KEY_FONT, '#000000');
+      drawText('Regn. Validity', 320, 99, KEY_FONT, '#000000');
+      drawText('Owner', 422, 96, COMPACT_KEY_FONT, '#000000');
+      drawText('Serial', 422, 108, COMPACT_KEY_FONT, '#000000');
+
+      // Owner Serial Circle outline
+      ctx.save();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(475, 101, 9.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      drawText('Chassis No', 149, 133, KEY_FONT, '#000000');
+      drawText('Engine/Motor No', 149, 167, KEY_FONT, '#000000');
+      drawText('Owner Name', 149, 200, KEY_FONT, '#000000');
+      drawText('Son/Daughter/Wife of (In case of Individual Owner)', 149, 240, COMPACT_KEY_FONT, '#000000');
+      drawText('Address', 149, 271, KEY_FONT, '#000000');
+
+      drawText('Fuel', 31, 220, KEY_FONT, '#000000');
+      drawText('Emission Norms', 31, 258, KEY_FONT, '#000000');
+
+      // Vertical rotated 'Card Issue Date' flush against right vertical border line
+      ctx.save();
+      ctx.translate(504, 305);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = VERTICAL_KEY_FONT;
+      ctx.fillStyle = '#000000';
+      ctx.fillText('Card Issue Date', 0, 0);
+      ctx.restore();
+
+      // 2. Dynamic Values from API
+      // Regn No
       const regNoFormatted = safeStr(rcData.rcNumber) || safeStr(rcData.maskedRcNumber) || '-';
       drawText(regNoFormatted, 149, 112, 'bold 11px Arial, Helvetica, sans-serif', '#000000');
 
-      // Date of Regn: right under label 'Date of Regn.'
+      // Date of Regn.
       const regDate = formatRcDate(rcData.registrationDate) || '-';
       drawText(regDate, 241, 112, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
 
-      // Regn Validity: right under label 'Regn. Validity' (starts flush at x=320)
+      // Regn. Validity
       const validityDate = formatRcDate(rcData.registrationUpto || rcData.fitUpTo || rcData.rcExpiryDate) || '-';
       drawText(validityDate, 320, 112, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
 
-      // Owner Serial: centered inside circle at x=475, y=108
+      // Owner Serial number inside circle (in same row as Owner Serial key)
       const ownerSerial = safeStr(rcData.ownerNumber) || safeStr(rcData.owner_number) || safeStr(rcData.owner_serial) || '1';
-      drawText(ownerSerial, 475, 108, 'bold 11px Arial, Helvetica, sans-serif', '#000000', 'center', 'middle');
+      drawText(ownerSerial, 475, 101, 'bold 11px Arial, Helvetica, sans-serif', '#000000', 'center', 'middle');
 
-      // Chassis No: directly below label 'Chassis No'
+      // Vertical rotated issue date value (placed above Card Issue Date label, flush against right vertical line)
+      const cardIssueDate = formatRcDate(rcData.registrationDate) || 'DD-MM-YYYY';
+      ctx.save();
+      ctx.translate(504, 235);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = 'bold 8.5px Arial, Helvetica, sans-serif';
+      ctx.fillStyle = '#000000';
+      ctx.fillText(`(${cardIssueDate})`, 0, 0);
+      ctx.restore();
+
+      // Chassis No
       const chassisNo = safeStr(rcData.vehicleChasiNumber) || '-';
       drawText(chassisNo, 149, 145, 'bold 10.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
 
-      // Engine/Motor No: directly below label 'Engine/Motor No'
+      // Engine/Motor No
       const engineNo = safeStr(rcData.vehicleEngineNumber) || '-';
       drawText(engineNo, 149, 179, 'bold 10.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
 
-      // Owner Name: directly below label 'Owner Name'
+      // Owner Name
       const ownerName = (safeStr(rcData.ownerName) || '-').toUpperCase();
       drawText(ownerName, 149, 212, 'bold 10.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
 
-      // Son/Daughter/Wife of: directly below label
+      // Son/Daughter/Wife of
       const rawFather = safeStr(rcData.fatherName);
       const fatherName = rawFather ? rawFather.toUpperCase() : '-';
       drawText(fatherName, 149, 252, 'bold 10px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
 
-      // Address: multi-line directly below label 'Address'
+      // Address
       const rawAddr = safeStr(rcData.presentAddress) || safeStr(rcData.permanentAddress) || '-';
       const fullAddr = rawAddr.replace(/,\s*-\s*/g, ', ').replace(/\s+/g, ' ').trim().toUpperCase();
       ctx.save();
@@ -411,42 +507,36 @@ export default function RcCardTemplatePreview({
         drawText(addrLines[1], 149, 294, 'bold 9px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 335);
       }
 
-      // Fuel: directly below label 'Fuel' (starts flush at x=30 where label starts, baseline y=231)
+      // Fuel
       const fuel = (safeStr(rcData.fuelType) || '-').toUpperCase();
       drawText(fuel, 31, 233, 'bold 9px Arial, Helvetica, sans-serif', '#000000');
 
-      // Emission Norms: directly below label 'Emission Norms' (starts flush at x=30 where label starts, baseline y=270)
+      // Emission Norms
       const norms = (safeStr(rcData.normsType) || '-').toUpperCase();
       drawText(norms, 31, 270, 'bold 8.5px Arial, Helvetica, sans-serif', '#000000');
-
-      // Card Issue Date: vertical rotated along right border of front card
-      const cardIssueDate = formatRcDate(rcData.registrationDate) || 'DD-MM-YYYY';
-      ctx.save();
-      ctx.translate(495, 170);
-      ctx.rotate(-Math.PI / 2);
-      ctx.font = 'bold 8px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = '#475569';
-      ctx.fillText(`(${cardIssueDate})`, 0, 0);
-      ctx.restore();
 
       // ─────────────────────────────────────────────────────────────
       // BACK CARD FIELDS (Right Side: 512..1024)
       // ─────────────────────────────────────────────────────────────
 
       // 1. Pre-printed Vector Keys (from reference Image 2)
-      drawText('Vehicle Class:', 640, 46, 'bold 10px Arial, Helvetica, sans-serif', '#0f172a');
-      drawText('Regn. Number', 532, 71, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Month -Year of Mfg.', 534, 265, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('No of Cylinders:', 534, 294, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Maker:', 694, 86, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Model:', 694, 117, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Color:', 694, 145, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('/Body Type:', 814, 145, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Seating(in all) Capacity', 694, 177, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Unladen Weight (Kg)', 694, 205, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Cubic Cap. /Horse Power (BHP/Kw) /Wheel Base (mm)', 694, 236, 'bold 9.5px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Financier', 694, 268, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
-      drawText('Registration Authority', 879, 292, 'bold 10px Arial, Helvetica, sans-serif', '#000000');
+      // Top circular badges on Back Card: NT (Blue) and CG (Orange)
+      drawBadgeCircle('NT', 551, 42, '#1cb9e6');
+      drawBadgeCircle('CG', 582, 42, '#e8892f');
+
+      drawText('Vehicle Class:', 640, 46, KEY_FONT, '#0f172a');
+      drawText('Regn. Number', 532, 71, KEY_FONT, '#000000');
+      drawText('Month -Year of Mfg.', 534, 265, KEY_FONT, '#000000');
+      drawText('No of Cylinders:', 534, 294, KEY_FONT, '#000000');
+      drawText('Maker:', 694, 86, KEY_FONT, '#000000');
+      drawText('Model:', 694, 117, KEY_FONT, '#000000');
+      drawText('Color:', 694, 145, KEY_FONT, '#000000');
+      drawText('/Body Type:', 814, 145, KEY_FONT, '#000000');
+      drawText('Seating(in all) Capacity', 694, 177, KEY_FONT, '#000000');
+      drawText('Unladen Weight (Kg)', 694, 205, KEY_FONT, '#000000');
+      drawText('Cubic Cap. /Horse Power (BHP/Kw) /Wheel Base (mm)', 694, 236, COMPACT_KEY_FONT, '#000000');
+      drawText('Financier', 694, 268, KEY_FONT, '#000000');
+      drawText('Registration Authority', 879, 292, COMPACT_KEY_FONT, '#000000');
 
       ctx.save();
       ctx.translate(1008, 240);
@@ -541,8 +631,8 @@ export default function RcCardTemplatePreview({
     const clickX = (event.clientX - rect.left) * scaleX;
     const clickY = (event.clientY - rect.top) * scaleY;
 
-    // QR Code in 2x space: left=1070 (535*2), top=216 (108*2), width=260, height=260
-    if (clickX >= 1060 && clickX <= 1340 && clickY >= 210 && clickY <= 490) {
+    // QR Code in 2x space: left=1060 (530*2), top=186 (93*2), width=260, height=260
+    if (clickX >= 1060 && clickX <= 1340 && clickY >= 186 && clickY <= 450) {
       setQrModalOpen(true);
     }
   };
@@ -833,7 +923,7 @@ export default function RcCardTemplatePreview({
               {/* JSON Payload viewer */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-bold text-slate-700">Decoded Structured Data (JSON)</span>
+                      <span className="text-xs font-bold text-slate-700">RC Verification URL</span>
                   <button
                     type="button"
                     onClick={handleCopyJson}
@@ -844,7 +934,7 @@ export default function RcCardTemplatePreview({
                   </button>
                 </div>
                 <pre className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-900 p-3 text-[11px] font-mono leading-relaxed text-amber-300">
-                  {qrJsonText}
+                      {qrPayload}
                 </pre>
               </div>
 
@@ -864,4 +954,3 @@ export default function RcCardTemplatePreview({
     </div>
   );
 }
-

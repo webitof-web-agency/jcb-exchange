@@ -14,6 +14,10 @@ test('normalizes driving-license data without treating provider success as activ
     license_number: 'UP2020150000000',
     client_id: 'license-client-1',
     name: ' MUNNA BHAIYA ',
+    organ_donor: 'YES',
+    hazardous_validity: '2030-01-01',
+    hill_validity: '2030-01-01',
+    mobile_number: '9876543210',
     current_status: null,
     transport_doi: '1800-01-01',
     transport_doe: '1800-01-01',
@@ -26,6 +30,10 @@ test('normalizes driving-license data without treating provider success as activ
     licenseNumber: 'UP2020150000000',
     providerClientId: 'license-client-1',
     name: 'MUNNA BHAIYA',
+    organDonor: 'YES',
+    hazardousValidity: '2030-01-01',
+    hillValidity: '2030-01-01',
+    mobileNumber: '9876543210',
     currentStatus: null,
     vehicleClasses: ['MCWG'],
     vehicleClassDescriptions: [{ class: 'Motorcycle' }],
@@ -110,4 +118,45 @@ test('persists encrypted driving-license history and excludes profile image from
     'DRIVING_LICENSE_VERIFICATION_REQUESTED',
     'DRIVING_LICENSE_VERIFICATION_SUCCEEDED',
   ]);
+});
+
+test('history lists only driving-license records with an uploaded template', async () => {
+  let receivedWhere: Record<string, unknown> | null = null;
+  const service = new DrivingLicenseVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => null,
+      count: async ({ where }: { where: Record<string, unknown> }) => {
+        receivedWhere = where;
+        return 1;
+      },
+      findMany: async ({ where }: { where: Record<string, unknown> }) => {
+        receivedWhere = where;
+        return [{
+          id: 'dl-record-with-template',
+          status: 'SUCCESS',
+          maskedLicenseNumber: 'UP20********0000',
+          provider: 'SUREPASS',
+          template: {
+            id: 'dl-template-1',
+            fileName: 'driving-license-template.png',
+            mimeType: 'image/png',
+            fileSize: 128,
+            sha256: 'hash',
+            createdAt: new Date('2026-10-31T10:00:00.000Z'),
+          },
+          createdAt: new Date('2026-10-31T09:00:00.000Z'),
+          completedAt: new Date('2026-10-31T09:01:00.000Z'),
+        }];
+      },
+      create: async () => { throw new Error('must not create a record'); },
+      update: async () => { throw new Error('must not update a record'); },
+    },
+    dataSecret,
+  });
+
+  const result = await service.listHistory({});
+
+  assert.deepEqual(receivedWhere, { template: { isNot: null } });
+  assert.equal(result.records[0]?.template?.id, 'dl-template-1');
 });

@@ -5,6 +5,7 @@ import {
   findPaymentIdByReceiptToken,
   findSellAccountIdByInvoiceToken,
 } from '../services/vehicleSaleInvoice.service';
+import { getPublicRcVerification } from '../controllers/publicRcVerification.controller';
 
 const router = Router();
 
@@ -73,5 +74,7 @@ router.get('/payment-receipts/:token', publicInvoiceRateLimit, async (req: Reque
     return res.status(404).type('text/plain').send('This payment receipt link is invalid or has expired.');
   }
 });
+
+router.get('/rc-verifications/:token', publicInvoiceRateLimit, getPublicRcVerification);
 
 export default router;

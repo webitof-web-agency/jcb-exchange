@@ -13,14 +13,13 @@ test('RC blank template image asset exists in public directory and has non-zero 
   const stat = fs.statSync(templatePath);
   assert.ok(stat.size > 10000, 'RC template image must be a valid non-empty image file');
 });
-
 test('RcCardTemplatePreview references official template asset and uses 2x high-DPI canvas', () => {
   assert.match(previewSource, /\/templates\/rc\/rc-blank-template\.png/);
+  assert.match(previewSource, /BASE_HEIGHT\s*=\s*348/);
   assert.match(previewSource, /CANVAS_WIDTH\s*=\s*2048/);
-  assert.match(previewSource, /CANVAS_HEIGHT\s*=\s*684/);
+  assert.match(previewSource, /CANVAS_HEIGHT\s*=\s*696/);
   assert.match(previewSource, /ctx\.scale\(2,\s*2\)/);
 });
-
 test('RcCardTemplatePreview binds all dynamic API placeholders on Front card', () => {
   // Regn No
   assert.match(previewSource, /rcData\.rcNumber/);
@@ -36,7 +35,7 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Front card', (
 
   // Owner Serial (centered inside circle at 475, 108)
   assert.match(previewSource, /rcData\.ownerNumber/);
-  assert.match(previewSource, /drawText\(ownerSerial,\s*475,\s*108/);
+  assert.match(previewSource, /drawText\(ownerSerial,\s*475,\s*10[18]/);
 
   // Chassis No (below label at x=149, y=145)
   assert.match(previewSource, /rcData\.vehicleChasiNumber/);
@@ -143,6 +142,8 @@ test('RcCardTemplatePreview binds all dynamic API placeholders on Back card', ()
 
 test('RcCardTemplatePreview generates dynamic QR code and supports click modal popup', () => {
   assert.match(previewSource, /QRCode\.toDataURL/);
+  assert.match(previewSource, /publicVerificationUrl/);
+  assert.match(previewSource, /QRCode\.toDataURL\(qrPayload/);
   assert.match(previewSource, /qrObject/);
   assert.match(previewSource, /setQrModalOpen\(true\)/);
   assert.match(previewSource, /qrModalOpen/);
@@ -180,3 +181,52 @@ test('RcCardTemplatePreview supports uploading and saving templates to history',
 test('RcCardTemplatePreview renders the card canvas in a sharp rectangular frame without rounded clipping', () => {
   assert.match(previewSource, /overflow-hidden\s+rounded-none\s+border/);
 });
+
+test('RcCardTemplatePreview renders crisp vector keys for Front card from reference template', () => {
+  assert.match(previewSource, /drawText\('Regn No',\s*149,\s*99/);
+  assert.match(previewSource, /drawText\('Date of Regn\.',\s*241,\s*99/);
+  assert.match(previewSource, /drawText\('Regn\. Validity',\s*320,\s*99/);
+  assert.match(previewSource, /drawText\('Owner',\s*422,\s*9[56]/);
+  assert.match(previewSource, /drawText\('Serial',\s*422,\s*10[78]/);
+  assert.match(previewSource, /drawText\('Chassis No',\s*149,\s*133/);
+  assert.match(previewSource, /drawText\('Engine\/Motor No',\s*149,\s*167/);
+  assert.match(previewSource, /drawText\('Owner Name',\s*149,\s*200/);
+  assert.match(previewSource, /drawText\('Son\/Daughter\/Wife of \(In case of Individual Owner\)',\s*149,\s*240/);
+  assert.match(previewSource, /drawText\('Address',\s*149,\s*271/);
+  assert.match(previewSource, /drawText\('Fuel',\s*31,\s*220/);
+  assert.match(previewSource, /drawText\('Emission Norms',\s*31,\s*258/);
+  assert.match(previewSource, /Card Issue Date/);
+});
+
+test('RcCardTemplatePreview removes the template QR before drawing the dynamic QR at the aligned position', () => {
+  assert.match(previewSource, /ctx\.drawImage\(bgImg, 665, 90, 1, 140, 530, 90, 130, 140\)/);
+  assert.match(previewSource, /ctx\.drawImage\(qrImg, 530, 93, 130, 130\)/);
+  assert.match(previewSource, /clickY >= 186 && clickY <= 450/);
+});
+
+test('RcCardTemplatePreview keeps unmarked keys on the shared bold key type', () => {
+  assert.match(previewSource, /const KEY_FONT = '750 11\.5px Arial, Helvetica, sans-serif';/);
+  assert.match(previewSource, /drawText\('Regn\. Validity',\s*320,\s*99,\s*KEY_FONT/);
+  assert.match(previewSource, /drawText\('Vehicle Class:',\s*640,\s*46,\s*KEY_FONT/);
+  assert.match(previewSource, /drawText\('\/Body Type:',\s*814,\s*145,\s*KEY_FONT/);
+});
+
+test('RcCardTemplatePreview keeps marked keys on the previous compact bold type', () => {
+  assert.match(previewSource, /const KEY_FONT = '750 11\.5px Arial, Helvetica, sans-serif';/);
+  assert.match(previewSource, /const COMPACT_KEY_FONT = '750 10\.5px Arial, Helvetica, sans-serif';/);
+  assert.match(previewSource, /drawText\('Regn No',\s*149,\s*99,\s*KEY_FONT/);
+  assert.match(previewSource, /drawText\('Maker:',\s*694,\s*86,\s*KEY_FONT/);
+  assert.match(previewSource, /drawText\('Cubic Cap\. \/Horse Power \(BHP\/Kw\) \/Wheel Base \(mm\)',\s*694,\s*236,\s*COMPACT_KEY_FONT/);
+});
+
+test('RcCardTemplatePreview renders perfect circular vector badges (NT and CG) on both Front and Back Cards', () => {
+  // Front Card
+  assert.match(previewSource, /drawBadgeCircle\('NT',\s*451,\s*44,\s*'#1cb9e6'\)/);
+  assert.match(previewSource, /drawBadgeCircle\('CG',\s*482,\s*44,\s*'#e8892f'\)/);
+  // Back Card
+  assert.match(previewSource, /drawBadgeCircle\('NT',\s*551,\s*42,\s*'#1cb9e6'\)/);
+  assert.match(previewSource, /drawBadgeCircle\('CG',\s*582,\s*42,\s*'#e8892f'\)/);
+  assert.match(previewSource, /ctx\.arc\(cx,\s*cy,\s*12\.5,\s*0,\s*Math\.PI\s*\*\s*2\)/);
+});
+// End of RC template rendering assertions.
+
