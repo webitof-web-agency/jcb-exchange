@@ -1205,7 +1205,18 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               </span>
             </div>
             <p className="truncate text-xs font-medium text-gray-500">
-              {vehicleName ? <span className="font-semibold text-amber-700">{vehicleName}</span> : 'Vehicle details'}
+              {vehicleName && form.listingId ? (
+                // New tab, so unsaved form changes are not lost.
+                <a
+                  href={`${portal}/listings/${encodeURIComponent(form.listingId)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open vehicle details in a new tab"
+                  className="font-semibold text-amber-700 underline-offset-2 hover:text-amber-800 hover:underline"
+                >
+                  {vehicleName}
+                </a>
+              ) : vehicleName ? <span className="font-semibold text-amber-700">{vehicleName}</span> : 'Vehicle details'}
               {form.listingId ? <span> · linked to listing</span> : null}
               {leadIdParam ? <span> · from a CRM deal ({existingRecord ? 'blank fields filled from the deal and listing' : 'customer and deal value filled in'})</span> : null}
             </p>
