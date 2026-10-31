@@ -46,6 +46,7 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  Save,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -2375,6 +2376,22 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                 </button>
               </>
             ) : null}
+
+            {!isAdminMode && canEdit && (
+              <button
+                type="button"
+                onClick={() => void handleSaveDraft()}
+                disabled={saving || submitting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-all disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                ) : (
+                  <Save className="h-3.5 w-3.5 text-amber-500" />
+                )}
+                <span>{saving ? 'Saving...' : 'Save Draft'}</span>
+              </button>
+            )}
 
             {!isAdminMode && currentStep === steps.length - 1 && (
               <button
