@@ -6,7 +6,7 @@ const directive = (policy: string, name: string) => policy.split('; ').find((par
 
 test('production policy: scripts need the nonce, no eval, no framing, no plugins', () => {
   const policy = buildContentSecurityPolicy({ nonce: 'abc123', apiOrigin: 'https://api.jcbexchange.com' });
-  assert.equal(directive(policy, 'script-src'), "script-src 'self' 'nonce-abc123' 'strict-dynamic'");
+  assert.equal(directive(policy, 'script-src'), "script-src 'self' 'nonce-abc123' 'strict-dynamic' 'wasm-unsafe-eval'");
   assert.ok(!policy.includes("'unsafe-eval'"));
   assert.ok(!directive(policy, 'script-src').includes("'unsafe-inline'"));
   assert.equal(directive(policy, 'frame-ancestors'), "frame-ancestors 'none'");
