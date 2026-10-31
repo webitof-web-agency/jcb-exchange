@@ -1374,8 +1374,12 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     }
     if (currentStatus === 'SUBMITTED' || currentStatus === 'UNDER_REVIEW') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
-          <Clock className="h-3 w-3" /> Under Verification
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white shadow-sm ring-2 ring-blue-200">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+          </span>
+          <Clock className="h-3.5 w-3.5" /> Under Verification
         </span>
       );
     }

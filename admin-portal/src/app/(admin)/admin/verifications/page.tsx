@@ -1,204 +1,48 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowUpDown,
-  Award,
   Building2,
-  Calendar,
-  Check,
   CheckCircle2,
-  ChevronRight,
   Clock,
-  Compass,
-  Copy,
-  CreditCard,
-  Download,
-  ExternalLink,
   Eye,
   FileCheck2,
   FileSpreadsheet,
-  FileText,
-  Filter,
-  Globe,
-  History,
-  Layers,
   LayoutGrid,
   Loader2,
-  Mail,
   MapPin,
   MessageCircle,
-  MoreVertical,
   Pencil,
   Phone,
-  PhoneCall,
-  Plus,
   RefreshCw,
   Search,
-  Share2,
-  Shield,
-  ShieldAlert,
   ShieldCheck,
-  Sparkles,
   Table as TableIcon,
-  Trash2,
-  User,
-  Users,
   X,
   XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { useTranslation } from '@/hooks/useTranslation';
-import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
-import { getKycVerificationFields, type KycVerificationDocumentType } from '@/lib/kycVerification';
-
-export interface VerificationItem {
-  id: string;
-  name: string;
-  email: string | null;
-  mobile?: string | null;
-  ownerName?: string | null;
-  city?: string | null;
-  state?: string | null;
-  partnerType: string;
-  appliedOn: string;
-  status: string;
-}
-
-export interface VerificationDetail {
-  id: string;
-  ownerName: string | null;
-  email: string | null;
-  mobile: string | null;
-  whatsappNumber: string | null;
-  city: string | null;
-  state: string | null;
-  profile: {
-    ownerName: string | null;
-    businessName: string | null;
-    partnerType: string | null;
-    businessAddress: string | null;
-    district: string | null;
-    pinCode: string | null;
-    businessExperience: string | null;
-    expectedMonthlyListings: number | null;
-    businessDescription: string | null;
-    serviceAreas: string | null;
-    workingHours: string | null;
-    gstNumber: string | null;
-    businessRegistrationNumber: string | null;
-    websiteUrl: string | null;
-    socialLinks: string | null;
-    yearsInBusiness: number | null;
-    teamSize: number | null;
-    contactPreference: string | null;
-    googleMapsLocation: string | null;
-    onboardingStatus: string;
-    kycStatus: string;
-    accountStatus: string;
-    approvedAt: string | null;
-  };
-  documents: Array<{
-    id: string;
-    documentType: string;
-    fileUrl: string | null;
-    fileName: string | null;
-    documentNumber: string | null;
-    nameOnDocument: string | null;
-    issueDate: string | null;
-    expiryDate: string | null;
-    submittedNote: string | null;
-    status: string;
-    reviewComment: string | null;
-    verificationStatus: string | null;
-    verificationRecordId: string | null;
-    verificationCacheHit: boolean;
-    verificationMessage: string | null;
-    verificationRequestedAt: string | null;
-    verificationCompletedAt: string | null;
-    verificationResult: Record<string, unknown> | null;
-  }>;
-  agreements: Array<{
-    agreementType: string;
-    version: string;
-    acceptedAt: string;
-  }>;
-  reviewHistory: Array<{
-    id: string;
-    action: string;
-    comment: string | null;
-    createdAt: string;
-  }>;
-}
+import VerificationDecisionModal from '@/components/verifications/VerificationDecisionModal';
+import {
+  formatDate,
+  partnerEditBasePathFor,
+  statusLabel,
+  verificationsBasePath,
+  type VerificationDecisionStatus,
+  type VerificationItem,
+} from '@/lib/verificationReview';
 
 type ViewMode = 'table' | 'cards';
 type SortField = 'applied_desc' | 'applied_asc' | 'name_asc';
-
-const formatDate = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
-};
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-};
-
-const formatStatus = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '-');
-
-const getReviewActionLabel = (action: string, partnerType?: string | null, partnerName?: string | null) => {
-  const resolvedPartnerType = formatPartnerTypeLabel(partnerType);
-  const resolvedPartnerName = partnerName?.trim() || 'Unknown';
-  const labels: Record<string, string> = {
-    PARTNER_SAVED_ONBOARDING_DRAFT: `${resolvedPartnerType} ${resolvedPartnerName} saved onboarding draft`,
-    PARTNER_SUBMITTED_FULL_ONBOARDING: `${resolvedPartnerType} ${resolvedPartnerName} submitted full onboarding`,
-    SUPER_ADMIN_APPROVED: `SuperAdmin approved KYC & activated partner`,
-    SUPER_ADMIN_CHANGES_REQUESTED: `SuperAdmin requested updates/changes`,
-    SUPER_ADMIN_REJECTED: `SuperAdmin rejected application`,
-  };
-
-  return labels[action] || formatStatus(action);
-};
-
-const statusLabel: Record<string, string> = {
-  SUBMITTED: 'Submitted',
-  UNDER_REVIEW: 'Under Review',
-  CHANGES_REQUESTED: 'Changes Requested',
-  REJECTED: 'Rejected',
-  APPROVED: 'Approved',
-};
-
-const documentDisplayTitles: Record<string, string> = {
-  PAN_CARD: 'Company PAN / PAN Card',
-  GST_CERTIFICATE: 'GST Certificate',
-  AADHAAR_CARD: 'Aadhaar / Accepted ID',
-  PASSPORT_PHOTO: 'Passport-size Photo',
-  CANCELLED_CHEQUE: 'Cancelled Cheque',
-  AUTHORIZED_PERSON_ID: 'Authorized Place ID',
-};
 
 export default function SuperAdminVerificationsPage() {
   const { t } = useTranslation();
@@ -215,7 +59,8 @@ export default function SuperAdminVerificationsPage() {
     viewer?.role === 'ADMIN' ||
     hasAnyPermission(viewer?.permissions, ['kyc.manage']);
 
-  const partnerEditBasePath = pathname.startsWith('/employee') ? '/employee/partners' : '/admin/partners';
+  const partnerEditBasePath = partnerEditBasePathFor(pathname);
+  const reviewBasePath = verificationsBasePath(pathname);
 
   // Data State
   const [verifications, setVerifications] = useState<VerificationItem[]>([]);
@@ -229,53 +74,50 @@ export default function SuperAdminVerificationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Drawer & Detail State
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<VerificationDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<'documents' | 'profile' | 'agreements' | 'history'>('documents');
-
   // Decision Modal State
   const [decisionModal, setDecisionModal] = useState<{
     id: string;
     partnerName: string;
-    targetStatus: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
-  } | null>(null);
-  const [decisionComment, setDecisionComment] = useState('');
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  // Lightbox Preview
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState('');
-  const [previewAsset, setPreviewAsset] = useState<{
-    url: string;
-    name: string;
-    mimeType: string;
+    targetStatus: VerificationDecisionStatus;
   } | null>(null);
 
-  const loadVerifications = async (showRefresh = false) => {
+  // Resolves to an error message instead of throwing so callers only set state from the settled promise.
+  const fetchQueue = useCallback(
+    () =>
+      api
+        .get<{ verifications: VerificationItem[] }>('/superadmin/verifications')
+        .then((response) => ({ verifications: response.data.verifications || [], error: '' }))
+        .catch((err) => ({
+          verifications: null,
+          error: (axios.isAxiosError(err) && err.response?.data?.error)
+            || t('verifications.loadQueueFailed', 'Unable to load verification queue.'),
+        })),
+    [t],
+  );
+
+  const applyQueue = useCallback((result: { verifications: VerificationItem[] | null; error: string }) => {
+    if (result.verifications) setVerifications(result.verifications);
+    setError(result.error);
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  const loadVerifications = (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
-
-    try {
-      const response = await api.get<{ verifications: VerificationItem[] }>('/superadmin/verifications');
-      setVerifications(response.data.verifications || []);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('verifications.loadQueueFailed', 'Unable to load verification queue.'));
-      } else {
-        setError(t('verifications.loadQueueFailed', 'Unable to load verification queue.'));
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    void fetchQueue().then(applyQueue);
   };
 
   useEffect(() => {
-    void loadVerifications();
-  }, []);
+    let active = true;
+    void fetchQueue().then((result) => {
+      if (active) applyQueue(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fetchQueue, applyQueue]);
 
   // Metrics computation
   const metrics = useMemo(() => {
@@ -348,99 +190,14 @@ export default function SuperAdminVerificationsPage() {
     });
   }, [search, statusFilter, typeFilter, sortBy, verifications]);
 
-  // Open detail drawer
-  const openDetail = async (id: string) => {
-    try {
-      setDetailLoading(true);
-      setSelectedId(id);
-      setDrawerTab('documents');
-      const response = await api.get<{ verification: VerificationDetail }>(`/superadmin/verifications/${id}`);
-      setSelectedDetail(response.data.verification);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('verifications.loadDetailFailed', 'Unable to load verification detail.'));
-      } else {
-        setError(t('verifications.loadDetailFailed', 'Unable to load verification detail.'));
-      }
-    } finally {
-      setDetailLoading(false);
-    }
+  const openReview = (id: string) => {
+    router.push(`${reviewBasePath}/${id}`);
   };
 
-  const closeDetail = () => {
-    setSelectedId(null);
-    setSelectedDetail(null);
-  };
-
-  const closePreview = () => {
-    if (previewAsset?.url) {
-      window.URL.revokeObjectURL(previewAsset.url);
-    }
-    setPreviewAsset(null);
-    setPreviewError('');
-  };
-
-  const openSecurePreview = async (fileUrl: string, fileName?: string | null) => {
-    try {
-      setPreviewLoading(true);
-      setPreviewError('');
-      if (previewAsset?.url) {
-        window.URL.revokeObjectURL(previewAsset.url);
-        setPreviewAsset(null);
-      }
-
-      const path = normalizeSecureDocumentPath(fileUrl);
-      const response = await api.get(path, { responseType: 'blob' });
-      const blobUrl = window.URL.createObjectURL(response.data);
-      setPreviewAsset({
-        url: blobUrl,
-        name: fileName || t('verifications.securePreviewName', 'Secure Document Preview'),
-        mimeType: response.headers['content-type'] || response.data.type || 'application/octet-stream',
-      });
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setPreviewError(err.response?.data?.error || t('verifications.openDocumentFailed', 'Unable to retrieve secure file.'));
-      } else {
-        setPreviewError(t('verifications.openDocumentFailed', 'Unable to retrieve secure file.'));
-      }
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  // Submit status decision
-  const executeStatusDecision = async () => {
-    if (!decisionModal) return;
-    const { id, targetStatus } = decisionModal;
-
-    try {
-      setUpdatingId(id);
-      setError('');
-      setSuccess('');
-
-      await api.patch(`/superadmin/verifications/${id}/status`, {
-        status: targetStatus,
-        comment: decisionComment.trim() || undefined,
-      });
-
-      setVerifications((current) => current.filter((partner) => partner.id !== id));
-      if (selectedId === id) {
-        closeDetail();
-      }
-
-      const statusFriendly = targetStatus.replaceAll('_', ' ').toLowerCase();
-      setSuccess(`Partner verification moved to ${statusFriendly} successfully.`);
-      setDecisionModal(null);
-      setDecisionComment('');
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('verifications.updateStatusFailed', 'Status update failed.'));
-      } else {
-        setError(t('verifications.updateStatusFailed', 'Status update failed.'));
-      }
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleDecided = (id: string, targetStatus: VerificationDecisionStatus) => {
+    setVerifications((current) => current.filter((partner) => partner.id !== id));
+    setDecisionModal(null);
+    setSuccess(`Partner verification moved to ${targetStatus.replaceAll('_', ' ').toLowerCase()} successfully.`);
   };
 
   // CSV Export
@@ -468,14 +225,6 @@ export default function SuperAdminVerificationsPage() {
     link.click();
     document.body.removeChild(link);
   };
-
-  useEffect(() => {
-    return () => {
-      if (previewAsset?.url) {
-        window.URL.revokeObjectURL(previewAsset.url);
-      }
-    };
-  }, [previewAsset]);
 
   return (
     <div className="space-y-3.5 pb-16">
@@ -787,7 +536,7 @@ export default function SuperAdminVerificationsPage() {
                           <div className="min-w-0">
                             <button
                               type="button"
-                              onClick={() => void openDetail(partner.id)}
+                              onClick={() => openReview(partner.id)}
                               className="text-left font-bold text-slate-900 hover:text-amber-600 transition-colors truncate block max-w-xs"
                             >
                               {partner.name}
@@ -895,7 +644,7 @@ export default function SuperAdminVerificationsPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => void openDetail(partner.id)}
+                            onClick={() => openReview(partner.id)}
                             className="inline-flex items-center gap-1 rounded-lg bg-[#FFC107] px-2.5 py-1 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs transition-colors"
                           >
                             <Eye className="h-3 w-3" />
@@ -908,7 +657,7 @@ export default function SuperAdminVerificationsPage() {
                                 label: 'Open Dossier',
                                 icon: <Eye className="h-4 w-4" />,
                                 onClick: () => {
-                                  void openDetail(partner.id);
+                                  openReview(partner.id);
                                 },
                               },
                               ...(canEditKyc
@@ -928,7 +677,6 @@ export default function SuperAdminVerificationsPage() {
                                       label: 'Request Changes',
                                       icon: <AlertCircle className="h-4 w-4" />,
                                       variant: 'warning' as const,
-                                      disabled: updatingId === partner.id,
                                       onClick: () => {
                                         setDecisionModal({
                                           id: partner.id,
@@ -941,7 +689,6 @@ export default function SuperAdminVerificationsPage() {
                                       label: 'Approve & Activate',
                                       icon: <CheckCircle2 className="h-4 w-4" />,
                                       variant: 'success' as const,
-                                      disabled: updatingId === partner.id,
                                       onClick: () => {
                                         setDecisionModal({
                                           id: partner.id,
@@ -954,7 +701,6 @@ export default function SuperAdminVerificationsPage() {
                                       label: 'Reject Dossier',
                                       icon: <XCircle className="h-4 w-4" />,
                                       variant: 'danger' as const,
-                                      disabled: updatingId === partner.id,
                                       onClick: () => {
                                         setDecisionModal({
                                           id: partner.id,
@@ -997,7 +743,7 @@ export default function SuperAdminVerificationsPage() {
                       <div className="min-w-0">
                         <button
                           type="button"
-                          onClick={() => void openDetail(partner.id)}
+                          onClick={() => openReview(partner.id)}
                           className="text-left font-bold text-slate-900 hover:text-amber-600 transition-colors truncate block"
                         >
                           {partner.name}
@@ -1075,7 +821,7 @@ export default function SuperAdminVerificationsPage() {
                 <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => void openDetail(partner.id)}
+                    onClick={() => openReview(partner.id)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#FFC107] py-1.5 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs"
                   >
                     <Eye className="h-3.5 w-3.5" />
@@ -1099,622 +845,15 @@ export default function SuperAdminVerificationsPage() {
         </div>
       )}
 
-      {/* ── 5. REDESIGNED EXECUTIVE REVIEW DRAWER ── */}
-      {selectedId ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-slate-950/60 backdrop-blur-xs">
-          <button type="button" className="absolute inset-0" onClick={closeDetail} aria-label="Close detail panel" />
-          <div className="relative z-50 flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl animate-in slide-in-from-right duration-200">
-            {/* Sticky Drawer Header */}
-            <div className="border-b border-slate-200/90 bg-white px-5 py-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      Partner KYC Dossier Audit
-                    </span>
-                    {selectedDetail && (
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          selectedDetail.profile.kycStatus === 'APPROVED'
-                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                            : selectedDetail.profile.kycStatus === 'CHANGES_REQUESTED'
-                            ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-                            : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-                        }`}
-                      >
-                        {statusLabel[selectedDetail.profile.kycStatus] || selectedDetail.profile.kycStatus}
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="mt-0.5 text-lg font-black text-slate-900 leading-tight truncate">
-                    {selectedDetail?.profile.businessName || 'Loading Dossier...'}
-                  </h2>
-                  {selectedDetail && (
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                      <span>Owner: <strong className="font-bold text-slate-900">{selectedDetail.profile.ownerName || selectedDetail.ownerName}</strong></span>
-                      {selectedDetail.mobile && (
-                        <span>Phone: <strong className="font-mono font-bold text-slate-900">{selectedDetail.mobile}</strong></span>
-                      )}
-                      <span>Type: <strong className="font-bold text-amber-800">{formatPartnerTypeLabel(selectedDetail.profile.partnerType)}</strong></span>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={closeDetail}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 shadow-2xs"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Drawer Tabs */}
-              <div className="mt-3.5 flex items-center gap-1.5 border-t border-slate-100 pt-2.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-                {[
-                  { id: 'documents', label: 'KYC Documents Vault', count: selectedDetail?.documents.length },
-                  { id: 'profile', label: 'Operating Profile' },
-                  { id: 'agreements', label: 'Signed Agreements', count: selectedDetail?.agreements.length },
-                  { id: 'history', label: 'Audit Trail', count: selectedDetail?.reviewHistory.length },
-                ].map((tab) => {
-                  const active = drawerTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setDrawerTab(tab.id as typeof drawerTab)}
-                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                        active
-                          ? 'bg-slate-900 text-white shadow-2xs'
-                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{tab.label}</span>
-                      {tab.count !== undefined && (
-                        <span
-                          className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold ${
-                            active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Drawer Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {detailLoading || !selectedDetail ? (
-                <div className="py-20 text-center space-y-2">
-                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-amber-500" />
-                  <p className="text-xs font-bold text-slate-700">Loading full partner verification package...</p>
-                </div>
-              ) : (
-                <>
-                  {/* ── TAB 1: KYC DOCUMENTS VAULT ── */}
-                  {drawerTab === 'documents' && (
-                    <div className="space-y-3">
-                      {previewError && (
-                        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
-                          {previewError}
-                        </div>
-                      )}
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {selectedDetail.documents.map((doc) => {
-                          const verificationFields =
-                            doc.verificationResult && ['PAN_CARD', 'GST_CERTIFICATE'].includes(doc.documentType)
-                              ? getKycVerificationFields(
-                                  doc.documentType as KycVerificationDocumentType,
-                                  doc.verificationResult
-                                )
-                              : [];
-
-                          const docTitle = documentDisplayTitles[doc.documentType] || formatStatus(doc.documentType);
-
-                          return (
-                            <div
-                              key={doc.id}
-                              className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs space-y-3 flex flex-col justify-between"
-                            >
-                              <div>
-                                {/* Header */}
-                                <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                                  <div>
-                                    <h4 className="text-xs font-bold text-slate-900 leading-snug">{docTitle}</h4>
-                                    <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                                      {doc.documentNumber || 'No number entered'}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex flex-col items-end gap-1">
-                                    {doc.verificationStatus && (
-                                      <span
-                                        className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                                          doc.verificationStatus === 'VERIFIED'
-                                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                            : doc.verificationStatus === 'FAILED'
-                                            ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-                                            : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-                                        }`}
-                                      >
-                                        KYC {doc.verificationStatus}
-                                      </span>
-                                    )}
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                                        doc.fileUrl ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
-                                      }`}
-                                    >
-                                      {doc.fileUrl ? 'UPLOADED' : 'NOT UPLOADED'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Body Fields */}
-                                <div className="mt-2 space-y-1 text-xs">
-                                  {doc.nameOnDocument && (
-                                    <div className="flex justify-between text-slate-600">
-                                      <span className="text-slate-400 text-[11px]">Name on ID:</span>
-                                      <span className="font-semibold text-slate-900">{doc.nameOnDocument}</span>
-                                    </div>
-                                  )}
-                                  {doc.issueDate && (
-                                    <div className="flex justify-between text-slate-600">
-                                      <span className="text-slate-400 text-[11px]">Issue Date:</span>
-                                      <span className="font-mono">{formatDate(doc.issueDate)}</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Government Verified Result */}
-                                {verificationFields.length > 0 && (
-                                  <div className="mt-2.5 rounded-lg border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs">
-                                    <div className="flex items-center justify-between text-[10px] font-bold text-emerald-900 mb-1.5">
-                                      <span>✓ Official Registry Verification</span>
-                                      <span className="font-normal text-emerald-700">
-                                        {doc.verificationCacheHit ? 'Cached Result' : 'Live API'}
-                                      </span>
-                                    </div>
-                                    <div className="space-y-1">
-                                      {verificationFields.map((f) => (
-                                        <div key={f.label} className="flex justify-between gap-2 text-[11px]">
-                                          <span className="text-emerald-800 font-medium">{f.label}:</span>
-                                          <span className="font-bold text-emerald-950 truncate max-w-[170px]">{f.value}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {doc.verificationMessage && (
-                                  <p className="mt-2 text-[11px] text-rose-600 font-medium bg-rose-50 p-2 rounded">
-                                    {doc.verificationMessage}
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Document File Link */}
-                              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                                <span className="text-[10px] font-mono text-slate-500 truncate max-w-[150px]">
-                                  {doc.fileName || 'document_file'}
-                                </span>
-                                {doc.fileUrl ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => void openSecurePreview(doc.fileUrl || '', doc.fileName)}
-                                    disabled={previewLoading}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 hover:bg-slate-50 shadow-2xs"
-                                  >
-                                    <Eye className="h-3 w-3 text-amber-500" />
-                                    <span>Open Preview</span>
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400">No file</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── TAB 2: OPERATING PROFILE & COMMERCIALS ── */}
-                  {drawerTab === 'profile' && (
-                    <div className="space-y-3.5">
-                      <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2 mb-3">
-                          Entity Profile & Sourcing Details
-                        </h4>
-                        <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Authorized Place:</span>
-                            <p className="font-bold text-slate-900">{selectedDetail.profile.businessName || '-'}</p>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Industry Experience:</span>
-                            <p className="font-bold text-slate-900">{selectedDetail.profile.businessExperience || '-'}</p>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Years in Business:</span>
-                            <p className="font-bold text-slate-900">{selectedDetail.profile.yearsInBusiness || '-'}</p>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Team Size:</span>
-                            <p className="font-bold text-slate-900">{selectedDetail.profile.teamSize || '-'}</p>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Expected Monthly Listings:</span>
-                            <p className="font-bold text-slate-900">{selectedDetail.profile.expectedMonthlyListings || '-'}</p>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Preferred Contact:</span>
-                            <p className="font-bold text-slate-900">{formatStatus(selectedDetail.profile.contactPreference)}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2 mb-3">
-                          Location & Digital Presence
-                        </h4>
-                        <div className="space-y-2.5 text-xs">
-                          <div>
-                            <span className="text-slate-400 text-[11px]">Physical Street Address:</span>
-                            <p className="font-medium text-slate-800 mt-0.5 bg-slate-50 p-2 rounded border border-slate-100">
-                              {selectedDetail.profile.businessAddress || '-'}
-                            </p>
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <span className="text-slate-400 text-[11px]">State / City:</span>
-                              <p className="font-bold text-slate-900">
-                                {selectedDetail.state || '-'} / {selectedDetail.city || '-'}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 text-[11px]">District / PIN:</span>
-                              <p className="font-bold text-slate-900">
-                                {selectedDetail.profile.district || '-'} / {selectedDetail.profile.pinCode || '-'}
-                              </p>
-                            </div>
-                          </div>
-                          {selectedDetail.profile.googleMapsLocation && (
-                            <div>
-                              <span className="text-slate-400 text-[11px]">Google Maps Link:</span>
-                              <div className="mt-0.5 flex items-center gap-2">
-                                <span className="font-mono text-slate-800 text-[11px] truncate flex-1">
-                                  {selectedDetail.profile.googleMapsLocation}
-                                </span>
-                                <a
-                                  href={selectedDetail.profile.googleMapsLocation}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  <span>Open Map</span>
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                          {selectedDetail.profile.websiteUrl && (
-                            <div>
-                              <span className="text-slate-400 text-[11px]">Official Website:</span>
-                              <a
-                                href={
-                                  selectedDetail.profile.websiteUrl.startsWith('http')
-                                    ? selectedDetail.profile.websiteUrl
-                                    : `https://${selectedDetail.profile.websiteUrl}`
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-amber-700 hover:underline block mt-0.5"
-                              >
-                                {selectedDetail.profile.websiteUrl}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── TAB 3: SIGNED COMPLIANCE AGREEMENTS ── */}
-                  {drawerTab === 'agreements' && (
-                    <div className="space-y-3">
-                      <div className="grid gap-2.5 sm:grid-cols-2">
-                        {selectedDetail.agreements.map((agreement) => (
-                          <div
-                            key={agreement.agreementType}
-                            className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs"
-                          >
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
-                              <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold font-mono text-amber-800">
-                                {agreement.version || 'v1.0'}
-                              </span>
-                              <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
-                                <Check className="h-3 w-3 stroke-[3]" /> Accepted
-                              </span>
-                            </div>
-                            <h4 className="text-xs font-bold text-slate-900 leading-snug">
-                              {formatStatus(agreement.agreementType)}
-                            </h4>
-                            <p className="mt-1 text-[10px] text-slate-500 font-mono">
-                              Signed on {formatDate(agreement.acceptedAt)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── TAB 4: AUDIT TRAIL & REVIEW HISTORY ── */}
-                  {drawerTab === 'history' && (
-                    <div className="space-y-2.5">
-                      {selectedDetail.reviewHistory.length === 0 ? (
-                        <p className="py-10 text-center text-xs text-slate-500">No review events logged yet.</p>
-                      ) : (
-                        selectedDetail.reviewHistory.map((item) => (
-                          <div
-                            key={item.id}
-                            className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs text-xs space-y-1"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-bold text-slate-900 leading-tight">
-                                {getReviewActionLabel(
-                                  item.action,
-                                  selectedDetail.profile.partnerType,
-                                  selectedDetail.profile.businessName || selectedDetail.profile.ownerName
-                                )}
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-500">
-                                {formatDateTime(item.createdAt)}
-                              </span>
-                            </div>
-                            {item.comment && (
-                              <p className="text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 mt-1">
-                                {item.comment}
-                              </p>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Sticky Drawer Footer Action Controls */}
-            {selectedDetail && (
-              <div className="border-t border-slate-200/90 bg-white px-5 py-3 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={closeDetail}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Close
-                </button>
-
-                <div className="flex items-center gap-2">
-                  {canEditKyc && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        router.push(`${partnerEditBasePath}/${selectedDetail.id}/edit`);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 hover:bg-slate-50 shadow-2xs"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      <span>Edit KYC</span>
-                    </button>
-                  )}
-
-                  {canManageKyc && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDecisionModal({
-                            id: selectedDetail.id,
-                            partnerName: selectedDetail.profile.businessName || selectedDetail.ownerName || 'Partner',
-                            targetStatus: 'CHANGES_REQUESTED',
-                          });
-                        }}
-                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100"
-                      >
-                        Request Changes
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDecisionModal({
-                            id: selectedDetail.id,
-                            partnerName: selectedDetail.profile.businessName || selectedDetail.ownerName || 'Partner',
-                            targetStatus: 'REJECTED',
-                          });
-                        }}
-                        className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
-                      >
-                        Reject
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDecisionModal({
-                            id: selectedDetail.id,
-                            partnerName: selectedDetail.profile.businessName || selectedDetail.ownerName || 'Partner',
-                            targetStatus: 'APPROVED',
-                          });
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFC107] px-4 py-1.5 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Approve & Activate</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── 6. DECISION CONFIRMATION & REMARKS MODAL ── */}
       {decisionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in zoom-in-95 duration-150 space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <span
-                className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                  decisionModal.targetStatus === 'APPROVED'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : decisionModal.targetStatus === 'CHANGES_REQUESTED'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-rose-100 text-rose-700'
-                }`}
-              >
-                {decisionModal.targetStatus === 'APPROVED' ? (
-                  <CheckCircle2 className="h-5 w-5" />
-                ) : decisionModal.targetStatus === 'CHANGES_REQUESTED' ? (
-                  <AlertCircle className="h-5 w-5" />
-                ) : (
-                  <XCircle className="h-5 w-5" />
-                )}
-              </span>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  {decisionModal.targetStatus === 'APPROVED'
-                    ? 'Approve Partner & Activate Account'
-                    : decisionModal.targetStatus === 'CHANGES_REQUESTED'
-                    ? 'Request Corrections from Partner'
-                    : 'Reject KYC Application'}
-                </h3>
-                <p className="text-[11px] text-slate-500 font-medium truncate max-w-xs">{decisionModal.partnerName}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <p className="text-slate-600">
-                {decisionModal.targetStatus === 'APPROVED'
-                  ? 'This will formally approve the partner dossier, grant access to post inventory, and activate partner privileges.'
-                  : decisionModal.targetStatus === 'CHANGES_REQUESTED'
-                  ? 'Enter specific notes for the partner explaining which documents or details require revision before approval.'
-                  : 'Are you sure you want to reject this onboarding dossier? This will set account status to REJECTED.'}
-              </p>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Compliance / Audit Remark (Optional)
-                </label>
-                <textarea
-                  value={decisionComment}
-                  onChange={(e) => setDecisionComment(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
-                  placeholder={
-                    decisionModal.targetStatus === 'CHANGES_REQUESTED'
-                      ? 'e.g. Please re-upload a clear copy of Company PAN and GST certificate.'
-                      : 'Audit or sign-off comment for the review log...'
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
-              <button
-                type="button"
-                onClick={() => setDecisionModal(null)}
-                className="rounded-lg border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void executeStatusDecision()}
-                disabled={updatingId !== null}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-black shadow-2xs transition-all disabled:opacity-50 ${
-                  decisionModal.targetStatus === 'APPROVED'
-                    ? 'bg-[#FFC107] text-slate-950 hover:bg-[#E5AD06]'
-                    : decisionModal.targetStatus === 'CHANGES_REQUESTED'
-                    ? 'bg-amber-500 text-white hover:bg-amber-600'
-                    : 'bg-rose-600 text-white hover:bg-rose-700'
-                }`}
-              >
-                {updatingId ? 'Processing...' : 'Confirm Decision'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <VerificationDecisionModal
+          partnerId={decisionModal.id}
+          partnerName={decisionModal.partnerName}
+          targetStatus={decisionModal.targetStatus}
+          onClose={() => setDecisionModal(null)}
+          onDecided={(targetStatus) => handleDecided(decisionModal.id, targetStatus)}
+        />
       )}
-
-      {/* ── 7. DOCUMENT LIGHTBOX MODAL ── */}
-      {previewAsset ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Secure Document Viewer
-                </p>
-                <h4 className="mt-0.5 text-sm font-bold text-slate-900 truncate max-w-md">{previewAsset.name}</h4>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewAsset.url}
-                  download={previewAsset.name}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                >
-                  <Download className="h-3 w-3" />
-                  <span>Download</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={closePreview}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 p-4 flex items-center justify-center min-h-[400px] max-h-[75vh] overflow-auto">
-              {previewAsset.mimeType.startsWith('image/') ? (
-                <Image
-                  src={previewAsset.url}
-                  alt={previewAsset.name}
-                  width={1600}
-                  height={1200}
-                  unoptimized
-                  className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain shadow-2xl"
-                />
-              ) : previewAsset.mimeType === 'application/pdf' ? (
-                <iframe src={previewAsset.url} title={previewAsset.name} className="h-[70vh] w-full rounded-lg bg-white" />
-              ) : (
-                <div className="p-8 text-center text-white space-y-3">
-                  <FileText className="mx-auto h-12 w-12 text-slate-400" />
-                  <p className="text-xs font-bold">Preview format not supported inline.</p>
-                  <a
-                    href={previewAsset.url}
-                    download={previewAsset.name}
-                    className="inline-flex rounded-lg bg-[#FFC107] px-4 py-2 text-xs font-bold text-slate-950 hover:bg-[#E5AD06]"
-                  >
-                    Download File
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
