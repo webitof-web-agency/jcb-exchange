@@ -27,6 +27,15 @@ const resolveVehicleModel = (listing, brandName) => {
   return isYearOnlyModel ? modelFromListingTitle(listing, brandName) : candidate || modelFromListingTitle(listing, brandName);
 };
 
+// Listings have no chassis column: it is kept on the vehicle verification and as a
+// "Chassis/serial: ..." line in the description (same pattern the backend parses).
+const resolveChassisNumber = (listing) => {
+  const descriptionMatch = text(listing.description).match(/(?:^|\n)\s*chassis(?:\s*\/\s*|\s+or\s+|\s+)serial\s*(?:no\.?)?\s*:\s*([^\n]+)/i);
+  return text(listing.chassisNumber)
+    || text(listing.vehicleVerification?.verifiedChassisNumber)
+    || text(descriptionMatch?.[1]);
+};
+
 const hasLinkedListing = (records, listingId) => {
   const normalizedListingId = text(listingId);
   return Array.isArray(records) && Boolean(normalizedListingId) && records.some((record) => text(record?.listingId) === normalizedListingId);
@@ -58,7 +67,7 @@ export const getListingAccountPrefill = (listing = {}) => {
     // `dealerPhone` is the Listed By/partner number, not the vehicle owner's number.
     ownerNumber: text(listing.ownerNumber),
     vehicleNumber: text(linkedRto?.vehicleNumber) || text(listing.registrationNumber) || text(listing.vehicleNumber),
-    chassisNumber: text(listing.chassisNumber),
+    chassisNumber: resolveChassisNumber(listing),
     vehicleType: nameOf(listing.category) || nameOf(listing.vehicleType),
     brandName,
     vehicleModel: resolveVehicleModel(listing, brandName),

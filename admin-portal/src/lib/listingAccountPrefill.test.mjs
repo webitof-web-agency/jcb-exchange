@@ -130,3 +130,26 @@ test('reports whether each listing account module should open in create or edit 
     { rtoExists: true, sellExists: false },
   );
 });
+
+test('reads the chassis number from the vehicle verification', () => {
+  const prefill = getListingAccountPrefill({ vehicleVerification: { verifiedChassisNumber: 'MALGM41BLKM123456' } });
+
+  assert.equal(prefill.chassisNumber, 'MALGM41BLKM123456');
+});
+
+test('falls back to the chassis line in the listing description', () => {
+  const description = 'Registration no: CG04NM0036\nChassis/serial: MAKGM663GKN205128\nOwners: 1';
+
+  assert.equal(getListingAccountPrefill({ description }).chassisNumber, 'MAKGM663GKN205128');
+  assert.equal(getListingAccountPrefill({ description: 'Chassis / Serial : SR-998' }).chassisNumber, 'SR-998');
+  assert.equal(getListingAccountPrefill({ description: 'Excellent condition' }).chassisNumber, '');
+});
+
+test('prefers the verified chassis over the description', () => {
+  const prefill = getListingAccountPrefill({
+    description: 'Chassis/serial: TYPED-123',
+    vehicleVerification: { verifiedChassisNumber: 'VERIFIED-456' },
+  });
+
+  assert.equal(prefill.chassisNumber, 'VERIFIED-456');
+});

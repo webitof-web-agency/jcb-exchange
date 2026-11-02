@@ -381,12 +381,21 @@ const flattenPreviewFields = (value: Record<string, unknown>, prefix = ''): Arra
 });
 
 function PreviewTable({ entries }: { entries: Array<[string, unknown]> }) {
+  // Providers can send one field under two keys (father_name / fatherName), which map to the same label.
+  const seen = new Set<string>();
+  const rows = entries.filter(([label, value]) => {
+    const signature = `${label}\u0000${JSON.stringify(value) ?? ''}`;
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  });
+
   return (
     <div className="overflow-hidden rounded-xl border border-indigo-100 bg-white">
       <table className="w-full table-fixed text-left">
         <tbody className="divide-y divide-indigo-50">
-          {entries.map(([label, value]) => (
-            <tr key={label} className="align-top transition hover:bg-indigo-50/35">
+          {rows.map(([label, value], index) => (
+            <tr key={`${label}-${index}`} className="align-top transition hover:bg-indigo-50/35">
               <th className="w-[34%] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#3B61D9]">{label}</th>
               <td className="break-words whitespace-pre-wrap px-3 py-2 text-[13px] font-medium leading-5 text-slate-800">{organizedPreviewValue(value)}</td>
             </tr>

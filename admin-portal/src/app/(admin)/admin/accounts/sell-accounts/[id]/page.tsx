@@ -31,6 +31,7 @@ import {
   type SellAccountDocument,
   type SellAccountDocuments,
   type SellAccountExpenseBreakdown,
+  type SellAccountPayment,
   type SellAccountRecord,
   type StoredSellAccountRecord,
 } from '@/components/accounts/sold-vehicle/soldVehicleModel';
@@ -180,6 +181,7 @@ export default function SellAccountDetailView() {
   const [record, setRecord] = useState<SellAccountRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [invoiceBusy, setInvoiceBusy] = useState<'download' | 'resend' | null>(null);
+  const [receiptBusyId, setReceiptBusyId] = useState('');
   const [latestInvoiceUrl, setLatestInvoiceUrl] = useState('');
 
   useEffect(() => {
@@ -251,6 +253,21 @@ export default function SellAccountDetailView() {
       toast.error(await readBlobErrorMessage(error, 'Unable to download the invoice.'));
     } finally {
       setInvoiceBusy(null);
+    }
+  };
+
+  const downloadReceipt = async (payment: SellAccountPayment) => {
+    if (!payment.id) return;
+    setReceiptBusyId(payment.id);
+    try {
+      await downloadAuthedFile(
+        `/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}/payments/${encodeURIComponent(payment.id)}/receipt`,
+        `Money-Receipt-${payment.receiptNumber || 'DRAFT'}.pdf`,
+      );
+    } catch (error) {
+      toast.error(await readBlobErrorMessage(error, 'Unable to download the receipt.'));
+    } finally {
+      setReceiptBusyId('');
     }
   };
 
@@ -431,10 +448,25 @@ export default function SellAccountDetailView() {
                       <td className="px-2.5 py-1.5">{payment.method.replace('_', ' ')}</td>
                       <td className="px-2.5 py-1.5 font-mono text-[11px] text-gray-500">{payment.reference || '—'}{payment.drawnOn ? ` · ${payment.drawnOn}` : ''}</td>
                       <td className="px-2.5 py-1.5 text-[11px]">
-                        {payment.side !== 'PURCHASER_RECEIPT' ? '—'
-                          : payment.receiptStatus === 'DRAFT' ? <span className="font-bold text-amber-700">Draft</span>
-                            : payment.receiptStatus === 'CANCELLED' ? <span className="font-bold text-gray-500" title={payment.cancelReason || undefined}>Cancelled {payment.receiptNumber || ''}</span>
-                              : <span className="font-mono text-emerald-700">{payment.receiptNumber || 'Real'}</span>}
+                        {payment.side !== 'PURCHASER_RECEIPT' ? '—' : (
+                          <span className="inline-flex items-center gap-1.5">
+                            {payment.receiptStatus === 'DRAFT' ? <span className="font-bold text-amber-700">Draft</span>
+                              : payment.receiptStatus === 'CANCELLED' ? <span className="font-bold text-gray-500" title={payment.cancelReason || undefined}>Cancelled {payment.receiptNumber || ''}</span>
+                                : <span className="font-mono text-emerald-700">{payment.receiptNumber || 'Real'}</span>}
+                            {payment.id ? (
+                              <button
+                                type="button"
+                                disabled={receiptBusyId === payment.id}
+                                onClick={() => void downloadReceipt(payment)}
+                                className="rounded-md p-1 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title={payment.receiptStatus === 'DRAFT' ? 'Download draft receipt (not valid)' : 'Download money receipt'}
+                                aria-label="Download money receipt"
+                              >
+                                {receiptBusyId === payment.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                              </button>
+                            ) : null}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

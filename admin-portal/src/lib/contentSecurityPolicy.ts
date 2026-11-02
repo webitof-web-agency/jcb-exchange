@@ -1,7 +1,8 @@
 // Content-Security-Policy for every page. Scripts run only when they carry this request's nonce (Next.js
 // adds it to its own scripts) or are loaded by such a script ('strict-dynamic': the DigiLocker SDK). An
 // injected <script> or inline event handler therefore never runs. Styles stay 'unsafe-inline' because
-// React style attributes need it; styles cannot run code.
+// React style attributes need it; styles cannot run code. 'wasm-unsafe-eval' lets @react-pdf compile its
+// WebAssembly layout engine (verification template PDFs); JavaScript eval stays blocked outside development.
 
 type CspOptions = { nonce: string; apiOrigin?: string | undefined; isDev?: boolean };
 
@@ -17,7 +18,7 @@ export const buildContentSecurityPolicy = ({ nonce, apiOrigin = '', isDev = fals
   const api = apiOrigin ? ` ${apiOrigin}` : '';
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: https:${api}`,
     `media-src 'self' data: blob: https:${api}`,

@@ -76,6 +76,7 @@ import {
 } from '@/lib/partnerDetailPresentation';
 import { createSecureDocumentPreviewUrl, downloadSecureDocument } from '@/lib/secureDownload';
 import PartnerKycTemplateModal, { type PartnerTemplateResponse } from '@/components/kyc/PartnerKycTemplateModal';
+import { partnerTemplateEndpointBase } from '@/lib/verificationReview';
 
 interface PartnerListing {
   id: string;
@@ -1929,7 +1930,7 @@ export default function PartnerDetailPage({
           documentNumber={templatePreview.documentNumber}
           response={templatePreview.response}
           isPartnerMode={false}
-          templateEndpointBaseOverride={`/superadmin/verifications/${resolvedPartnerId || partnerId}/${templatePreview.documentType}/${templatePreview.response.record.id}`}
+          templateEndpointBaseOverride={partnerTemplateEndpointBase(resolvedPartnerId || partnerId, templatePreview.documentType)}
           onClose={() => setTemplatePreview(null)}
           onSaved={() => undefined}
         />
