@@ -35,6 +35,7 @@ type DrivingLicenseRecordRepository = {
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
   updateMany?: (args: any) => Promise<{ count: number }>;
+  delete?: (args: any) => Promise<any>;
 };
 
 type DrivingLicenseAuditRepository = { create: (args: any) => Promise<any> };
@@ -350,9 +351,12 @@ export class DrivingLicenseVerificationService {
     });
     if (!cached || !isFreshVerificationResult(cached) || !isDrivingLicenseRawDataAvailable(cached)) return null;
     try {
+      const result = JSON.parse(decryptPanData(cached.encryptedResult, dataSecret));
+      const cachedResult = objectValue(result);
+      if (!safeText(cachedResult?.profileImage, 5_000_000) && cachedResult?.hasImage !== false) return null;
       return {
         record: recordSummary(cached),
-        result: JSON.parse(decryptPanData(cached.encryptedResult, dataSecret)),
+        result,
         template: drivingLicenseTemplateSummary(cached.template),
         cacheHit: true,
       };
@@ -381,6 +385,24 @@ export class DrivingLicenseVerificationService {
     }
   }
 
+  private async removeOlderDuplicateRecords(recordId: string, requestedById: string, requestFingerprint: string | null | undefined) {
+    if (!requestFingerprint || !this.record.delete) return;
+    const olderRecords = await this.record.findMany({
+      where: {
+        requestFingerprint,
+        requestedById,
+        NOT: { id: recordId },
+      },
+      include: { template: true },
+    });
+    for (const olderRecord of olderRecords) {
+      if (olderRecord.template?.driveFileId) {
+        await this.deleteTemplateFile(olderRecord.template.driveFileId);
+      }
+      await this.record.delete({ where: { id: olderRecord.id } });
+    }
+  }
+
   private async run(licenseNumber: string, dob: string, requestedById: string, requestFingerprint: string) {
     const runtime = await this.getRuntime();
     const maskedLicenseNumber = maskDrivingLicenseNumber(licenseNumber);
@@ -392,7 +414,14 @@ export class DrivingLicenseVerificationService {
       orderBy: { completedAt: 'desc' },
       include: { template: true },
     });
-    const pending = existing && !existing.template
+    if (existing?.template) {
+      const previousTemplate = existing.template;
+      if (this.template.delete) {
+        await this.template.delete({ where: { id: previousTemplate.id } });
+      }
+      await this.deleteTemplateFile(previousTemplate.driveFileId);
+    }
+    const pending = existing
       ? await this.record.update({
           where: { id: existing.id },
           data: {
@@ -422,7 +451,11 @@ export class DrivingLicenseVerificationService {
       const body = await runtime.provider.verifyDrivingLicense({ id_number: licenseNumber, dob });
       const { response, data } = ensureProviderData(body);
       const normalized = normalizeDrivingLicenseVerificationResult({ ...data, license_number: data.license_number ?? licenseNumber });
-      const encryptedResult = encryptPanData(JSON.stringify(normalized), runtime.dataSecret);
+      const profileImage = normalizeProfileImage(data.profile_image ?? data.profileImage);
+      const resultWithProfileImage = profileImage
+        ? { ...normalized, profileImage, hasImage: true }
+        : { ...normalized, hasImage: normalized.hasImage === true };
+      const encryptedResult = encryptPanData(JSON.stringify(resultWithProfileImage), runtime.dataSecret);
       const completedAt = new Date();
       const completed = await this.record.update({
         where: { id: pending.id },
@@ -447,8 +480,7 @@ export class DrivingLicenseVerificationService {
         status: DL_STATUS.SUCCESS,
         currentStatus: completed.currentStatus ?? null,
       });
-      const profileImage = normalizeProfileImage(data.profile_image ?? data.profileImage);
-      return { record: recordSummary(completed), result: profileImage ? { ...normalized, profileImage } : normalized, template: drivingLicenseTemplateSummary(completed.template), cacheHit: false, ...(billing ? { billing } : {}) };
+      return { record: recordSummary(completed), result: resultWithProfileImage, template: drivingLicenseTemplateSummary(completed.template), cacheHit: false, ...(billing ? { billing } : {}) };
     } catch (error) {
       const normalizedError = isApiWalletBillingError(error)
         ? new DrivingLicenseVerificationError(error.message, error.statusCode, error.code)
@@ -504,7 +536,16 @@ export class DrivingLicenseVerificationService {
         },
       }),
     ]);
-    return { records: records.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    const seenFingerprints = new Set<string>();
+    const uniqueRecords = records.filter((record) => {
+      const fingerprint = typeof record.requestFingerprint === 'string' && record.requestFingerprint
+        ? `${record.requestedById || ''}:${record.requestFingerprint}`
+        : record.id;
+      if (seenFingerprints.has(fingerprint)) return false;
+      seenFingerprints.add(fingerprint);
+      return true;
+    });
+    return { records: uniqueRecords.map(recordSummary), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   async getHistoryDetail(id: string) {
@@ -603,6 +644,7 @@ export class DrivingLicenseVerificationService {
       });
       templateId = template.id;
       await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null } });
+      await this.removeOlderDuplicateRecords(record.id, record.requestedById, record.requestFingerprint);
       return {
         record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
         result: null,

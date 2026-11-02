@@ -38,6 +38,7 @@ interface AuthState {
   hasHydrated: boolean;
   hydrateAuth: () => void;
   setAuth: (token: string, user: User) => void;
+  refreshSession: (token: string, user: User) => void;
   updateUser: (user: User) => void;
   logout: () => void;
 }
@@ -92,6 +93,11 @@ export const useAuthStore = create<AuthState>((set) => {
       localStorage.setItem('portal_token', token);
       localStorage.setItem('portal_user', JSON.stringify(user));
       localStorage.removeItem('portal_token:last_activity');
+      set({ token, user, isAuthenticated: true, hasHydrated: true });
+    },
+    refreshSession: (token, user) => {
+      localStorage.setItem('portal_token', token);
+      localStorage.setItem('portal_user', JSON.stringify(user));
       set({ token, user, isAuthenticated: true, hasHydrated: true });
     },
     updateUser: (user) => {

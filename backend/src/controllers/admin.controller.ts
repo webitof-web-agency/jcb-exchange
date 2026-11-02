@@ -64,6 +64,7 @@ import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/pro
 import { normalizeProfileEmail } from '../utils/profileSecurity';
 import { validateField } from '../utils/fieldValidation';
 import { normalizePartnerInventory } from '../utils/partnerInventory';
+import { DatabaseBackupInProgressError, performDatabaseBackup } from '../jobs/dbBackup.job';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -3598,5 +3599,29 @@ export const updateGoogleDrive = async (req: Request, res: Response, next: NextF
     res.status(200).json({ success: true, googleDrive: settings.googleDrive });
   } catch (error) {
     next(error);
+  }
+};
+
+export const triggerDatabaseBackup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await performDatabaseBackup();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Complete database backup uploaded to Google Drive successfully.',
+      backup: {
+        filename: result.filename,
+        fileId: result.fileId,
+        viewLink: result.viewLink,
+        method: result.method,
+        deletedCount: result.deletedCount,
+      },
+    });
+  } catch (error) {
+    if (error instanceof DatabaseBackupInProgressError) {
+      return res.status(409).json({ success: false, error: error.message, code: error.code });
+    }
+
+    return next(error);
   }
 };

@@ -48,8 +48,8 @@ import {
   handleTextOnlyKeyDown,
   isValidDigitsOnlyValue,
   isValidDateValue,
-  isValidPinCodeValue,
   isValidYearValue,
+  getOptionalPinCodeValidationError,
   normalizeSellVehicleAvailability,
   sanitizeListingFieldValue,
   sanitizeListingFormData,
@@ -1348,6 +1348,7 @@ export default function SellVehicleModal({
       return;
     }
 
+    const pinCodeValidationError = getOptionalPinCodeValidationError(sanitizedForm.pinCode);
     const validationError = !sanitizedForm.price || Number(sanitizedForm.price) <= 0
       ? 'Price is required and must be greater than 0.'
       : !isValidDigitsOnlyValue(sanitizedForm.price)
@@ -1358,9 +1359,7 @@ export default function SellVehicleModal({
             ? 'City is required.'
             : !sanitizedForm.address.trim()
               ? 'Address is required.'
-              : !sanitizedForm.pinCode.trim()
-                ? 'PIN Code is required.'
-                : !isValidPinCodeValue(sanitizedForm.pinCode) || sanitizedForm.pinCode.length !== 6
+              : pinCodeValidationError
                   ? (t('sellModal.pinValidation') || 'PIN code must be a valid 6-digit number.')
                   : !sanitizedForm.nearbyLandmark.trim()
                     ? 'Nearby Landmark is required.'
@@ -2295,12 +2294,11 @@ export default function SellVehicleModal({
                         />
                       </Field>
 
-                      <Field label="PIN Code *">
+                      <Field label="PIN Code">
                         <input
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          required
                           maxLength={6}
                           value={form.pinCode}
                           onKeyDown={handleDigitOnlyKeyDown}

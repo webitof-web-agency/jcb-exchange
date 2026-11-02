@@ -28,7 +28,6 @@ const DIRECT_PROVIDER_REQUEST_PATHS = [
   '/rc-challan-verification/verify',
   '/chassis-to-rc/verify',
   '/rc-to-mobile/verify',
-  '/mobile-to-rc/lookup',
 ] as const;
 
 const isDirectProviderRequest = (config: { method?: string; url?: string } | undefined) => {

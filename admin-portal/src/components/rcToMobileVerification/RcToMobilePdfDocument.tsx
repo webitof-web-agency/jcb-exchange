@@ -168,6 +168,16 @@ type Props = {
   result?: RcToMobileResult | null;
 };
 
+const formatValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return 'Not available';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value, null, 2) || 'Not available';
+  } catch {
+    return String(value);
+  }
+};
+
 const formatDateTime = (value: unknown): string => {
   if (typeof value !== 'string') return 'Not available';
   try {
@@ -187,10 +197,13 @@ export function RcToMobilePdfDocument({ record, result }: Props) {
   const mobileNumber = String(result?.mobileNumber || record.maskedMobileNumber || 'No mobile number returned');
   const providerClientId = String(result?.providerClientId || record.providerClientId || 'Not available');
   const isSuccess = record.status === 'SUCCESS';
+  const additionalFields = Object.entries(result || {})
+    .filter(([key]) => !new Set(['rcNumber', 'mobileNumber', 'providerClientId']).has(key))
+    .map(([key, value]) => ({ label: key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' '), value }));
 
   return (
     <Document title={`RC-to-Mobile-${rcNumber}`} author="JCB Exchange">
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" style={styles.page} wrap>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.eyebrow}>JCB Exchange • Vehicle &amp; Transport Verification</Text>
@@ -240,8 +253,38 @@ export function RcToMobilePdfDocument({ record, result }: Props) {
               <Text style={styles.label}>System Record Reference ID</Text>
               <Text style={styles.mono}>{record.id}</Text>
             </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Masked RC Number</Text>
+              <Text style={styles.mono}>{record.maskedRcNumber}</Text>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Masked Mobile Number</Text>
+              <Text style={styles.mono}>{record.maskedMobileNumber || 'Not available'}</Text>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Message Code</Text>
+              <Text style={styles.mono}>{record.messageCode || 'Not available'}</Text>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Completed At</Text>
+              <Text style={styles.value}>{formatDateTime(record.completedAt)}</Text>
+            </View>
           </View>
         </View>
+
+        {additionalFields.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Additional Provider Data</Text>
+            <View style={styles.grid}>
+              {additionalFields.map((field) => (
+                <View key={field.label} style={styles.fieldWide}>
+                  <Text style={styles.label}>{field.label}</Text>
+                  <Text style={styles.value}>{formatValue(field.value)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* Compliance Disclaimer */}
         <View style={styles.disclaimerBox}>

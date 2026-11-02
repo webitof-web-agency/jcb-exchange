@@ -27,6 +27,7 @@ import {
   getGoogleDriveSettings,
   checkGoogleDrive,
   updateGoogleDrive,
+  triggerDatabaseBackup,
   updatePlatformSettings,
   saveAdminPartnerOnboarding,
   submitAdminPartnerOnboarding,
@@ -140,6 +141,7 @@ router.put('/site-logo', canManageSettings, updateSiteLogoContent);
 router.get('/google-drive', canManageSettings, getGoogleDriveSettings);
 router.post('/google-drive/check', canManageSettings, checkGoogleDrive);
 router.put('/google-drive', canManageSettings, updateGoogleDrive);
+router.post('/google-drive/backup', canManageSettings, triggerDatabaseBackup);
 router.get('/pan-verification-settings', canManageSettings, getPanVerificationSettingsController);
 router.put('/pan-verification-settings', canManageSettings, updatePanVerificationSettingsController);
 router.get('/surepass-settings', canManageSettings, getPanVerificationSettingsController);

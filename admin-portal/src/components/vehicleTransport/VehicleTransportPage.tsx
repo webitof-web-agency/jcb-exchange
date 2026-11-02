@@ -16,7 +16,6 @@ import RcOwnerHistoryPage from '@/components/rcOwnerHistory/RcOwnerHistoryPage';
 import RcChallanVerificationPage from '@/components/rcChallanVerification/RcChallanVerificationPage';
 import ChassisToRcVerificationPage from '@/components/chassisToRcVerification/ChassisToRcVerificationPage';
 import RcToMobileVerificationPage from '@/components/rcToMobileVerification/RcToMobileVerificationPage';
-import MobileToRcLookupPage from '@/components/mobileToRcLookup/MobileToRcLookupPage';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -28,10 +27,9 @@ import {
   RC_CHALLAN_VIEW_PERMISSIONS,
   CHASSIS_TO_RC_VIEW_PERMISSIONS,
   RC_TO_MOBILE_VIEW_PERMISSIONS,
-  MOBILE_TO_RC_VIEW_PERMISSIONS,
 } from '@/lib/featurePermissions';
 
-type Service = 'none' | 'driving-license' | 'rc-owner-history' | 'rc-challan' | 'chassis-to-rc' | 'rc-to-mobile' | 'mobile-to-rc';
+type Service = 'none' | 'driving-license' | 'rc-owner-history' | 'rc-challan' | 'chassis-to-rc' | 'rc-to-mobile';
 
 export default function VehicleTransportPage() {
   const router = useRouter();
@@ -47,13 +45,12 @@ export default function VehicleTransportPage() {
   const canAccessRcChallan = canViewFeature(user?.role, permissions, RC_CHALLAN_VIEW_PERMISSIONS);
   const canAccessChassisToRc = canViewFeature(user?.role, permissions, CHASSIS_TO_RC_VIEW_PERMISSIONS);
   const canAccessRcToMobile = canViewFeature(user?.role, permissions, RC_TO_MOBILE_VIEW_PERMISSIONS);
-  const canAccessMobileToRc = canViewFeature(user?.role, permissions, MOBILE_TO_RC_VIEW_PERMISSIONS);
   useEffect(() => {
-    if (!canAccessDrivingLicense && !canAccessRcOwnerHistory && !canAccessRcChallan && !canAccessChassisToRc && !canAccessRcToMobile && !canAccessMobileToRc) {
+    if (!canAccessDrivingLicense && !canAccessRcOwnerHistory && !canAccessRcChallan && !canAccessChassisToRc && !canAccessRcToMobile) {
       router.replace(accessDeniedHref);
       return;
     }
-  }, [accessDeniedHref, canAccessChassisToRc, canAccessDrivingLicense, canAccessMobileToRc, canAccessRcChallan, canAccessRcOwnerHistory, canAccessRcToMobile, router]);
+  }, [accessDeniedHref, canAccessChassisToRc, canAccessDrivingLicense, canAccessRcChallan, canAccessRcOwnerHistory, canAccessRcToMobile, router]);
 
   useEffect(() => {
     if (service === 'driving-license') {
@@ -84,12 +81,6 @@ export default function VehicleTransportPage() {
       setCustomHeader(
         <h1 className="font-bold text-[17px] sm:text-xl text-gray-900 truncate">
           RC to Mobile
-        </h1>
-      );
-    } else if (service === 'mobile-to-rc') {
-      setCustomHeader(
-        <h1 className="font-bold text-[17px] sm:text-xl text-gray-900 truncate">
-          Mobile To RC
         </h1>
       );
     } else {
@@ -186,24 +177,6 @@ export default function VehicleTransportPage() {
     );
   }
 
-  if (service === 'mobile-to-rc' && canAccessMobileToRc) {
-    return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div>
-          <button
-            type="button"
-            onClick={() => setService('none')}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-900 hover:text-white hover:border-slate-900"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Services
-          </button>
-        </div>
-        <MobileToRcLookupPage embedded />
-      </div>
-    );
-  }
-
-
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Service Cards Grid */}
@@ -294,34 +267,6 @@ export default function VehicleTransportPage() {
           </div>
         )}
 
-        {/* Mobile to RC */}
-        {canAccessMobileToRc && (
-          <div
-            onClick={() => setService('mobile-to-rc')}
-            className="group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500 hover:shadow-md flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-sky-500/10 text-sky-600 transition-colors group-hover:bg-amber-500 group-hover:text-slate-950">
-                  <ScanSearch className="h-4 w-4 sm:h-5 sm:w-5" />
-                </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5 text-[9px] sm:text-xs font-semibold text-sky-800 border border-sky-200/60 truncate max-w-[95px] sm:max-w-none">
-                  <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> Mobile to RC
-                </span>
-              </div>
-              <div className="mt-3 sm:mt-4">
-                <h2 className="text-xs sm:text-base font-bold text-slate-950 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug">
-                  Mobile to RC
-                </h2>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between border-t border-slate-100/90 pt-3">
-              <ApiServicePrice summary={billing.summary} serviceKey="MOBILE_TO_RC" />
-              <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-1 shrink-0" />
-            </div>
-          </div>
-        )}
-
         {/* Card 3: RC Challan Verification */}
         {canAccessRcChallan && (
           <div
@@ -385,7 +330,7 @@ export default function VehicleTransportPage() {
       </div>
 
       {/* Empty State */}
-      {!canAccessDrivingLicense && !canAccessRcOwnerHistory && !canAccessRcChallan && !canAccessChassisToRc && !canAccessRcToMobile && !canAccessMobileToRc && (
+      {!canAccessDrivingLicense && !canAccessRcOwnerHistory && !canAccessRcChallan && !canAccessChassisToRc && !canAccessRcToMobile && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
             <FileWarning className="h-6 w-6" />

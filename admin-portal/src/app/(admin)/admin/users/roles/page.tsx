@@ -260,7 +260,6 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
         { id: 'rc.challan.verification.read', label: 'View RC Challan' },
         { id: 'rc.chassis-to-rc.read', label: 'View Chassis to RC Verification' },
         { id: 'rc.to-mobile.read', label: 'View RC to Mobile' },
-        { id: 'rc.mobile-to-rc.read', label: 'View Mobile To RC' },
       ],
     },
   ],

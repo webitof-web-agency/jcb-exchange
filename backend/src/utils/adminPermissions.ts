@@ -121,7 +121,6 @@ export const allowedAdminPermissions = new Set([
   'rc.challan.verification.read',
   'rc.chassis-to-rc.read',
   'rc.to-mobile.read',
-  'rc.mobile-to-rc.read',
   'accounts.rto.read',
   'accounts.rto.crud',
   'accounts.rto.create',

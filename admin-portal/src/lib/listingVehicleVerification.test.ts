@@ -76,6 +76,16 @@ test('maps registration validity aliases for admin listing autofill', () => {
   assert.equal(mapped.registrationUpto, '2040-06-01');
 });
 
+test('maps financing aliases and string boolean values for admin listing autofill', () => {
+  const mapped = mapProviderVehicleToListing({
+    financier_name: 'HDFC BANK',
+    is_financed: 'true',
+  });
+
+  assert.equal(mapped.rtoDetails.hirePurchaseStatus, 'ACTIVE');
+  assert.equal(mapped.rtoDetails.financerName, 'HDFC BANK');
+});
+
 test('matches provider category and brand names case-insensitively', () => {
   assert.equal(normalizeMasterName(' Motor  Car (LMV) '), 'motor car lmv');
   assert.deepEqual(findMasterOption([{ id: 'category-1', name: 'Motor Car (LMV)' }], 'motor car(lmv)'), {

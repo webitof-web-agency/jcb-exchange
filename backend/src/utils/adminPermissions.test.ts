@@ -57,12 +57,12 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
     'rc.challan.verification.read',
     'rc.chassis-to-rc.read',
     'rc.to-mobile.read',
-    'rc.mobile-to-rc.read',
   ].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
   });
 
   assert.equal(allowedAdminPermissions.has('rc.full.read'), false, 'RC Full should not be exposed as a role permission');
+  assert.equal(allowedAdminPermissions.has('rc.mobile-to-rc.read'), false, 'Mobile To RC should not be exposed as a role permission');
 
   [
     'driving-license.verification.verify',
@@ -75,8 +75,6 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
     'rc.chassis-to-rc.history',
     'rc.to-mobile.verify',
     'rc.to-mobile.history',
-    'rc.mobile-to-rc.lookup',
-    'rc.mobile-to-rc.history',
     'rc.mobile-number-check.check',
     'rc.mobile-number-check.history',
   ].forEach((permission) => {

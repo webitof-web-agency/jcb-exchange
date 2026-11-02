@@ -14,6 +14,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { formatDateTime } from '@/lib/i18n/formatters';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
+import { getProfileSessionToken } from '@/lib/profileSession.mjs';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
@@ -52,7 +53,7 @@ export default function PartnerLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { customHeader } = useHeaderStore();
-  const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
+  const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, refreshSession, updateUser } = useAuthStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
@@ -286,7 +287,13 @@ export default function PartnerLayout({
           return;
         }
 
-        updateUser(response.data.user);
+        const currentToken = useAuthStore.getState().token;
+        const nextToken = getProfileSessionToken(response.data.token, currentToken);
+        if (nextToken) {
+          refreshSession(nextToken, response.data.user);
+        } else {
+          updateUser(response.data.user);
+        }
 
         if (!canAccessPartnerOnboarding(response.data.user?.role)) {
           logout();
@@ -335,7 +342,7 @@ export default function PartnerLayout({
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [hasHydrated, isAuthenticated, logout, pathname, router, user?.role, updateUser, user?.id]);
+  }, [hasHydrated, isAuthenticated, logout, pathname, refreshSession, router, updateUser, user?.role, user?.id]);
 
   const handleLogout = () => {
     logout();

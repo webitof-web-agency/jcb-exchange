@@ -5,6 +5,7 @@ import {
   normalizeDrivingLicenseVerificationResult,
   maskDrivingLicenseNumber,
 } from './drivingLicenseVerification.service';
+import { decryptPanData, encryptPanData } from './panVerification.dataCrypto';
 
 const dataSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
@@ -64,7 +65,7 @@ test('does not call Surepass for invalid driving-license input', async () => {
   assert.equal(calls, 0);
 });
 
-test('persists encrypted driving-license history and excludes profile image from stored result', async () => {
+test('persists encrypted driving-license history with the profile image for template rendering', async () => {
   const records: any[] = [];
   const auditEvents: Array<Record<string, unknown>> = [];
   let payload: Record<string, unknown> | null = null;
@@ -113,11 +114,84 @@ test('persists encrypted driving-license history and excludes profile image from
   assert.equal(result.record.status, 'SUCCESS');
   assert.equal(result.record.currentStatus, null);
   assert.equal((result.result as Record<string, unknown>).profileImage, 'data:image/jpeg;base64,private-image');
-  assert.equal(records[0].encryptedResult.includes('private-image'), false);
+  const storedResult = JSON.parse(decryptPanData(records[0].encryptedResult, dataSecret)) as Record<string, unknown>;
+  assert.equal(storedResult.profileImage, 'data:image/jpeg;base64,private-image');
   assert.deepEqual(auditEvents.map((event) => event.action), [
     'DRIVING_LICENSE_VERIFICATION_REQUESTED',
     'DRIVING_LICENSE_VERIFICATION_SUCCEEDED',
   ]);
+});
+
+test('reuses the latest saved record instead of creating a duplicate verification history row', async () => {
+  const existingTemplate = {
+    id: 'old-template',
+    verificationRecordId: 'dl-record-existing',
+    driveFileId: 'old-drive-file',
+  };
+  const existingRecord: any = {
+    id: 'dl-record-existing',
+    status: 'SUCCESS',
+    maskedLicenseNumber: 'UP20********0000',
+    requestFingerprint: 'fingerprint',
+    requestedById: 'user-1',
+    encryptedResult: null,
+    rawDataExpiresAt: null,
+    template: existingTemplate,
+    provider: 'SUREPASS',
+    createdAt: new Date('2026-10-30T10:00:00.000Z'),
+    completedAt: new Date('2026-10-30T10:01:00.000Z'),
+  };
+  let findFirstCalls = 0;
+  let createCalls = 0;
+  const deletedTemplateIds: string[] = [];
+  const deletedDriveFileIds: string[] = [];
+  const updates: Array<Record<string, unknown>> = [];
+  const service = new DrivingLicenseVerificationService({
+    record: {
+      findFirst: async () => {
+        findFirstCalls += 1;
+        if (findFirstCalls === 3) return existingRecord;
+        return null;
+      },
+      findUnique: async () => null,
+      findMany: async () => [],
+      count: async () => 0,
+      create: async () => {
+        createCalls += 1;
+        throw new Error('duplicate verification row must not be created');
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        updates.push(data);
+        Object.assign(existingRecord, data);
+        return { ...existingRecord, template: null, requestedBy: null };
+      },
+    },
+    template: {
+      delete: async ({ where }: { where: { id: string } }) => {
+        deletedTemplateIds.push(where.id);
+        existingRecord.template = null;
+        return existingTemplate;
+      },
+    } as any,
+    provider: {
+      verifyDrivingLicense: async () => ({
+        success: true,
+        status_code: 200,
+        message_code: 'success',
+        data: { license_number: 'UP2020150000000', name: 'MUNNA BHAIYA', has_image: false },
+      }),
+    } as any,
+    dataSecret,
+    deleteTemplateFile: async (fileId) => { deletedDriveFileIds.push(fileId); },
+  });
+
+  const result = await service.verifyDrivingLicense({ id_number: 'UP2020150000000', dob: '1996-11-23' }, 'user-1');
+
+  assert.equal(result.record.id, existingRecord.id);
+  assert.equal(createCalls, 0);
+  assert.deepEqual(deletedTemplateIds, ['old-template']);
+  assert.deepEqual(deletedDriveFileIds, ['old-drive-file']);
+  assert.equal(updates[0]?.status, 'PENDING');
 });
 
 test('history lists only driving-license records with an uploaded template', async () => {
@@ -159,4 +233,55 @@ test('history lists only driving-license records with an uploaded template', asy
 
   assert.deepEqual(receivedWhere, { template: { isNot: null } });
   assert.equal(result.records[0]?.template?.id, 'dl-template-1');
+});
+
+test('history keeps only the latest saved record for the same user and verification fingerprint', async () => {
+  const baseRecord = {
+    status: 'SUCCESS',
+    maskedLicenseNumber: 'UP20********0000',
+    provider: 'SUREPASS',
+    requestedById: 'user-1',
+    requestFingerprint: 'same-fingerprint',
+    template: { id: 'template', fileName: 'latest.png', mimeType: 'image/png', fileSize: 128, sha256: 'hash', createdAt: new Date() },
+  };
+  const service = new DrivingLicenseVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => null,
+      count: async () => 2,
+      findMany: async () => [
+        { ...baseRecord, id: 'latest-record', createdAt: new Date('2026-11-02T10:00:00.000Z') },
+        { ...baseRecord, id: 'older-record', template: { ...baseRecord.template, id: 'older-template' }, createdAt: new Date('2026-11-01T10:00:00.000Z') },
+      ],
+      create: async () => ({}),
+      update: async () => ({}),
+    },
+    dataSecret,
+  });
+
+  const result = await service.listHistory({});
+
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0]?.id, 'latest-record');
+});
+
+test('does not reuse a cached result that says a profile image exists but has no stored image', async () => {
+  const cachedRecord = {
+    id: 'dl-record-with-missing-image',
+    status: 'SUCCESS',
+    maskedLicenseNumber: 'UP20********0000',
+    provider: 'SUREPASS',
+    encryptedResult: encryptPanData(JSON.stringify({ licenseNumber: 'UP2020150000000', hasImage: true }), dataSecret),
+    rawDataExpiresAt: new Date(Date.now() + 60_000),
+    completedAt: new Date(),
+    createdAt: new Date(),
+    template: null,
+  };
+  const service = new DrivingLicenseVerificationService({
+    record: { findFirst: async () => cachedRecord } as any,
+    dataSecret,
+  });
+
+  const cached = await (service as any).findFreshCachedResult('fingerprint', dataSecret);
+  assert.equal(cached, null);
 });

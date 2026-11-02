@@ -43,7 +43,7 @@ test('reuses the existing year and month folders under the configured root', asy
   assert.equal(folderId, 'month-folder-id');
   assert.equal(listCalls.length, 2);
   assert.match(String(listCalls[0]!.q), /2026/);
-  assert.match(String(listCalls[1]!.q), /09-September/);
+  assert.match(String(listCalls[1]!.q), /September/);
 });
 
 test('creates missing year and month folders below the configured root', async () => {
@@ -71,7 +71,7 @@ test('creates missing year and month folders below the configured root', async (
   assert.equal(folderId, 'created-month-id');
   assert.deepEqual(createCalls.map((call) => call.requestBody), [
     { name: '2026', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder-id'] },
-    { name: '09-September', mimeType: 'application/vnd.google-apps.folder', parents: ['created-year-id'] },
+    { name: 'September', mimeType: 'application/vnd.google-apps.folder', parents: ['created-year-id'] },
   ]);
 });
 

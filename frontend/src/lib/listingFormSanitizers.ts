@@ -223,4 +223,12 @@ export const isValidDateValue = (value: string) => {
 
 export const isValidPinCodeValue = (value: string) => value.length === 0 || /^\d{6}$/.test(value);
 
+export const getOptionalPinCodeValidationError = (value: string) => {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) return null;
+  return isValidPinCodeValue(normalizedValue) && normalizedValue.length === 6
+    ? null
+    : 'Pin code must be exactly 6 digits.';
+};
+
 export const isValidDigitsOnlyValue = (value: string) => value.length === 0 || /^\d+$/.test(value);

@@ -370,6 +370,8 @@ export default function SuperAdminSettingsPage() {
   const [googleDriveSaving, setGoogleDriveSaving] = useState(false);
   const [googleDriveChecking, setGoogleDriveChecking] = useState(false);
   const [googleDriveCheck, setGoogleDriveCheck] = useState<GoogleDriveCheckState>({ status: 'idle', message: '' });
+  const [databaseBackupRunning, setDatabaseBackupRunning] = useState(false);
+  const [databaseBackupStatus, setDatabaseBackupStatus] = useState<GoogleDriveCheckState>({ status: 'idle', message: '' });
   const [showGoogleClientId, setShowGoogleClientId] = useState(false);
   const [showGoogleDriveClientId, setShowGoogleDriveClientId] = useState(false);
   const [showGoogleDriveClientSecret, setShowGoogleDriveClientSecret] = useState(false);
@@ -1073,6 +1075,32 @@ export default function SuperAdminSettingsPage() {
       toast.error(message);
     } finally {
       setGoogleDriveChecking(false);
+    }
+  };
+
+  const handleDatabaseBackup = async () => {
+    setDatabaseBackupRunning(true);
+    setDatabaseBackupStatus({ status: 'checking', message: 'Creating a complete database backup and uploading it to Google Drive...' });
+
+    try {
+      const response = await api.post<{
+        success: boolean;
+        message: string;
+        backup?: {
+          filename: string;
+        };
+      }>('/superadmin/google-drive/backup');
+
+      const filename = response.data.backup?.filename;
+      const message = filename ? `${response.data.message} File: ${filename}` : response.data.message;
+      setDatabaseBackupStatus({ status: 'success', message });
+      toast.success(message);
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Complete database backup failed.');
+      setDatabaseBackupStatus({ status: 'error', message });
+      toast.error(message);
+    } finally {
+      setDatabaseBackupRunning(false);
     }
   };
 
@@ -3045,6 +3073,44 @@ export default function SuperAdminSettingsPage() {
                         <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
                       )}
                       <span>{googleDriveCheck.message}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-col gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-blue-900">Complete database backup</p>
+                      <p className="mt-1 text-xs text-blue-800">
+                        Automatic backup runs daily at 12:00 AM IST. This button runs the same full PostgreSQL backup immediately.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleDatabaseBackup()}
+                      disabled={googleDriveSaving || googleDriveChecking || databaseBackupRunning}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-5 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {databaseBackupRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />}
+                      {databaseBackupRunning ? 'Backing up...' : 'Backup Now'}
+                    </button>
+                  </div>
+                  {databaseBackupStatus.status !== 'idle' ? (
+                    <div
+                      className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${databaseBackupStatus.status === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : databaseBackupStatus.status === 'error'
+                          ? 'border-red-200 bg-red-50 text-red-800'
+                          : 'border-blue-200 bg-blue-50 text-blue-800'
+                        }`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {databaseBackupStatus.status === 'success' ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : databaseBackupStatus.status === 'error' ? (
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : (
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                      )}
+                      <span>{databaseBackupStatus.message}</span>
                     </div>
                   ) : null}
                   <div className="flex flex-wrap justify-end gap-3">

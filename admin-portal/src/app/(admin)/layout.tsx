@@ -13,6 +13,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useIdleAutoLogout } from '@/hooks/useIdleAutoLogout';
 import { accountsNavItems } from '@/lib/accountsPermissions';
 import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
+import { getProfileSessionToken } from '@/lib/profileSession.mjs';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
@@ -179,7 +180,7 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { customHeader } = useHeaderStore();
-  const { isAuthenticated, user, token, logout, hasHydrated, hydrateAuth, updateUser } = useAuthStore();
+  const { isAuthenticated, user, token, logout, hasHydrated, hydrateAuth, refreshSession, updateUser } = useAuthStore();
   const publicSiteOrigin = process.env.NEXT_PUBLIC_PUBLIC_SITE_URL || (
     process.env.NODE_ENV === 'production' ? 'https://jcbexchange.com' : 'http://localhost:3000'
   );
@@ -421,7 +422,13 @@ export default function AdminLayout({
           return;
         }
 
-        updateUser(response.data.user);
+        const currentToken = useAuthStore.getState().token;
+        const nextToken = getProfileSessionToken(response.data.token, currentToken);
+        if (nextToken) {
+          refreshSession(nextToken, response.data.user);
+        } else {
+          updateUser(response.data.user);
+        }
 
         if (!['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(response.data.user?.role || '')) {
           logout();
@@ -466,7 +473,7 @@ export default function AdminLayout({
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [hasHydrated, isAuthenticated, logout, pathname, router, updateUser, user?.role]);
+  }, [hasHydrated, isAuthenticated, logout, pathname, refreshSession, router, updateUser, user?.role]);
 
   // ─── Industry-standard "last seen at" timestamp badge fetching ──────────────
   // On each fetch, we send the stored seenAt timestamps to the backend.

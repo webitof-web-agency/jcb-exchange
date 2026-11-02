@@ -22,8 +22,8 @@ import { generateAdminListingDetailPath } from '@/lib/routePaths';
 import {
   isValidDigitsOnlyValue,
   isValidDateValue,
-  isValidPinCodeValue,
   isValidYearValue,
+  getOptionalPinCodeValidationError,
   normalizeSellVehicleAvailability,
   sanitizeListingFieldValue,
   sanitizeListingFormData,
@@ -1541,14 +1541,9 @@ export default function PartnerListingsPage() {
       return;
     }
 
-    if (!sanitizedForm.pinCode.trim()) {
-      setError('PIN Code is required.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidPinCodeValue(sanitizedForm.pinCode) || sanitizedForm.pinCode.length !== 6) {
-      setError('Pin code must be exactly 6 digits.');
+    const pinCodeValidationError = getOptionalPinCodeValidationError(sanitizedForm.pinCode);
+    if (pinCodeValidationError) {
+      setError(pinCodeValidationError);
       setForm(sanitizedForm);
       return;
     }
@@ -2523,9 +2518,8 @@ export default function PartnerListingsPage() {
                         className="bg-[#F8FAFC]"
                       />
                     </Field>
-                    <Field label="PIN Code *">
+                    <Field label="PIN Code">
                       <input
-                        required
                         maxLength={6}
                         value={form.pinCode}
                         onChange={(event) => updateField('pinCode', event.target.value)}

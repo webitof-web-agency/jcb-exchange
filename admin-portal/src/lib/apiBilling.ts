@@ -9,7 +9,6 @@ export type ApiBillableServiceKey =
   | 'RC_CHALLAN'
   | 'CHASSIS_TO_RC'
   | 'RC_TO_MOBILE'
-  | 'MOBILE_TO_RC'
   | 'RC_MOBILE_NUMBER_CHECK';
 
 export const API_BILLING_SUMMARY_CHANGED_EVENT = 'api-billing-summary-changed';

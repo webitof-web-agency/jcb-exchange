@@ -18,7 +18,6 @@ export const VEHICLE_TRANSPORT_VIEW_PERMISSIONS = [
   'rc.challan.verification.read',
   'rc.chassis-to-rc.read',
   'rc.to-mobile.read',
-  'rc.mobile-to-rc.read',
 ];
 
 export const DRIVING_LICENSE_VIEW_PERMISSIONS = ['driving-license.verification.read'];
@@ -26,7 +25,6 @@ export const RC_OWNER_HISTORY_VIEW_PERMISSIONS = ['rc.owner-history.read'];
 export const RC_CHALLAN_VIEW_PERMISSIONS = ['rc.challan.verification.read'];
 export const CHASSIS_TO_RC_VIEW_PERMISSIONS = ['rc.chassis-to-rc.read'];
 export const RC_TO_MOBILE_VIEW_PERMISSIONS = ['rc.to-mobile.read'];
-export const MOBILE_TO_RC_VIEW_PERMISSIONS = ['rc.mobile-to-rc.read'];
 
 export type PortalRole = 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | string | undefined;
 

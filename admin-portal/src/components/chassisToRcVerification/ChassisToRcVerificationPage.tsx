@@ -2,7 +2,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, CalendarDays, CarFront, Eye, FileCheck2, History, Loader2, MapPin, Search, ShieldAlert, UserRound, XCircle } from 'lucide-react';
+import { BadgeCheck, CalendarDays, CarFront, Download, Eye, FileCheck2, History, Loader2, MapPin, Search, ShieldAlert, UserRound, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
@@ -60,12 +60,43 @@ function StatusBadge({ status }: { status: unknown }) {
 }
 
 function ResultPanel({ response }: { response: ChassisToRcResponse }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+
   if (response.record.status !== 'SUCCESS') {
     return <VerificationHistoryState title="Chassis-to-RC verification was not completed" record={response.record} />;
   }
   const result = response.result || {};
+  const rcNumber = String(result.rcNumber || response.record.rcNumber || response.record.maskedChassisNumber || 'RC-RECORD');
+
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    setPdfError('');
+    try {
+      const [{ pdf }, { default: ChassisToRcPdfDocument }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./ChassisToRcPdfDocument'),
+      ]);
+      const blob = await pdf(<ChassisToRcPdfDocument result={result} record={response.record} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `Chassis-to-RC-${rcNumber.replace(/[^A-Za-z0-9*-]+/g, '-')}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error('Chassis-to-RC PDF generation failed:', error);
+      setPdfError(error instanceof Error ? error.message : 'PDF could not be generated. Please try again.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return <div className="mt-6 space-y-5" role="status" aria-live="polite">
-    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><BadgeCheck className="h-5 w-5" />Chassis-to-RC verification completed</div><div className="flex items-center gap-2"><StatusBadge status={response.record.status} />{response.cacheHit ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700">24h cached result</span> : null}</div></div>
+    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><BadgeCheck className="h-5 w-5" />Chassis-to-RC verification completed</div><div className="flex flex-wrap items-center gap-2"><StatusBadge status={response.record.status} />{response.cacheHit ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700">24h cached result</span> : null}<button type="button" onClick={() => void downloadPdf()} disabled={pdfBusy} className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-amber-50 disabled:opacity-50">{pdfBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5 text-amber-600" />}{pdfBusy ? 'Generating PDF…' : 'Download PDF'}</button></div></div>
+    {pdfError ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700" role="alert">{pdfError}</div> : null}
     {result.lessInfo === true ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Limited vehicle information was returned by the verification provider.</div> : null}
     <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"><h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><FileCheck2 className="h-5 w-5 text-amber-600" />Registration</h2><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="RC number" value={result.rcNumber || response.record.rcNumber} /><Field label="Registration date" value={formatDate(result.registrationDate)} /><Field label="Fit valid up to" value={formatDate(result.fitUpTo)} /><Field label="RC status" value={result.rcStatus} /><Field label="Owner number" value={result.ownerNumber} /><Field label="Latest record date" value={formatDate(result.latestBy)} /></dl></section>
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><UserRound className="h-5 w-5 text-amber-600" />Owner details</h2><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Owner name" value={result.ownerName} /><Field label="Father name" value={result.fatherName} /><Field label="Mobile number" value={result.mobileNumber} /><Field label="Present address" value={result.presentAddress} /><Field label="Permanent address" value={result.permanentAddress} /></dl></section>

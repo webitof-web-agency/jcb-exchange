@@ -120,6 +120,61 @@ test('repeated driving-license template upload is idempotent and does not create
   assert.deepEqual(updates, [{ encryptedResult: null, rawDataExpiresAt: null }]);
 });
 
+test('saving a reverified license removes older duplicate history records after the latest template is stored', async () => {
+  const currentRecord = {
+    id: 'dl-record-latest',
+    status: 'SUCCESS',
+    maskedLicenseNumber: 'UP20********0000',
+    requestedById: 'user-1',
+    requestFingerprint: 'same-license-fingerprint',
+    encryptedResult: 'encrypted-result',
+    rawDataExpiresAt: new Date(Date.now() + 60_000),
+    template: null,
+  };
+  const olderRecord = {
+    id: 'dl-record-older',
+    requestFingerprint: currentRecord.requestFingerprint,
+    requestedById: 'user-1',
+    template: { id: 'older-template', driveFileId: 'older-drive-file' },
+  };
+  const deletedRecordIds: string[] = [];
+  const deletedDriveFileIds: string[] = [];
+  const service = new DrivingLicenseVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => currentRecord,
+      findMany: async () => [olderRecord],
+      count: async () => 0,
+      create: async () => ({}),
+      update: async ({ data }: { data: Record<string, unknown> }) => ({ ...currentRecord, ...data, template: null }),
+      delete: async ({ where }: { where: { id: string } }) => {
+        deletedRecordIds.push(where.id);
+        return olderRecord;
+      },
+    },
+    template: {
+      create: async () => ({
+        id: 'latest-template',
+        verificationRecordId: currentRecord.id,
+        driveFileId: 'latest-drive-file',
+        fileName: 'latest.png',
+        mimeType: 'image/png',
+        fileSize: validPng.length,
+        sha256: 'latest-hash',
+        createdAt: new Date(),
+      }),
+    } as any,
+    dataSecret,
+    uploadTemplateFile: async () => ({ fileId: 'latest-drive-file' }),
+    deleteTemplateFile: async (fileId: string) => { deletedDriveFileIds.push(fileId); },
+  } as any);
+
+  await (service as any).uploadTemplate(currentRecord.id, 'user-1', 'EMPLOYEE', validPng, 'image/png');
+
+  assert.deepEqual(deletedRecordIds, ['dl-record-older']);
+  assert.deepEqual(deletedDriveFileIds, ['older-drive-file']);
+});
+
 test('expired driving-license raw result cleanup clears only retained encrypted results', async () => {
   let cleanupArgs: Record<string, unknown> | null = null;
   const service = new DrivingLicenseVerificationService({

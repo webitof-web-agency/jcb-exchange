@@ -329,8 +329,8 @@ export const uploadFileToDrive = async (
  *   <backupFolderId>/
  *     backup-db/          ← auto-created if not present
  *       2026/             ← year folder (IST), auto-created if not present
- *         09-September/   ← month folder (IST), auto-created if not present
- *           db_dump_2026-09-25_000000.sql.gz
+ *         September/      ← month folder (IST), auto-created if not present
+ *           db_dump_2026-09-25_000000.dump
  *
  * After upload, enforces a rolling retention of maxBackups (default 30).
  * If total backup files inside backup-db exceed the limit, oldest files
@@ -344,6 +344,7 @@ export const uploadDatabaseBackupToDrive = async (
   filename: string,
   rootFolderId?: string,
   maxBackups: number = 30,
+  uploadDate: Date = new Date(),
 ): Promise<{ fileId: string; viewLink: string; deletedCount: number }> => {
   const drive = await getDriveClient();
   const settings = await getAppSettings();
@@ -374,7 +375,7 @@ export const uploadDatabaseBackupToDrive = async (
   const backupDbFolderId = await findOrCreateChildFolder(drive, 'backup-db', targetFolderId);
 
   // Step 3: Find or create Year > Month folders inside backup-db (IST timezone)
-  const yearMonthFolderId = await resolveYearMonthUploadFolder(drive, backupDbFolderId, new Date());
+  const yearMonthFolderId = await resolveYearMonthUploadFolder(drive, backupDbFolderId, uploadDate);
 
   // Step 4: Upload the dump file (always private — no public permission)
   const uploadResponse = await drive.files.create({

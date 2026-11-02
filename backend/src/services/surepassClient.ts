@@ -228,10 +228,6 @@ export class SurepassClient {
     return this.post('/api/v1/rc/rc-to-mobile-number', payload);
   }
 
-  verifyMobileToRc(payload: { mobile_number: string }) {
-    return this.post('/api/v1/rc/mobile-number-to-rc', payload);
-  }
-
   getPanByMobile(payload: { name: string; mobile_no: string }) {
     return this.post('/api/v1/pan/mobile-to-pan', payload);
   }

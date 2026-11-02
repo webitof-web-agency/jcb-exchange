@@ -198,25 +198,6 @@ test('sends RC-to-mobile verification to the documented endpoint', async () => {
   assert.deepEqual(JSON.parse(String(sent.init.body)), { rc_number: 'RJ14XJ1234' });
 });
 
-test('sends Mobile To RC lookup to the documented endpoint', async () => {
-  let request: { url: string; init: RequestInit } | null = null;
-  const client = new SurepassClient({
-    baseUrl: 'https://kyc-api.surepass.app',
-    token: 'server-only-token',
-    fetchImpl: async (url, init) => {
-      request = { url, init: init ?? {} };
-      return response({ success: true, status_code: 200, data: { rc_number: ['RJ14XJ1234'] } });
-    },
-  });
-
-  await client.verifyMobileToRc({ mobile_number: '8908885858' });
-
-  const sent = request as unknown as { url: string; init: RequestInit };
-  assert.ok(sent);
-  assert.equal(sent.url, 'https://kyc-api.surepass.app/api/v1/rc/mobile-number-to-rc');
-  assert.deepEqual(JSON.parse(String(sent.init.body)), { mobile_number: '8908885858' });
-});
-
 test('sends Mobile To PAN lookup to the documented endpoint', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({

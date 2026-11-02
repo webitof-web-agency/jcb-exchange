@@ -1965,7 +1965,10 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
     }
 
     const authUser = await buildAuthUserPayload(user);
-    res.json({ user: authUser });
+    // Return a renewed token for valid sessions so long-running portal work
+    // does not lose the session when the original JWT reaches its lifetime.
+    const token = signAuthToken(authUser);
+    res.json({ user: authUser, token });
   } catch (error) {
     next(error);
   }

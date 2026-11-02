@@ -14,7 +14,6 @@ export const API_BILLABLE_SERVICES = [
   { serviceKey: 'RC_CHALLAN', displayName: 'RC Challan' },
   { serviceKey: 'CHASSIS_TO_RC', displayName: 'Chassis to RC Details' },
   { serviceKey: 'RC_TO_MOBILE', displayName: 'RC to Mobile' },
-  { serviceKey: 'MOBILE_TO_RC', displayName: 'Mobile To RC' },
   { serviceKey: 'RC_MOBILE_NUMBER_CHECK', displayName: 'RC Mobile Number Check' },
 ] as const;
 

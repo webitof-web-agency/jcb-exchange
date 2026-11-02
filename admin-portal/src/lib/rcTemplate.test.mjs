@@ -155,18 +155,31 @@ test('RcCardTemplatePreview provides Download PNG and Download PDF actions', () 
   assert.match(previewSource, /downloadPdf/);
   assert.match(previewSource, />PNG<\/span>/);
   assert.match(previewSource, />PDF Card<\/span>/);
+  assert.match(previewSource, /const A4_PNG_WIDTH = 2480/);
+  assert.match(previewSource, /const A4_PNG_HEIGHT = 3508/);
+  assert.match(previewSource, /const getA4Blob = async/);
+  assert.match(previewSource, /getA4Blob\(\)/);
 });
 
-test('RcCardPdfDocument generates standard A4 Landscape PDF with card image', () => {
+test('RcCardTemplatePreview uses the same normalized A4 image for preview, history, and exports', () => {
+  assert.match(previewSource, /const normalizeBlobToA4 = async/);
+  assert.match(previewSource, /setTemplateBlob\(a4Blob\)/);
+  assert.match(previewSource, /setPreviewUrl\(URL\.createObjectURL\(a4Blob\)\)/);
+  assert.match(previewSource, /onClick=\{handlePreviewClick\}/);
+  assert.match(previewSource, /return normalizeBlobToA4\(sourceBlob\)/);
+  assert.match(previewSource, /if \(template \|\| !qrDataUrl\) return/);
+});
+
+test('RcCardPdfDocument generates standard A4 portrait PDF with card image', () => {
   assert.match(pdfSource, /@react-pdf\/renderer/);
-  assert.match(pdfSource, /PAGE_WIDTH\s*=\s*842/);
-  assert.match(pdfSource, /PAGE_HEIGHT\s*=\s*595/);
+  assert.match(pdfSource, /<Page\s+size="A4"/);
+  assert.doesNotMatch(pdfSource, /orientation="landscape"/);
   assert.match(pdfSource, /INDIAN UNION VEHICLE REGISTRATION CERTIFICATE/);
   assert.match(pdfSource, /Form 23A - Smart Card Certificate/);
 });
 
 test('RcLookupPage renders RcCardTemplatePreview on successful verification', () => {
-  assert.match(pageSource, /<RcCardTemplatePreview\s+response=\{response\}/);
+  assert.match(pageSource, /<RcCardTemplatePreview\s+key=\{response\.record\.id\}\s+response=\{response\}/);
   assert.equal(pageSource.includes('RcOwnerHistoryTemplatePreview'), false);
   assert.equal(pageSource.includes('ResultPanel'), false);
 });

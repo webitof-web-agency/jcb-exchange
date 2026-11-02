@@ -20,3 +20,12 @@ test('RC to Mobile verification provides preview card, PDF download and history 
   assert.match(pdfSource, /Linked Mobile Number/);
   assert.match(pdfSource, /Provider Client ID/);
 });
+
+test('RC to Mobile PDF is an A4 wrapping audit document for history records', () => {
+  assert.match(pdfSource, /<Page size="A4" style=\{styles\.page\} wrap>/);
+  assert.match(pdfSource, /record\.maskedRcNumber/);
+  assert.match(pdfSource, /record\.maskedMobileNumber/);
+  assert.match(pdfSource, /record\.messageCode/);
+  assert.match(pdfSource, /record\.completedAt/);
+  assert.match(pdfSource, /Object\.entries/);
+});

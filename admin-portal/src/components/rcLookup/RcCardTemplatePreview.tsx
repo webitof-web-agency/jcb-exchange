@@ -25,6 +25,9 @@ const BASE_WIDTH = 1024;
 const BASE_HEIGHT = 348;
 const CANVAS_WIDTH = 2048; // 2x high-resolution rendering
 const CANVAS_HEIGHT = 696;
+const A4_PNG_WIDTH = 2480;
+const A4_PNG_HEIGHT = 3508;
+const A4_PNG_MARGIN = 120;
 const TEMPLATE_REQUEST_TIMEOUT_MS = 30_000;
 const KEY_FONT = '750 11.5px Arial, Helvetica, sans-serif';
 const COMPACT_KEY_FONT = '750 10.5px Arial, Helvetica, sans-serif';
@@ -112,6 +115,43 @@ const blobToDataUrl = (blob: Blob) =>
     reader.onerror = () => reject(new Error('The template image could not be read.'));
     reader.readAsDataURL(blob);
   });
+
+const blobToImage = async (blob: Blob) => {
+  const source = await blobToDataUrl(blob);
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('The RC template image could not be decoded.'));
+    image.src = source;
+  });
+};
+
+const canvasToPngBlob = (canvas: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => {
+  canvas.toBlob((blob) => {
+    if (blob) resolve(blob);
+    else reject(new Error('The RC PNG could not be prepared.'));
+  }, 'image/png');
+});
+
+const normalizeBlobToA4 = async (sourceBlob: Blob) => {
+  const sourceImage = await blobToImage(sourceBlob);
+  if (sourceImage.naturalWidth === A4_PNG_WIDTH && sourceImage.naturalHeight === A4_PNG_HEIGHT) {
+    return sourceBlob;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = A4_PNG_WIDTH;
+  canvas.height = A4_PNG_HEIGHT;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('The RC A4 canvas is unavailable.');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, A4_PNG_WIDTH, A4_PNG_HEIGHT);
+  const cardWidth = A4_PNG_WIDTH - (A4_PNG_MARGIN * 2);
+  const cardHeight = Math.round(cardWidth * (sourceImage.naturalHeight / sourceImage.naturalWidth));
+  context.drawImage(sourceImage, A4_PNG_MARGIN, A4_PNG_MARGIN, cardWidth, cardHeight);
+  return canvasToPngBlob(canvas);
+};
 
 const wrapText = (
   ctx: CanvasRenderingContext2D,
@@ -224,7 +264,6 @@ export default function RcCardTemplatePreview({
     if (!templateId || !recordId) return;
 
     let active = true;
-    setTemplateError('');
 
     getVerificationTemplateBlob(
       `rc-owner-history:${recordId}:${templateId}`,
@@ -236,10 +275,13 @@ export default function RcCardTemplatePreview({
         return res.data;
       }
     )
-      .then((blob) => {
+      .then(async (blob) => {
         if (!active) return;
-        setTemplateBlob(blob);
-        const url = URL.createObjectURL(blob);
+        const a4Blob = await normalizeBlobToA4(blob);
+        if (!active) return;
+        setTemplateError('');
+        setTemplateBlob(a4Blob);
+        const url = URL.createObjectURL(a4Blob);
         setPreviewUrl(url);
       })
       .catch((err) => {
@@ -310,7 +352,7 @@ export default function RcCardTemplatePreview({
 
   // Render High-DPI Canvas
   useEffect(() => {
-    if (template) return;
+    if (template || !qrDataUrl) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -608,6 +650,13 @@ export default function RcCardTemplatePreview({
       drawText(regAuthority, 879, 307, 'bold 8.5px Arial, Helvetica, sans-serif', '#000000', 'left', 'alphabetic', 124);
 
       ctx.restore();
+
+      const renderedBlob = await canvasToPngBlob(canvas);
+      const a4Blob = await normalizeBlobToA4(renderedBlob);
+      if (active) {
+        setTemplateBlob(a4Blob);
+        setPreviewUrl(URL.createObjectURL(a4Blob));
+      }
     };
 
     render().catch((err) => {
@@ -637,6 +686,23 @@ export default function RcCardTemplatePreview({
     }
   };
 
+  const handlePreviewClick = (event: React.MouseEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    const rect = image.getBoundingClientRect();
+    const scaleX = A4_PNG_WIDTH / rect.width;
+    const scaleY = A4_PNG_HEIGHT / rect.height;
+    const clickX = (event.clientX - rect.left) * scaleX;
+    const clickY = (event.clientY - rect.top) * scaleY;
+    const cardScale = (A4_PNG_WIDTH - (A4_PNG_MARGIN * 2)) / CANVAS_WIDTH;
+    const qrLeft = A4_PNG_MARGIN + (1060 * cardScale);
+    const qrTop = A4_PNG_MARGIN + (186 * cardScale);
+    const qrSize = 260 * cardScale;
+
+    if (clickX >= qrLeft && clickX <= qrLeft + qrSize && clickY >= qrTop && clickY <= qrTop + qrSize) {
+      setQrModalOpen(true);
+    }
+  };
+
   // Source blob resolution: loads from cache/API for saved templates, or generates from canvas
   const getSourceBlob = async (): Promise<Blob> => {
     if (templateBlob) return templateBlob;
@@ -661,6 +727,11 @@ export default function RcCardTemplatePreview({
     return blob;
   };
 
+  const getA4Blob = async () => {
+    const sourceBlob = await getSourceBlob();
+    return normalizeBlobToA4(sourceBlob);
+  };
+
   // Upload and persist template to history
   const upload = async () => {
     if (!onUploaded || !hasResult || !response?.record?.id || expired) {
@@ -670,7 +741,7 @@ export default function RcCardTemplatePreview({
     setUploadBusy(true);
     setUploadError('');
     try {
-      const blob = await getSourceBlob();
+      const blob = await getA4Blob();
       const formData = new FormData();
       const cleanRc = effectiveRcNumber.replace(/[^A-Z0-9]+/gi, '-').toUpperCase() || 'RC';
       formData.append('template', blob, `rc-card-${cleanRc}.png`);
@@ -709,7 +780,7 @@ export default function RcCardTemplatePreview({
     setDownloadPngBusy(true);
     setUploadError('');
     try {
-      const blob = await getSourceBlob();
+      const blob = await getA4Blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -732,7 +803,7 @@ export default function RcCardTemplatePreview({
     setDownloadPdfBusy(true);
     setUploadError('');
     try {
-      const blob = await getSourceBlob();
+      const blob = await getA4Blob();
       const image = await blobToDataUrl(blob);
       const { pdf } = await import('@react-pdf/renderer');
       const { RcCardPdfDocument } = await import('./RcCardPdfDocument');
@@ -835,33 +906,33 @@ export default function RcCardTemplatePreview({
       {/* Canvas Card Preview Container */}
       <div className="mt-5 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-5">
         <div className="relative w-full max-w-4xl overflow-hidden rounded-none border border-slate-300 bg-white shadow-md transition-shadow hover:shadow-lg">
-          {template ? (
-            templateError ? (
-              <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 p-6 text-center text-xs text-red-600">
-                <XCircle className="h-6 w-6 text-red-500" />
-                <p className="font-semibold">{templateError}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTemplateError('');
-                    setTemplateRetry((v) => v + 1);
-                  }}
-                  className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-bold text-red-700 hover:bg-red-100"
-                >
-                  Retry Loading
-                </button>
-              </div>
-            ) : previewUrl ? (
-              <img
-                src={previewUrl}
-                alt={`Vehicle Registration Certificate - ${effectiveRcNumber}`}
-                className="h-auto w-full select-none"
-              />
-            ) : (
-              <div className="flex min-h-[260px] items-center justify-center text-xs text-slate-500">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin text-amber-600" /> Loading saved template...
-              </div>
-            )
+          {template && templateError ? (
+            <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 p-6 text-center text-xs text-red-600">
+              <XCircle className="h-6 w-6 text-red-500" />
+              <p className="font-semibold">{templateError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplateError('');
+                  setTemplateRetry((v) => v + 1);
+                }}
+                className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-bold text-red-700 hover:bg-red-100"
+              >
+                Retry Loading
+              </button>
+            </div>
+          ) : previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={`Vehicle Registration Certificate - ${effectiveRcNumber}`}
+              onClick={handlePreviewClick}
+              className="h-auto w-full cursor-pointer select-none"
+              title="Click QR Code to view payload"
+            />
+          ) : template ? (
+            <div className="flex min-h-[260px] items-center justify-center text-xs text-slate-500">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin text-amber-600" /> Loading saved template...
+            </div>
           ) : (
             <canvas
               ref={canvasRef}

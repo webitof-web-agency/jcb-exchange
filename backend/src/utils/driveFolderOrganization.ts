@@ -23,7 +23,6 @@ export const getYearMonthFolderNames = (
     month: '2-digit',
   }).formatToParts(date);
   const year = getDatePart(parts, 'year');
-  const monthNumber = getDatePart(parts, 'month');
   const monthName = new Intl.DateTimeFormat('en-US', {
     timeZone,
     month: 'long',
@@ -31,6 +30,6 @@ export const getYearMonthFolderNames = (
 
   return {
     year,
-    month: `${monthNumber}-${monthName}`,
+    month: monthName,
   };
 };

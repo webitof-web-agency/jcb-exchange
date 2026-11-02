@@ -21,7 +21,6 @@ import rcOwnerHistoryRoutes from './rcOwnerHistory.routes';
 import rcChallanVerificationRoutes from './rcChallanVerification.routes';
 import chassisToRcVerificationRoutes from './chassisToRcVerification.routes';
 import rcToMobileVerificationRoutes from './rcToMobileVerification.routes';
-import mobileToRcLookupRoutes from './mobileToRcLookup.routes';
 import mobileToPanLookupRoutes from './mobileToPanLookup.routes';
 import apiWalletBillingRoutes from './apiWalletBilling.routes';
 import publicInvoiceRoutes from './publicInvoice.routes';
@@ -58,7 +57,6 @@ router.use('/rc-owner-history', rcOwnerHistoryRoutes);
 router.use('/rc-challan-verification', rcChallanVerificationRoutes);
 router.use('/chassis-to-rc', chassisToRcVerificationRoutes);
 router.use('/rc-to-mobile', rcToMobileVerificationRoutes);
-router.use('/mobile-to-rc', mobileToRcLookupRoutes);
 router.use('/mobile-to-pan', mobileToPanLookupRoutes);
 router.use('/api-billing', apiWalletBillingRoutes);
 // Unauthenticated, token-protected customer invoice links.

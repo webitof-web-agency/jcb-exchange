@@ -3,7 +3,7 @@ import { decryptPanData, encryptPanData } from './panVerification.dataCrypto';
 import { getPanVerificationRuntimeConfig } from './panVerificationSettings.service';
 import { maskRcNumber } from './rcOwnerHistory.service';
 import { normalizeRcNumber } from './rcOwnerHistory.validation';
-import { normalizeMobileNumber } from './mobileToRcLookup.validation';
+import { normalizeMobileNumber } from './mobileNumber.validation';
 import {
   normalizeRcMobileNumberCheck,
   validateRcMobileNumberCheck,

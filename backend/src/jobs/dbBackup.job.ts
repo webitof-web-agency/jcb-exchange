@@ -1,20 +1,29 @@
 import cron from 'node-cron';
-import zlib from 'zlib';
+import { mkdtemp, readFile, rm, stat } from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import prisma from '../lib/prisma';
 import { uploadDatabaseBackupToDrive } from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
 
 const execFileAsync = promisify(execFile);
-
 const DB_BACKUP_MAX_RETENTION = 30;
+const PG_DUMP_TIMEOUT_MS = 30 * 60 * 1000;
+
+export class DatabaseBackupInProgressError extends Error {
+  readonly code = 'DATABASE_BACKUP_IN_PROGRESS';
+
+  constructor() {
+    super('A database backup is already running. Please wait for it to finish.');
+    this.name = 'DatabaseBackupInProgressError';
+  }
+}
 
 /**
- * Builds an IST-based timestamp string: YYYY-MM-DD_HHMMSS
+ * Builds an IST-based timestamp string: YYYY-MM-DD_HHMMSS.
  */
-const getISTTimestamp = (): string => {
-  const now = new Date();
+const getISTTimestamp = (date: Date = new Date()): string => {
   const formatter = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
@@ -27,7 +36,7 @@ const getISTTimestamp = (): string => {
   });
 
   const parts = Object.fromEntries(
-    formatter.formatToParts(now).map(({ type, value }) => [type, value]),
+    formatter.formatToParts(date).map(({ type, value }) => [type, value]),
   );
 
   return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}${parts.second}`;
@@ -43,95 +52,89 @@ export const redactDatabaseUrl = (message: string, dbUrl: string): string => {
   }
 };
 
+export const getPgDumpCommand = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.PG_DUMP_PATH?.trim() || 'pg_dump';
+
+export const buildPgDumpArgs = (dbUrl: string, outputPath: string): string[] => [
+  '--format=custom',
+  '--no-owner',
+  '--no-acl',
+  `--file=${outputPath}`,
+  `--dbname=${dbUrl}`,
+];
+
+const isValidCustomDump = (buffer: Buffer): boolean =>
+  buffer.subarray(0, 5).toString('ascii') === 'PGDMP';
+
 /**
- * Attempts a full PostgreSQL dump using pg_dump (native SQL format, gzip compressed).
- * Returns null if pg_dump is not available or fails.
+ * Creates a complete PostgreSQL custom-format archive from the live database.
+ * pg_dump reads the live catalog, so tables added by future migrations are
+ * included automatically without changing this code.
  */
-const tryPgDump = async (dbUrl: string): Promise<{ buffer: Buffer; filename: string; mimeType: string } | null> => {
+const createPgDump = async (dbUrl: string, backupDate: Date): Promise<{
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+}> => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'jcbexchange-db-backup-'));
+  const temporaryDumpPath = path.join(temporaryDirectory, 'database.dump');
+  const command = getPgDumpCommand();
+
   try {
-    const { stdout, stderr } = await execFileAsync(
-      'pg_dump',
-      ['--clean', '--if-exists', '--no-owner', '--no-acl', dbUrl],
-      { maxBuffer: 100 * 1024 * 1024 }, // 100 MB max
+    const result = await execFileAsync(
+      command,
+      buildPgDumpArgs(dbUrl, temporaryDumpPath),
+      {
+        timeout: PG_DUMP_TIMEOUT_MS,
+        maxBuffer: 2 * 1024 * 1024,
+        windowsHide: true,
+      },
     );
 
-    if (stderr && !stderr.toLowerCase().includes('warning')) {
-      console.warn('[backup] pg_dump produced stderr output:', redactDatabaseUrl(stderr.slice(0, 500), dbUrl));
+    if (result.stderr?.trim()) {
+      console.warn('[backup] pg_dump stderr:', redactDatabaseUrl(result.stderr.trim().slice(0, 1000), dbUrl));
     }
 
-    if (!stdout || stdout.trim().length === 0) {
-      console.warn('[backup] pg_dump returned empty output, falling back to Prisma export.');
-      return null;
+    const dumpStats = await stat(temporaryDumpPath);
+    if (dumpStats.size <= 0) {
+      throw new Error('pg_dump completed but produced an empty archive.');
     }
 
-    const buffer = zlib.gzipSync(Buffer.from(stdout, 'utf-8'));
-    const filename = `db_dump_${getISTTimestamp()}.sql.gz`;
-    return { buffer, filename, mimeType: 'application/gzip' };
+    const buffer = await readFile(temporaryDumpPath);
+    if (!isValidCustomDump(buffer)) {
+      throw new Error('pg_dump produced an invalid custom-format archive.');
+    }
+
+    return {
+      buffer,
+      filename: `db_dump_${getISTTimestamp(backupDate)}.dump`,
+      mimeType: 'application/octet-stream',
+    };
   } catch (error) {
-    console.warn(
-      '[backup] pg_dump not available or failed — falling back to Prisma full-data export.',
-      error instanceof Error ? redactDatabaseUrl(error.message, dbUrl) : 'pg_dump failed',
+    const message = error instanceof Error ? error.message : 'pg_dump failed.';
+    throw new Error(
+      `[backup] Complete PostgreSQL backup failed: ${redactDatabaseUrl(message, dbUrl)} ` +
+      `Configure PG_DUMP_PATH or make pg_dump available on PATH.`,
     );
-    return null;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
   }
 };
 
-/**
- * Full Prisma data export fallback.
- * Exports all models to a structured JSON file, gzip compressed.
- */
-const buildPrismaDataExport = async (): Promise<{ buffer: Buffer; filename: string; mimeType: string }> => {
-  const prismaAny = prisma as any;
-
-  // Collect all Prisma model keys (skip internal $... and _ keys)
-  const modelKeys: string[] = Object.keys(prismaAny).filter(
-    (key) =>
-      !key.startsWith('_') &&
-      !key.startsWith('$') &&
-      typeof prismaAny[key]?.findMany === 'function',
-  );
-
-  const dumpData: Record<string, unknown> = {
-    _meta: {
-      timestamp: new Date().toISOString(),
-      timezone: 'UTC',
-      backupTool: 'prisma-data-export',
-      version: '1.0',
-      tables: modelKeys,
-    },
-  };
-
-  for (const modelKey of modelKeys) {
-    try {
-      dumpData[modelKey] = await prismaAny[modelKey].findMany();
-    } catch (err) {
-      console.error(`[backup] Failed to export table "${modelKey}":`, err instanceof Error ? err.message : err);
-      dumpData[modelKey] = null;
-    }
-  }
-
-  const jsonBuffer = Buffer.from(JSON.stringify(dumpData, null, 2), 'utf-8');
-  const buffer = zlib.gzipSync(jsonBuffer);
-  const filename = `db_dump_${getISTTimestamp()}.json.gz`;
-
-  return { buffer, filename, mimeType: 'application/gzip' };
-};
-
-/**
- * Runs a single database backup cycle:
- * 1. Tries pg_dump (native SQL), falls back to Prisma JSON export
- * 2. Uploads to Google Drive → backupFolderId/backup-db/YYYY/MM-Month/
- * 3. Enforces 30-file rolling retention (oldest deleted automatically)
- */
-export const performDatabaseBackup = async (): Promise<{
+type DatabaseBackupResult = {
   filename: string;
   fileId: string;
   viewLink: string;
   deletedCount: number;
-  method: 'pg_dump' | 'prisma-export';
-}> => {
+  method: 'pg_dump';
+};
+
+let activeBackupPromise: Promise<DatabaseBackupResult> | null = null;
+
+const performDatabaseBackupCycle = async (): Promise<DatabaseBackupResult> => {
   const settings = await getAppSettings();
   const backupFolderId = settings.googleDrive.backupFolderId?.trim() || undefined;
+  const dbUrl = process.env.DATABASE_URL?.trim();
 
   if (!backupFolderId) {
     throw new Error(
@@ -139,26 +142,13 @@ export const performDatabaseBackup = async (): Promise<{
     );
   }
 
-  const dbUrl = process.env.DATABASE_URL?.trim();
-  let dumpResult: { buffer: Buffer; filename: string; mimeType: string } | null = null;
-  let method: 'pg_dump' | 'prisma-export' = 'prisma-export';
-
-  // Prefer native pg_dump when DATABASE_URL is available
-  if (dbUrl) {
-    dumpResult = await tryPgDump(dbUrl);
-    if (dumpResult) {
-      method = 'pg_dump';
-    }
+  if (!dbUrl) {
+    throw new Error('[backup] DATABASE_URL is not configured; a complete database backup cannot run.');
   }
 
-  // Fallback: full Prisma data export
-  if (!dumpResult) {
-    dumpResult = await buildPrismaDataExport();
-    method = 'prisma-export';
-  }
-
-  const { buffer, filename, mimeType } = dumpResult;
-  console.log(`[backup] Dump ready — method=${method}, file=${filename}, size=${(buffer.length / 1024).toFixed(1)} KB`);
+  const backupDate = new Date();
+  const { buffer, filename, mimeType } = await createPgDump(dbUrl, backupDate);
+  console.log(`[backup] Complete pg_dump ready — file=${filename}, size=${(buffer.length / 1024).toFixed(1)} KB`);
 
   const { fileId, viewLink, deletedCount } = await uploadDatabaseBackupToDrive(
     buffer,
@@ -166,9 +156,29 @@ export const performDatabaseBackup = async (): Promise<{
     filename,
     backupFolderId,
     DB_BACKUP_MAX_RETENTION,
+    backupDate,
   );
 
-  return { filename, fileId, viewLink, deletedCount, method };
+  return { filename, fileId, viewLink, deletedCount, method: 'pg_dump' };
+};
+
+/**
+ * Runs one complete database backup. Automatic and manual triggers share this
+ * lock so two large dumps cannot run at the same time.
+ */
+export const performDatabaseBackup = (): Promise<DatabaseBackupResult> => {
+  if (activeBackupPromise) {
+    throw new DatabaseBackupInProgressError();
+  }
+
+  const backupPromise = performDatabaseBackupCycle();
+  const trackedPromise = backupPromise.finally(() => {
+    if (activeBackupPromise === trackedPromise) {
+      activeBackupPromise = null;
+    }
+  });
+  activeBackupPromise = trackedPromise;
+  return trackedPromise;
 };
 
 /**
@@ -176,11 +186,10 @@ export const performDatabaseBackup = async (): Promise<{
  * Called once at server startup (server.ts).
  */
 export const startDatabaseBackupJob = (): void => {
-  // Cron: 0 0 * * * = every day at 00:00 (midnight)
   cron.schedule(
     '0 0 * * *',
     async () => {
-      console.log('[cron] ⏰ Daily DB backup starting (12:00 AM IST)...');
+      console.log('[cron] ⏰ Daily complete DB backup starting (12:00 AM IST)...');
       try {
         const result = await performDatabaseBackup();
         console.log(
@@ -189,7 +198,7 @@ export const startDatabaseBackupJob = (): void => {
         );
       } catch (error) {
         console.error(
-          '[cron] ❌ DB backup failed:',
+          '[cron] ❌ Complete DB backup failed:',
           error instanceof Error ? error.message : error,
         );
       }
@@ -197,5 +206,5 @@ export const startDatabaseBackupJob = (): void => {
     { timezone: 'Asia/Kolkata' },
   );
 
-  console.log('[cron] 📅 Daily DB backup job registered — runs at 00:00 IST every day.');
+  console.log('[cron] 📅 Daily complete DB backup job registered — runs at 00:00 IST every day.');
 };

@@ -35,8 +35,8 @@ import {
   handleTextOnlyKeyDown,
   isValidDigitsOnlyValue,
   isValidDateValue,
-  isValidPinCodeValue,
   isValidYearValue,
+  getOptionalPinCodeValidationError,
   normalizeSellVehicleAvailability,
   sanitizeListingFieldValue,
   sanitizeListingFormData,
@@ -2212,15 +2212,9 @@ export default function PartnerListingsPage() {
       return;
     }
 
-    if (!sanitizedForm.pinCode.trim()) {
-      setError('PIN Code is required.');
-      setModalTab('pricing');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidPinCodeValue(sanitizedForm.pinCode) || sanitizedForm.pinCode.length !== 6) {
-      setError('Pin code must be exactly 6 digits.');
+    const pinCodeValidationError = getOptionalPinCodeValidationError(sanitizedForm.pinCode);
+    if (pinCodeValidationError) {
+      setError(pinCodeValidationError);
       setModalTab('pricing');
       setForm(sanitizedForm);
       return;
@@ -4582,12 +4576,11 @@ export default function PartnerListingsPage() {
                         />
                       </Field>
 
-                      <Field label="PIN Code *">
+                      <Field label="PIN Code">
                         <input
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          required
                           maxLength={6}
                           value={form.pinCode}
                           onKeyDown={handleDigitOnlyKeyDown}

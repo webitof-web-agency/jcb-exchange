@@ -17,7 +17,8 @@ test('vehicle transport overview does not render removed service cards', () => {
   assert.equal(cardGrid.includes('RC Mobile Number Check'), false, 'RC Mobile Number Check should not be rendered in the service card grid');
   assert.equal(cardGrid.includes('RC Owner History'), true, 'RC Owner History should remain available');
   assert.equal(cardGrid.includes('RC to Mobile'), true, 'RC to Mobile should remain available');
-  assert.equal(cardGrid.includes('Mobile to RC'), true, 'Mobile to RC should remain available');
+  assert.equal(cardGrid.includes('Mobile to RC'), false, 'Mobile to RC should not be rendered in the service card grid');
+  assert.equal(source.includes('mobile-to-rc'), false, 'Mobile to RC should not remain an active vehicle transport route');
 });
 
 test('identity hub overview does not render the removed Mobile To PAN card', () => {

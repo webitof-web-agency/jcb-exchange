@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getOptionalPinCodeValidationError,
   isValidDigitsOnlyValue,
   isValidDateValue,
   isValidPinCodeValue,
@@ -33,4 +34,10 @@ test('shares the same numeric field validation contract used by the partner port
   assert.equal(isValidDateValue('2019-01-26'), true);
   assert.equal(isValidDateValue('2019-02-30'), false);
   assert.equal(isValidDateValue('2019'), false);
+});
+
+test('allows an empty listing PIN code but validates a provided PIN code', () => {
+  assert.equal(getOptionalPinCodeValidationError(''), null);
+  assert.equal(getOptionalPinCodeValidationError('49200'), 'Pin code must be exactly 6 digits.');
+  assert.equal(getOptionalPinCodeValidationError('492001'), null);
 });

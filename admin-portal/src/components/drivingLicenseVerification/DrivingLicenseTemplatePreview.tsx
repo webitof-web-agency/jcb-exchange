@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -33,19 +32,28 @@ const CANVAS_WIDTH = 2048;
 const CANVAS_HEIGHT_FRONT = 1302;
 const CANVAS_HEIGHT_BACK = 1272;
 const OUTPUT_SCALE = 2;
+const A4_PNG_WIDTH = 2480;
+const A4_PNG_HEIGHT = 3508;
+const LEGACY_A4_PNG_WIDTH = 3508;
+const LEGACY_A4_PNG_HEIGHT = 2480;
+const LEGACY_LOW_A4_PNG_WIDTH = 2480;
+const LEGACY_LOW_A4_PNG_HEIGHT = 1754;
+const A4_PNG_MARGIN = 120;
+const A4_PNG_GAP = 40;
+const A4_CARD_TOP = A4_PNG_MARGIN;
 const KEY_FONT = '750 11.5px Arial, Helvetica, sans-serif';
 const COMPACT_KEY_FONT = '750 19px Arial, Helvetica, sans-serif';
 const VALUE_FONT = '700 16px Arial, Helvetica, sans-serif';
 const SMALL_VALUE_FONT = '700 16px Arial, Helvetica, sans-serif';
 const TABLE_HEADER_FONT = '750 13px Arial, Helvetica, sans-serif';
 const TABLE_DATA_FONT = '750 16px Arial, Helvetica, sans-serif';
-const HEADER_DL_FONT = '750 23px Arial, Helvetica, sans-serif';
+const HEADER_DL_FONT = '750 24px Arial, Helvetica, sans-serif';
 const FRONT_DL_NO_FONT = '750 26px Arial, Helvetica, sans-serif';
 const FRONT_KEY_FONT = '500 17px Arial, Helvetica, sans-serif';
 const FRONT_VAL_FONT = '750 17.5px Arial, Helvetica, sans-serif';
 const FRONT_DETAIL_KEY_FONT = '500 16.5px Arial, Helvetica, sans-serif';
 const FRONT_DETAIL_VAL_FONT = '750 17px Arial, Helvetica, sans-serif';
-const FRONT_ADDR_FONT = '700 16px Arial, Helvetica, sans-serif';
+const FRONT_ADDR_FONT = '500 17px Arial, Helvetica, sans-serif';
 const FRONT_VERTICAL_FONT = '750 14px Arial, Helvetica, sans-serif';
 const TEMPLATE_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -105,13 +113,6 @@ const formatFileSize = (bytes?: number | null) => {
 };
 
 const safeFilePart = (value: string) => value.replace(/[^A-Z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toUpperCase() || 'CARD';
-
-const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('The template image could not be read.'));
-  reader.onerror = () => reject(new Error('The template image could not be read.'));
-  reader.readAsDataURL(blob);
-});
 
 const createRoundedRectPath = (ctx: DrawContext, x: number, y: number, width: number, height: number, radius: number) => {
   const safeRadius = Math.min(radius, width / 2, height / 2);
@@ -203,11 +204,35 @@ const loadImage = (src: string) => new Promise<HTMLImageElement | null>((resolve
   image.src = src;
 });
 
+const drawImageCover = (ctx: DrawContext, image: HTMLImageElement, x: number, y: number, width: number, height: number) => {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) {
+    ctx.drawImage(image, x, y, width, height);
+    return;
+  }
+
+  const sourceAspect = sourceWidth / sourceHeight;
+  const targetAspect = width / height;
+  const cropWidth = sourceAspect > targetAspect ? sourceHeight * targetAspect : sourceWidth;
+  const cropHeight = sourceAspect > targetAspect ? sourceHeight : sourceWidth / targetAspect;
+  const cropX = (sourceWidth - cropWidth) / 2;
+  const cropY = (sourceHeight - cropHeight) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, width, height);
+  ctx.clip();
+  ctx.drawImage(image, cropX, cropY, cropWidth, cropHeight, x, y, width, height);
+  ctx.restore();
+};
+
 const normalizeProfileImageSource = (...values: unknown[]) => {
   const source = stringValue(...values);
   if (!source) return '';
-  if (/^data:image\//i.test(source)) return source;
-  if (/^[A-Za-z0-9+/=_-]+$/.test(source)) return `data:image/jpeg;base64,${source}`;
+  const compactSource = source.replace(/\s+/g, '');
+  if (/^data:image\//i.test(compactSource)) return compactSource;
+  if (/^[A-Za-z0-9+/=_-]+$/.test(compactSource)) return `data:image/jpeg;base64,${compactSource}`;
   return source;
 };
 
@@ -295,30 +320,24 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
     };
   }, [response.record.id, template]);
 
-  useEffect(() => {
-    if (!hasResult) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    let active = true;
-
-    const render = async () => {
-      setRenderError('');
-      const isFront = activeSide === 'front';
+  const renderDrivingLicenseSide = async (side: 'front' | 'back', targetCanvas: HTMLCanvasElement, isActive = () => true) => {
+    const ctx = targetCanvas.getContext('2d');
+    if (!ctx) throw new Error('The driving-license template canvas is unavailable.');
+    const isFront = side === 'front';
       const baseHeight = isFront ? BASE_HEIGHT_FRONT : BASE_HEIGHT_BACK;
       const canvasHeight = isFront ? CANVAS_HEIGHT_FRONT : CANVAS_HEIGHT_BACK;
 
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = canvasHeight;
+      targetCanvas.width = CANVAS_WIDTH;
+      targetCanvas.height = canvasHeight;
       ctx.clearRect(0, 0, CANVAS_WIDTH, canvasHeight);
 
       if (isFront) {
-        const profileImageSource = normalizeProfileImageSource(result.profileImage, result.profile_image, result.photoUrl, result.photo);
+        const profileImageSource = normalizeProfileImageSource(result.profileImage, result.profile_image, result.profilePhoto, result.profile_photo, result.photoUrl, result.photo);
         const [templateImg, profileImg] = await Promise.all([
           loadImage(FRONT_TEMPLATE_SRC),
           profileImageSource ? loadImage(profileImageSource) : Promise.resolve(null),
         ]);
-        if (!active) return;
+        if (!isActive()) return targetCanvas;
 
         ctx.save();
         ctx.scale(OUTPUT_SCALE, OUTPUT_SCALE);
@@ -346,13 +365,13 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
 
         // 5. Photo
         if (profileImg) {
-          ctx.drawImage(profileImg, 837, 145, 136, 210);
+          drawImageCover(ctx, profileImg, 837, 152, 136, 170);
         } else {
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(837, 145, 136, 210);
+          ctx.fillRect(837, 152, 136, 170);
           ctx.strokeStyle = '#cbd5e1';
           ctx.lineWidth = 1;
-          ctx.strokeRect(837, 145, 136, 210);
+          ctx.strokeRect(837, 152, 136, 170);
         }
 
         // 6. Name
@@ -379,8 +398,8 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
 
         // 9. Son/Daughter/Wife of
         drawText(ctx, 'Son/Daughter/Wife of', 52, 488, FRONT_DETAIL_KEY_FONT);
-        drawText(ctx, ':', 294, 488, FRONT_DETAIL_KEY_FONT);
-        drawText(ctx, stringValue(result.fatherOrHusbandName).toUpperCase() || '-', 310, 488, FRONT_DETAIL_VAL_FONT, 660);
+        drawText(ctx, ':', 248, 488, FRONT_DETAIL_KEY_FONT);
+        drawText(ctx, stringValue(result.fatherOrHusbandName).toUpperCase() || '-', 264, 488, FRONT_DETAIL_VAL_FONT, 660);
 
         // 10. Address (Wrapped in 2 lines)
         const address = stringValue(result.permanentAddress, result.temporaryAddress).toUpperCase();
@@ -414,9 +433,9 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
             color: { dark: '#000000', light: '#ffffff' },
           }),
         ]);
-        if (!active) return;
+        if (!isActive()) return targetCanvas;
         const qrImage = await loadImage(qrDataUrl);
-        if (!active) return;
+        if (!isActive()) return targetCanvas;
 
         ctx.save();
         ctx.scale(OUTPUT_SCALE, OUTPUT_SCALE);
@@ -427,7 +446,7 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
         }
 
         // 2. DL Number in top blue header
-        drawText(ctx, effectiveLicense, 172, 65, HEADER_DL_FONT);
+        drawText(ctx, effectiveLicense, 180, 65, HEADER_DL_FONT);
 
         // 3. QR Code inside the pre-printed white box
         if (qrImage) {
@@ -539,30 +558,187 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
 
         ctx.restore();
       }
-    };
+      return targetCanvas;
+  };
 
-    render().catch((renderRequestError) => {
+  const getA4CardLayout = () => {
+    const cardWidth = Math.floor((A4_PNG_WIDTH - (A4_PNG_MARGIN * 2) - A4_PNG_GAP) / 2);
+    const frontHeight = Math.round(cardWidth * BASE_HEIGHT_FRONT / BASE_WIDTH);
+    const backHeight = Math.round(cardWidth * BASE_HEIGHT_BACK / BASE_WIDTH);
+    const top = A4_CARD_TOP;
+    return { cardWidth, frontHeight, backHeight, top, leftX: A4_PNG_MARGIN, rightX: A4_PNG_MARGIN + cardWidth + A4_PNG_GAP };
+  };
+
+  const getSavedSourceLayout = (width: number, height: number) => {
+    const isLegacyLandscape = width === LEGACY_A4_PNG_WIDTH && height === LEGACY_A4_PNG_HEIGHT;
+    const margin = isLegacyLandscape ? 160 : 120;
+    const gap = isLegacyLandscape ? 56 : 40;
+    const cardWidth = Math.floor((width - (margin * 2) - gap) / 2);
+    return {
+      cardWidth,
+      frontHeight: Math.round(cardWidth * BASE_HEIGHT_FRONT / BASE_WIDTH),
+      backHeight: Math.round(cardWidth * BASE_HEIGHT_BACK / BASE_WIDTH),
+      top: isLegacyLandscape ? margin : Math.floor((height - Math.round(cardWidth * BASE_HEIGHT_FRONT / BASE_WIDTH)) / 2),
+      leftX: margin,
+      rightX: margin + cardWidth + gap,
+    };
+  };
+
+  const composeA4Canvas = (frontCanvas: HTMLCanvasElement, backCanvas: HTMLCanvasElement) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = A4_PNG_WIDTH;
+    canvas.height = A4_PNG_HEIGHT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('The A4 export canvas is unavailable.');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, A4_PNG_WIDTH, A4_PNG_HEIGHT);
+    const { cardWidth, frontHeight, backHeight, top, leftX, rightX } = getA4CardLayout();
+    ctx.drawImage(frontCanvas, leftX, top, cardWidth, frontHeight);
+    ctx.drawImage(backCanvas, rightX, top, cardWidth, backHeight);
+    return canvas;
+  };
+
+  const findSavedCardTop = (savedCanvas: HTMLCanvasElement, x: number, cardWidth: number) => {
+    const ctx = savedCanvas.getContext('2d');
+    if (!ctx) return null;
+    try {
+      const sampleX = x + 8;
+      const sampleWidth = Math.max(1, cardWidth - 16);
+      const pixels = ctx.getImageData(sampleX, 0, sampleWidth, savedCanvas.height).data;
+      const sampleStep = 8;
+      const requiredSamples = Math.ceil(sampleWidth / sampleStep * 0.6);
+      for (let y = 0; y < savedCanvas.height; y += 1) {
+        let nonWhiteSamples = 0;
+        for (let sample = 0; sample < sampleWidth; sample += sampleStep) {
+          const pixelIndex = (y * sampleWidth + sample) * 4;
+          if (pixels[pixelIndex] < 248 || pixels[pixelIndex + 1] < 248 || pixels[pixelIndex + 2] < 248) {
+            nonWhiteSamples += 1;
+          }
+        }
+        if (nonWhiteSamples >= requiredSamples) return y;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const normalizeSavedA4Canvas = (savedCanvas: HTMLCanvasElement, sourceLayout = getA4CardLayout()) => {
+    const targetLayout = getA4CardLayout();
+    const { cardWidth, frontHeight, backHeight, top, leftX, rightX } = targetLayout;
+    const savedTop = findSavedCardTop(savedCanvas, sourceLayout.leftX, sourceLayout.cardWidth) ?? sourceLayout.top;
+    if (savedCanvas.width === A4_PNG_WIDTH && savedCanvas.height === A4_PNG_HEIGHT && Math.abs(savedTop - top) < 2) return savedCanvas;
+
+    const normalizedCanvas = document.createElement('canvas');
+    normalizedCanvas.width = A4_PNG_WIDTH;
+    normalizedCanvas.height = A4_PNG_HEIGHT;
+    const ctx = normalizedCanvas.getContext('2d');
+    if (!ctx) return savedCanvas;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, A4_PNG_WIDTH, A4_PNG_HEIGHT);
+    ctx.drawImage(savedCanvas, sourceLayout.leftX, savedTop, sourceLayout.cardWidth, sourceLayout.frontHeight, leftX, top, cardWidth, frontHeight);
+    ctx.drawImage(savedCanvas, sourceLayout.rightX, savedTop, sourceLayout.cardWidth, sourceLayout.backHeight, rightX, top, cardWidth, backHeight);
+    return normalizedCanvas;
+  };
+
+  const drawA4SidePreview = (savedA4Canvas: HTMLCanvasElement, side: 'front' | 'back', targetCanvas: HTMLCanvasElement) => {
+    const { cardWidth, frontHeight, backHeight, top, leftX, rightX } = getA4CardLayout();
+    const isFront = side === 'front';
+    const cardHeight = isFront ? frontHeight : backHeight;
+    targetCanvas.width = CANVAS_WIDTH;
+    targetCanvas.height = isFront ? CANVAS_HEIGHT_FRONT : CANVAS_HEIGHT_BACK;
+    const ctx = targetCanvas.getContext('2d');
+    if (!ctx) throw new Error('The saved driving-license preview canvas is unavailable.');
+    ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.drawImage(savedA4Canvas, isFront ? leftX : rightX, top, cardWidth, cardHeight, 0, 0, CANVAS_WIDTH, targetCanvas.height);
+  };
+
+  const canvasToBlob = (canvas: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('The driving-license export could not be prepared.'));
+    }, 'image/png');
+  });
+
+  const getSavedTemplateBlob = async () => {
+    if (templateBlob) return templateBlob;
+    if (!template) throw new Error('The saved driving-license template is unavailable.');
+    const blob = await getVerificationTemplateBlob(`driving-license-verification:${response.record.id}:${template.id}`, async () => {
+      const result = await api.get<Blob>(`/driving-license-verification/${response.record.id}/template`, { responseType: 'blob', timeout: TEMPLATE_REQUEST_TIMEOUT_MS });
+      return result.data;
+    });
+    setTemplateBlob(blob);
+    return blob;
+  };
+
+  const getSavedA4Canvas = async () => {
+    const savedBlob = await getSavedTemplateBlob();
+    const savedUrl = URL.createObjectURL(savedBlob);
+    const savedImage = await loadImage(savedUrl);
+    URL.revokeObjectURL(savedUrl);
+    if (!savedImage) throw new Error('The saved driving-license template could not be read.');
+
+        if (savedImage.naturalWidth === A4_PNG_WIDTH && savedImage.naturalHeight === A4_PNG_HEIGHT) {
+          const savedCanvas = document.createElement('canvas');
+          savedCanvas.width = A4_PNG_WIDTH;
+          savedCanvas.height = A4_PNG_HEIGHT;
+          savedCanvas.getContext('2d')?.drawImage(savedImage, 0, 0);
+          return normalizeSavedA4Canvas(savedCanvas);
+        }
+
+        if ((savedImage.naturalWidth === LEGACY_A4_PNG_WIDTH && savedImage.naturalHeight === LEGACY_A4_PNG_HEIGHT)
+          || (savedImage.naturalWidth === LEGACY_LOW_A4_PNG_WIDTH && savedImage.naturalHeight === LEGACY_LOW_A4_PNG_HEIGHT)) {
+          const savedCanvas = document.createElement('canvas');
+          savedCanvas.width = savedImage.naturalWidth;
+          savedCanvas.height = savedImage.naturalHeight;
+          savedCanvas.getContext('2d')?.drawImage(savedImage, 0, 0);
+          return normalizeSavedA4Canvas(savedCanvas, getSavedSourceLayout(savedCanvas.width, savedCanvas.height));
+        }
+
+    const frontCanvas = document.createElement('canvas');
+    frontCanvas.width = savedImage.naturalWidth || savedImage.width;
+    frontCanvas.height = savedImage.naturalHeight || savedImage.height;
+    frontCanvas.getContext('2d')?.drawImage(savedImage, 0, 0);
+    const backCanvas = await renderDrivingLicenseSide('back', document.createElement('canvas'));
+    return composeA4Canvas(frontCanvas, backCanvas);
+  };
+
+  const getA4Canvas = async () => {
+    if (!hasResult) return getSavedA4Canvas();
+    const frontCanvas = await renderDrivingLicenseSide('front', document.createElement('canvas'));
+    const backCanvas = await renderDrivingLicenseSide('back', document.createElement('canvas'));
+    return composeA4Canvas(frontCanvas, backCanvas);
+  };
+
+  useEffect(() => {
+    if (!hasResult) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let active = true;
+    setRenderError('');
+    renderDrivingLicenseSide(activeSide, canvas, () => active).catch((renderRequestError) => {
       if (active) setRenderError(renderRequestError instanceof Error ? renderRequestError.message : 'Driving-license template rendering failed.');
     });
     return () => { active = false; };
   }, [activeSide, effectiveLicense, hasResult, qrPayload, result, template]);
 
-  const getSourceBlob = async () => {
-    if (!hasResult && templateBlob) return templateBlob;
-    if (!hasResult && template) {
-      const blob = await getVerificationTemplateBlob(`driving-license-verification:${response.record.id}:${template.id}`, async () => {
-        const result = await api.get<Blob>(`/driving-license-verification/${response.record.id}/template`, { responseType: 'blob', timeout: TEMPLATE_REQUEST_TIMEOUT_MS });
-        return result.data;
-      });
-      setTemplateBlob(blob);
-      return blob;
-    }
+  useEffect(() => {
+    if (!template || hasResult || !previewUrl) return;
     const canvas = canvasRef.current;
-    if (!canvas || canvas.width !== CANVAS_WIDTH) throw new Error('The driving-license template is still preparing.');
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('The driving-license template could not be prepared.');
-    return blob;
-  };
+    if (!canvas) return;
+    let active = true;
+    getSavedA4Canvas()
+      .then((savedA4Canvas) => {
+        if (!active) return;
+        drawA4SidePreview(savedA4Canvas, activeSide, canvas);
+        setRenderError('');
+      })
+      .catch((previewRequestError) => {
+        if (active) setRenderError(previewRequestError instanceof Error ? previewRequestError.message : 'Saved driving-license preview could not be rendered.');
+      });
+    return () => { active = false; };
+  }, [activeSide, hasResult, previewUrl, response.record.id, template]);
 
   const upload = async () => {
     if (!onUploaded || !hasResult || !response.record.id || expired) {
@@ -572,7 +748,7 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
     setUploadBusy(true);
     setError('');
     try {
-      const blob = await getSourceBlob();
+      const blob = await canvasToBlob(await getA4Canvas());
       const formData = new FormData();
       formData.append('template', blob, `driving-license-${safeFilePart(effectiveLicense)}.png`);
       const uploadResponse = await api.post<DrivingLicenseResultResponse>(`/driving-license-verification/${response.record.id}/template`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -595,11 +771,11 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
     setDownloadPngBusy(true);
     setError('');
     try {
-      const blob = await getSourceBlob();
+      const blob = await canvasToBlob(await getA4Canvas());
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${safeFilePart(effectiveLicense)}-Driving-License-${activeSide.toUpperCase()}.png`;
+      link.download = `${safeFilePart(effectiveLicense)}-Driving-License-A4-FRONT-BACK.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -615,10 +791,12 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
     setDownloadPdfBusy(true);
     setError('');
     try {
-      const image = await blobToDataUrl(await getSourceBlob());
       const { pdf } = await import('@react-pdf/renderer');
       const { DrivingLicenseTemplatePdfDocument } = await import('./DrivingLicenseTemplatePdfDocument');
-      const pdfBlob = await pdf(<DrivingLicenseTemplatePdfDocument image={image} licenseNumber={effectiveLicense} />).toBlob();
+          const pdfDocument = getA4Canvas().then((a4Canvas) => (
+            <DrivingLicenseTemplatePdfDocument a4Image={a4Canvas.toDataURL('image/png')} licenseNumber={effectiveLicense} />
+          ));
+      const pdfBlob = await pdf(await pdfDocument).toBlob();
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
@@ -673,15 +851,15 @@ export default function DrivingLicenseTemplatePreview({ response, onUploaded }: 
           <p className="mt-1 text-xs text-slate-500">Dynamic front and back card generated from the verified API response.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => void downloadPng()} disabled={downloadPngBusy} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"><Download className="h-3.5 w-3.5" />{downloadPngBusy ? 'Preparing...' : 'PNG'}</button>
-          <button type="button" onClick={() => void downloadPdf()} disabled={downloadPdfBusy} className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-50"><FileDown className="h-3.5 w-3.5 text-amber-700" />{downloadPdfBusy ? 'Preparing...' : 'PDF Card'}</button>
+              <button type="button" onClick={() => void downloadPng()} disabled={downloadPngBusy} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"><Download className="h-3.5 w-3.5" />{downloadPngBusy ? 'Preparing...' : 'A4 PNG'}</button>
+              <button type="button" onClick={() => void downloadPdf()} disabled={downloadPdfBusy} className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-50"><FileDown className="h-3.5 w-3.5 text-amber-700" />{downloadPdfBusy ? 'Preparing...' : 'A4 PDF'}</button>
           {!template && onUploaded ? <button type="button" onClick={() => void upload()} disabled={uploadBusy || expired} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-sm transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50">{uploadBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}{uploadBusy ? 'Saving...' : 'Upload & Save Template'}</button> : null}
         </div>
       </div>
       {error ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div> : null}
           <div className="mt-5 flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-5">
             <div className="relative w-full max-w-5xl overflow-hidden rounded-none border border-slate-300 bg-white shadow-md">
-              {template && !hasResult ? previewUrl ? <img src={previewUrl} alt={`Driving Licence - ${effectiveLicense}`} className="h-auto w-full select-none" /> : <div className="flex min-h-[260px] items-center justify-center text-xs text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-amber-600" />Loading saved template...</div> : <canvas ref={canvasRef} onClick={handleCanvasClick} className="h-auto w-full cursor-pointer select-none" title="Click QR Code to view payload" aria-label="Generated driving licence template" />}
+                  {template && !hasResult ? previewUrl ? <canvas ref={canvasRef} onClick={handleCanvasClick} className="h-auto w-full cursor-pointer select-none" title="Click QR Code to view payload" aria-label={`Saved ${activeSide} driving licence template`} /> : <div className="flex min-h-[260px] items-center justify-center text-xs text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-amber-600" />Loading saved template...</div> : <canvas ref={canvasRef} onClick={handleCanvasClick} className="h-auto w-full cursor-pointer select-none" title="Click QR Code to view payload" aria-label="Generated driving licence template" />}
             </div>
       </div>
       {renderError ? <div className="mt-3 text-xs font-semibold text-rose-600">{renderError}</div> : null}

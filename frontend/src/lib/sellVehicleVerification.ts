@@ -58,6 +58,28 @@ export const getVehicleVerificationButtonState = (
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 
+const firstText = (...values: unknown[]) => values.map(text).find(Boolean) || '';
+
+const firstProviderValue = (...values: unknown[]) => values.find((value) => (
+  value !== null
+  && value !== undefined
+  && !(typeof value === 'string' && value.trim() === '')
+));
+
+const providerBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return undefined;
+  }
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if (['true', 'yes', 'y', '1', 'active', 'financed'].includes(normalized)) return true;
+  if (['false', 'no', 'n', '0', 'not_applicable', 'not_financed'].includes(normalized)) return false;
+  return undefined;
+};
+
 const normalizeChassis = (value: unknown) => text(value).toUpperCase().replace(/\s+/g, '');
 
 export const normalizeRegistrationNumber = (value: unknown) =>
@@ -202,8 +224,22 @@ export const mapChassisToRcVehicle = (
   const fitnessStatus = fitnessValidUntil ? getProviderDateStatus(fitnessValidUntil, now) : 'NOT_AVAILABLE';
   const insuranceStatus = insuranceExpiry ? getProviderDateStatus(insuranceExpiry, now) : 'NOT_AVAILABLE';
   const pucStatus = pucValidUntil ? getProviderDateStatus(pucValidUntil, now) : 'NOT_AVAILABLE';
-  const financed = result.financed;
-  const financerName = text(result.financer ?? result.financier ?? result.financerName ?? result.financer_name);
+  const financed = providerBoolean(firstProviderValue(
+    result.financed,
+    result.isFinanced,
+    result.is_financed,
+    result.hirePurchase,
+    result.hire_purchase,
+  ));
+  const financerName = firstText(
+    result.financer,
+    result.financier,
+    result.financerName,
+    result.financer_name,
+    result.financier_name,
+    result.financeName,
+    result.finance_name,
+  );
   const hsrpNumber = text(result.hsrpNumber ?? result.hsrp_number ?? result.hsrpNo ?? result.hsrp_no ?? result.hsrp);
 
   return {

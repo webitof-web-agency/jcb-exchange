@@ -1,4 +1,4 @@
-import { normalizeMobileNumber, validateMobileNumber } from './mobileToRcLookup.validation';
+import { normalizeMobileNumber, validateMobileNumber } from './mobileNumber.validation';
 import { normalizeRcNumber, validateRcNumber } from './rcOwnerHistory.validation';
 
 export type RcMobileNumberCheckInput = {

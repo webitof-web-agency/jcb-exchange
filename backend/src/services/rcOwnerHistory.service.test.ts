@@ -342,6 +342,18 @@ test('sanitizes RC Full data before returning it to listing forms', () => {
   });
 });
 
+test('normalizes financing aliases and string boolean values for listing forms', () => {
+  assert.deepEqual(normalizeRcOwnerHistoryResult({
+    details: {
+      financier_name: 'HDFC BANK',
+      is_financed: 'true',
+    },
+  }), {
+    financer: 'HDFC BANK',
+    financed: true,
+  });
+});
+
 test('rejects an RC Full provider response with a different registration number', async () => {
   const service = new RcFullService({
     record: {

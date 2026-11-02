@@ -78,6 +78,16 @@ test('maps registration validity aliases for Sell Vehicle autofill', () => {
   assert.equal(mapped.registrationUpto, '2040-06-01');
 });
 
+test('maps financing aliases and string boolean values for Sell Vehicle autofill', () => {
+  const mapped = mapProviderVehicleToListing({
+    financier_name: 'HDFC BANK',
+    is_financed: 'true',
+  });
+
+  assert.equal(mapped.rtoDetails.hirePurchaseStatus, 'ACTIVE');
+  assert.equal(mapped.rtoDetails.financerName, 'HDFC BANK');
+});
+
 test('does not call a missing or malformed provider date valid', () => {
   assert.equal(getProviderDateStatus('', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');
   assert.equal(getProviderDateStatus('2026-02-30', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');

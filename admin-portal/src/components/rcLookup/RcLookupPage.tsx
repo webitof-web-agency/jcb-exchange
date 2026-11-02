@@ -155,7 +155,7 @@ export default function RcLookupPage({ embedded = false, variant }: { embedded?:
           <form onSubmit={submit}><label><span className="text-sm font-semibold text-slate-700">Vehicle Registration Number <span className="text-red-500">*</span></span><input value={rcNumber} onChange={(event) => setRcNumber(sanitizeRcNumber(event.target.value))} className={inputClass} placeholder="RJ12XJ1234" autoComplete="off" maxLength={30} /></label>{error ? <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}<button type="submit" disabled={busy || !canAccess} className={`${buttonClass} mt-6 w-full`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}{busy ? 'Verifying…' : canAccess ? `Verify ${config.label}` : 'Verification not permitted'}</button></form>
           {response ? (
             response.record.status === 'SUCCESS' ? (
-              <RcCardTemplatePreview response={response} onUploaded={handleTemplateUploaded} />
+              <RcCardTemplatePreview key={response.record.id} response={response} onUploaded={handleTemplateUploaded} />
             ) : (
               <VerificationHistoryState title={`${config.label} verification was not completed`} record={response.record} />
             )

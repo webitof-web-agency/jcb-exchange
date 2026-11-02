@@ -94,6 +94,26 @@ const safeText = (value: unknown, maxLength = 500) => {
   return normalized && normalized.length <= maxLength ? normalized : null;
 };
 
+const firstProviderValue = (...values: unknown[]) => values.find((value) => (
+  value !== null
+  && value !== undefined
+  && !(typeof value === 'string' && value.trim() === '')
+));
+
+const providerBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return undefined;
+  }
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if (['true', 'yes', 'y', '1', 'active', 'financed'].includes(normalized)) return true;
+  if (['false', 'no', 'n', '0', 'not_applicable', 'not_financed'].includes(normalized)) return false;
+  return undefined;
+};
+
 const objectValue = (value: unknown) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 
@@ -205,7 +225,9 @@ const sellerListingResultFields = new Set([
 ]);
 
 export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryResult => {
-  const data = objectValue(value) || {};
+  const root = objectValue(value) || {};
+  const nested = objectValue(root.details);
+  const data = nested ? { ...nested, ...root } : root;
   const result: RcOwnerHistoryResult = {};
   const textFields: Array<[string, unknown, number?]> = [
     ['providerClientId', data.client_id ?? data.clientId, 150],
@@ -225,7 +247,15 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     ['fuelType', data.fuel_type ?? data.fuelType, 80],
     ['color', data.color, 100],
     ['normsType', data.norms_type ?? data.normsType, 150],
-    ['financer', data.financer, 250],
+    ['financer', firstProviderValue(
+      data.financer,
+      data.financier,
+      data.financerName,
+      data.financer_name,
+      data.financier_name,
+      data.financeName,
+      data.finance_name,
+    ), 250],
     ['insuranceCompany', data.insurance_company ?? data.insuranceCompany, 250],
     ['insurancePolicyNumber', data.insurance_policy_number ?? data.insurancePolicyNumber, 100],
     ['registeredAt', data.registered_at ?? data.registeredAt, 250],
@@ -281,8 +311,16 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
   if (manufacturingDate) result.manufacturingDate = manufacturingDate;
   if (manufacturingDateFormatted) result.manufacturingDateFormatted = manufacturingDateFormatted;
 
+  const financed = providerBoolean(firstProviderValue(
+    data.financed,
+    data.isFinanced,
+    data.is_financed,
+    data.hirePurchase,
+    data.hire_purchase,
+  ));
+  if (financed !== undefined) result.financed = financed;
+
   for (const [key, rawValue] of [
-    ['financed', data.financed],
     ['lessInfo', data.less_info ?? data.lessInfo],
     ['maskedName', data.masked_name ?? data.maskedName],
   ] as Array<[string, unknown]>) {
