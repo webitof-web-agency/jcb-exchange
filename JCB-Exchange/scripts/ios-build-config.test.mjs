@@ -54,7 +54,7 @@ test('GitHub Actions exposes a signed IPA workflow with safe signing inputs', ()
   assert.match(workflow, /runs-on: macos-15/);
   assert.match(workflow, /build_output:/);
   assert.match(workflow, /- ipa/);
-  assert.match(workflow, /Xcode_16\.4\.app\/Contents\/Developer/);
+  assert.match(workflow, /Xcode_26\.3\.app\/Contents\/Developer/);
   assert.match(workflow, /IOS_CERTIFICATE_BASE64/);
   assert.match(workflow, /IOS_PROVISIONING_PROFILE_BASE64/);
   assert.match(workflow, /IOS_TEAM_ID/);

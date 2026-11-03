@@ -29,6 +29,10 @@ import {
   RefreshCw,
   Copy,
   Check,
+  FileText,
+  MapPin,
+  User,
+  WalletCards,
 } from 'lucide-react';
 import api from '@/lib/api';
 import HistoryPagination from '@/components/ui/HistoryPagination';
@@ -40,7 +44,7 @@ import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiServicePrice } from '@/components/apiBilling/ApiBillingDisplay';
 import AadhaarDigiLockerPanel from '@/components/identityHub/AadhaarDigiLockerPanel';
 import AadhaarTemplatePreview, { type AadhaarData, type AadhaarTemplateInfo } from '@/components/identityHub/AadhaarTemplatePreview';
-import PanTemplatePreview from '@/components/identityHub/PanTemplatePreview';
+import PanTemplatePreview, { formatPanDate } from '@/components/identityHub/PanTemplatePreview';
 import GstTemplatePreview from '@/components/identityHub/GstTemplatePreview';
 import {
   normalizePan,
@@ -394,6 +398,873 @@ function GstResultPanel({ response, onUploaded }: { response: GstResultResponse;
       )}
 
       <GstTemplatePreview response={response} onUploaded={onUploaded} />
+    </div>
+  );
+}
+
+// ========================================================
+// 1. PAN COMPREHENSIVE SUBCOMPONENTS
+// ========================================================
+function PanTemplatePlaceholderCard() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between min-h-[480px]">
+      <div>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              PAN Card Template Studio
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Official Income Tax Department format with photo, QR code &amp; signature.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+            Awaiting Verification
+          </span>
+        </div>
+
+        {/* Blueprint Preview Frame */}
+        <div className="mt-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-6 flex flex-col items-center justify-center text-center min-h-[340px]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 shadow-xs mb-3">
+            <ScanLine className="h-8 w-8" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-800">No Active Template Generated</h4>
+          <p className="text-xs text-slate-500 max-w-sm mt-1.5 leading-relaxed">
+            Enter citizen&apos;s PAN number on the left and click <strong>Run Verification</strong> to generate the live official PAN card template.
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-2.5 w-full max-w-sm text-left">
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-amber-600 shrink-0" /> ITD Card Layout
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-amber-600 shrink-0" /> Encrypted QR Code
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-amber-600 shrink-0" /> 1-Click PDF Download
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-amber-600 shrink-0" /> High-Res PNG Output
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-4 text-center text-[11px] text-slate-400">
+        Template generated directly from verified ITD data · For reference &amp; official KYC verification only
+      </p>
+    </div>
+  );
+}
+
+function PanTaxpayerDossier({
+  response,
+  panNumber,
+  onReset,
+}: {
+  response: PanResultResponse;
+  panNumber?: string;
+  onReset?: () => void;
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = (key: string, text: string) => {
+    if (!text) return;
+    void navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const details = (response.result?.panDetails && typeof response.result.panDetails === 'object' && !Array.isArray(response.result.panDetails))
+    ? (response.result.panDetails as Record<string, unknown>)
+    : {};
+  const providerData = (response.result?.providerData && typeof response.result.providerData === 'object' && !Array.isArray(response.result.providerData))
+    ? (response.result.providerData as Record<string, unknown>)
+    : {};
+  const providerDetails = (providerData.pan_details && typeof providerData.pan_details === 'object' && !Array.isArray(providerData.pan_details))
+    ? (providerData.pan_details as Record<string, unknown>)
+    : {};
+
+  const fullName = String(
+    details.fullName ||
+    details.full_name ||
+    response.result?.fullName ||
+    response.result?.name ||
+    providerData.full_name ||
+    providerData.fullName ||
+    providerData.name ||
+    providerDetails.full_name ||
+    providerDetails.fullName ||
+    'NOT SPECIFIED'
+  );
+
+  const fatherName = String(
+    details.fatherName ||
+    details.father_name ||
+    response.result?.fatherName ||
+    response.result?.father_name ||
+    (providerData.pan_to_father_name && typeof providerData.pan_to_father_name === 'object' ? (providerData.pan_to_father_name as Record<string, unknown>).father_name : '') ||
+    providerData.father_name ||
+    providerData.fatherName ||
+    providerData.care_of ||
+    providerDetails.father_name ||
+    providerDetails.fatherName ||
+    'Not Specified'
+  );
+
+  const rawDob = String(
+    details.dob ||
+    details.dateOfBirth ||
+    details.inputDob ||
+    response.result?.dob ||
+    response.result?.dateOfBirth ||
+    providerData.dob ||
+    providerData.date_of_birth ||
+    providerDetails.dob ||
+    ''
+  );
+  const dobFormatted = rawDob ? formatPanDate(rawDob) : 'Not Available';
+
+  const rawPan = String(
+    panNumber ||
+    response.result?.panNumber ||
+    response.result?.pan ||
+    providerData.pan_number ||
+    response.record.maskedPan ||
+    ''
+  );
+
+  const panStatus = String(
+    details.panStatus ||
+    details.pan_status ||
+    response.result?.panStatus ||
+    response.result?.pan_status ||
+    providerData.pan_status ||
+    providerData.status ||
+    response.record.status ||
+    'ACTIVE'
+  ).toUpperCase();
+
+  const aadhaarSeeding = String(
+    details.aadhaarSeedingStatus ||
+    details.aadhaar_seeding_status ||
+    response.result?.aadhaarSeedingStatus ||
+    response.result?.aadhaar_seeding_status ||
+    providerData.aadhaar_seeding_status ||
+    'N/A'
+  );
+
+  const category = String(
+    details.category ||
+    response.result?.category ||
+    providerData.category ||
+    'Individual'
+  );
+
+  const gender = String(
+    details.gender ||
+    response.result?.gender ||
+    providerData.gender ||
+    'N/A'
+  ).toUpperCase();
+
+  const address = String(
+    details.address ||
+    response.result?.address ||
+    providerData.address ||
+    ''
+  );
+
+  const isOperative = panStatus.includes('OPERATIVE') || panStatus === 'ACTIVE' || panStatus === 'SUCCESS';
+  const isAadhaarLinked = aadhaarSeeding.toLowerCase().includes('linked') || aadhaarSeeding.toLowerCase().includes('yes') || aadhaarSeeding.toLowerCase().includes('successful');
+
+  return (
+    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3.5 animate-in fade-in">
+      <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2.5">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+          <BadgeCheck className="h-4 w-4 text-emerald-600" /> Official ITD PAN Verification Result
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-emerald-800">
+            {response.cacheHit ? 'Source: Saved Database Record' : 'Source: Surepass ITD Gateway'}
+          </span>
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline ml-1"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Taxpayer Profile Row */}
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700 shadow-2xs font-bold text-xl">
+            {fullName.charAt(0).toUpperCase() || 'P'}
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs">
+            <Check className="h-2.5 w-2.5 stroke-[3]" />
+          </span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-black text-slate-900 truncate">
+              {fullName}
+            </h4>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+              {category}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="font-mono text-xs font-bold text-slate-800 tracking-wider">
+              {rawPan}
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard('pan', rawPan)}
+              className="text-slate-400 hover:text-slate-700"
+              title="Copy PAN"
+            >
+              {copiedKey === 'pan' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => copyToClipboard('name', fullName)}
+              className="text-slate-400 hover:text-slate-700 ml-1 text-[11px]"
+              title="Copy Name"
+            >
+              {copiedKey === 'name' ? <Check className="h-3 w-3 text-emerald-600" /> : <span className="text-[10px] font-medium text-slate-500">Copy Name</span>}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Badges Row */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white border border-emerald-100 p-2 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500 font-medium">PAN Operative Status</span>
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            isOperative ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+          }`}>
+            {panStatus}
+          </span>
+        </div>
+        <div className="rounded-lg bg-white border border-emerald-100 p-2 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500 font-medium">Aadhaar Seeding</span>
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            isAadhaarLinked ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+          }`}>
+            {aadhaarSeeding}
+          </span>
+        </div>
+      </div>
+
+      {/* Demographics 2x2 */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white border border-emerald-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">Date of Birth</span>
+          <p className="mt-0.5 font-bold text-slate-900">{dobFormatted}</p>
+        </div>
+
+        <div className="rounded-lg bg-white border border-emerald-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">Gender</span>
+          <p className="mt-0.5 font-bold text-slate-900 uppercase">
+            {gender === 'M' ? 'MALE (M)' : gender === 'F' ? 'FEMALE (F)' : gender}
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-white border border-emerald-100 p-2 col-span-2">
+          <span className="text-[10px] text-slate-500 font-medium">Father&apos;s / Guardian&apos;s Name</span>
+          <p className="mt-0.5 font-bold text-slate-900 truncate">
+            {fatherName}
+          </p>
+        </div>
+      </div>
+
+      {/* Address if available */}
+      {address && (
+        <div>
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-amber-600" /> Registered Taxpayer Address
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard('addr', address)}
+              className="text-[10px] font-semibold text-emerald-800 hover:underline"
+            >
+              {copiedKey === 'addr' ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div className="rounded-lg bg-white border border-emerald-100 p-2.5 text-xs text-slate-800 leading-relaxed font-medium">
+            {address}
+          </div>
+        </div>
+      )}
+
+      {/* Wallet Billing Notice */}
+      <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-emerald-200/50 pt-2">
+        <span className="inline-flex items-center gap-1 text-emerald-800 font-semibold">
+          <WalletCards className="h-3.5 w-3.5" /> Wallet billing is disabled — ₹0 deducted
+        </span>
+        <span>Remaining balance: <strong>₹50,000.00</strong></span>
+      </div>
+    </div>
+  );
+}
+
+// ========================================================
+// 2. GST VERIFICATION SUBCOMPONENTS
+// ========================================================
+function GstTemplatePlaceholderCard() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between min-h-[480px]">
+      <div>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-indigo-600" />
+              GST Certificate Studio
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Official Form GST REG-06 registration certificate preview &amp; download.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+            Awaiting Verification
+          </span>
+        </div>
+
+        {/* Blueprint Preview Frame */}
+        <div className="mt-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-6 flex flex-col items-center justify-center text-center min-h-[340px]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 shadow-xs mb-3">
+            <FileCheck2 className="h-8 w-8" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-800">No Active Certificate Generated</h4>
+          <p className="text-xs text-slate-500 max-w-sm mt-1.5 leading-relaxed">
+            Enter 15-digit GSTIN on the left and click <strong>Verify GSTIN</strong> to generate the official Government of India REG-06 certificate.
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-2.5 w-full max-w-sm text-left">
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-indigo-600 shrink-0" /> Form GST REG-06
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-indigo-600 shrink-0" /> Government Emblem &amp; Seal
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-indigo-600 shrink-0" /> 1-Click Official PDF
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-indigo-600 shrink-0" /> Auto-Filled Business Info
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-4 text-center text-[11px] text-slate-400">
+        Certificate generated directly from verified GSTN portal data · For official tax verification only
+      </p>
+    </div>
+  );
+}
+
+function GstBusinessDossier({
+  response,
+  onReset,
+}: {
+  response: GstResultResponse;
+  onReset?: () => void;
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = (key: string, text: string) => {
+    if (!text) return;
+    void navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const result = response.result || {};
+  const gstinVal = String(result.gstin || response.record.maskedGstin || '');
+  const legalName = String(result.legalName || result.businessName || 'N/A');
+  const tradeName = String(result.tradeName || result.businessName || legalName);
+  const statusStr = String(result.gstinStatus || response.record.gstinStatus || 'ACTIVE').toUpperCase();
+  const isActive = statusStr === 'ACTIVE' || statusStr === 'SUCCESS';
+  const taxpayerType = String(result.taxpayerType || 'Regular');
+  const constitution = String(result.constitutionOfBusiness || 'Not Specified');
+  const regDate = formatDate(result.dateOfRegistration);
+  const cancelDate = formatDate(result.dateOfCancellation, isActive);
+  const panNum = String(result.panNumber || '');
+  const address = String(result.address || '');
+  const centerJurisdiction = String(result.centerJurisdiction || '');
+  const stateJurisdiction = String(result.stateJurisdiction || '');
+  const coreActivity = String(result.natureOfCoreBusinessActivityDescription || result.natureOfBusinessActivities || '');
+
+  return (
+    <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3.5 animate-in fade-in">
+      <div className="flex items-center justify-between border-b border-indigo-200/60 pb-2.5">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+          <BadgeCheck className="h-4 w-4 text-indigo-600" /> GST Common Portal (GSTN) Verified
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-indigo-800">
+            {response.cacheHit ? 'Source: Saved Database Record' : `Status: ${response.record.status}`}
+          </span>
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline ml-1"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Business Header Profile */}
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-100 text-indigo-700 shadow-2xs font-bold text-xl">
+            <Building2 className="h-7 w-7" />
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs">
+            <Check className="h-2.5 w-2.5 stroke-[3]" />
+          </span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-black text-slate-900 truncate">
+            {legalName}
+          </h4>
+          {tradeName !== legalName && (
+            <p className="text-[11px] font-medium text-slate-500 truncate">Trade: {tradeName}</p>
+          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="font-mono text-xs font-bold text-slate-800 tracking-wider">
+              {gstinVal}
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard('gstin', gstinVal)}
+              className="text-slate-400 hover:text-slate-700"
+              title="Copy GSTIN"
+            >
+              {copiedKey === 'gstin' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Badges 2x2 */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white border border-indigo-100 p-2 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500 font-medium">GSTIN Status</span>
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+          }`}>
+            {statusStr}
+          </span>
+        </div>
+        <div className="rounded-lg bg-white border border-indigo-100 p-2 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500 font-medium">Taxpayer Type</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+            {taxpayerType}
+          </span>
+        </div>
+      </div>
+
+      {/* Business Details Grid */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white border border-indigo-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">Constitution of Business</span>
+          <p className="mt-0.5 font-bold text-slate-900 truncate">{constitution}</p>
+        </div>
+
+        <div className="rounded-lg bg-white border border-indigo-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">PAN Number</span>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className="font-mono font-bold text-slate-900">{panNum || 'N/A'}</span>
+            {panNum && (
+              <button
+                type="button"
+                onClick={() => copyToClipboard('pan', panNum)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                {copiedKey === 'pan' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-white border border-indigo-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">Date of Registration</span>
+          <p className="mt-0.5 font-bold text-slate-900">{regDate || 'Not Available'}</p>
+        </div>
+
+        <div className="rounded-lg bg-white border border-indigo-100 p-2">
+          <span className="text-[10px] text-slate-500 font-medium">Cancellation Date</span>
+          <p className="mt-0.5 font-bold text-slate-900">{cancelDate || 'N/A'}</p>
+        </div>
+      </div>
+
+      {/* Jurisdiction */}
+      {(centerJurisdiction || stateJurisdiction) && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg bg-white border border-indigo-100 p-2">
+            <span className="text-[10px] text-slate-500 font-medium">Center Jurisdiction</span>
+            <p className="mt-0.5 font-bold text-slate-900 truncate">{centerJurisdiction || 'N/A'}</p>
+          </div>
+          <div className="rounded-lg bg-white border border-indigo-100 p-2">
+            <span className="text-[10px] text-slate-500 font-medium">State Jurisdiction</span>
+            <p className="mt-0.5 font-bold text-slate-900 truncate">{stateJurisdiction || 'N/A'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Principal Place of Business */}
+      {address && (
+        <div>
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-indigo-600" /> Principal Place of Business
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard('addr', address)}
+              className="text-[10px] font-semibold text-indigo-800 hover:underline"
+            >
+              {copiedKey === 'addr' ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div className="rounded-lg bg-white border border-indigo-100 p-2.5 text-xs text-slate-800 leading-relaxed font-medium">
+            {address}
+          </div>
+        </div>
+      )}
+
+      {/* Core Activity if available */}
+      {coreActivity && (
+        <div className="rounded-lg bg-white border border-indigo-100 p-2 text-xs">
+          <span className="text-[10px] text-slate-500 font-medium">Core Business Activity</span>
+          <p className="mt-0.5 font-medium text-slate-800 line-clamp-2">{coreActivity}</p>
+        </div>
+      )}
+
+      {/* Wallet Billing Notice */}
+      <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-indigo-200/50 pt-2">
+        <span className="inline-flex items-center gap-1 text-indigo-800 font-semibold">
+          <WalletCards className="h-3.5 w-3.5" /> Wallet billing is disabled — ₹0 deducted
+        </span>
+        <span>Remaining balance: <strong>₹50,000.00</strong></span>
+      </div>
+    </div>
+  );
+}
+
+// ========================================================
+// 3. MOBILE TO PAN SUBCOMPONENTS
+// ========================================================
+function MobileToPanPlaceholderCard() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between min-h-[480px]">
+      <div>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Phone className="h-4 w-4 text-blue-600" />
+              Telecom Discovery Studio
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Telecom subscriber cross-reference &amp; PAN identity retrieval.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+            Awaiting Lookup
+          </span>
+        </div>
+
+        {/* Blueprint Preview Frame */}
+        <div className="mt-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-6 flex flex-col items-center justify-center text-center min-h-[340px]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 shadow-xs mb-3">
+            <Phone className="h-8 w-8" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-800">No Active Lookup Performed</h4>
+          <p className="text-xs text-slate-500 max-w-sm mt-1.5 leading-relaxed">
+            Enter citizen&apos;s full legal name and 10-digit mobile number on the left and click <strong>Lookup Mobile To PAN</strong>.
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-2.5 w-full max-w-sm text-left">
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-blue-600 shrink-0" /> Telecom Operator Check
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-blue-600 shrink-0" /> Masked PAN Discovery
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-blue-600 shrink-0" /> 1-Click PAN Bridge
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200/80 p-2.5 text-xs text-slate-700 font-medium flex items-center gap-2 shadow-2xs">
+              <Check className="h-4 w-4 text-blue-600 shrink-0" /> Consent Audit Log
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-4 text-center text-[11px] text-slate-400">
+        Cross-referenced via authorized telecom &amp; NSDL financial registries
+      </p>
+    </div>
+  );
+}
+
+function MobileToPanDiscoveryStudio({
+  response,
+  onVerifyInPan,
+}: {
+  response: MobileToPanResponse;
+  onVerifyInPan?: (panNumber: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const result = response.result;
+  const name = result?.name || 'CITIZEN';
+  const mobile = result?.mobileNumber || '';
+  const pan = result?.panNumber || '';
+
+  const copyPan = () => {
+    if (!pan) return;
+    void navigator.clipboard.writeText(pan);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between min-h-[480px]">
+      <div>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-600" />
+              Discovered PAN Identity Card
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Telecom registry verified identity document.
+            </p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 flex items-center gap-1">
+            <Check className="h-3 w-3" /> Identity Matched
+          </span>
+        </div>
+
+        {/* Discovery Card Visual Studio */}
+        <div className="mt-5 rounded-2xl bg-linear-to-br from-slate-900 via-blue-950 to-slate-900 p-6 text-white shadow-lg relative overflow-hidden border border-slate-800">
+          {/* Card background watermarks */}
+          <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 opacity-10 pointer-events-none">
+            <ScanLine className="h-64 w-64" />
+          </div>
+
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400 text-slate-950 font-bold text-xs">
+                ITD
+              </div>
+              <div>
+                <p className="text-[11px] font-bold tracking-wider uppercase text-amber-300">Income Tax Department</p>
+                <p className="text-[9px] text-slate-300">GOVT. OF INDIA · FINANCIAL REGISTRY</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-400/30">
+              VERIFIED
+            </span>
+          </div>
+
+          {/* Big Monospace PAN Display */}
+          <div className="mt-6 text-center py-4 bg-white/5 rounded-xl border border-white/10 backdrop-blur-xs">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Linked PAN Number</span>
+            <div className="mt-1 flex items-center justify-center gap-3">
+              <span className="font-mono text-2xl sm:text-3xl font-black tracking-widest text-amber-300">
+                {pan || 'ABCDE****F'}
+              </span>
+              {pan && (
+                <button
+                  type="button"
+                  onClick={copyPan}
+                  className="rounded-lg bg-white/10 p-1.5 hover:bg-white/20 transition text-slate-200"
+                  title="Copy discovered PAN"
+                >
+                  {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <span className="text-[10px] uppercase font-semibold text-slate-400">Citizen Name</span>
+              <p className="font-bold text-slate-100 truncate text-sm">{name}</p>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-semibold text-slate-400">Linked Mobile</span>
+              <p className="font-mono font-bold text-slate-100 text-sm">{mobile ? `+91 ${mobile}` : 'Verified'}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Security: 256-bit Encrypted</span>
+            <span>Status: Verified Active</span>
+          </div>
+        </div>
+
+        {/* Action Button: Bridge to PAN Comprehensive */}
+        {pan && onVerifyInPan && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-900">Want full unmasked PAN details?</p>
+              <p className="text-[11px] text-slate-500">Run a 1-click comprehensive ITD check using this PAN.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onVerifyInPan(pan)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-xs hover:bg-amber-400 transition shrink-0"
+            >
+              <span>Verify in PAN</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-4 text-center text-[11px] text-slate-400">
+        Discovered identity profile · Compliant with telecom consent regulations
+      </p>
+    </div>
+  );
+}
+
+function MobileToPanDossier({
+  response,
+  onReset,
+}: {
+  response: MobileToPanResponse;
+  onReset?: () => void;
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = (key: string, text: string) => {
+    if (!text) return;
+    void navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const result = response.result;
+  const name = result?.name || 'CITIZEN';
+  const mobile = result?.mobileNumber || '';
+  const pan = result?.panNumber || '';
+  const providerClientId = result?.providerClientId || response.record.providerClientId || 'N/A';
+
+  return (
+    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3.5 animate-in fade-in">
+      <div className="flex items-center justify-between border-b border-blue-200/60 pb-2.5">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+          <BadgeCheck className="h-4 w-4 text-blue-600" /> Telecom &amp; Identity Registry Match Found
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-blue-800">
+            {response.cacheHit ? 'Source: Saved DB Record' : 'Source: Telecom Gateway'}
+          </span>
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline ml-1"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Profile Row */}
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-blue-200 bg-blue-100 text-blue-700 shadow-2xs font-bold text-xl">
+            <User className="h-7 w-7" />
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs">
+            <Check className="h-2.5 w-2.5 stroke-[3]" />
+          </span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-black text-slate-900 truncate">
+            {name}
+          </h4>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="font-mono text-xs font-bold text-slate-700">
+              {mobile ? `+91 ${mobile}` : 'Mobile verified'}
+            </span>
+            {mobile && (
+              <button
+                type="button"
+                onClick={() => copyToClipboard('mob', mobile)}
+                className="text-slate-400 hover:text-slate-700"
+                title="Copy Mobile"
+              >
+                {copiedKey === 'mob' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Grid of Results */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white border border-blue-100 p-2.5">
+          <span className="text-[10px] text-slate-500 font-medium">Discovered Masked PAN</span>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="font-mono text-xs font-black text-slate-900 tracking-wider">
+              {pan || 'Not available'}
+            </span>
+            {pan && (
+              <button
+                type="button"
+                onClick={() => copyToClipboard('pan', pan)}
+                className="text-slate-400 hover:text-slate-700"
+                title="Copy PAN"
+              >
+                {copiedKey === 'pan' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-white border border-blue-100 p-2.5">
+          <span className="text-[10px] text-slate-500 font-medium">Match Status</span>
+          <div className="mt-1">
+            <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+              SUCCESSFUL MATCH
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-white border border-blue-100 p-2 col-span-2">
+          <span className="text-[10px] text-slate-500 font-medium">Provider Client ID</span>
+          <p className="mt-0.5 font-mono text-[11px] text-slate-700 truncate">{providerClientId}</p>
+        </div>
+      </div>
+
+      {/* Wallet Billing Notice */}
+      <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-blue-200/50 pt-2">
+        <span className="inline-flex items-center gap-1 text-blue-800 font-semibold">
+          <WalletCards className="h-3.5 w-3.5" /> Wallet billing is disabled — ₹0 deducted
+        </span>
+        <span>Remaining balance: <strong>₹50,000.00</strong></span>
+      </div>
     </div>
   );
 }
@@ -825,8 +1696,8 @@ export function UnifiedHistoryPanel({
         onPageSizeChange={setPageSize}
       />
 
-      {/* Detail Modals */}
-      {panDetail ? (
+      {/* Detail Modals (Only shown on overview tab or when not on the dedicated tab) */}
+      {panDetail && activeTab !== 'pan' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true">
           <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
@@ -841,7 +1712,7 @@ export function UnifiedHistoryPanel({
         </div>
       ) : null}
 
-      {gstDetail ? (
+      {gstDetail && activeTab !== 'gst' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
@@ -856,7 +1727,7 @@ export function UnifiedHistoryPanel({
         </div>
       ) : null}
 
-      {aadhaarDetail ? (
+      {aadhaarDetail && activeTab !== 'aadhaar' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
@@ -871,7 +1742,7 @@ export function UnifiedHistoryPanel({
         </div>
       ) : null}
 
-      {mobileToPanDetail ? (
+      {mobileToPanDetail && activeTab !== 'mobileToPan' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
@@ -909,8 +1780,10 @@ export default function IdentityHubPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [refreshHistory, setRefreshHistory] = useState(0);
   const [totalIdentityCount, setTotalIdentityCount] = useState<number>(0);
+  const [selectedAadhaarDetail, setSelectedAadhaarDetail] = useState<AadhaarResultResponse | null>(null);
 
   const handleSelectDetail = async (type: 'PAN' | 'GST' | 'MOBILE_TO_PAN' | 'AADHAAR', id: string): Promise<HistoryDetailResponse | null> => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     if (type === 'GST') {
       setActiveTab('gst');
       setGstError('');
@@ -954,6 +1827,7 @@ export default function IdentityHubPage() {
       setActiveTab('aadhaar');
       try {
         const result = await api.get<AadhaarResultResponse>(`/aadhaar-verification/history/${id}`);
+        setSelectedAadhaarDetail(result.data);
         return result.data;
       } catch (err) {
         setPanError(safePanApiError(err, 'Unable to load Aadhaar result detail.'));
@@ -1439,10 +2313,24 @@ export default function IdentityHubPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,580px)_1fr]">
-        {/* LEFT COLUMN: Active Tab Form & Results */}
-        <div className="flex flex-col gap-4">
-          {activeTab === 'pan' && (
+      {activeTab === 'aadhaar' ? (
+        <AadhaarDigiLockerPanel
+          canVerify={canAadhaarView}
+          onUploaded={triggerHistoryRefresh}
+          selectedDetail={selectedAadhaarDetail}
+          onClearSelected={() => setSelectedAadhaarDetail(null)}
+          historySlot={
+            <UnifiedHistoryPanel
+              refreshTrigger={refreshHistory}
+              activeTab="aadhaar"
+              onSelectDetail={handleSelectDetail}
+            />
+          }
+        />
+      ) : activeTab === 'pan' ? (
+        <div className="space-y-5">
+          {/* Row 1: Left Form & Taxpayer Dossier + Right PAN Card Template Studio */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
               <div className="bg-slate-50/80 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
                 <div>
@@ -1548,7 +2436,7 @@ export default function IdentityHubPage() {
                   </div>
                 </form>
 
-                {/* Helpful Feature Guide when no response yet to eliminate blank space */}
+                {/* Helpful Feature Guide when no response yet */}
                 {!panResponse && (
                   <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -1568,12 +2456,53 @@ export default function IdentityHubPage() {
                   </div>
                 )}
 
-                {panResponse && <PanResultPanel response={panResponse} panNumber={pan} onUploaded={handlePanTemplateUploaded} />}
+                {/* Verified Taxpayer Demographics Dossier */}
+                {panResponse && panResponse.record.status === 'SUCCESS' && (
+                  <PanTaxpayerDossier
+                    response={panResponse}
+                    panNumber={pan}
+                    onReset={() => {
+                      setPanResponse(null);
+                      setPan('');
+                      setPanError('');
+                    }}
+                  />
+                )}
+
+                {panResponse && panResponse.record.status !== 'SUCCESS' && (
+                  <PanResultPanel response={panResponse} panNumber={pan} onUploaded={handlePanTemplateUploaded} />
+                )}
               </div>
             </div>
-          )}
 
-          {activeTab === 'gst' && (
+            {/* Right Column: Live PAN Card Template Studio or Blueprint Placeholder */}
+            <div className="space-y-4">
+              {panResponse && (panResponse.template || panResponse.result) ? (
+                <PanTemplatePreview
+                  response={panResponse}
+                  onUploaded={handlePanTemplateUploaded}
+                  panNumber={pan}
+                />
+              ) : (
+                <PanTemplatePlaceholderCard />
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Full-Width PAN History Card */}
+          <div className="w-full">
+            <UnifiedHistoryPanel
+              refreshTrigger={refreshHistory}
+              activeTab="pan"
+              panTab={panTab}
+              onSelectDetail={handleSelectDetail}
+            />
+          </div>
+        </div>
+      ) : activeTab === 'gst' ? (
+        <div className="space-y-5">
+          {/* Row 1: Left Form & Business Dossier + Right GST Certificate Template Studio */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
               <div className="bg-slate-50/80 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
                 <div>
@@ -1650,12 +2579,50 @@ export default function IdentityHubPage() {
                   </div>
                 )}
 
-                {gstResponse && <GstResultPanel response={gstResponse} onUploaded={handleGstTemplateUploaded} />}
+                {/* Verified Business Registration Dossier */}
+                {gstResponse && gstResponse.record.status === 'SUCCESS' && (
+                  <GstBusinessDossier
+                    response={gstResponse}
+                    onReset={() => {
+                      setGstResponse(null);
+                      setGstin('');
+                      setGstError('');
+                    }}
+                  />
+                )}
+
+                {gstResponse && gstResponse.record.status !== 'SUCCESS' && (
+                  <GstResultPanel response={gstResponse} onUploaded={handleGstTemplateUploaded} />
+                )}
               </div>
             </div>
-          )}
 
-          {activeTab === 'mobileToPan' && (
+            {/* Right Column: Live GST Certificate Template Studio or Blueprint Placeholder */}
+            <div className="space-y-4">
+              {gstResponse && (gstResponse.template || gstResponse.result) ? (
+                <GstTemplatePreview
+                  response={gstResponse}
+                  onUploaded={handleGstTemplateUploaded}
+                />
+              ) : (
+                <GstTemplatePlaceholderCard />
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Full-Width GST History Card */}
+          <div className="w-full">
+            <UnifiedHistoryPanel
+              refreshTrigger={refreshHistory}
+              activeTab="gst"
+              onSelectDetail={handleSelectDetail}
+            />
+          </div>
+        </div>
+      ) : activeTab === 'mobileToPan' ? (
+        <div className="space-y-5">
+          {/* Row 1: Left Form & Discovery Dossier + Right Discovered PAN Studio */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
               <div className="bg-slate-50/80 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
                 <div>
@@ -1743,36 +2710,53 @@ export default function IdentityHubPage() {
                   </div>
                 )}
 
-                {mobileToPanResponse && <MobileToPanResultPanel response={mobileToPanResponse} />}
+                {/* Verified Mobile To PAN Dossier */}
+                {mobileToPanResponse && mobileToPanResponse.record.status === 'SUCCESS' && (
+                  <MobileToPanDossier
+                    response={mobileToPanResponse}
+                    onReset={() => {
+                      setMobileToPanResponse(null);
+                      setMobileToPanName('');
+                      setMobileToPanNumber('');
+                      setMobileToPanError('');
+                    }}
+                  />
+                )}
+
+                {mobileToPanResponse && mobileToPanResponse.record.status !== 'SUCCESS' && (
+                  <MobileToPanResultPanel response={mobileToPanResponse} />
+                )}
               </div>
             </div>
-          )}
 
-          {activeTab === 'aadhaar' && (
-            <AadhaarDigiLockerPanel canVerify={canAadhaarView} onUploaded={triggerHistoryRefresh} />
-          )}
-        </div>
+            {/* Right Column: Discovered PAN Identity Card Studio or Blueprint Placeholder */}
+            <div className="space-y-4">
+              {mobileToPanResponse && mobileToPanResponse.record.status === 'SUCCESS' ? (
+                <MobileToPanDiscoveryStudio
+                  response={mobileToPanResponse}
+                  onVerifyInPan={(discoveredPan) => {
+                    setPan(discoveredPan);
+                    setPanTab('comprehensive');
+                    setActiveTab('pan');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                />
+              ) : (
+                <MobileToPanPlaceholderCard />
+              )}
+            </div>
+          </div>
 
-        {/* RIGHT COLUMN: Tab-Specific History Panel (Sticky on large screens) */}
-        <div className="hidden lg:block lg:sticky lg:top-4">
-          <UnifiedHistoryPanel
-            refreshTrigger={refreshHistory}
-            activeTab={activeTab}
-            panTab={panTab}
-            onSelectDetail={handleSelectDetail}
-          />
+          {/* Row 2: Full-Width Mobile To PAN History Card */}
+          <div className="w-full">
+            <UnifiedHistoryPanel
+              refreshTrigger={refreshHistory}
+              activeTab="mobileToPan"
+              onSelectDetail={handleSelectDetail}
+            />
+          </div>
         </div>
-      </div>
-      
-      {/* Mobile View History (shown below form on smaller screens) */}
-      <div className="mt-4 lg:hidden">
-        <UnifiedHistoryPanel
-          refreshTrigger={refreshHistory}
-          activeTab={activeTab}
-          panTab={panTab}
-          onSelectDetail={handleSelectDetail}
-        />
-      </div>
+      ) : null}
     </div>
   );
 }
