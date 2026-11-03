@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { normalizeApiBaseUrl } from './apiBaseUrl.mjs';
 import { notifyApiBillingSummaryChanged } from './apiBilling';
+import { resolvePortalAuthToken } from './authTokenStorage.mjs';
 import { getAuthorizationToken, isCurrentAuthToken, isDefinitiveSessionFailure } from './sessionAccessPolicy.mjs';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -73,7 +74,10 @@ api.interceptors.response.use(
 // Request interceptor to attach JWT token
 api.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
+    const token = resolvePortalAuthToken(
+      useAuthStore.getState().token,
+      typeof window !== 'undefined' ? window.localStorage : null,
+    );
     const locale = useLanguageStore.getState().locale;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
