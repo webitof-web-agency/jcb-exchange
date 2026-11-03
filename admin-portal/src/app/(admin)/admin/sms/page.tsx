@@ -22,6 +22,7 @@ import {
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { hasPermission } from '@/lib/permissionUtils';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 type SmsSettings = {
   enabled: boolean;
@@ -368,7 +369,7 @@ export default function SmsNotificationsPage() {
   };
 
   const deleteLogItem = async (log: SmsLog) => {
-    if (!confirm(`Are you sure you want to delete the SMS log for ${log.eventCode}?`)) return;
+    if (!(await confirmDelete({ title: 'Delete this SMS log?', itemName: log.eventCode }))) return;
     setDeleting(log.id);
     setError('');
     setNotice('');
@@ -384,7 +385,7 @@ export default function SmsNotificationsPage() {
   };
 
   const clearAllLogs = async () => {
-    if (!confirm('Are you sure you want to clear all SMS delivery logs? This cannot be undone.')) return;
+    if (!(await confirmDelete({ title: 'Clear all SMS delivery logs?', alsoDeleted: ['Every SMS delivery log on this page'], confirmLabel: 'Clear all' }))) return;
     setClearing(true);
     setError('');
     setNotice('');

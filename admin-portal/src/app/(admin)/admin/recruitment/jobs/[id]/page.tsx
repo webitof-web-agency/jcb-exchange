@@ -24,6 +24,7 @@ import {
   HelpCircle,
   Sparkles,
 } from 'lucide-react';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface JobDepartment {
   id: string;
@@ -134,15 +135,22 @@ export default function SuperadminJobDetailPage() {
 
   const handleDeleteJob = async () => {
     if (!job) return;
-    if (confirm(`Are you sure you want to delete "${job.title}"? This action cannot be undone.`)) {
+    if (await confirmDelete({
+      title: 'Delete this job posting?',
+      itemName: job.title,
+      alsoDeleted: ['Custom application questions of this job'],
+      note: 'A job that already has applications cannot be deleted. Close or archive it instead.',
+    })) {
       try {
         setDeleting(true);
         const res = await api.delete(`/recruitment/admin/jobs/${job.id}`);
         if (res.data?.success) {
           router.push(`${recruitmentBasePath}/jobs`);
         }
-      } catch {
-        alert('Failed to delete job posting.');
+      } catch (deleteError) {
+        // A job with applications is refused with a reason (close or archive it instead).
+        const serverMessage = (deleteError as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        alert(serverMessage || 'Failed to delete job posting.');
       } finally {
         setDeleting(false);
       }

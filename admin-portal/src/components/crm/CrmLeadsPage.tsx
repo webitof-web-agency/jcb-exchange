@@ -422,11 +422,11 @@ function Leads() {
             description="Try choosing another filter tab or create a new lead to start tracking."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1060px] text-left text-xs">
+          <div className="w-full overflow-x-auto [scrollbar-width:thin]">
+            <table className="w-full min-w-full text-left text-xs">
               <thead className={tableHeadClass}>
                 <tr>
-                  <th className="w-10 px-3.5 py-2.5">
+                  <th className="w-10 px-3 py-2.5 text-center">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -435,14 +435,14 @@ function Leads() {
                       className="accent-amber-500 rounded"
                     />
                   </th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Customer & Contact</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Requirement / Vehicle</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Stage & SLA</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Intent & Heat</th>
-                  {!access?.isPartner ? <th className="px-3.5 py-2.5 font-bold text-slate-700">Executive</th> : null}
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Next Follow-up</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Source & Channel</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700 text-right">Quick Contact</th>
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[150px] whitespace-nowrap">Customer &amp; Contact</th>
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[200px]">Requirement / Vehicle</th>
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[130px] whitespace-nowrap">Stage &amp; SLA</th>
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[110px] whitespace-nowrap">Intent &amp; Heat</th>
+                  {!access?.isPartner ? <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[115px] whitespace-nowrap">Executive</th> : null}
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[130px] whitespace-nowrap">Next Follow-up</th>
+                  <th className="px-3 py-2.5 font-bold text-slate-700 min-w-[130px] whitespace-nowrap">Source &amp; Channel</th>
+                  <th className="w-20 px-3 py-2.5 font-bold text-slate-700 text-right whitespace-nowrap">Quick Contact</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -490,7 +490,7 @@ function Leads() {
                             </span>
                           ) : null}
                         </div>
-                        <p className="max-w-[280px] truncate text-[11px] text-slate-500 font-medium">
+                        <p className="truncate text-[11px] text-slate-500 font-medium" title={requirementSummary(lead)}>
                           {requirementSummary(lead)}
                         </p>
                       </td>
@@ -725,7 +725,7 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: string[]; onClose: () => 
 
 export default function CrmLeadsPage() {
   return (
-    <CrmPageFrame>
+    <CrmPageFrame fluid={true}>
       <Leads />
     </CrmPageFrame>
   );

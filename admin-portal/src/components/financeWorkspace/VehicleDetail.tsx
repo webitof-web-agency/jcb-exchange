@@ -9,6 +9,7 @@ import { Badge, EmptyState, ErrorBanner, LoadingState, Tabs, tableHeadClass } fr
 import DealTermsPanel from './DealTermsPanel';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
+import { generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type PostingRef = { id: string; number: string | null; status: string } | null;
 export type VehicleDetailData = {
@@ -65,7 +66,7 @@ export default function VehicleDetail({ vehicleId, includeDrafts, initialTab = '
         {vehicle.sourceType ? <Badge tone="violet">From {enumLabel(vehicle.sourceType)}</Badge> : null}
         {vehicle.isLocked ? <Badge tone="slate">Locked</Badge> : null}
         {summary.daysInStock !== null ? <span className="text-xs text-slate-500">{summary.daysInStock} days {summary.status === 'SOLD' ? 'to sell' : 'in stock'}</span> : null}
-        <Link href={`${prefix}/accounts/sell-accounts/${vehicle.id}`} className="ml-auto text-xs font-semibold text-blue-700 hover:underline">Open Sold Vehicle →</Link>
+        <Link href={generateAdminSoldVehicleDetailPath(`${prefix}/accounts/sell-accounts`, vehicle)} className="ml-auto text-xs font-semibold text-blue-700 hover:underline">Open Sold Vehicle →</Link>
       </div>
       <p className="px-4 pt-1 text-xs text-slate-500">Seller: {vehicle.sellerName ?? '—'} · Purchaser: {vehicle.purchaserName ?? '—'}{vehicle.brokerName ? ` · Broker: ${vehicle.brokerName}` : ''}{vehicle.invoiceNumber ? ` · Invoice ${vehicle.invoiceNumber}` : ''}</p>
 

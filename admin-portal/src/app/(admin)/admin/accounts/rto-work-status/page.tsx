@@ -35,8 +35,12 @@ import {
   Wallet,
   Pencil,
   CheckCircle,
+  MessageSquare,
+  AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import api from '@/lib/api';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import {
   getAccountCreatePermissions,
   getAccountDeletePermissions,
@@ -243,6 +247,12 @@ const vehicleNumberDisplay = (value: string) => {
   return [state, district, series, number].filter(Boolean).join('-');
 };
 
+const getRtoRecordPath = (basePath: string, record: { id: string; vehicleNumber?: string }) => {
+  const plate = vehicleNumberDisplay(record.vehicleNumber || '');
+  const slug = plate || record.vehicleNumber?.trim().toUpperCase() || record.id;
+  return `${basePath}/${encodeURIComponent(slug)}`;
+};
+
 const apiErrorMessage = (error: unknown, fallback: string) => {
   const detail = (error as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
   return typeof detail === 'string' && detail.trim() ? detail : error instanceof Error && error.message ? error.message : fallback;
@@ -250,6 +260,7 @@ const apiErrorMessage = (error: unknown, fallback: string) => {
 
 export default function RTOWorkStatusPage() {
   const [records, setRecords] = useState<RtoRecord[]>([]);
+  const [rtoDeleteTarget, setRtoDeleteTarget] = useState<RtoRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -459,58 +470,123 @@ export default function RTOWorkStatusPage() {
 
   const openWorkspace = (record: RtoRecord) => {
     if (record.isLocked) {
-      router.push(`${accountBasePath}/${record.id}`);
+      router.push(getRtoRecordPath(accountBasePath, record));
       return;
     }
     router.push(`${accountBasePath}/${encodeURIComponent(record.id)}/edit`);
   };
 
-  const remove = async (id: string) => {
+  // Opens the delete dialog, which shows what goes (including a connected Sold Vehicle) and what stops it.
+  const remove = (id: string) => {
     if (!canDeleteRto) return;
     const record = records.find((item) => item.id === id);
     if (record?.isLocked) {
       toast.info('This record is locked and can only be viewed.');
       return;
     }
-    if (!window.confirm('Delete this RTO record? This action cannot be undone.')) return;
-    try {
-      await api.delete(`/recruitment/admin/rto-records/${id}`);
-      await loadRecords();
-      toast.success(
-        record?.sellAccountId
-          ? 'RTO and connected Sold Vehicle record deleted successfully.'
-          : 'RTO record deleted successfully.',
-      );
-    } catch (caught) {
-      const message = apiErrorMessage(caught, 'Unable to delete RTO record.');
-      setError(message);
-      toast.error(message);
-    }
+    if (record) setRtoDeleteTarget(record);
   };
 
-  const phoneLink = (phoneNumber: string) => {
+  // "Cancel sale" offered in the delete dialog when a Sold Vehicle is connected.
+  const cancelConnectedSale = async (_status: string, reason: string) => {
+    if (!rtoDeleteTarget?.sellAccountId) return;
+    await api.post(`/recruitment/admin/sell-accounts/${encodeURIComponent(rtoDeleteTarget.sellAccountId)}/cancel-sale`, { reason });
+    setRtoDeleteTarget(null);
+    await loadRecords();
+    toast.success('Sale cancelled. The RTO work for it is stopped; receipts stay on record.');
+  };
+
+  // Section A.1: Document Completeness Helper (Checks 6 key RTO transfer requirements)
+  const getDocumentCompleteness = (record: RtoRecord) => {
+    const items = [
+      { name: 'Road Tax', ready: record.taxStatus === 'VALID' || record.taxStatus === 'LIFETIME' },
+      { name: 'Fitness', ready: record.fitnessStatus === 'VALID' },
+      { name: 'Insurance', ready: record.insuranceStatus === 'VALID' },
+      { name: 'PUC', ready: record.pucStatus === 'VALID' },
+      { name: 'HSRP', ready: record.hsrpStatus === 'YES' },
+      { name: 'NOC / Loan', ready: record.hirePurchaseStatus === 'TERMINATED' || record.hirePurchaseStatus === 'NOT_APPLICABLE' },
+    ];
+    const readyCount = items.filter((i) => i.ready).length;
+    const missing = items.filter((i) => !i.ready).map((i) => i.name);
+    return { readyCount, total: items.length, allReady: readyCount === items.length, missing };
+  };
+
+  // Section A.2: Upcoming Expiry & SLA Highlighting (< 15 days or Expired)
+  const getUpcomingExpiry = (record: RtoRecord) => {
+    const now = new Date();
+    const checks = [
+      { label: 'Fitness', date: record.fitnessValidUntil, status: record.fitnessStatus },
+      { label: 'Insurance', date: record.insuranceValidUntil, status: record.insuranceStatus },
+      { label: 'Tax', date: record.taxValidUntil, status: record.taxStatus },
+      { label: 'PUC', date: record.pucValidUntil, status: record.pucStatus },
+    ];
+
+    const alerts: Array<{ label: string; daysLeft: number; isExpired: boolean }> = [];
+    for (const c of checks) {
+      if (c.status === 'LIFETIME' || c.status === 'NOT_APPLICABLE' || !c.date) continue;
+      const exp = new Date(c.date);
+      if (Number.isNaN(exp.getTime())) continue;
+      const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        alerts.push({ label: c.label, daysLeft: diffDays, isExpired: true });
+      } else if (diffDays <= 15) {
+        alerts.push({ label: c.label, daysLeft: diffDays, isExpired: false });
+      }
+    }
+    return alerts;
+  };
+
+  // Section A.3: 1-Click WhatsApp Pre-filled URL Generator
+  const getWhatsAppUrl = (
+    phoneNumber: string,
+    opts?: { name?: string; vehicleNo?: string; role?: 'agent' | 'customer' | 'seller'; rtoOffice?: string; status?: string }
+  ) => {
+    const cleanNumber = (phoneNumber || '').replace(/\D/g, '');
+    if (!cleanNumber) return null;
+    const targetNumber = cleanNumber.length >= 10 ? (cleanNumber.startsWith('91') ? cleanNumber : `91${cleanNumber.slice(-10)}`) : cleanNumber;
+
+    const vehiclePlate = opts?.vehicleNo ? vehicleNumberDisplay(opts.vehicleNo) : 'vehicle';
+    let message = `Hello, regarding vehicle ${vehiclePlate} RTO transfer`;
+    if (opts?.role === 'agent') {
+      message = `Hello ${opts.name || 'Sir'}, please share the latest RC transfer status and pending file updates for vehicle ${vehiclePlate}${opts.rtoOffice ? ` at ${opts.rtoOffice} RTO` : ''}. Thank you!`;
+    } else if (opts?.role === 'customer') {
+      message = `Hello ${opts.name || 'Customer'}, update regarding your vehicle ${vehiclePlate} RC transfer: current status is "${opts.status ? (statusConfig[opts.status as Status]?.label || opts.status) : 'In Progress'}". Please reach out if you have any queries.`;
+    } else if (opts?.role === 'seller') {
+      message = `Hello ${opts.name || 'Sir'}, regarding vehicle ${vehiclePlate}: RTO transfer documentation is currently in progress. We will keep you updated.`;
+    }
+    return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
+  };
+
+  const phoneLink = (
+    phoneNumber: string,
+    opts?: { name?: string; vehicleNo?: string; role?: 'agent' | 'customer' | 'seller'; rtoOffice?: string; status?: string }
+  ) => {
     const cleanNumber = (phoneNumber || '').replace(/\D/g, '');
     if (!cleanNumber) return <span className="text-[10px] text-slate-400">No phone</span>;
+
+    const waUrl = getWhatsAppUrl(phoneNumber, opts);
 
     return (
       <div className="mt-0.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <a
           href={`tel:${cleanNumber}`}
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-emerald-700"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-emerald-700 transition"
           title={`Call ${phoneNumber}`}
         >
           <Phone className="h-3 w-3 text-emerald-600" />
           <span>{phoneNumber}</span>
         </a>
-        <a
-          href={`https://wa.me/91${cleanNumber}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-slate-400 hover:text-emerald-600"
-          title="WhatsApp Chat"
-        >
-          <Send className="h-3 w-3" />
-        </a>
+        {waUrl && (
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center h-4.5 w-4.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition shadow-2xs"
+            title={`1-Click WhatsApp Update to ${opts?.name || 'Contact'}`}
+          >
+            <Send className="h-2.5 w-2.5" />
+          </a>
+        )}
       </div>
     );
   };
@@ -1003,11 +1079,16 @@ export default function RTOWorkStatusPage() {
                 {currentRecords.map((record, index) => {
                   const formattedPlate = vehicleNumberDisplay(record.vehicleNumber);
                   const isCopied = copiedKey === `plate-${record.id}`;
+                  const docInfo = getDocumentCompleteness(record);
+                  const expiryAlerts = getUpcomingExpiry(record);
+                  const totalExp = Number(record.rtoExpenses || 0);
+                  const advExp = Number(record.rtoExpensesAdvance || 0);
+                  const expPercent = totalExp > 0 ? Math.min(100, Math.round((advExp / totalExp) * 100)) : 100;
 
                   return (
                     <tr
                       key={record.id}
-                      onClick={() => router.push(`${accountBasePath}/${record.id}`)}
+                      onClick={() => router.push(getRtoRecordPath(accountBasePath, record))}
                       className="group cursor-pointer transition-colors hover:bg-slate-50/80"
                     >
                       {/* Vehicle & HSRP Plate */}
@@ -1039,7 +1120,7 @@ export default function RTOWorkStatusPage() {
                           </div>
 
                           <div className="text-xs">
-                            <p className="font-bold text-slate-900 truncate max-w-[180px]">
+                            <p className="font-bold text-slate-900 truncate max-w-[200px]">
                               {record.brandName ? `${record.brandName} ` : ''}
                               {record.vehicleModel || record.vehicleType}
                             </p>
@@ -1053,6 +1134,53 @@ export default function RTOWorkStatusPage() {
                                 </span>
                               )}
                             </div>
+                          </div>
+
+                          {/* Section A.1: Document Completeness Badge & Section A.2: Expiry SLA Alert */}
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {docInfo.allReady ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9.5px] font-black text-emerald-800 border border-emerald-200">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span>6/6 Docs Ready</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-900 border border-amber-200"
+                                title={`Pending requirements: ${docInfo.missing.join(', ')}`}
+                              >
+                                <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                                <span>{docInfo.readyCount}/6 Ready</span>
+                                {docInfo.missing.length > 0 && (
+                                  <span className="text-[9px] font-medium text-amber-700">
+                                    ({docInfo.missing.slice(0, 2).join(', ')}{docInfo.missing.length > 2 ? '...' : ''})
+                                  </span>
+                                )}
+                              </span>
+                            )}
+
+                            {expiryAlerts.map((alert) => (
+                              <span
+                                key={alert.label}
+                                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                                  alert.isExpired
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                }`}
+                                title={alert.isExpired ? `${alert.label} expired ${Math.abs(alert.daysLeft)} days ago!` : `${alert.label} expires in ${alert.daysLeft} days`}
+                              >
+                                {alert.isExpired ? (
+                                  <>
+                                    <AlertTriangle className="h-2.5 w-2.5 text-rose-600" />
+                                    <span>{alert.label} Expired</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="h-2.5 w-2.5 text-amber-700" />
+                                    <span>{alert.label} {alert.daysLeft}d</span>
+                                  </>
+                                )}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       </td>
@@ -1068,7 +1196,12 @@ export default function RTOWorkStatusPage() {
                               Ref: {record.customerName}
                             </p>
                           )}
-                          {phoneLink(record.purchaserNumber || record.customerNumber)}
+                          {phoneLink(record.purchaserNumber || record.customerNumber, {
+                            name: record.purchaserName || record.customerName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'customer',
+                            status: record.rtoStatus,
+                          })}
                         </div>
                       </td>
 
@@ -1078,7 +1211,12 @@ export default function RTOWorkStatusPage() {
                           <p className="font-bold text-slate-900 truncate" title={record.sellerName}>
                             {record.sellerName || 'Direct Seller'}
                           </p>
-                          {phoneLink(record.sellerNumber)}
+                          {phoneLink(record.sellerNumber, {
+                            name: record.sellerName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'seller',
+                            status: record.rtoStatus,
+                          })}
                           {record.sellAccountId && (
                             <span className="mt-0.5 inline-block text-[9.5px] font-bold text-blue-700 bg-blue-50 border border-blue-200/60 rounded px-1.5 py-0.2">
                               Sell Account
@@ -1104,31 +1242,51 @@ export default function RTOWorkStatusPage() {
                               </span>
                             ) : null}
                           </div>
-                          {phoneLink(record.rtoAgentNumber)}
+                          {phoneLink(record.rtoAgentNumber, {
+                            name: record.rtoAgentName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'agent',
+                            rtoOffice: record.rtoOffice,
+                            status: record.rtoStatus,
+                          })}
                         </div>
                       </td>
 
-                      {/* Settlement / Fee */}
+                      {/* Section A.4: Settlement / Fee with Progress & Due Highlight */}
                       <td className="px-3 py-3.5 whitespace-nowrap">
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-black text-slate-900">
-                            {formatRtoCurrency(record.rtoExpenses)}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-[10px]">
-                            <span className="text-slate-400 font-medium">Adv:</span>
-                            <span className="font-bold text-emerald-700">
-                              {formatRtoCurrency(record.rtoExpensesAdvance)}
+                        <div className="space-y-1 max-w-[145px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold text-slate-400">Total:</span>
+                            <span className="text-xs font-black text-slate-900">
+                              {formatRtoCurrency(record.rtoExpenses)}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-[10px]">
-                            <span className="text-slate-400 font-medium">Bal:</span>
-                            <span
-                              className={`font-black ${
-                                record.rtoExpensesBalance > 0 ? 'text-amber-800' : 'text-slate-500'
-                              }`}
-                            >
-                              {formatRtoCurrency(record.rtoExpensesBalance)}
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400 font-medium">Adv:</span>
+                            <span className="font-bold text-emerald-700">
+                              {formatRtoCurrency(record.rtoExpensesAdvance)} ({expPercent}%)
                             </span>
+                          </div>
+                          {/* Visual progress bar */}
+                          <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all"
+                              style={{ width: `${expPercent}%` }}
+                            />
+                          </div>
+                          {/* Balance Due Highlight */}
+                          <div>
+                            {record.rtoExpensesBalance > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 text-[9.5px] font-black text-amber-950">
+                                <DollarSign className="h-2.5 w-2.5 text-amber-700" />
+                                <span>{formatRtoCurrency(record.rtoExpensesBalance)} Due</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                <span>Settled</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1147,7 +1305,7 @@ export default function RTOWorkStatusPage() {
                               {
                                 label: 'View Dossier',
                                 icon: <Eye className="h-4 w-4 text-slate-500" />,
-                                onClick: () => router.push(`${accountBasePath}/${record.id}`),
+                                onClick: () => router.push(getRtoRecordPath(accountBasePath, record)),
                               },
                               ...(canUpdateRto && !record.isLocked
                                 ? [
@@ -1173,7 +1331,7 @@ export default function RTOWorkStatusPage() {
                                       label: 'Delete Record',
                                       icon: <Trash2 className="h-4 w-4 text-rose-500" />,
                                       variant: 'danger' as const,
-                                      onClick: () => void remove(record.id),
+                                      onClick: () => remove(record.id),
                                     },
                                   ]
                                 : []),
@@ -1182,7 +1340,7 @@ export default function RTOWorkStatusPage() {
                                     {
                                       label: 'Locked · Finalized Archive',
                                       icon: <LockKeyhole className="h-4 w-4 text-slate-500" />,
-                                      onClick: () => router.push(`${accountBasePath}/${record.id}`),
+                                      onClick: () => router.push(getRtoRecordPath(accountBasePath, record)),
                                     },
                                   ]
                                 : []),
@@ -1279,11 +1437,16 @@ export default function RTOWorkStatusPage() {
               const isCopied = copiedKey === `plate-${record.id}`;
               const cfg = statusConfig[record.rtoStatus] || statusConfig.RTO_WORK_IN_PROGRESS;
               const StatusIcon = cfg.icon;
+              const docInfo = getDocumentCompleteness(record);
+              const expiryAlerts = getUpcomingExpiry(record);
+              const totalExp = Number(record.rtoExpenses || 0);
+              const advExp = Number(record.rtoExpensesAdvance || 0);
+              const expPercent = totalExp > 0 ? Math.min(100, Math.round((advExp / totalExp) * 100)) : 100;
 
               return (
                 <div
                   key={record.id}
-                  onClick={() => router.push(`${accountBasePath}/${record.id}`)}
+                  onClick={() => router.push(getRtoRecordPath(accountBasePath, record))}
                   className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs transition hover:border-amber-300 hover:shadow-md cursor-pointer"
                 >
                   <div>
@@ -1334,7 +1497,53 @@ export default function RTOWorkStatusPage() {
                       </p>
                     </div>
 
-                    {/* Stakeholders Info Grid */}
+                    {/* Section A.1 & A.2: Document Completeness & Expiry Badges */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1">
+                      {docInfo.allReady ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9.5px] font-black text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                          <span>6/6 Docs Ready</span>
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-900 border border-amber-200"
+                          title={`Pending: ${docInfo.missing.join(', ')}`}
+                        >
+                          <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                          <span>{docInfo.readyCount}/6 Docs</span>
+                          {docInfo.missing.length > 0 && (
+                            <span className="text-[9px] font-medium text-amber-700 truncate max-w-[110px]">
+                              ({docInfo.missing.slice(0, 1).join(', ')}{docInfo.missing.length > 1 ? ` +${docInfo.missing.length - 1}` : ''})
+                            </span>
+                          )}
+                        </span>
+                      )}
+
+                      {expiryAlerts.map((alert) => (
+                        <span
+                          key={alert.label}
+                          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                            alert.isExpired
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                              : 'bg-amber-100 text-amber-900 border border-amber-300'
+                          }`}
+                        >
+                          {alert.isExpired ? (
+                            <>
+                              <AlertTriangle className="h-2.5 w-2.5 text-rose-600" />
+                              <span>{alert.label} Exp</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="h-2.5 w-2.5 text-amber-700" />
+                              <span>{alert.label} {alert.daysLeft}d</span>
+                            </>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Stakeholders Info Grid with Section A.3 WhatsApp Actions */}
                     <div className="mt-3 space-y-2 rounded-xl bg-slate-50/70 p-2.5 border border-slate-100 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buyer</span>
@@ -1342,7 +1551,12 @@ export default function RTOWorkStatusPage() {
                           <p className="font-bold text-slate-900 truncate max-w-[150px]">
                             {record.purchaserName || record.customerName}
                           </p>
-                          {phoneLink(record.purchaserNumber || record.customerNumber)}
+                          {phoneLink(record.purchaserNumber || record.customerNumber, {
+                            name: record.purchaserName || record.customerName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'customer',
+                            status: record.rtoStatus,
+                          })}
                         </div>
                       </div>
 
@@ -1350,7 +1564,12 @@ export default function RTOWorkStatusPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Seller</span>
                         <div className="text-right">
                           <p className="font-bold text-slate-900 truncate max-w-[150px]">{record.sellerName}</p>
-                          {phoneLink(record.sellerNumber)}
+                          {phoneLink(record.sellerNumber, {
+                            name: record.sellerName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'seller',
+                            status: record.rtoStatus,
+                          })}
                         </div>
                       </div>
 
@@ -1360,31 +1579,58 @@ export default function RTOWorkStatusPage() {
                           <p className="font-bold text-slate-900 truncate max-w-[150px]">
                             {record.rtoOffice || 'Not set'}
                           </p>
-                          <p className="text-[10px] text-slate-500">
-                            {record.rtoAgentName ? `${record.rtoAgentName} (${record.rtoAgentCity})` : 'No agent'}
-                          </p>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
+                              {record.rtoAgentName ? `${record.rtoAgentName}${record.rtoAgentCity ? ` (${record.rtoAgentCity})` : ''}` : 'No agent'}
+                            </span>
+                          </div>
+                          {phoneLink(record.rtoAgentNumber, {
+                            name: record.rtoAgentName,
+                            vehicleNo: record.vehicleNumber,
+                            role: 'agent',
+                            rtoOffice: record.rtoOffice,
+                            status: record.rtoStatus,
+                          })}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Card Bottom: Financials & Action Buttons */}
+                  {/* Card Bottom: Section A.4 Settlement with Progress Bar & Due Highlight */}
                   <div className="mt-3 border-t border-slate-100 pt-3">
-                    <div className="flex items-baseline justify-between mb-2">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
                       <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Fee</span>
-                        <p className="text-xs font-black text-slate-900">{formatRtoCurrency(record.rtoExpenses)}</p>
+                        <p className="font-black text-slate-900">{formatRtoCurrency(record.rtoExpenses)}</p>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Balance Due</span>
-                        <p
-                          className={`text-xs font-black ${
-                            record.rtoExpensesBalance > 0 ? 'text-amber-800' : 'text-emerald-700'
-                          }`}
-                        >
-                          {formatRtoCurrency(record.rtoExpensesBalance)}
-                        </p>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Advance Paid</span>
+                        <p className="font-bold text-emerald-700">{formatRtoCurrency(record.rtoExpensesAdvance)} ({expPercent}%)</p>
                       </div>
+                    </div>
+
+                    {/* Mini progress bar */}
+                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden mb-2">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${expPercent}%` }}
+                      />
+                    </div>
+
+                    {/* Balance Due Row */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Agent Balance:</span>
+                      {record.rtoExpensesBalance > 0 ? (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[10px] font-black text-amber-950">
+                          <DollarSign className="h-2.5 w-2.5 text-amber-700" />
+                          <span>{formatRtoCurrency(record.rtoExpensesBalance)} Due</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-2.5 w-2.5" />
+                          <span>Settled</span>
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between gap-2 border-t border-slate-50 pt-2">
@@ -1457,6 +1703,21 @@ export default function RTOWorkStatusPage() {
           busy={updatingStatusId === pendingQuickStatus.record.id}
           onCancel={() => setPendingQuickStatus(null)}
           onConfirm={(remark) => confirmQuickStatusChange(remark)}
+        />
+      ) : null}
+      {rtoDeleteTarget ? (
+        <DeleteImpactDialog
+          open
+          title={rtoDeleteTarget.sellAccountId ? 'Delete RTO record and its Sold Vehicle' : 'Delete RTO record'}
+          impactPath={`/recruitment/admin/rto-records/${rtoDeleteTarget.id}/delete-impact`}
+          deletePath={`/recruitment/admin/rto-records/${rtoDeleteTarget.id}`}
+          onClose={() => setRtoDeleteTarget(null)}
+          onDeleted={(message) => {
+            setRtoDeleteTarget(null);
+            void loadRecords();
+            toast.success(message);
+          }}
+          onAlternative={rtoDeleteTarget.sellAccountId ? cancelConnectedSale : undefined}
         />
       ) : null}
     </div>

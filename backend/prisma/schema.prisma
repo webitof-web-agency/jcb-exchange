@@ -87,6 +87,11 @@ enum ListingStatus {
   RESERVED
   SOLD
   REJECTED
+  // Hidden from the website (services/listingModeration.service.ts). The seller can relist UNLISTED
+  // themselves; SUSPENDED and BLOCKED are set and lifted by an admin only.
+  UNLISTED
+  SUSPENDED
+  BLOCKED
 }
 
 enum PartnerStaffRole {
@@ -1234,6 +1239,14 @@ model Listing {
   additionalDescription String?       @db.Text
   grossPower            String?
   engineNumber          String?
+  // Registration and chassis numbers as A-Z0-9 (services/listingVehicleIdentity.ts). Not unique: a sold
+  // vehicle can be listed again, but only one listing per vehicle may be under review or on the market.
+  registrationNumberKey String?
+  chassisNumberKey      String?
+  // Why and when the listing was last unlisted, suspended or blocked, and by whom.
+  moderationReason      String?       @db.Text
+  moderatedAt           DateTime?
+  moderatedById         String?
   // `price` stays the seller's own price. Admin adds margin and expenses at approval;
   // buyers see price + adminMarginAmount + adminExpenseAmount (see utils/listingPricing.ts).
   adminMarginAmount     Decimal       @default(0) @db.Decimal(14, 2)
@@ -1261,6 +1274,8 @@ model Listing {
   vehicleVerification ListingVehicleVerification?
 
   @@index([status, soldAt])
+  @@index([registrationNumberKey])
+  @@index([chassisNumberKey])
 }
 
 enum ListingVerificationStatus {

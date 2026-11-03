@@ -39,6 +39,7 @@ import {
   partnerEditBasePathFor,
   partnerTemplateEndpointBase,
   statusLabel,
+  verificationReviewPath,
   verificationsBasePath,
   verificationStatusLabel,
   type TemplateDocumentType,
@@ -46,6 +47,7 @@ import {
   type VerificationDetail,
   type VerificationDocument,
 } from '@/lib/verificationReview';
+import { generateAdminPartnerEditPath } from '@/lib/routePaths';
 
 type ReviewTab = 'documents' | 'profile' | 'agreements' | 'history';
 
@@ -176,9 +178,14 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
     hasAnyPermission(viewer?.permissions, ['kyc.manage']);
 
   const listPath = verificationsBasePath(pathname);
-  const editPath = `${partnerEditBasePathFor(pathname)}/${partnerId}/edit`;
-
   const [detail, setDetail] = useState<VerificationDetail | null>(null);
+  // The URL carries a readable slug; once loaded, every call uses the partner's real id.
+  const resolvedPartnerId = detail?.id ?? partnerId;
+  const editPath = generateAdminPartnerEditPath(partnerEditBasePathFor(pathname), {
+    id: resolvedPartnerId,
+    businessName: detail?.profile?.businessName,
+    district: detail?.profile?.district,
+  });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [tab, setTab] = useState<ReviewTab>('documents');
@@ -210,6 +217,12 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
       active = false;
     };
   }, [partnerId]);
+
+  useEffect(() => {
+    if (!detail) return;
+    const canonicalPath = verificationReviewPath(pathname, { id: detail.id, name: detail.profile?.businessName || detail.ownerName || detail.email });
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [detail, pathname, router]);
 
   useEffect(() => () => {
     if (previewAsset?.url) URL.revokeObjectURL(previewAsset.url);
@@ -257,7 +270,7 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
   const downloadTemplate = (document: VerificationDocument) => {
     const template = document.verificationTemplate;
     if (!template || !document.verificationRecordId) return;
-    const endpoint = `${partnerTemplateEndpointBase(partnerId, document.documentType)}/${document.verificationRecordId}/template`;
+    const endpoint = `${partnerTemplateEndpointBase(resolvedPartnerId, document.documentType)}/${document.verificationRecordId}/template`;
     void runAction(`template:${document.id}`, 'Unable to download template.', async () => {
       const response = await api.get<Blob>(endpoint, { responseType: 'blob' });
       const url = URL.createObjectURL(response.data);
@@ -768,7 +781,7 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
           documentNumber={templatePreview.documentNumber}
           response={templatePreview.response}
           isPartnerMode={false}
-          templateEndpointBaseOverride={partnerTemplateEndpointBase(partnerId, templatePreview.documentType)}
+          templateEndpointBaseOverride={partnerTemplateEndpointBase(resolvedPartnerId, templatePreview.documentType)}
           onClose={() => setTemplatePreview(null)}
           onSaved={() => undefined}
         />

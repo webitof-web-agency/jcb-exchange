@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
 import { Badge, Button, buttonLinkClass, EmptyState, ErrorBanner, LoadingState, Modal } from '@/components/financeWorkspace/ui';
 import { statusText, statusTone, vehicleDocsPath, zipFileName } from './VehicleDocsList';
+import { generateAdminListingDetailPath, generateAdminRtoDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type Doc = { id: string; section: string; checklistKey: string | null; label: string; fileName: string; mimeType: string; size: number | null; date: string | null; generated: boolean; isVideo: boolean };
 type ChecklistItem = { key: string; label: string; section: string; state: 'AVAILABLE' | 'NA' | 'NOT_REQUIRED'; note: string | null; docIds: string[] };
@@ -167,10 +168,15 @@ export default function VehicleDocsDetail({ number }: { number: string }) {
   const docsById = new Map(vehicle.documents.map((doc) => [doc.id, doc]));
   const available = vehicle.checklist.filter((item) => item.state === 'AVAILABLE').length;
   const activeSale = vehicle.sales.find((sale) => !sale.cancelledAt) ?? vehicle.sales[vehicle.sales.length - 1] ?? null;
-  const listingHref = vehicle.listing ? `${prefix}/listings/${encodeURIComponent(vehicle.listing.id)}` : null;
-  const saleHref = (id: string) => `${prefix}/accounts/sell-accounts/${encodeURIComponent(id)}`;
+  const listingHref = vehicle.listing ? generateAdminListingDetailPath(`${prefix}/listings`, vehicle.listing) : null;
+  const saleHref = (sale: Sale) => generateAdminSoldVehicleDetailPath(`${prefix}/accounts/sell-accounts`, {
+    id: sale.id,
+    recordNumber: sale.recordNumber,
+    vehicleNumber: vehicle.vehicleNumber,
+    listingTitle: vehicle.title,
+  });
   // The number opens the vehicle's listing; without one, its Sold Vehicle record.
-  const vehicleHref = listingHref ?? (activeSale ? saleHref(activeSale.id) : null);
+  const vehicleHref = listingHref ?? (activeSale ? saleHref(activeSale) : null);
   const badgeLink = 'rounded transition hover:opacity-80 hover:[&>span]:underline';
   const previewDoc = (doc: Doc) => setPreview({ title: doc.label, path: `${base}/files/${encodeURIComponent(doc.id)}?inline=1`, mimeType: doc.mimeType, download: () => void downloadDoc(doc) });
   const fileRow = (doc: Doc) => <FileRow key={doc.id} number={number} doc={doc} busy={busy === doc.id} onPreview={() => previewDoc(doc)} onDownload={() => void downloadDoc(doc)} />;
@@ -194,8 +200,8 @@ export default function VehicleDocsDetail({ number }: { number: string }) {
           </p>
           <div className="mt-1 flex flex-wrap gap-1">
             {vehicle.listing && listingHref ? <Link href={listingHref} className={badgeLink}><Badge tone={statusTone(vehicle.listing.status)}>Listing: {statusText(vehicle.listing.status)}</Badge></Link> : null}
-            {vehicle.sales.map((sale) => <Link key={sale.id} href={saleHref(sale.id)} className={badgeLink}><Badge tone={statusTone(sale.cancelledAt ? 'CANCELLED' : sale.dealStatus)}>{sale.recordNumber}: {sale.cancelledAt ? 'Cancelled' : statusText(sale.dealStatus)}</Badge></Link>)}
-            {vehicle.rto?.status ? <Link href={`${prefix}/accounts/rto-work-status/${encodeURIComponent(vehicle.rto.id)}`} className={badgeLink}><Badge tone={statusTone(vehicle.rto.status)}>RTO: {statusText(vehicle.rto.status)}</Badge></Link> : null}
+            {vehicle.sales.map((sale) => <Link key={sale.id} href={saleHref(sale)} className={badgeLink}><Badge tone={statusTone(sale.cancelledAt ? 'CANCELLED' : sale.dealStatus)}>{sale.recordNumber}: {sale.cancelledAt ? 'Cancelled' : statusText(sale.dealStatus)}</Badge></Link>)}
+            {vehicle.rto?.status ? <Link href={generateAdminRtoDetailPath(`${prefix}/accounts/rto-work-status`, { id: vehicle.rto.id, vehicleNumber: vehicle.vehicleNumber })} className={badgeLink}><Badge tone={statusTone(vehicle.rto.status)}>RTO: {statusText(vehicle.rto.status)}</Badge></Link> : null}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">

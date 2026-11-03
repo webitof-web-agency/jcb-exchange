@@ -7,6 +7,7 @@ import axios from 'axios';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
+import { generateMachineSlugPath } from '@/lib/seoUtils';
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   if (axios.isAxiosError(error)) {
@@ -89,7 +90,7 @@ export default function PhonePeReturnClient() {
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           {listingId ? (
             <Link
-              href={`/machines/${listingId}`}
+              href={generateMachineSlugPath({ id: listingId })}
               className="flex-1 rounded-lg bg-[#FFC107] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#e5ad06]"
             >
               Back to Listing

@@ -10,6 +10,7 @@ import { todayIso } from './ledgerLookups';
 import { Badge, Button, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter, tableHeadClass } from './ui';
 import { useResource } from './useResource';
 import VoucherDetail from './VoucherDetail';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 export default function DocumentDetail({ documentId, lookups, onClose, onChanged, onEdit }: {
   documentId: string;
@@ -111,7 +112,7 @@ export default function DocumentDetail({ documentId, lookups, onClose, onChanged
           <ModalFooter>
             {document.status === 'DRAFT' && canManage ? (
               <>
-                <Button variant="danger" busy={busy} onClick={() => { if (window.confirm('Delete this draft?')) void run(() => api.delete(`/finance-hub/documents/${document.id}`), 'Draft deleted.').then((ok) => { if (ok) onClose(); }); }}>Delete draft</Button>
+                <Button variant="danger" busy={busy} onClick={() => { void confirmDelete({ title: 'Delete this draft?', alsoDeleted: ['Its line items'] }).then((confirmed) => { if (confirmed) void run(() => api.delete(`/finance-hub/documents/${document.id}`), 'Draft deleted.').then((ok) => { if (ok) onClose(); }); }); }}>Delete draft</Button>
                 <Button onClick={() => onEdit(document)} disabled={busy}>Edit</Button>
               </>
             ) : null}

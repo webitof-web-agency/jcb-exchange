@@ -249,7 +249,7 @@ export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChange
 
   return (
     <>
-      <section className="flex flex-col rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+      <section className="w-full flex flex-col rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
         {/* COMPACT UNIFIED TOP TOOLBAR */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200/80 bg-white px-3.5 py-2.5">
           {/* Left: Live Pipeline Metrics & Quick Search */}
@@ -402,7 +402,7 @@ export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChange
             <CrmErrorBanner message={board.error} schemaMissing={board.schemaMissing} />
           </div>
         ) : (
-          <div className="flex gap-2.5 overflow-x-auto p-3 custom-scrollbar bg-slate-100/60 min-h-[580px] h-[calc(100vh-10.5rem)]">
+          <div className="w-full flex gap-2.5 overflow-x-auto p-3 custom-scrollbar [scrollbar-width:thin] bg-slate-100/60 min-h-[580px] h-[calc(100vh-10.5rem)]">
             {columns.map((column) => {
               const theme = COLUMN_THEMES[column.status] || COLOR_THEMES[column.color] || {
                 border: 'border-t-slate-400',
@@ -473,7 +473,7 @@ export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChange
                       setDragging(null);
                     }
                   }}
-                  className={`flex min-w-[285px] max-w-[285px] flex-1 flex-col rounded-2xl border border-slate-200/90 bg-slate-50/70 shadow-2xs transition-all duration-200 ${
+                  className={`flex min-w-[270px] flex-1 flex-col rounded-2xl border border-slate-200/90 bg-slate-50/70 shadow-2xs transition-all duration-200 ${
                     theme.border
                   } border-t-4 ${
                     isDropTarget ? 'ring-2 ring-amber-400 bg-amber-50/40 shadow-md scale-[1.008]' : ''
@@ -815,7 +815,7 @@ export function CrmPipelineBoard({ embedded = false, externalQuery, onDataChange
 
 export default function CrmPipelinePage() {
   return (
-    <CrmPageFrame>
+    <CrmPageFrame fluid={true}>
       <CrmPipelineBoard />
     </CrmPageFrame>
   );

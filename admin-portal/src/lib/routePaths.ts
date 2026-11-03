@@ -21,6 +21,12 @@ type VisitorRouteInput = {
   city?: string | null;
 };
 
+type ContactRouteInput = {
+  id: string;
+  name?: string | null;
+  city?: string | null;
+};
+
 type LeadRouteInput = {
   id: string;
   customerName?: string | null;
@@ -31,6 +37,20 @@ type ListingPaymentRouteInput = {
   id: string;
   listingTitle?: string | null;
   method?: string | null;
+};
+
+type SoldVehicleRouteInput = {
+  id: string;
+  recordNumber?: string | null;
+  vehicleNumber?: string | null;
+  listingTitle?: string | null;
+  brandName?: string | null;
+  vehicleModel?: string | null;
+};
+
+type RtoRouteInput = {
+  id: string;
+  vehicleNumber?: string | null;
 };
 
 type RecruitmentJobRouteInput = {
@@ -84,6 +104,11 @@ export const generateAdminVisitorDetailPath = (basePath: string, visitor: Visito
   return joinDetailPath(basePath, buildSlugWithShortSuffix(slug || 'visitor', visitor.id));
 };
 
+export const generateAdminContactDetailPath = (basePath: string, contact: ContactRouteInput): string => {
+  const slug = buildSlugSegments(contact.name, contact.city);
+  return joinDetailPath(basePath, buildSlugWithShortSuffix(slug || 'contact', contact.id));
+};
+
 export const generateAdminLeadDetailPath = (basePath: string, lead: LeadRouteInput): string => {
   const slug = buildSlugSegments(lead.customerName, lead.listingTitle);
   return joinDetailPath(basePath, buildSlugWithShortSuffix(slug || 'enquiry', lead.id));
@@ -96,4 +121,45 @@ export const generateAdminListingPaymentDetailPath = (basePath: string, payment:
     : `${normalizedBasePath}/payments`;
   const slug = buildSlugSegments(payment.listingTitle, payment.method);
   return joinDetailPath(paymentBasePath, buildSlugWithShortSuffix(slug || 'payment', payment.id));
+};
+
+export const generateAdminListingPaymentLookupPath = (basePath: string, listing: ListingRouteInput): string => {
+  const slug = buildSlugSegments(listing.title, listing.manufacturingYear, listing.locationCity);
+  return joinDetailPath(normalizeBasePath(basePath), buildSlugWithShortSuffix(slug || 'listing-payment', listing.id));
+};
+
+export const generateAdminSoldVehicleDetailPath = (basePath: string, record: SoldVehicleRouteInput): string => {
+  const fallbackTitle = [record.brandName, record.vehicleModel].filter(Boolean).join(' ');
+  const slug = buildSlugSegments(record.recordNumber, record.vehicleNumber, record.listingTitle || fallbackTitle);
+  return joinDetailPath(normalizeBasePath(basePath), buildSlugWithShortSuffix(slug || 'sold-vehicle', record.id));
+};
+
+export const formatVehicleRegistrationPath = (value?: string | null): string => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+  const compact = normalized.replace(/[\s-]+/g, '');
+  const standardMatch = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+  if (standardMatch) return [standardMatch[1], standardMatch[2], standardMatch[3], standardMatch[4]].join('-');
+  const stateAndNumberMatch = compact.match(/^([A-Z]{2})(\d{1,2})(\d{1,4})$/);
+  if (stateAndNumberMatch) return [stateAndNumberMatch[1], stateAndNumberMatch[2], stateAndNumberMatch[3]].join('-');
+  return normalized.replace(/[\s-]+/g, '-');
+};
+
+export const generateAdminRtoDetailPath = (basePath: string, record: RtoRouteInput): string => {
+  const registration = formatVehicleRegistrationPath(record.vehicleNumber);
+  return joinDetailPath(normalizeBasePath(basePath), encodeURIComponent(registration || record.id));
+};
+
+type FinanceTransactionRouteInput = {
+  id: string;
+  name?: string | null;
+  category?: string | null;
+  transactionDate?: string | null;
+};
+
+/** Expenses & income detail: "<payee>-<category>-<yyyy-mm-dd>-<first 13 characters of the id>". */
+export const generateFinanceTransactionDetailPath = (basePath: string, transaction: FinanceTransactionRouteInput): string => {
+  const day = transaction.transactionDate ? String(transaction.transactionDate).slice(0, 10) : null;
+  const slug = buildSlugSegments(transaction.name, transaction.category, day);
+  return joinDetailPath(normalizeBasePath(basePath), buildSlugWithShortSuffix(slug || 'transaction', transaction.id));
 };

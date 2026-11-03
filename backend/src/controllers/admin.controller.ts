@@ -51,7 +51,6 @@ import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization'
 import { allowedAdminPermissions } from '../utils/adminPermissions';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretReveal';
-import { getCustomerDeletionBlockers, type CustomerDeletionCounts } from '../services/customerDeletion.service';
 import { resolveListingContactNumber } from '../utils/listingContact';
 import { canCreateListing } from '../utils/listingAccess';
 import type { VehicleListingVerificationSettings } from '../utils/listingVerificationPolicy';
@@ -65,6 +64,9 @@ import { normalizeProfileEmail } from '../utils/profileSecurity';
 import { validateField } from '../utils/fieldValidation';
 import { normalizePartnerInventory } from '../utils/partnerInventory';
 import { DatabaseBackupInProgressError, performDatabaseBackup } from '../jobs/dbBackup.job';
+import { assertListingStatusChangeAllowed, buildAdminVehicleIdentitySummaries } from '../services/listingVehicleIdentity';
+import { deleteAccountPermanently, getAccountDeletionImpact } from '../services/accountDeletion.service';
+import { isModeratedListingStatus } from '../services/listingModeration.service';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -447,6 +449,10 @@ const mapPartnerAccountStatus = ({
 
   if (status === 'SUSPENDED') {
     return 'SUSPENDED';
+  }
+
+  if (status === 'CLOSED') {
+    return 'CLOSED';
   }
 
   if (status === 'INACTIVE') {
@@ -1506,6 +1512,7 @@ export const getListingPaymentSubmissions = async (req: Request, res: Response, 
     const requestedStatus = String(req.query.status || '').trim().toUpperCase();
     const requestedId = req.query.id ? String(req.query.id).trim() : '';
     const requestedPrefix = req.query.prefix ? String(req.query.prefix).trim() : '';
+    const requestedListingPrefix = req.query.listingPrefix ? String(req.query.listingPrefix).trim() : '';
     const where: any = {};
 
     if (requestedStatus && ['PENDING_VERIFICATION', 'APPROVED', 'REJECTED', 'FAILED', 'PAID'].includes(requestedStatus)) {
@@ -1516,6 +1523,9 @@ export const getListingPaymentSubmissions = async (req: Request, res: Response, 
       where.id = requestedId;
     } else if (requestedPrefix) {
       where.id = { startsWith: requestedPrefix };
+    }
+    if (requestedListingPrefix) {
+      where.listing = { id: { startsWith: requestedListingPrefix } };
     }
 
     if (String(req.query.summary || '').toLowerCase() === 'true') {
@@ -2148,100 +2158,39 @@ export const resetManagedUserPassword = async (req: Request, res: Response, next
   }
 };
 
+const deletionViewer = (req: Request) => ({ id: req.user!.id, role: req.user!.role });
+
+/** What a permanent delete of this account would remove, unlink or be blocked by. */
+export const getManagedUserDeletionImpact = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const impact = await getAccountDeletionImpact(String(req.params.id), deletionViewer(req));
+    if (!impact) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    res.json({ impact });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Permanent delete of a customer, staff member or partner. Body: { include, confirmation, reason }.
+ * Super admin only; blocked while money, legal or audit history exists (see accountDeletion.service).
+ */
 export const deleteManagedUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = String(req.params.id);
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id },
-      include: {
-        adminProfile: true,
-        partnerProfile: {
-          select: { id: true },
-        },
-        _count: {
-          select: {
-            listings: true,
-            assignedLeads: true,
-            leads: true,
-            teamMemberships: true,
-            listingPaymentSubmissions: true,
-            customerPrimeSubscriptions: true,
-            createdUsers: true,
-            auditLogs: true,
-          },
-        },
-      } as any,
-    });
-
-    if (!targetUser) {
+    const result = await deleteAccountPermanently(id, deletionViewer(req), req.body || {});
+    if (!result) {
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    if (targetUser.role === 'SUPER_ADMIN') {
-      return res.status(400).json({ error: 'Super admin accounts cannot be deleted.' });
-    }
-
-    if (targetUser.role === 'CUSTOMER') {
-      const deletionCounts = (targetUser as any)._count as CustomerDeletionCounts;
-      const blockers = getCustomerDeletionBlockers(deletionCounts);
-
-      if (blockers.length > 0) {
-        return res.status(409).json({
-          error: `This visitor cannot be permanently deleted because related records exist: ${blockers.join(', ')}. Deactivate the account instead.`,
-          code: 'CUSTOMER_DELETE_BLOCKED',
-          blockers,
-        });
-      }
-
-      await prisma.$transaction([
-        prisma.mobileOtpChallenge.deleteMany({ where: { userId: id } }),
-        prisma.emailOtpChallenge.deleteMany({ where: { userId: id } }),
-        prisma.notification.deleteMany({ where: { userId: id } }),
-        prisma.user.delete({ where: { id } }),
-      ]);
-
-      res.json({
-        message: 'Visitor deleted permanently.',
-        id,
-        deleted: true,
-      });
-      return;
-    }
-
-    if ((targetUser as any).partnerProfile) {
-      if (
-        (targetUser as any)._count?.listings > 0 ||
-        (targetUser as any)._count?.assignedLeads > 0 ||
-        (targetUser as any)._count?.teamMemberships > 0
-      ) {
-        return res.status(400).json({
-          error: 'This partner cannot be deleted because linked listings, leads, or team records already exist. Mark the account inactive or blocked instead.',
-        });
-      }
-
-      const partnerProfileId = (targetUser as any).partnerProfile.id;
-
-      await prisma.$transaction([
-        prisma.adminPermission.deleteMany({ where: { adminUserId: id } }),
-        prismaAny.partnerAgreement.deleteMany({ where: { partnerProfileId } }),
-        prismaAny.partnerDeposit.deleteMany({ where: { partnerProfileId } }),
-        prismaAny.kycReviewLog.deleteMany({ where: { partnerProfileId } }),
-        prismaAny.kycDocument.deleteMany({ where: { partnerProfileId } }),
-        prismaAny.partnerProfile.delete({ where: { userId: id } }),
-        prisma.user.delete({ where: { id } }),
-      ]);
-    } else {
-      await prisma.$transaction([
-        prisma.adminPermission.deleteMany({ where: { adminUserId: id } }),
-        prismaAny.adminProfile.deleteMany({ where: { userId: id } }),
-        prisma.user.delete({ where: { id } }),
-      ]);
-    }
-
     res.json({
-      message: 'User deleted successfully.',
+      message: result.entityType === 'CUSTOMER'
+        ? 'Visitor deleted permanently.'
+        : result.entityType === 'PARTNER' ? 'Partner deleted permanently.' : 'User deleted permanently.',
       id,
+      deleted: true,
     });
   } catch (error) {
     next(error);
@@ -2535,7 +2484,14 @@ export const getPendingVerifications = async (req: Request, res: Response, next:
 
 export const getVerificationDetail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = String(req.params.id);
+    const routeId = String(req.params.id);
+    // The review page URL is "<business>-<district>-<first 13 characters of the id>"; resolve that back
+    // to the partner when it matches exactly one partner.
+    const routeSuffix = routeId.match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1];
+    const suffixMatches = routeSuffix
+      ? await prisma.user.findMany({ where: { id: { startsWith: routeSuffix.toLowerCase() }, partnerProfile: { isNot: null } }, select: { id: true }, take: 2 })
+      : [];
+    const id = suffixMatches.length === 1 ? suffixMatches[0]!.id : routeId;
 
     const partner = await prisma.user.findUnique({
       where: { id },
@@ -2785,6 +2741,14 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+    const vehicleIdentities = await buildAdminVehicleIdentitySummaries(prisma, listings.map((listing) => ({
+      id: listing.id,
+      partnerId: listing.partnerId,
+      createdAt: listing.createdAt,
+      registrationNumberKey: listing.registrationNumberKey,
+      chassisNumberKey: listing.chassisNumberKey,
+      sellerPhone: listing.partner?.mobile,
+    })), req.user?.id || null);
 
     res.json({
       canCreateListing: req.user?.role
@@ -2807,6 +2771,8 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
           dealerCategory: getDealerCategoryLabel(listing.partner),
           price: Number(listing.price),
           status: listing.status,
+          moderationReason: listing.moderationReason,
+          moderatedAt: listing.moderatedAt,
           createdAt: listing.createdAt,
           manufacturingYear: listing.manufacturingYear,
           locationState: listing.locationState,
@@ -2823,6 +2789,9 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
           isNegotiable: listing.isNegotiable,
           imageUrl: listingMedia.find((m: any) => String(m.type || '').toUpperCase() === 'IMAGE')?.url || null,
           media: listingMedia,
+          vehicleIdentity: vehicleIdentities.get(listing.id) || null,
+          registrationNumberKey: listing.registrationNumberKey || null,
+          chassisNumberKey: listing.chassisNumberKey || null,
           vehicleVerification: (listing as any).vehicleVerification
               ? {
                 verificationRecordId: (listing as any).vehicleVerification.verificationRecordId || null,
@@ -2953,11 +2922,15 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
 
     const existingListing = await prisma.listing.findUnique({
       where: { id },
-      select: { status: true },
+      select: { id: true, status: true, registrationNumberKey: true, chassisNumberKey: true },
     });
     if (!existingListing) {
       return res.status(404).json({ error: 'Listing not found.' });
     }
+    if (isModeratedListingStatus(existingListing.status)) {
+      return res.status(400).json({ error: 'This listing is hidden (unlisted, suspended or blocked). Use Relist, Restore or Unblock from the listing menu.' });
+    }
+    await assertListingStatusChangeAllowed(prisma, existingListing, status, req.user?.id || null);
 
     const listing = await prisma.listing.update({
       where: { id },
@@ -3046,15 +3019,21 @@ export const updateAdminUserStatus = async (req: Request, res: Response, next: N
   try {
     const id = String(req.params.id);
     const { status } = req.body as { status?: string };
+    const reason = String((req.body as { reason?: unknown })?.reason || '').trim().slice(0, 500);
 
-    if (!status || !['ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLOCKED'].includes(status)) {
+    if (!status || !['ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLOCKED', 'CLOSED'].includes(status)) {
       return res.status(400).json({ error: 'Invalid user status.' });
+    }
+
+    if (id === req.user?.id) {
+      return res.status(400).json({ error: 'You cannot change the status of your own account.' });
     }
 
     const targetUser = await prisma.user.findUnique({
       where: { id },
       select: {
         role: true,
+        status: true,
         partnerProfile: {
           select: {
             accountStatus: true,
@@ -3077,6 +3056,18 @@ export const updateAdminUserStatus = async (req: Request, res: Response, next: N
       where: { id },
       data: { status: status as any },
     });
+    if (req.user?.id) {
+      await prisma.auditLog.create({
+        data: {
+          actorUserId: req.user.id,
+          entityType: 'USER',
+          entityId: id,
+          action: 'ACCOUNT_STATUS_CHANGED',
+          beforeJson: { status: targetUser.status },
+          afterJson: { status, reason: reason || null },
+        },
+      });
+    }
 
     if (targetUser.partnerProfile) {
       await prismaAny.partnerProfile.update({
@@ -3233,46 +3224,14 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
 export const deletePartnerUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = String(req.params.id);
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id },
-      include: {
-        partnerProfile: {
-          select: { id: true },
-        },
-        _count: {
-          select: {
-            listings: true,
-            assignedLeads: true,
-            teamMemberships: true,
-          },
-        },
-      } as any,
-    });
-
-    if (!targetUser || !(targetUser as any).partnerProfile) {
+    const partner = await prisma.user.findUnique({ where: { id }, select: { partnerProfile: { select: { id: true } } } });
+    if (!partner?.partnerProfile) {
       return res.status(404).json({ error: 'Partner not found.' });
     }
 
-    if ((targetUser as any)._count?.listings > 0 || (targetUser as any)._count?.assignedLeads > 0 || (targetUser as any)._count?.teamMemberships > 0) {
-      return res.status(400).json({
-        error: 'This partner cannot be deleted because linked listings, leads, or team records already exist. Mark the account inactive or blocked instead.',
-      });
-    }
-
-    const partnerProfileId = (targetUser as any).partnerProfile.id;
-
-    await prisma.$transaction([
-      prismaAny.partnerAgreement.deleteMany({ where: { partnerProfileId } }),
-      prismaAny.partnerDeposit.deleteMany({ where: { partnerProfileId } }),
-      prismaAny.kycReviewLog.deleteMany({ where: { partnerProfileId } }),
-      prismaAny.kycDocument.deleteMany({ where: { partnerProfileId } }),
-      prismaAny.partnerProfile.delete({ where: { userId: id } }),
-      prisma.user.delete({ where: { id } }),
-    ]);
-
+    await deleteAccountPermanently(id, deletionViewer(req), req.body || {});
     res.json({
-      message: 'Partner deleted successfully.',
+      message: 'Partner deleted permanently.',
       id,
     });
   } catch (error) {

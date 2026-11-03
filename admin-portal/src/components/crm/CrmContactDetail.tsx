@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import { ArrowLeft, CalendarPlus, Crown, Edit3, Eye, MessageCircle, MousePointerClick, Phone, Plus, Search, StickyNote } from 'lucide-react';
 import api from '@/lib/api';
@@ -35,6 +35,7 @@ import {
 } from './crmShared';
 import { LocationFields } from './LeadForm';
 import { sanitizePhoneInput, validateContactPhones } from './contactFormState';
+import { generateAdminContactDetailPath, generateAdminListingDetailPath, generateAdminRtoDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type Profile = {
   companyName: string | null; alternatePhone: string | null; address: string | null; pinCode: string | null; gstNumber: string | null; source: string | null;
@@ -55,14 +56,21 @@ type Contact360 = {
   finance: { parties: Array<{ id: string; name: string; code: string }>; receivable: number; payable: number; unavailable?: boolean } | null;
 };
 
-function View({ contactId }: { contactId: string }) {
+function View({ contactId, backHref }: { contactId: string; backHref: string }) {
   const { meta } = useCrmMeta();
   const { base } = useCrmBase();
   const router = useRouter();
+  const pathname = usePathname();
   const [now] = useState(() => Date.now());
   const data = useCrmResource(() => getJson<Contact360>(`/crm/contacts/${contactId}`), `crm-contact-${contactId}`);
   const [modal, setModal] = useState<null | 'edit' | 'lead' | 'followup' | 'log'>(null);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
+  useEffect(() => {
+    if (!data.data) return;
+    const detailBasePath = backHref || `${base}/contacts`;
+    const canonicalPath = generateAdminContactDetailPath(detailBasePath, data.data.contact);
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [backHref, base, data.data, pathname, router]);
   if (data.loading && !data.data) return <CrmLoadingState label="Loading contact…" />;
   if (data.error || !data.data) return <CrmErrorBanner message={data.error || 'Contact not found.'} schemaMissing={data.schemaMissing} />;
   const c = data.data;
@@ -74,7 +82,7 @@ function View({ contactId }: { contactId: string }) {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
-      <Link href={`${base}/contacts`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft className="h-4 w-4" />Back to contacts</Link>
+      <Link href={backHref || `${base}/contacts`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft className="h-4 w-4" />Back</Link>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -147,7 +155,7 @@ function View({ contactId }: { contactId: string }) {
               </div>
               {c.interest.viewedListings.length ? (
                 <ul className="divide-y divide-slate-100 border-t border-slate-100">
-                  {c.interest.viewedListings.map((l) => <li key={l.id} className="flex justify-between gap-2 px-4 py-2 text-sm"><Link href={`${adminPrefix}/listings/${l.id}`} className="truncate text-slate-700 hover:underline">{l.title}</Link><span className="shrink-0 text-xs text-slate-500">{fmtInr(l.price)}</span></li>)}
+                  {c.interest.viewedListings.map((l) => <li key={l.id} className="flex justify-between gap-2 px-4 py-2 text-sm"><Link href={generateAdminListingDetailPath(`${adminPrefix}/listings`, l)} className="truncate text-slate-700 hover:underline">{l.title}</Link><span className="shrink-0 text-xs text-slate-500">{fmtInr(l.price)}</span></li>)}
                 </ul>
               ) : null}
               {c.interest.searches.length ? <div className="flex flex-wrap gap-1.5 border-t border-slate-100 p-4">{c.interest.searches.map((s, i) => <span key={`${s.query}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600"><Search className="h-3 w-3" />{s.query}</span>)}</div> : null}
@@ -165,7 +173,7 @@ function View({ contactId }: { contactId: string }) {
           ) : null}
           {c.deals.length ? (
             <Panel title="Deals (sell accounts)">
-              <ul className="divide-y divide-slate-100">{c.deals.map((d) => <li key={d.id}><Link href={`${adminPrefix}/accounts/sell-accounts/${d.id}`} className="flex justify-between gap-2 px-4 py-2.5 text-sm hover:bg-slate-50"><span className="truncate">{d.recordNumber} · {d.listingTitle || d.vehicleNumber || 'Vehicle'} <span className="text-xs text-slate-400">({d.side === 'BUYER' ? 'bought' : 'sold'})</span></span><span className="shrink-0 text-xs font-semibold">{fmtInr(d.side === 'BUYER' ? d.sellAmount : d.purchaseAmount)}</span></Link></li>)}</ul>
+              <ul className="divide-y divide-slate-100">{c.deals.map((d) => <li key={d.id}><Link href={generateAdminSoldVehicleDetailPath(`${adminPrefix}/accounts/sell-accounts`, d)} className="flex justify-between gap-2 px-4 py-2.5 text-sm hover:bg-slate-50"><span className="truncate">{d.recordNumber} · {d.listingTitle || d.vehicleNumber || 'Vehicle'} <span className="text-xs text-slate-400">({d.side === 'BUYER' ? 'bought' : 'sold'})</span></span><span className="shrink-0 text-xs font-semibold">{fmtInr(d.side === 'BUYER' ? d.sellAmount : d.purchaseAmount)}</span></Link></li>)}</ul>
             </Panel>
           ) : null}
           {c.payments.length ? (
@@ -180,7 +188,7 @@ function View({ contactId }: { contactId: string }) {
           ) : null}
           {c.rto.length ? (
             <Panel title="RTO work">
-              <ul className="divide-y divide-slate-100">{c.rto.map((r) => <li key={r.id}><Link href={`${adminPrefix}/accounts/rto-work-status/${r.id}`} className="flex justify-between px-4 py-2.5 text-sm hover:bg-slate-50"><span>{r.vehicleNumber} · {r.rtoOffice}</span><Badge>{label(r.rtoStatus)}</Badge></Link></li>)}</ul>
+              <ul className="divide-y divide-slate-100">{c.rto.map((r) => <li key={r.id}><Link href={generateAdminRtoDetailPath(`${adminPrefix}/accounts/rto-work-status`, r)} className="flex justify-between px-4 py-2.5 text-sm hover:bg-slate-50"><span>{r.vehicleNumber} · {r.rtoOffice}</span><Badge>{label(r.rtoStatus)}</Badge></Link></li>)}</ul>
             </Panel>
           ) : null}
         </div>
@@ -263,6 +271,6 @@ function EditProfile({ contact, pipelineStage, onClose, onDone }: { contact: Con
   );
 }
 
-export default function CrmContactDetail({ contactId }: { contactId: string }) {
-  return <CrmMetaProvider><View contactId={contactId} /></CrmMetaProvider>;
+export default function CrmContactDetail({ contactId, backHref }: { contactId: string; backHref?: string }) {
+  return <CrmMetaProvider><View contactId={contactId} backHref={backHref || ''} /></CrmMetaProvider>;
 }

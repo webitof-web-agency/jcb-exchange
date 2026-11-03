@@ -10,6 +10,7 @@ import LiveInvoiceEditorModal, {
 } from '@/components/portal/LiveInvoiceEditorModal';
 import type { InvoiceSettings } from '@/components/portal/SubscriptionInvoicePDFTemplate';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   const axiosError = error as { response?: { data?: { error?: string } } };
@@ -75,7 +76,7 @@ export default function ListingBillsTable() {
   }, [loadBills]);
 
   const handleDelete = async (bill: SavedListingBill) => {
-    if (!window.confirm(`Delete ${bill.payload.invoiceNumber || 'this bill'}?`)) return;
+    if (!(await confirmDelete({ title: 'Delete this bill?', itemName: bill.payload.invoiceNumber || undefined, note: 'Only the saved bill is removed; the website payment itself stays.' }))) return;
     try {
       await api.delete(`/superadmin/listing-bills/${bill.id}`);
       setBills((current) => current.filter((item) => item.id !== bill.id));

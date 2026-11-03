@@ -1433,6 +1433,17 @@ export const deleteJob = async (req: Request, res: Response, next: NextFunction)
   try {
     const id = getParamString(req.params.id);
 
+    // Applications (with their interviews, offers and notes) are candidate history, so a job that
+    // has any is closed or archived instead of deleted.
+    const applications = await prisma.jobApplication.count({ where: { jobId: id } });
+    if (applications > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `This job has ${applications} application(s), so it cannot be deleted. Close or archive the job instead.`,
+        code: 'APPLICATIONS_EXIST',
+      });
+    }
+
     await prisma.job.delete({
       where: { id },
     });

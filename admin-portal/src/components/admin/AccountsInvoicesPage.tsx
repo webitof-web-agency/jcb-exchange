@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, ExternalLink, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
+import { generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -157,7 +158,7 @@ export default function AccountsInvoicesPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredRecords.map((record) => (
-                  <tr key={record.id} onClick={() => router.push(`${sellAccountsPath}/${record.id}`)} className="cursor-pointer hover:bg-amber-50/40">
+                  <tr key={record.id} onClick={() => router.push(generateAdminSoldVehicleDetailPath(sellAccountsPath, record))} className="cursor-pointer hover:bg-amber-50/40">
                     <td className="px-3 py-1.5"><p className={`font-mono text-[12px] font-medium ${record.invoiceNumber ? 'text-slate-900' : 'text-slate-400'}`}>{record.invoiceNumber || 'Not generated'}</p><p className="text-[11px] text-slate-500">{record.recordNumber || '—'}</p></td>
                     <td className="px-3 py-1.5"><p className="font-medium text-slate-900">{record.vehicleNumber || '—'}</p><p className="max-w-[220px] truncate text-[11px] text-slate-500">{vehicleTitle(record)}</p></td>
                     <td className="px-3 py-1.5"><p className="text-slate-900">{record.purchaserName || '—'}</p><p className="text-[11px] text-slate-500">Seller: {record.sellerName || '—'}</p></td>
@@ -166,7 +167,7 @@ export default function AccountsInvoicesPage() {
                     <td className="px-3 py-1.5"><Badge tone={record.invoiceNumber ? 'green' : 'amber'}>{record.invoiceNumber ? 'Generated' : 'Pending'}</Badge><p className="mt-0.5 text-[11px] text-slate-500">{label(record.dealStatus)}</p></td>
                     <td className="px-3 py-1.5 text-right" onClick={(event) => event.stopPropagation()}>
                       <div className="flex justify-end gap-1">
-                        <button type="button" onClick={() => router.push(`${sellAccountsPath}/${record.id}`)} className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" />Open</button>
+                        <button type="button" onClick={() => router.push(generateAdminSoldVehicleDetailPath(sellAccountsPath, record))} className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" />Open</button>
                         <button type="button" disabled={!record.invoiceNumber || downloadingId === record.id} onClick={() => void downloadInvoice(record)} className="inline-flex h-7 items-center gap-1 rounded-md bg-amber-400 px-2 text-[12px] font-semibold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-3.5 w-3.5" />{downloadingId === record.id ? '…' : 'PDF'}</button>
                       </div>
                     </td>

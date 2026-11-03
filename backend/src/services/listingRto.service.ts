@@ -1,5 +1,6 @@
 import { Prisma, RtoHirePurchaseStatus, RtoHsrpStatus, RtoValidityStatus } from '@prisma/client';
 import { normalizeRtoWorkStatus } from './rtoStatus';
+import { FieldValidationError } from '../utils/fieldValidation';
 
 export type ListingRtoDetailsInput = {
   registrationNo?: unknown;
@@ -146,7 +147,8 @@ export const syncListingRtoRecord = async (
 ) => {
   const validationError = validateListingRtoDetails(input);
   if (validationError) {
-    throw new Error(validationError);
+    // A missing RTO field is the seller's to fix: answer 400 with the message, not a 500.
+    throw new FieldValidationError(validationError);
   }
 
   const vehicleNumber = text(input.registrationNo).toUpperCase();

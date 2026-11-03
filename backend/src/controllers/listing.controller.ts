@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { deleteFileFromDrive } from '../services/googleDrive.service';
 import prisma from '../lib/prisma';
-import { detachLeadsFromListing, getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
+import { getSoldAtValueForStatus, getSoldListingCutoff, setListingSoldAt } from '../utils/soldListingRetention';
 import { assertCustomerPrimeEligibility } from '../utils/customerPrimeSubscriptions';
 import {
   isSelfPurchase,
@@ -19,6 +19,24 @@ import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../servi
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { syncListingRtoForListing } from '../services/listingRto.service';
+import { deleteListingPermanently, getListingDeletionImpact } from '../services/listingDeletion.service';
+import { isModeratedListingStatus, ListingModerationError, moderateListing } from '../services/listingModeration.service';
+import {
+  assertListingStatusChangeAllowed,
+  assertVehicleIdentityAvailable,
+  assessVehicleIdentity,
+  buildAdminVehicleIdentitySummaries,
+  findVehicleIdentityMatches,
+  isBlockingListingStatus,
+  lockVehicleIdentityKeys,
+  needsVehicleIdentityCheck,
+  parseListingDescriptionChassis,
+  parseListingDescriptionRegistration,
+  resolveListingVehicleKeys,
+  serializeVehicleIdentityForAdmin,
+  serializeVehicleIdentityForSeller,
+  toVehicleIdentityKey,
+} from '../services/listingVehicleIdentity';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
@@ -502,16 +520,6 @@ const normalizeText = (value: unknown) => {
 const normalizeVehicleVerificationSource = (value: unknown): 'CHASSIS' | 'RC_FULL' =>
   normalizeText(value).toUpperCase() === 'RC_FULL' ? 'RC_FULL' : 'CHASSIS';
 
-const parseListingDescriptionChassis = (description: string) => {
-  const match = description.match(/(?:^|\n)chassis(?:\s*\/\s*|\s+or\s+|\s+)serial\s*:\s*([^\n]+)/i);
-  return match?.[1]?.trim() || '';
-};
-
-const parseListingDescriptionRegistration = (description: string) => {
-  const match = description.match(/(?:^|\n)registration\s+no\s*:\s*([^\n]+)/i);
-  return match?.[1]?.trim() || '';
-};
-
 const parseInteger = (value: unknown) => {
   const input = typeof value === 'number' ? value : Number(String(value || '').trim());
   return Number.isInteger(input) ? input : null;
@@ -674,17 +682,15 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
   };
 };
 
+const MIN_LISTING_YEAR = 1950;
+const MAX_LISTING_PRICE = 10_000_000_000; // ₹1,000 crore
+
 const validateListingPayload = ({
-  categoryId,
-  brandName,
-  modelName,
   title,
   price,
   manufacturingYear,
-  locationState,
-  locationCity,
-  description,
-  media,
+  rawPrice,
+  operatingHours,
 }: {
   categoryId: string;
   brandName: string;
@@ -696,7 +702,24 @@ const validateListingPayload = ({
   locationCity: string;
   description: string;
   media: Array<{ url: string; type: string; slot: string | null; isFeatured: boolean }>;
+  /** The price exactly as sent, so a negative or non-numeric value is refused instead of silently becoming 0. */
+  rawPrice?: unknown;
+  operatingHours?: number | null;
 }) => {
+  // With no title, brand or model the fallback title is just "Not specified Not specified".
+  if (title.length < 3 || /^(not specified\s*)+$/i.test(title)) return 'Enter a title, or the brand and model.';
+  if (title.length > 200) return 'Keep the title under 200 characters.';
+  // 0 is allowed: the website shows it as "Price on request".
+  const priceSent = rawPrice !== undefined && rawPrice !== null && String(rawPrice).trim() !== '';
+  if (priceSent && parseDecimal(rawPrice) === null) return 'Enter a valid price (0 or more).';
+  if (price && price.greaterThan(MAX_LISTING_PRICE)) return 'Enter a price below ₹1,000 crore.';
+  const maxYear = new Date().getFullYear() + 1;
+  if (manufacturingYear !== null && (manufacturingYear < MIN_LISTING_YEAR || manufacturingYear > maxYear)) {
+    return `Manufacturing year must be between ${MIN_LISTING_YEAR} and ${maxYear}.`;
+  }
+  if (operatingHours !== undefined && operatingHours !== null && (operatingHours < 0 || operatingHours > 1_000_000)) {
+    return 'Operating hours must be between 0 and 10,00,000.';
+  }
   return null;
 };
 
@@ -1065,11 +1088,25 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       locationCity: normalizedCity,
       description: normalizedDescription,
       media: normalizedMedia,
+      rawPrice: price,
+      operatingHours: parsedOperatingHours,
     });
 
     if (payloadValidationError) {
       return res.status(400).json({ error: payloadValidationError });
     }
+
+    const vehicleKeys = resolveListingVehicleKeys({
+      registration: [requestedRegistrationNumber, providerVerificationSnapshot?.registrationNumber],
+      chassis: [
+        normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription),
+        providerVerificationSnapshot?.chassisNumber,
+      ],
+    });
+    const vehicleIdentityCheck = needsVehicleIdentityCheck(initialListingStatus)
+      ? { ...vehicleKeys, ownerUserId: authenticatedUserId, viewerUserId: authenticatedUserId }
+      : null;
+    if (vehicleIdentityCheck) await assertVehicleIdentityAvailable(prisma, vehicleIdentityCheck);
 
     let category = await getSelectableCategory(normalizedCategoryId, partnerProfileId || '');
 
@@ -1137,9 +1174,16 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     }
 
     const listing = await prismaAny.$transaction(async (tx: any) => {
+      if (vehicleIdentityCheck) {
+        // Re-checked under a lock so two sellers saving the same vehicle at once cannot both get through.
+        await lockVehicleIdentityKeys(tx, vehicleKeys);
+        await assertVehicleIdentityAvailable(tx, vehicleIdentityCheck);
+      }
+
       const createdListing = await tx.listing.create({
         data: {
           partnerId: authenticatedUserId,
+          ...vehicleKeys,
           categoryId: category.id,
           brandId: brand.id,
           modelId: model.id,
@@ -1313,6 +1357,49 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+/**
+ * Live check for the listing forms while the seller types a vehicle or chassis number.
+ * `listingId` is the listing being edited, which is left out of the search.
+ */
+export const checkListingVehicleIdentity = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
+    const registrationKey = toVehicleIdentityKey(normalizeText(req.query.registrationNumber));
+    const chassisKey = toVehicleIdentityKey(normalizeText(req.query.chassisNumber));
+    const listingId = normalizeText(req.query.listingId);
+
+    let ownerUserId = req.user.id;
+    let sellerPhone: string | null = null;
+    if (listingId) {
+      const listing = isAdmin
+        ? await prismaAny.listing.findUnique({ where: { id: listingId }, select: { id: true, partnerId: true, partner: { select: { mobile: true } } } })
+        : await prismaAny.listing.findFirst({ where: { id: listingId, partnerId: req.user.id }, select: { id: true, partnerId: true } });
+      if (!listing) {
+        return res.status(404).json({ error: 'Listing not found.' });
+      }
+      ownerUserId = listing.partnerId;
+      sellerPhone = listing.partner?.mobile || null;
+    }
+
+    const matches = await findVehicleIdentityMatches(prisma, {
+      registrationKeys: registrationKey ? [registrationKey] : [],
+      chassisKeys: chassisKey ? [chassisKey] : [],
+      excludeListingIds: listingId ? [listingId] : [],
+    });
+    const assessment = assessVehicleIdentity({ registrationKey, chassisKey, ownerUserId, sellerPhone, matches });
+
+    return res.json(isAdmin
+      ? serializeVehicleIdentityForAdmin(assessment, req.user.id)
+      : serializeVehicleIdentityForSeller(assessment, req.user.id));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getListingById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id) {
@@ -1373,6 +1460,18 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
       return res.status(403).json({ error: 'You do not have access to this listing.' });
     }
 
+    // Resale and duplicate details are for admins only; sellers never see them.
+    const vehicleIdentity = canAccessAllListings
+      ? (await buildAdminVehicleIdentitySummaries(prisma, [{
+        id: listing.id,
+        partnerId: listing.partnerId,
+        createdAt: listing.createdAt,
+        registrationNumberKey: listing.registrationNumberKey,
+        chassisNumberKey: listing.chassisNumberKey,
+        sellerPhone: listing.partner?.mobile,
+      }], req.user.id)).get(listing.id) || null
+      : undefined;
+
     return res.json({
       listing: {
         ...serializeListingMediaForResponse(listing),
@@ -1383,6 +1482,7 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
           'Unknown partner',
         dealerPhone: resolveListingContactNumber(listing.partner),
         dealerCategory: getDealerCategoryLabel(listing.partner),
+        ...(vehicleIdentity !== undefined ? { vehicleIdentity } : {}),
       },
     });
   } catch (error) {
@@ -1457,6 +1557,13 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         });
       }
     }
+
+    if (!isAdmin && String(existingListing.status || '').toUpperCase() === 'BLOCKED') {
+      return res.status(403).json({ error: 'This listing was blocked by JCB Exchange and cannot be edited. Contact support.' });
+    }
+    // Unlisted, suspended and blocked listings keep their status on edit; it changes only through
+    // the moderation actions (relist, restore, unblock, send for review).
+    const keepsModeratedStatus = isModeratedListingStatus(existingListing.status);
 
     const requestBody = req.body || {};
     const hasOwnField = (field: string) => Object.prototype.hasOwnProperty.call(requestBody, field);
@@ -1565,7 +1672,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
       : null;
     const providerVerificationSnapshot = providerVerificationDetail || null;
-    const resubmitForPriceChange = shouldResubmitListingForPriceChange({
+    const resubmitForPriceChange = !keepsModeratedStatus && shouldResubmitListingForPriceChange({
       isAdmin,
       previousStatus: existingListing.status,
       nextStatus,
@@ -1574,6 +1681,9 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     });
     if (resubmitForPriceChange) {
       nextStatus = 'PENDING_APPROVAL';
+    }
+    if (keepsModeratedStatus) {
+      nextStatus = existingListing.status;
     }
     const nextIsNegotiable = hasOwnField('isNegotiable')
       ? Boolean(isNegotiable)
@@ -1594,11 +1704,36 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       locationCity: normalizedCity,
       description: normalizedDescription,
       media: normalizedMedia,
+      rawPrice: hasOwnField('price') ? price : undefined,
+      operatingHours: parsedOperatingHours,
     });
 
     if (payloadValidationError) {
       return res.status(400).json({ error: payloadValidationError });
     }
+
+    const keepsStoredVehicleKeys = !hasOwnField('description') && !hasOwnField('chassisOrSerialNo') && !hasOwnField('rtoDetails');
+    const vehicleKeys = resolveListingVehicleKeys({
+      registration: [
+        requestedRegistrationNumber,
+        providerVerificationSnapshot?.registrationNumber,
+        keepsStoredVehicleKeys ? existingListing.registrationNumberKey : null,
+      ],
+      chassis: [
+        normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription || ''),
+        providerVerificationSnapshot?.chassisNumber,
+        keepsStoredVehicleKeys ? existingListing.chassisNumberKey : null,
+      ],
+    });
+    // Unchanged numbers on a listing that stays open are not re-checked, so listings saved before
+    // this check existed can still be edited while an admin sorts out any duplicates.
+    const vehicleKeysChanged = vehicleKeys.registrationNumberKey !== (existingListing.registrationNumberKey || null)
+      || vehicleKeys.chassisNumberKey !== (existingListing.chassisNumberKey || null);
+    const opensListing = isBlockingListingStatus(nextStatus) && !isBlockingListingStatus(existingListing.status);
+    const vehicleIdentityCheck = needsVehicleIdentityCheck(nextStatus) && (vehicleKeysChanged || opensListing)
+      ? { ...vehicleKeys, excludeListingId: listingId, ownerUserId: existingListing.partnerId as string, viewerUserId: authenticatedUserId }
+      : null;
+    if (vehicleIdentityCheck) await assertVehicleIdentityAvailable(prisma, vehicleIdentityCheck);
 
     const driveFileIdsToDelete: string[] = hasMediaField
       ? getDriveFileIdsToDelete(
@@ -1693,6 +1828,11 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     }
 
     const updatedListing = await prismaAny.$transaction(async (tx: any) => {
+      if (vehicleIdentityCheck) {
+        await lockVehicleIdentityKeys(tx, vehicleKeys);
+        await assertVehicleIdentityAvailable(tx, vehicleIdentityCheck);
+      }
+
       if (hasMediaField) {
         await tx.media.deleteMany({ where: { listingId } });
       }
@@ -1700,6 +1840,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       const nextListing = await tx.listing.update({
       where: { id: listingId },
       data: {
+        ...vehicleKeys,
         categoryId: category.id,
         brandId: brand.id,
         modelId: model.id,
@@ -1776,70 +1917,81 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-export const deleteListing = async (req: Request, res: Response, next: NextFunction) => {
+const listingDeletionAccess = async (req: Request) => {
+  if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
+    return { error: 'Access denied.' as const };
+  }
+  if (req.user.role === 'EMPLOYEE') {
+    const permissions = await getEmployeePermissions(req.user.id);
+    if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.delete')) {
+      return { error: 'You do not have permission to delete listings.' as const };
+    }
+  }
+  return {
+    viewer: { id: req.user.id, role: req.user.role, isAdmin: ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role) },
+  };
+};
+
+/**
+ * Unlist / relist / suspend / restore / block / unblock / send for review.
+ * Body: { action, reason, notify }. Sellers may unlist, relist and send a suspended listing for review;
+ * suspend, restore, block and unblock need an admin (employees: listings.approve).
+ */
+export const moderateListingHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id || !['PARTNER', 'CUSTOMER', 'SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Access denied.' });
     }
-
+    let isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
     if (req.user.role === 'EMPLOYEE') {
       const permissions = await getEmployeePermissions(req.user.id);
-      if (!permissions.includes('ALL_ACCESS') && !permissions.includes('listings.delete')) {
-        return res.status(403).json({ error: 'You do not have permission to delete listings.' });
-      }
+      isAdmin = permissions.includes('ALL_ACCESS') || permissions.includes('listings.approve');
     }
+    const listing = await moderateListing({
+      listingId: String(req.params.id || ''),
+      action: req.body?.action,
+      reason: req.body?.reason,
+      notify: req.body?.notify,
+      viewer: { id: req.user.id, isAdmin },
+    });
+    return res.json({ message: 'Listing updated.', listing });
+  } catch (error) {
+    if (error instanceof ListingModerationError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+};
 
-    const listingId = String(req.params.id || '');
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
-    const existingListing = isAdmin
-      ? await prismaAny.listing.findUnique({
-          where: { id: listingId },
-          include: {
-            partner: {
-              select: {
-                id: true,
-                role: true,
-              },
-            },
-          },
-        })
-      : await getOwnedListingForUser(listingId, req.user.id);
-
-    if (!existingListing) {
+/** What deleting this listing would remove or keep, and what stops it (sale or money history). */
+export const getListingDeleteImpact = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const access = await listingDeletionAccess(req);
+    if ('error' in access) {
+      return res.status(403).json({ error: access.error });
+    }
+    const impact = await getListingDeletionImpact(String(req.params.id || ''), access.viewer);
+    if (!impact) {
       return res.status(404).json({ error: 'Listing not found.' });
     }
+    return res.json({ impact });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    if (existingListing.partner?.role === 'SUPER_ADMIN' && req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: 'Only a super admin can delete super admin listings.' });
+/** Body: { confirmation: 'DELETE', reason } (reason required when an admin deletes someone else's listing). */
+export const deleteListing = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const access = await listingDeletionAccess(req);
+    if ('error' in access) {
+      return res.status(403).json({ error: access.error });
     }
 
-    if (req.user.role === 'CUSTOMER' && String(existingListing.status || '').toUpperCase() === 'SOLD') {
-      return res.status(403).json({
-        error: 'Sold customer listings are view-only and cannot be deleted after sale.',
-      });
+    const deleted = await deleteListingPermanently(String(req.params.id || ''), access.viewer, req.body || {});
+    if (!deleted) {
+      return res.status(404).json({ error: 'Listing not found.' });
     }
-
-    const oldMediaUrls = await prismaAny.$transaction(async (tx: any) => {
-      await detachLeadsFromListing(tx, existingListing);
-
-      const oldMedia = await tx.media.findMany({
-        where: { listingId },
-        select: { url: true }
-      });
-
-      await tx.media.deleteMany({
-        where: { listingId },
-      });
-
-      await tx.listing.delete({
-        where: { id: listingId },
-      });
-
-      return oldMedia.map((media: { url: string }) => media.url);
-    });
-
-    const driveFileIdsToDelete = getDriveFileIdsToDelete(oldMediaUrls, []);
-    await Promise.all(driveFileIdsToDelete.map((fileId) => deleteFileFromDrive(fileId)));
 
     return res.json({ message: 'Listing deleted successfully.' });
   } catch (error) {
@@ -1889,6 +2041,8 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
     if (!isReviewPendingStatus(existingListing.status) && requestedStatus === 'PUBLISHED') {
       return res.status(400).json({ error: 'Only pending listings can be approved.' });
     }
+
+    await assertListingStatusChangeAllowed(prisma, existingListing, requestedStatus, req.user.id);
 
     const soldAt = getSoldAtValueForStatus({
       nextStatus: requestedStatus,
@@ -2087,6 +2241,12 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
       }
     }
 
+    if (isModeratedListingStatus(existingListing.status)) {
+      return res.status(400).json({
+        error: 'This listing is hidden (unlisted, suspended or blocked). Use Relist, Restore or Unblock from the listing menu.',
+      });
+    }
+
     const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
 
     if (!isAdmin) {
@@ -2098,6 +2258,8 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
         return res.status(400).json({ error: 'This listing is awaiting approval. Availability can be updated after approval.' });
       }
     }
+
+    await assertListingStatusChangeAllowed(prisma, existingListing, normalizedStatus, req.user.id);
 
     const soldAt = getSoldAtValueForStatus({
       nextStatus: normalizedStatus,

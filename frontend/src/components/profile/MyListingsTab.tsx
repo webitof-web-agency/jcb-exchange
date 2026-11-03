@@ -3,11 +3,12 @@
 import Image from 'next/image';
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Package, Calendar, MapPin, ExternalLink, Image as ImageIcon, Edit, Trash2 } from 'lucide-react';
+import { Package, Calendar, MapPin, ExternalLink, Image as ImageIcon, Edit, Trash2, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import api, { getAbsoluteMediaUrl } from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SellVehicleModal, { type EditableListing } from '@/components/sell/SellVehicleModal';
+import ListingDeleteDialog from '@/components/sell/ListingDeleteDialog';
 import CustomerPrimePaymentModal from '@/components/payments/CustomerPrimePaymentModal';
 import { useToastStore } from '@/store/toastStore';
 import { generateMachineSlugPath } from '@/lib/seoUtils';
@@ -28,6 +29,8 @@ type ListingItem = {
   brand?: { id?: string; name?: string | null } | null;
   model?: { id?: string; name?: string | null } | null;
   status?: string | null;
+  // Why JCB Exchange suspended or blocked it (or the seller's own note when unlisting).
+  moderationReason?: string | null;
   isPubliclyVisible?: boolean;
   manufacturingYear?: number | null;
   address?: string | null;
@@ -98,6 +101,15 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 
 const isSoldListing = (status?: string | null) => String(status || '').toUpperCase() === 'SOLD';
 
+// Hidden listings (backend/src/services/listingModeration.service.ts): what the seller sees and can do.
+const HIDDEN_LISTING_INFO: Record<string, { label: string; note: string; action: 'RELIST' | 'REQUEST_REVIEW' | null; actionLabel: string }> = {
+  UNLISTED: { label: 'Unlisted', note: 'Hidden from the website. Relist it when you are ready to sell.', action: 'RELIST', actionLabel: 'Relist' },
+  SUSPENDED: { label: 'Suspended', note: 'Suspended by JCB Exchange. Fix the listing, then send it for review.', action: 'REQUEST_REVIEW', actionLabel: 'Send for review' },
+  BLOCKED: { label: 'Blocked', note: 'Blocked by JCB Exchange. Contact support if you think this is a mistake.', action: null, actionLabel: '' },
+};
+
+const LIVE_LISTING_STATUSES = ['PUBLISHED', 'PAUSED', 'RESERVED'];
+
 export default function MyListingsTab() {
   const { t } = useTranslation();
   const [listings, setListings] = useState<ListingItem[]>([]);
@@ -110,7 +122,6 @@ export default function MyListingsTab() {
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
   
   // Delete Modal states
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [listingToDelete, setListingToDelete] = useState<string | null>(null);
   const showToast = useToastStore((state) => state.showToast);
   const { user } = useAuthStore();
@@ -180,40 +191,31 @@ export default function MyListingsTab() {
     fetchListings(); // Refresh listings after adding/editing
   };
 
-  const handleDeleteListing = async () => {
-    if (!listingToDelete) return;
+  const listingPendingDelete = listingToDelete
+    ? listings.find((listing) => listing.id === listingToDelete) || null
+    : null;
 
-    const listing = listings.find((item) => item.id === listingToDelete);
-    if (isCustomerUser && isSoldListing(listing?.status)) {
-      showToast({
-        title: t('profile.soldListingViewOnly'),
-        description: t('profile.soldListingDeleteLocked'),
-        variant: 'error',
-      });
-      setIsDeleteModalOpen(false);
-      setListingToDelete(null);
-      return;
-    }
-    
+  // Unlist, relist, or send a suspended listing for review.
+  const [movingListingId, setMovingListingId] = useState<string | null>(null);
+  const handleVisibilityAction = async (listingId: string, action: 'UNLIST' | 'RELIST' | 'REQUEST_REVIEW') => {
     try {
-      setLoading(true);
-      await api.delete(`/listings/${listingToDelete}`);
+      setMovingListingId(listingId);
+      const response = await api.patch<{ listing: { status: string; moderationReason: string | null } }>(`/listings/${listingId}/moderation`, { action });
+      const { status, moderationReason } = response.data.listing;
+      setListings((current) => current.map((listing) => (listing.id === listingId
+        ? { ...listing, status, moderationReason, isPubliclyVisible: status === 'PUBLISHED' }
+        : listing)));
       showToast({
-        title: t('profile.listingDeleted'),
-        description: t('profile.listingDeletedDescription'),
+        title: action === 'UNLIST' ? 'Listing unlisted' : action === 'RELIST' ? 'Listing is live again' : 'Sent for review',
+        description: action === 'UNLIST'
+          ? 'It is hidden from the website. Relist it any time.'
+          : action === 'RELIST' ? 'Buyers can see it on the website again.' : 'It goes live once JCB Exchange approves it.',
         variant: 'success',
       });
-      setIsDeleteModalOpen(false);
-      setListingToDelete(null);
-      fetchListings();
-    } catch (error: unknown) {
-      console.error('Failed to delete listing', error);
-      showToast({
-        title: t('profile.deleteFailed'),
-        description: getApiErrorMessage(error, t('profile.deleteFailed')),
-        variant: 'error',
-      });
-      setLoading(false);
+    } catch (actionError) {
+      showToast({ title: 'Could not update the listing', description: getApiErrorMessage(actionError, 'Please try again.'), variant: 'error' });
+    } finally {
+      setMovingListingId(null);
     }
   };
 
@@ -277,6 +279,8 @@ export default function MyListingsTab() {
                 fallback: t('machines.locationNotSpecified'),
               });
               const isReadOnlySoldListing = isCustomerUser && isSoldListing(listing.status);
+              const statusKey = String(listing.status || '').toUpperCase();
+              const hiddenInfo = HIDDEN_LISTING_INFO[statusKey];
 
               return (
                 <div key={listing.id} className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition-all hover:border-gray-200 hover:shadow-lg">
@@ -292,7 +296,7 @@ export default function MyListingsTab() {
                       <span className={getStatusClassName(listing.status)}>
                         {isPendingAdminApproval(listing.status)
                           ? t('profile.pendingAdminApproval', 'Pending approval from admin')
-                          : String(listing.status || 'UNKNOWN')}
+                          : hiddenInfo ? hiddenInfo.label : String(listing.status || 'UNKNOWN')}
                       </span>
                     </div>
                   </Link>
@@ -315,7 +319,22 @@ export default function MyListingsTab() {
                       </div>
                     </div>
 
-                    {isPendingAdminApproval(listing.status) ? (
+                    {hiddenInfo ? (
+                      <div className={`mt-3 rounded-md px-3 py-2 text-xs ${statusKey === 'UNLISTED' ? 'bg-gray-50 text-gray-700' : 'bg-red-50 text-red-800'}`}>
+                        <p>{hiddenInfo.note}</p>
+                        {listing.moderationReason && statusKey !== 'UNLISTED' ? <p className="mt-1 font-semibold">Reason: {listing.moderationReason}</p> : null}
+                        {hiddenInfo.action ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleVisibilityAction(listing.id, hiddenInfo.action!)}
+                            disabled={movingListingId === listing.id}
+                            className="mt-2 rounded-md bg-[#FFC107] px-3 py-1 text-xs font-bold text-black transition-colors hover:bg-yellow-400 disabled:opacity-50"
+                          >
+                            {movingListingId === listing.id ? t('profile.loading') : hiddenInfo.actionLabel}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : isPendingAdminApproval(listing.status) ? (
                       <p className="mt-3 rounded-md bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
                         {t('profile.pendingAdminApprovalNote', 'Your vehicle will go live after admin approval. The admin can add a margin and expenses to your price; buyers will see the final price.')}
                       </p>
@@ -332,8 +351,20 @@ export default function MyListingsTab() {
                       <span className="text-lg font-bold text-[#FFC107]">{formatPrice(listing.pricing?.finalPrice ?? listing.price)}</span>
 
                       <div className="flex items-center gap-3">
-                        {!isReadOnlySoldListing ? (
+                        {statusKey === 'BLOCKED' ? null : !isReadOnlySoldListing ? (
                           <>
+                            {LIVE_LISTING_STATUSES.includes(statusKey) ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleVisibilityAction(listing.id, 'UNLIST')}
+                                disabled={movingListingId === listing.id}
+                                title="Unlist (hide from the website)"
+                                aria-label="Unlist (hide from the website)"
+                                className="flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-amber-600 disabled:opacity-50"
+                              >
+                                <EyeOff className="h-4 w-4" />
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => void handleEditListing(listing.id)}
@@ -347,7 +378,6 @@ export default function MyListingsTab() {
                             <button
                               onClick={() => {
                                 setListingToDelete(listing.id);
-                                setIsDeleteModalOpen(true);
                               }}
                               className="flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-red-600"
                             >
@@ -412,35 +442,35 @@ export default function MyListingsTab() {
       ) : null}
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-900">{t('profile.deleteListing')}</h3>
-            <p className="mt-2 text-sm text-gray-500">
-              {t('profile.deleteListingConfirm')}
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setListingToDelete(null);
-                }}
-                className="rounded-lg px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 transition-colors"
-                disabled={loading}
-              >
-                {t('profile.cancel')}
-              </button>
-              <button
-                onClick={handleDeleteListing}
-                className="flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 transition-colors"
-                disabled={loading}
-              >
-                {loading ? t('profile.deleting') : t('profile.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {listingPendingDelete ? (
+        <ListingDeleteDialog
+          listingId={listingPendingDelete.id}
+          title={getListingTitle(listingPendingDelete)}
+          onClose={() => {
+            setListingToDelete(null);
+          }}
+          onDeleted={(deletedMessage) => {
+            setListings((current) => current.filter((listing) => listing.id !== listingPendingDelete.id));
+            setListingToDelete(null);
+            showToast({
+              title: t('profile.listingDeleted'),
+              description: deletedMessage || t('profile.listingDeletedDescription'),
+              variant: 'success',
+            });
+          }}
+          onUnlisted={() => {
+            setListings((current) => current.map((listing) => listing.id === listingPendingDelete.id
+              ? { ...listing, status: 'UNLISTED', isPubliclyVisible: false }
+              : listing));
+            setListingToDelete(null);
+            showToast({
+              title: 'Listing unlisted',
+              description: 'The listing is hidden from the website and can be relisted later.',
+              variant: 'success',
+            });
+          }}
+        />
+      ) : null}
     </>
   );
 }

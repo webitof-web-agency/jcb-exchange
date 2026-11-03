@@ -16,7 +16,7 @@ import {
   Loader2,
   Search,
   ShieldAlert,
-  ShieldCheck,
+  ShieldCheck, Sparkles, CheckCircle2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -877,6 +877,20 @@ export default function RcChallanVerificationPage({ embedded = false }: { embedd
                   {busy ? 'Verifying…' : canVerify ? 'Verify Challan' : 'Verification not permitted'}
                 </button>
               </form>
+              {!response ? (
+                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                    <Sparkles className="h-3.5 w-3.5 text-rose-500" />
+                    Traffic Enforcement &amp; Challan Scope
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Unpaid Penalty Amounts</div>
+                    <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Virtual Court Cases</div>
+                    <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Offense Spot &amp; Violation Code</div>
+                    <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Vehicle Blacklist Status</div>
+                  </div>
+                </div>
+              ) : null}
 
               {response ? <ResultPanel response={response} /> : null}
             </div>

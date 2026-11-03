@@ -57,6 +57,7 @@ import { validateAadhaarNumber } from '@/lib/aadhaarVerification';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 import { buildAadhaarCardData, hasAadhaarCardData } from './aadhaarVerification.mjs';
 import { hasPersistedVerificationPreview } from './verificationHistoryPreview.mjs';
+import { generateAdminListingDetailPath, generateAdminRtoDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 import {
   accountsPortalBase,
   createInitialSellAccountForm,
@@ -358,6 +359,12 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   // Vehicle and purchase-side details come from the linked listing (fetched from the API).
   const listingApiFill = form.listingId ? { source: 'the linked listing', filled: true } : null;
 
+  useEffect(() => {
+    if (!existingRecord || !isPersisted || !pathname.includes('/edit')) return;
+    const canonicalPath = `${generateAdminSoldVehicleDetailPath(listPath, existingRecord)}/edit`;
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [existingRecord, isPersisted, listPath, pathname, router]);
+
   // Master data
   useEffect(() => {
     let cancelled = false;
@@ -434,7 +441,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
           const record = normalizeServerSellAccount(response.data.record);
           if (record.isLocked) {
             toast.info('This record is locked and can only be viewed.');
-            router.replace(`${listPath}/${encodeURIComponent(record.id)}`);
+            router.replace(generateAdminSoldVehicleDetailPath(listPath, record));
             return;
           }
           if (!leadIdParam) {
@@ -1101,7 +1108,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       setLocalDraftId(null);
       applyRecord(record);
       toast.success('Draft saved.');
-      if (!recordId || recordId !== record.id) router.replace(`${listPath}/${encodeURIComponent(record.id)}/edit`);
+      if (!recordId || recordId !== record.id) router.replace(`${generateAdminSoldVehicleDetailPath(listPath, record)}/edit`);
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to save this draft. Please try again.'));
     } finally {
@@ -1121,7 +1128,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       const record = normalizeServerSellAccount(response.data.record);
       await afterSaved(record);
       toast.success(isPersisted && !isDraftRecord ? 'Sold Vehicle record updated.' : 'Sold Vehicle record saved.');
-      router.push(`${listPath}/${encodeURIComponent(record.id)}`);
+      router.push(generateAdminSoldVehicleDetailPath(listPath, record));
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to save this record. Please try again.'));
     } finally {
@@ -1132,7 +1139,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const saveAndStartRto = async () => {
     if (!canManageRto) { toast.error('RTO Work permission is required.'); return; }
     if (hasLinkedRto && existingRecord?.rtoRecord?.id) {
-      router.push(`${rtoBasePath}/${encodeURIComponent(existingRecord.rtoRecord.id)}/edit`);
+      router.push(`${generateAdminRtoDetailPath(rtoBasePath, { id: existingRecord.rtoRecord.id, vehicleNumber: existingRecord.vehicleNumber })}/edit`);
       return;
     }
     if (guardBusy() || !validate()) return;
@@ -1150,7 +1157,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       if (!response.data?.record || !rtoId) throw new Error('RTO work link was not returned by the server.');
       await afterSaved(normalizeServerSellAccount(response.data.record));
       toast.success('Sold Vehicle saved. Continue with the RTO transfer work.');
-      router.push(`${rtoBasePath}/${encodeURIComponent(rtoId)}/edit`);
+      router.push(`${generateAdminRtoDetailPath(rtoBasePath, { id: rtoId, vehicleNumber: existingRecord?.vehicleNumber })}/edit`);
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Unable to save and start RTO work. Please try again.'));
     } finally {
@@ -1161,7 +1168,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
   const cancel = async () => {
     const uploadedThisSession = Object.values(documents).filter((document) => document?.fileUrl && !originalDocumentUrls.current.has(document.fileUrl));
     await deleteDocumentFiles(uploadedThisSession);
-    router.push(existingRecord && isPersisted ? `${listPath}/${encodeURIComponent(existingRecord.id)}` : listPath);
+    router.push(existingRecord && isPersisted ? generateAdminSoldVehicleDetailPath(listPath, existingRecord) : listPath);
   };
 
   if (loading) return <BrandLoader variant="section" size="sm" bg="light" text="Loading sold vehicle..." />;
@@ -1208,7 +1215,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
               {vehicleName && form.listingId ? (
                 // New tab, so unsaved form changes are not lost.
                 <a
-                  href={`${portal}/listings/${encodeURIComponent(form.listingId)}`}
+                  href={generateAdminListingDetailPath(`${portal}/listings`, { id: form.listingId, title: form.listingTitle })}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Open vehicle details in a new tab"
@@ -1232,7 +1239,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
             <DealStatusIcon className="h-3.5 w-3.5" />{dealStatusConfig.label}
           </span>
           {hasLinkedRto ? (
-            <button type="button" onClick={() => router.push(`${rtoBasePath}/${encodeURIComponent(existingRecord!.rtoRecord!.id)}/edit`)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
+            <button type="button" onClick={() => router.push(`${generateAdminRtoDetailPath(rtoBasePath, { id: existingRecord!.rtoRecord!.id, vehicleNumber: existingRecord!.vehicleNumber })}/edit`)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
               <ClipboardCheck className="h-3.5 w-3.5" />Open RTO Work
             </button>
           ) : null}

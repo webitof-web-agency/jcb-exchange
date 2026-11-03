@@ -58,6 +58,7 @@ import {
   checkRtoRecordComplianceWithRcApi,
   createRtoRecord,
   deleteRtoRecord,
+  getRtoRecordDeletionImpactRecord,
   downloadRtoTransferCertificate,
   getRtoRecordWorkspace,
   initializeRtoRecordTasks,
@@ -73,6 +74,7 @@ import {
   createSellAccountRecord,
   deleteSellAccountPaymentRecord,
   deleteSellAccountRecord,
+  getSellAccountDeletionImpactRecord,
   getSellAccountRecord,
   listSellAccountRecords,
   saveAndStartSellAccountRtoRecord,
@@ -197,6 +199,7 @@ router.get('/admin/rto-records', canViewRto, listRtoRecords);
 router.get('/admin/rto-transfer-tasks', canViewTasks, listAllRtoTransferTasks);
 router.post('/admin/rto-records', canCreateRto, createRtoRecord);
 router.put('/admin/rto-records/:id', canUpdateRto, updateRtoRecord);
+router.get('/admin/rto-records/:id/delete-impact', canDeleteRto, getRtoRecordDeletionImpactRecord);
 router.delete('/admin/rto-records/:id', canDeleteRto, deleteRtoRecord);
 router.post('/admin/rto-records/:id/lock', canUpdateRto, lockRtoRecord);
 router.get('/admin/rto-records/:id/workspace', canViewRto, getRtoRecordWorkspace);
@@ -221,6 +224,7 @@ router.post('/admin/sell-accounts/:id/start-rto', canUpdateSell, canCreateRto, s
 router.post('/admin/sell-accounts/:id/complete', canUpdateSell, canUpdateRto, completeSellAccountSale);
 router.post('/admin/sell-accounts/:id/invoice/resend', canUpdateSell, resendSellAccountInvoice);
 router.get('/admin/sell-accounts/:id/invoice', canViewSell, downloadSellAccountInvoice);
+router.get('/admin/sell-accounts/:id/delete-impact', canDeleteSell, getSellAccountDeletionImpactRecord);
 router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
 router.post('/admin/sell-accounts/:id/payments/:paymentId/receipt/resend', canUpdateSell, resendSellAccountPaymentReceipt);

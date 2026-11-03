@@ -15,7 +15,8 @@
     "branding:storage": "tsx scripts/check-branding-storage.ts",
     "seed:blogs": "tsx scripts/seed-blog-posts.ts",
     "seed:listings": "tsx scripts/seed-listings.ts",
-    "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts"
+    "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts",
+    "roles:sync": "tsx scripts/sync-employee-roles.ts"
   },
   "keywords": [],
   "author": "",

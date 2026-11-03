@@ -23,6 +23,7 @@ import {
   Users,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { generateAdminContactDetailPath } from '@/lib/routePaths';
 import BrandLoader, { type BrandLoaderBg, type BrandLoaderSize, type BrandLoaderVariant } from '@/components/ui/BrandLoader';
 import SearchableSelect, { type Option as SearchableOption } from '@/components/ui/SearchableSelect';
 
@@ -413,7 +414,12 @@ export const useCrmBase = () => {
 };
 
 export const leadHref = (base: string, id: string) => (base === '/partner' ? `/partner/leads/${id}` : `${base}/leads/${id}`);
-export const contactHref = (base: string, id: string) => `${base}/contacts/${id}`;
+export const contactHref = (base: string, contact: string | Pick<ContactLite, 'id' | 'name' | 'city'>) => {
+  if (typeof contact === 'string' || base === '/partner') {
+    return `${base}/contacts/${typeof contact === 'string' ? contact : contact.id}`;
+  }
+  return generateAdminContactDetailPath(`${base}/contacts`, contact);
+};
 
 // ───────────── Data ─────────────
 
@@ -570,10 +576,18 @@ export function CrmNavBar() {
 }
 
 /** Every CRM page: meta provider + full-width canvas. */
-export function CrmPageFrame({ children }: { children: ReactNode }) {
+export function CrmPageFrame({
+  children,
+  fluid = true,
+  className = '',
+}: {
+  children: ReactNode;
+  fluid?: boolean;
+  className?: string;
+}) {
   return (
     <CrmMetaProvider>
-      <div className="w-full max-w-7xl mx-auto space-y-4 pb-12">
+      <div className={`w-full ${fluid ? 'max-w-none' : 'max-w-7xl'} mx-auto space-y-3 pb-8 ${className}`}>
         <MetaGate>{children}</MetaGate>
       </div>
     </CrmMetaProvider>

@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { getAbsoluteFileUrl, getCanonicalFileUrl, uploadBlogCoverImageToServer } from '@/lib/fileUpload';
 import { useAuthStore } from '@/store/authStore';
 import { blogPermissions, canUseBlogPermission } from '@/lib/blogPermissions';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 type BlogPost = {
   id: string;
@@ -306,7 +307,7 @@ export default function BlogContentManager() {
   };
 
   const deleteQuestion = async (item: AdminBlogQuestion) => {
-    if (!selectedId || !window.confirm('Delete this question permanently?')) return;
+    if (!selectedId || !(await confirmDelete({ title: 'Delete this question permanently?', itemName: item.question }))) return;
     setQuestionActionId(item.id);
     try {
       await api.delete(`/superadmin/blogs/${selectedId}/questions/${item.id}`);
@@ -468,7 +469,7 @@ export default function BlogContentManager() {
   };
 
   const deletePost = async (post: BlogPost) => {
-    if (!window.confirm(`Delete “${post.title}”? This cannot be undone.`)) return;
+    if (!(await confirmDelete({ title: 'Delete this blog post?', itemName: post.title, alsoDeleted: ['Reader questions and answers on this post'] }))) return;
     try {
       await api.delete(`/superadmin/blogs/${post.id}`);
       setPosts((current) => current.filter((item) => item.id !== post.id));

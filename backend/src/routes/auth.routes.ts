@@ -31,7 +31,7 @@ import {
   deleteProfileAvatar,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
-import { loginRateLimit, otpRateLimit, passwordResetRateLimit, registerRateLimit } from '../middlewares/rateLimit.middleware';
+import { loginRateLimit, otpRateLimit, partnerKycVerificationRateLimit, passwordResetRateLimit, registerRateLimit } from '../middlewares/rateLimit.middleware';
 import {
   cancelPartnerAadhaar,
   completePartnerAadhaar,
@@ -74,10 +74,10 @@ router.post('/customer-prime/subscribe', requireAuth, submitCustomerPrimeSubscri
 router.get('/partner/onboarding', requireAuth, getPartnerOnboarding);
 router.put('/partner/onboarding', requireAuth, savePartnerOnboarding);
 router.post('/partner/onboarding/submit', requireAuth, submitPartnerOnboarding);
-router.post('/partner/kyc/verify-pan', requireAuth, verifyPartnerPan);
-router.post('/partner/kyc/verify-gstin', requireAuth, verifyPartnerGstin);
-router.post('/partner/kyc/verify-aadhaar/initialize', requireAuth, initializePartnerAadhaar);
-router.post('/partner/kyc/verify-aadhaar/complete', requireAuth, completePartnerAadhaar);
+router.post('/partner/kyc/verify-pan', requireAuth, partnerKycVerificationRateLimit, verifyPartnerPan);
+router.post('/partner/kyc/verify-gstin', requireAuth, partnerKycVerificationRateLimit, verifyPartnerGstin);
+router.post('/partner/kyc/verify-aadhaar/initialize', requireAuth, partnerKycVerificationRateLimit, initializePartnerAadhaar);
+router.post('/partner/kyc/verify-aadhaar/complete', requireAuth, partnerKycVerificationRateLimit, completePartnerAadhaar);
 router.post('/partner/kyc/verify-aadhaar/cancel', requireAuth, cancelPartnerAadhaar);
 router.get('/partner/kyc/verify-aadhaar/status/:id', requireAuth, getPartnerAadhaarStatus);
 router.post('/partner/kyc/:documentType/:id/template', requireAuth, getDocumentUploadMiddleware('secure').single('template'), uploadPartnerKycTemplate);

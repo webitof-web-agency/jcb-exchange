@@ -30,6 +30,7 @@ import { buildPaginationItems } from '@/lib/paginationUtils';
 import RatingDropdown from '@/components/recruitment/RatingDropdown';
 import type { InterviewStatus } from '@/components/recruitment/InterviewStatusDropdown';
 import { isInterviewNotificationActive } from '@/lib/interviewNotification';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface InterviewItem {
   id: string;
@@ -370,7 +371,7 @@ export default function AdminInterviewsPage() {
 
   const handleDeleteInterview = async (interviewId: string) => {
     if (!canDeleteInterview) return;
-    if (!window.confirm('Delete this interview?')) return;
+    if (!(await confirmDelete({ title: 'Delete this interview?', alsoDeleted: ['Interview feedback and scorecards for it'] }))) return;
     try {
       await api.delete(`/recruitment/admin/interviews/${interviewId}`);
       await fetchInterviews();
@@ -433,7 +434,7 @@ export default function AdminInterviewsPage() {
 
   const handleDeleteScorecard = async () => {
     if (!canManageScorecard) return;
-    if (!selectedInterviewForFeedback || !scorecardRatingId || !window.confirm('Delete this evaluation?')) return;
+    if (!selectedInterviewForFeedback || !scorecardRatingId || !(await confirmDelete({ title: 'Delete this evaluation?' }))) return;
     try {
       setDeletingScorecard(true);
       await api.delete(`/recruitment/admin/applications/${selectedInterviewForFeedback.application.id}/ratings/${scorecardRatingId}`);

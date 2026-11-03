@@ -2,33 +2,60 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
   Award,
   BarChart3,
+  Building2,
   Calendar,
+  Check,
   CheckCircle2,
-  Clock3,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  Clock3,
+  Copy,
+  DollarSign,
   Eye,
   FileText,
+  Filter,
   Gauge,
   Image as ImageIcon,
   Landmark,
-  Maximize2,
+  Layers,
+  Mail,
   MapPin,
+  Maximize2,
   PackageCheck,
+  Phone,
   Play,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  TrendingDown,
   TrendingUp,
+  User,
   Users,
+  UsersRound,
   WalletCards,
   X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
@@ -36,6 +63,7 @@ import SafeRemoteVideo from '@/components/ui/SafeRemoteVideo';
 import { getMediaSourceCandidates } from '@/lib/fileUpload';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import { resolveListingId } from '@/lib/routeResolvers';
+import { generateAdminListingDetailPath } from '@/lib/routePaths';
 
 type LeadItem = {
   id: string;
@@ -48,6 +76,7 @@ type LeadItem = {
 type SaleRecord = {
   soldPrice: number;
   soldAt: string;
+  invoiceNo?: string | null;
 };
 
 type PaymentRecord = {
@@ -128,96 +157,128 @@ const fmtCurrency = (value: number | null | undefined) => `₹${fmt(value)}`;
 const fmtDate = (value?: string | null) => {
   if (!value) return 'Not recorded';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return Number.isNaN(date.getTime())
+    ? 'Not recorded'
+    : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 const fmtDateTime = (value?: string | null) => {
   if (!value) return 'Not recorded';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime())
+    ? 'Not recorded'
+    : date.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 };
-const labelify = (value?: string | null) => value ? value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Not recorded';
-const displayValue = (value?: string | number | null) => value === null || value === undefined || value === '' ? 'Not recorded' : String(value);
+const fmtRelativeTime = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 60) return 'Just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+  return fmtDate(value);
+};
+const labelify = (value?: string | null) =>
+  value
+    ? value
+        .toLowerCase()
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    : 'Not recorded';
+const displayValue = (value?: string | number | null) =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
 
-const STATUS_STYLES: Record<string, string> = {
-  PUBLISHED: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  DRAFT: 'border-slate-200 bg-slate-100 text-slate-700',
-  PENDING_APPROVAL: 'border-amber-200 bg-amber-50 text-amber-800',
-  CHANGES_REQUESTED: 'border-orange-200 bg-orange-50 text-orange-800',
-  PAUSED: 'border-slate-200 bg-slate-100 text-slate-600',
-  RESERVED: 'border-blue-200 bg-blue-50 text-blue-800',
-  SOLD: 'border-violet-200 bg-violet-50 text-violet-800',
-  REJECTED: 'border-rose-200 bg-rose-50 text-rose-800',
+const STATUS_CONFIG: Record<string, { badge: string; dot: string; label: string }> = {
+  PUBLISHED: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500', label: 'Published' },
+  SOLD: { badge: 'border-violet-200 bg-violet-50 text-violet-800', dot: 'bg-violet-500', label: 'Sold' },
+  RESERVED: { badge: 'border-blue-200 bg-blue-50 text-blue-800', dot: 'bg-blue-500', label: 'Reserved' },
+  PENDING_APPROVAL: { badge: 'border-amber-200 bg-amber-50 text-amber-800', dot: 'bg-amber-500', label: 'Pending Approval' },
+  CHANGES_REQUESTED: { badge: 'border-orange-200 bg-orange-50 text-orange-800', dot: 'bg-orange-500', label: 'Changes Requested' },
+  PAUSED: { badge: 'border-slate-200 bg-slate-100 text-slate-700', dot: 'bg-slate-400', label: 'Paused' },
+  DRAFT: { badge: 'border-slate-200 bg-slate-100 text-slate-700', dot: 'bg-slate-400', label: 'Draft' },
+  REJECTED: { badge: 'border-rose-200 bg-rose-50 text-rose-800', dot: 'bg-rose-500', label: 'Rejected' },
 };
 
-const LEAD_STYLES: Record<string, { badge: string; bar: string }> = {
-  NEW: { badge: 'border-blue-200 bg-blue-50 text-blue-800', bar: 'bg-blue-500' },
-  CONTACTED: { badge: 'border-indigo-200 bg-indigo-50 text-indigo-800', bar: 'bg-indigo-500' },
-  INTERESTED: { badge: 'border-violet-200 bg-violet-50 text-violet-800', bar: 'bg-violet-500' },
-  INSPECTION_SCHEDULED: { badge: 'border-amber-200 bg-amber-50 text-amber-800', bar: 'bg-amber-500' },
-  WON: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500' },
-  LOST: { badge: 'border-rose-200 bg-rose-50 text-rose-800', bar: 'bg-rose-500' },
+const LEAD_STAGE_MAP: Record<string, { label: string; badge: string; bar: string; text: string }> = {
+  NEW: { label: 'New', badge: 'border-blue-200 bg-blue-50 text-blue-700', bar: 'bg-blue-500', text: 'text-blue-700' },
+  CONTACTED: { label: 'Contacted', badge: 'border-indigo-200 bg-indigo-50 text-indigo-700', bar: 'bg-indigo-500', text: 'text-indigo-700' },
+  INTERESTED: { label: 'Interested', badge: 'border-amber-200 bg-amber-50 text-amber-800', bar: 'bg-amber-500', text: 'text-amber-700' },
+  INSPECTION_SCHEDULED: { label: 'Inspection', badge: 'border-purple-200 bg-purple-50 text-purple-700', bar: 'bg-purple-500', text: 'text-purple-700' },
+  WON: { label: 'Won', badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500', text: 'text-emerald-700' },
+  LOST: { label: 'Lost', badge: 'border-rose-200 bg-rose-50 text-rose-800', bar: 'bg-rose-500', text: 'text-rose-700' },
 };
 
-function Badge({ value, type = 'listing' }: { value?: string | null; type?: 'listing' | 'lead' | 'payment' }) {
-  const styles = type === 'lead'
-    ? LEAD_STYLES[value || '']?.badge || 'border-slate-200 bg-slate-100 text-slate-700'
-    : type === 'payment'
-      ? value === 'APPROVED' || value === 'PAID'
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-        : value === 'REJECTED'
-          ? 'border-rose-200 bg-rose-50 text-rose-800'
-          : 'border-amber-200 bg-amber-50 text-amber-800'
-      : STATUS_STYLES[value || ''] || 'border-slate-200 bg-slate-100 text-slate-700';
-
-  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${styles}`}>{labelify(value)}</span>;
-}
-
-function SectionHeading({ icon, eyebrow, title, detail, action }: { icon: ReactNode; eyebrow?: string; title: string; detail?: string; action?: ReactNode }) {
-  return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-[#9a6b00]">{icon}</span>
-        <div>
-          {eyebrow ? <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#a47400]">{eyebrow}</p> : null}
-          <h2 className="mt-0.5 text-base font-bold tracking-tight text-slate-950">{title}</h2>
-          {detail ? <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p> : null}
-        </div>
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function MetricCard({ icon, label, value, note, accent = 'amber' }: { icon: ReactNode; label: string; value: string; note: string; accent?: 'amber' | 'blue' | 'green' | 'violet' }) {
-  const accents = {
-    amber: 'bg-amber-50 text-[#9a6b00]',
-    blue: 'bg-blue-50 text-blue-700',
-    green: 'bg-emerald-50 text-emerald-700',
-    violet: 'bg-violet-50 text-violet-700',
+function StatusBadge({ value }: { value?: string | null }) {
+  const cfg = STATUS_CONFIG[value || ''] || {
+    badge: 'border-slate-200 bg-slate-100 text-slate-700',
+    dot: 'bg-slate-400',
+    label: labelify(value),
   };
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md">
-      <div className="flex items-center gap-2.5">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${accents[accent]}`}>{icon}</span>
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-      </div>
-      <p className="mt-4 text-2xl font-black tracking-tight text-slate-950">{value}</p>
-      <p className="mt-1 text-xs text-slate-500">{note}</p>
-    </article>
+    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold ${cfg.badge}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
   );
 }
 
-function InfoItem({ label, value, icon }: { label: string; value?: string | number | null; icon?: ReactNode }) {
+function LeadBadge({ value }: { value?: string | null }) {
+  const cfg = LEAD_STAGE_MAP[value || ''] || {
+    badge: 'border-slate-200 bg-slate-100 text-slate-700',
+    bar: 'bg-slate-400',
+    label: labelify(value),
+    text: 'text-slate-600',
+  };
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{icon}{label}</div>
-      <p className="mt-1.5 break-words text-sm font-semibold text-slate-900">{displayValue(value)}</p>
-    </div>
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${cfg.badge}`}>
+      {cfg.label}
+    </span>
   );
 }
 
-function EmptyState({ title, detail, icon }: { title: string; detail: string; icon: ReactNode }) {
-  return <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center"><span className="text-slate-300">{icon}</span><p className="mt-3 text-sm font-bold text-slate-600">{title}</p><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{detail}</p></div>;
+function PaymentBadge({ value }: { value?: string | null }) {
+  const isApproved = value === 'APPROVED' || value === 'PAID';
+  const isRejected = value === 'REJECTED';
+  const styles = isApproved
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : isRejected
+      ? 'border-rose-200 bg-rose-50 text-rose-800'
+      : 'border-amber-200 bg-amber-50 text-amber-800';
+
+  return (
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${styles}`}>
+      {labelify(value)}
+    </span>
+  );
+}
+
+function CopyPill({ label, text, className = '' }: { label?: string; text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Click to copy"
+      className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-mono font-medium text-slate-700 transition hover:border-amber-400 hover:bg-amber-50/70 hover:text-amber-950 focus:outline-none ${className}`}
+    >
+      {label ? <span className="font-sans text-[10px] uppercase font-bold text-slate-400">{label}:</span> : null}
+      <span className="truncate max-w-[140px] sm:max-w-[200px]">{text}</span>
+      {copied ? <Check className="h-3 w-3 text-emerald-600 shrink-0" /> : <Copy className="h-3 w-3 text-slate-400 shrink-0" />}
+    </button>
+  );
 }
 
 function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
@@ -234,10 +295,12 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
     if (firstIsVideo !== secondIsVideo) return firstIsVideo ? 1 : -1;
     return 0;
   }), [media]);
+
   const availableMedia = useMemo(
     () => sortedMedia.filter((mediaItem) => !unavailableMediaIds.includes(mediaItem.id)),
     [sortedMedia, unavailableMediaIds],
   );
+
   const displayedActiveMediaIndex = availableMedia.length
     ? Math.min(activeMediaIndex, availableMedia.length - 1)
     : 0;
@@ -250,14 +313,16 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
 
   const moveMedia = useCallback((direction: 'previous' | 'next') => {
     if (availableMedia.length < 2) return;
-    setActiveMediaIndex((current) => direction === 'previous'
-      ? current > 0 ? current - 1 : availableMedia.length - 1
-      : current < availableMedia.length - 1 ? current + 1 : 0);
+    setActiveMediaIndex((current) =>
+      direction === 'previous'
+        ? current > 0 ? current - 1 : availableMedia.length - 1
+        : current < availableMedia.length - 1 ? current + 1 : 0
+    );
     setZoom(1);
   }, [availableMedia.length]);
 
   const scrollThumbnails = (direction: 'left' | 'right') => {
-    thumbnailStripRef.current?.scrollBy({ left: direction === 'left' ? -240 : 240, behavior: 'smooth' });
+    thumbnailStripRef.current?.scrollBy({ left: direction === 'left' ? -220 : 220, behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -282,10 +347,12 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
 
   if (!media.length) {
     return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6">
-        <SectionHeading icon={<ImageIcon className="h-4 w-4" />} eyebrow="Listing media" title="Media gallery" detail="Images and videos attached to the live listing record." />
-        <EmptyState icon={<ImageIcon className="h-8 w-8" />} title="No media uploaded" detail="This listing does not have any image or video assets available." />
-      </section>
+      <div className="flex items-center justify-between rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="h-4 w-4 text-slate-400" />
+          <span>No media uploaded for this listing yet.</span>
+        </div>
+      </div>
     );
   }
 
@@ -297,87 +364,197 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
 
   return (
     <>
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6">
-        <SectionHeading
-          icon={<ImageIcon className="h-4 w-4" />}
-          eyebrow="Listing media"
-          title="Media gallery"
-          detail="Click any item to view in full resolution or play video."
-          action={<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{fmt(availableMedia.length)} available</span>}
-        />
-
-        {availableMedia.length ? (
-          <div className="relative mt-3">
-            {availableMedia.length > 4 ? (
-              <>
-                <button type="button" onClick={() => scrollThumbnails('left')} className="absolute -left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md transition hover:border-amber-300 hover:text-[#9a6b00] focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Scroll thumbnails left"><ChevronLeft className="h-4 w-4" /></button>
-                <button type="button" onClick={() => scrollThumbnails('right')} className="absolute -right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md transition hover:border-amber-300 hover:text-[#9a6b00] focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Scroll thumbnails right"><ChevronRight className="h-4 w-4" /></button>
-              </>
-            ) : null}
-            <div ref={thumbnailStripRef} className="flex snap-x gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {availableMedia.map((mediaItem, index) => {
-                const isVideo = mediaItem.type.toUpperCase() === 'VIDEO';
-                return (
-                  <button
-                    key={mediaItem.id}
-                    type="button"
-                    onClick={() => openLightboxAt(index)}
-                    className="group relative flex h-28 w-44 min-w-[176px] shrink-0 cursor-pointer snap-start overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-xs transition hover:border-amber-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    aria-label={`Open ${isVideo ? 'video' : 'image'} ${index + 1}`}
-                  >
-                    {isVideo ? (
-                      <SafeRemoteVideo src={getMediaSourceCandidates(mediaItem.url)[0]} fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)} muted playsInline preload="metadata" className="h-full w-full object-cover opacity-75 transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} />
-                    ) : (
-                      <SafeRemoteImage src={getMediaSourceCandidates(mediaItem.url)[0]} fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)} alt={mediaItem.slot || `Listing image ${index + 1}`} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" onError={() => markMediaUnavailable(mediaItem.id)} fallback={<div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-400">Unavailable</div>} />
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-80 transition-opacity group-hover:opacity-90" />
-                    <div className="absolute left-2 top-2 flex items-center gap-1">
-                      {mediaItem.isFeatured ? <span className="rounded-md bg-[#f7b500] px-1.5 py-0.5 text-[9px] font-black text-slate-950">Featured</span> : null}
-                      <span className="rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-xs">{isVideo ? 'Video' : 'Image'}</span>
-                    </div>
-                    {isVideo ? (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur-xs transition-transform group-hover:scale-110"><Play className="ml-0.5 h-4 w-4 fill-current" /></span>
-                      </div>
-                    ) : (
-                      <div className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs"><Maximize2 className="h-3.5 w-3.5" /></span>
-                      </div>
-                    )}
-                    <div className="absolute bottom-2 left-2 truncate text-[10px] font-bold text-white/90">
-                      {mediaItem.slot ? labelify(mediaItem.slot) : `Asset #${index + 1}`}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <ImageIcon className="h-4 w-4 text-amber-600" />
+            <span>Listing Media Assets</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+              {availableMedia.length} files
+            </span>
           </div>
-        ) : <EmptyState icon={<ImageIcon className="h-8 w-8" />} title="Media could not be loaded" detail="The listing has media records, but the available files could not be displayed." />}
-      </section>
+          {availableMedia.length > 5 ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => scrollThumbnails('left')}
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Previous thumbnails"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollThumbnails('right')}
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Next thumbnails"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          ref={thumbnailStripRef}
+          className="flex snap-x gap-2.5 overflow-x-auto pb-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200"
+        >
+          {availableMedia.map((mediaItem, index) => {
+            const isVideo = mediaItem.type.toUpperCase() === 'VIDEO';
+            return (
+              <button
+                key={mediaItem.id}
+                type="button"
+                onClick={() => openLightboxAt(index)}
+                className="group relative flex h-24 w-36 min-w-[144px] shrink-0 cursor-pointer snap-start overflow-hidden rounded-xl border border-slate-200/90 bg-slate-900 shadow-xs transition hover:border-amber-400 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+              >
+                {isVideo ? (
+                  <SafeRemoteVideo
+                    src={getMediaSourceCandidates(mediaItem.url)[0]}
+                    fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full object-cover opacity-80 transition-transform duration-300 group-hover:scale-105"
+                    onError={() => markMediaUnavailable(mediaItem.id)}
+                  />
+                ) : (
+                  <SafeRemoteImage
+                    src={getMediaSourceCandidates(mediaItem.url)[0]}
+                    fallbackSrcs={getMediaSourceCandidates(mediaItem.url).slice(1)}
+                    alt={mediaItem.slot || `Asset ${index + 1}`}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={() => markMediaUnavailable(mediaItem.id)}
+                    fallback={<div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">Unavailable</div>}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/25 opacity-75 group-hover:opacity-90 transition-opacity" />
+                <div className="absolute left-1.5 top-1.5 flex items-center gap-1">
+                  {mediaItem.isFeatured ? (
+                    <span className="rounded bg-[#f7b500] px-1 py-0.25 text-[8.5px] font-black text-slate-950 uppercase">
+                      Featured
+                    </span>
+                  ) : null}
+                  <span className="rounded bg-black/60 px-1 py-0.25 text-[8.5px] font-bold text-white backdrop-blur-xs">
+                    {isVideo ? 'Video' : 'Photo'}
+                  </span>
+                </div>
+                {isVideo ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-xs transition-transform group-hover:scale-110">
+                      <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+                    </span>
+                  </div>
+                ) : (
+                  <div className="absolute bottom-1.5 right-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black/60 text-white">
+                      <Maximize2 className="h-3 w-3" />
+                    </span>
+                  </div>
+                )}
+                <div className="absolute bottom-1.5 left-1.5 truncate text-[10px] font-semibold text-white/90">
+                  {mediaItem.slot ? labelify(mediaItem.slot) : `#${index + 1}`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {isLightboxOpen && activeMedia ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3 backdrop-blur-sm sm:p-8" onClick={() => setIsLightboxOpen(false)} role="dialog" aria-modal="true" aria-label="Listing media viewer">
-          <button type="button" onClick={() => setIsLightboxOpen(false)} className="absolute right-3 top-3 z-[110] flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:right-6 sm:top-6" aria-label="Close media viewer"><X className="h-6 w-6" /></button>
-          <div className="relative flex h-full w-full max-w-7xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3 backdrop-blur-sm sm:p-6"
+          onClick={() => setIsLightboxOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={() => setIsLightboxOpen(false)}
+            className="absolute right-4 top-4 z-[110] flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          <div className="relative flex h-full w-full max-w-6xl items-center justify-center" onClick={(e) => e.stopPropagation()}>
             {activeIsVideo ? (
-              <SafeRemoteVideo src={getMediaSourceCandidates(activeMedia.url)[0]} fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)} controls muted autoPlay playsInline className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} />
+              <SafeRemoteVideo
+                src={getMediaSourceCandidates(activeMedia.url)[0]}
+                fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)}
+                controls
+                muted
+                autoPlay
+                playsInline
+                className="max-h-[82vh] max-w-[92vw] object-contain rounded-lg"
+                onError={() => markMediaUnavailable(activeMedia.id)}
+              />
             ) : (
               <div className="flex h-full w-full items-center justify-center overflow-auto">
                 <div className="origin-center transition-transform duration-200" style={{ transform: `scale(${zoom})` }}>
-                  <SafeRemoteImage src={getMediaSourceCandidates(activeMedia.url)[0]} fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)} alt={activeMedia.slot || 'Listing media'} className="max-h-[82vh] max-w-[92vw] object-contain" onError={() => markMediaUnavailable(activeMedia.id)} fallback={<div className="px-8 py-12 text-center text-sm font-semibold text-slate-300">Image unavailable</div>} />
+                  <SafeRemoteImage
+                    src={getMediaSourceCandidates(activeMedia.url)[0]}
+                    fallbackSrcs={getMediaSourceCandidates(activeMedia.url).slice(1)}
+                    alt={activeMedia.slot || 'Listing media'}
+                    className="max-h-[82vh] max-w-[92vw] object-contain rounded-lg shadow-2xl"
+                    onError={() => markMediaUnavailable(activeMedia.id)}
+                    fallback={<div className="p-8 text-slate-300 text-sm">Image unavailable</div>}
+                  />
                 </div>
               </div>
             )}
 
             {availableMedia.length > 1 ? (
               <>
-                <button type="button" onClick={() => moveMedia('previous')} className="absolute left-0 top-1/2 z-[110] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:left-3" aria-label="Previous media"><ChevronLeft className="h-6 w-6" /></button>
-                <button type="button" onClick={() => moveMedia('next')} className="absolute right-0 top-1/2 z-[110] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:right-3" aria-label="Next media"><ChevronRight className="h-6 w-6" /></button>
+                <button
+                  type="button"
+                  onClick={() => moveMedia('previous')}
+                  className="absolute left-2 top-1/2 z-[110] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md hover:bg-white/25 focus:outline-none"
+                  aria-label="Previous"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveMedia('next')}
+                  className="absolute right-2 top-1/2 z-[110] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md hover:bg-white/25 focus:outline-none"
+                  aria-label="Next"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
               </>
             ) : null}
 
-            {!activeIsVideo ? <div className="absolute bottom-2 left-1/2 z-[110] flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/60 p-1.5 text-white backdrop-blur-md"><button type="button" onClick={() => setZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))))} className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Zoom out"><ZoomOut className="h-4 w-4" /></button><span className="min-w-12 text-center text-xs font-bold">{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((current) => Math.min(3.5, Number((current + 0.25).toFixed(2))))} className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Zoom in"><ZoomIn className="h-4 w-4" /></button><button type="button" onClick={() => setZoom(1)} className="flex h-9 items-center justify-center rounded-full px-2 text-[11px] font-bold transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Reset zoom">Reset</button></div> : null}
-            <span className="absolute bottom-3 left-3 z-[110] rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-md sm:bottom-4 sm:left-1/2 sm:-translate-x-1/2">{displayedActiveMediaIndex + 1} / {availableMedia.length}</span>
+            {!activeIsVideo ? (
+              <div className="absolute bottom-3 left-1/2 z-[110] flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/70 px-3 py-1 text-white backdrop-blur-md text-xs">
+                <button
+                  type="button"
+                  onClick={() => setZoom((c) => Math.max(1, Number((c - 0.25).toFixed(2))))}
+                  className="p-1 hover:text-amber-400"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <span className="min-w-10 text-center font-mono font-bold">{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoom((c) => Math.min(3, Number((c + 0.25).toFixed(2))))}
+                  className="p-1 hover:text-amber-400"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoom(1)}
+                  className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-white/20 hover:bg-white/30"
+                >
+                  Reset
+                </button>
+              </div>
+            ) : null}
+
+            <span className="absolute bottom-3 left-4 z-[110] rounded-md bg-black/60 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-md">
+              {displayedActiveMediaIndex + 1} / {availableMedia.length}
+            </span>
           </div>
         </div>
       ) : null}
@@ -386,16 +563,22 @@ function AnalyticsMediaGallery({ media = [] }: { media?: MediaAsset[] }) {
 }
 
 export default function AnalyticsListingDetail({ listingId, backHref }: { listingId: string; backHref: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const backUrl = useMemo(() => {
     const query = searchParams?.toString();
     return query ? `${backHref}?${query}` : backHref;
   }, [backHref, searchParams]);
+
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 15;
+  const [leadStatusFilter, setLeadStatusFilter] = useState('ALL');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [descExpanded, setDescExpanded] = useState(false);
+  const PAGE_SIZE = 12;
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
@@ -406,162 +589,962 @@ export default function AnalyticsListingDetail({ listingId, backHref }: { listin
       setData(response.data);
       setPage(1);
     } catch {
-      setError('Could not load analytics for this listing. Please refresh and try again.');
+      setError('Could not load analytics for this listing. Please check connection and try again.');
     } finally {
       setLoading(false);
     }
   }, [listingId]);
 
-  // Data fetching is intentionally started from the effect; load owns the async state transition.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const listing = data?.listing;
 
+  useEffect(() => {
+    if (!listing) return;
+    const canonicalPath = generateAdminListingDetailPath(backHref, listing);
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [backHref, listing, pathname, router]);
   const recentLeads = useMemo(() => listing?.leads || [], [listing?.leads]);
+
   const leadSummary = data?.leadSummary || {
     total: recentLeads.length,
     active: recentLeads.filter((lead) => !['WON', 'LOST'].includes(lead.status)).length,
     won: recentLeads.filter((lead) => lead.status === 'WON').length,
-    conversionRate: recentLeads.length ? Number(((recentLeads.filter((lead) => lead.status === 'WON').length / recentLeads.length) * 100).toFixed(1)) : 0,
+    conversionRate: recentLeads.length
+      ? Number(((recentLeads.filter((lead) => lead.status === 'WON').length / recentLeads.length) * 100).toFixed(1))
+      : 0,
   };
-  const leadBreakdown = data?.leadStatusBreakdown?.length
-    ? data.leadStatusBreakdown
-    : Object.entries(recentLeads.reduce<Record<string, number>>((counts, lead) => ({ ...counts, [lead.status]: (counts[lead.status] || 0) + 1 }), {})).map(([status, count]) => ({ status, count }));
+
+  const leadBreakdown = useMemo(() => {
+    if (data?.leadStatusBreakdown?.length) return data.leadStatusBreakdown;
+    const counts = recentLeads.reduce<Record<string, number>>((acc, lead) => {
+      acc[lead.status] = (acc[lead.status] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts).map(([status, count]) => ({ status, count }));
+  }, [data?.leadStatusBreakdown, recentLeads]);
+
   const totalLeadCount = leadSummary.total;
-  const totalPages = Math.ceil(recentLeads.length / PAGE_SIZE) || 1;
-  const currentPage = Math.min(page, totalPages);
-  const paginatedLeads = useMemo(() => recentLeads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE), [recentLeads, currentPage]);
-  const paginationItems = useMemo(() => buildPaginationItems(currentPage, totalPages), [currentPage, totalPages]);
-  const mediaCount = listing?.media?.length || 0;
-  const paymentRecords = data?.payments || [];
-  const partnerName = listing?.partner?.partnerProfile?.businessName || listing?.partner?.name || listing?.partner?.email || 'Partner not recorded';
-  const location = [listing?.locationCity, listing?.locationState].filter(Boolean).join(', ');
   const viewsTotal = (listing?.views || 0) + (listing?.trackedViews || 0);
   const trackedShare = viewsTotal > 0 ? Math.round(((listing?.trackedViews || 0) / viewsTotal) * 100) : 0;
+  const paymentRecords = data?.payments || [];
+  const location = [listing?.locationCity, listing?.locationState].filter(Boolean).join(', ');
+  const partnerName =
+    listing?.partner?.partnerProfile?.businessName ||
+    listing?.partner?.partnerProfile?.ownerName ||
+    listing?.partner?.name ||
+    listing?.partner?.email ||
+    'Partner not assigned';
+
+  // Filtered leads
+  const filteredLeads = useMemo(() => {
+    return recentLeads.filter((lead) => {
+      const matchesStatus = leadStatusFilter === 'ALL' || lead.status === leadStatusFilter;
+      const q = leadSearch.trim().toLowerCase();
+      const matchesSearch = !q || lead.id.toLowerCase().includes(q) || (lead.enquiryType || '').toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [recentLeads, leadStatusFilter, leadSearch]);
+
+  const totalPages = Math.ceil(filteredLeads.length / PAGE_SIZE) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginatedLeads = useMemo(
+    () => filteredLeads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredLeads, currentPage, PAGE_SIZE]
+  );
+  const paginationItems = useMemo(() => buildPaginationItems(currentPage, totalPages), [currentPage, totalPages]);
+
+  // Timeline chart data
+  const timelineData = useMemo(() => {
+    if (!data?.trackedViewTimeline?.length) return [];
+    return data.trackedViewTimeline.map((item) => {
+      const parts = item.date.split('-');
+      const shortDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : item.date;
+      return {
+        ...item,
+        shortDate,
+      };
+    });
+  }, [data?.trackedViewTimeline]);
+
+  // Sale price variance
+  const saleVariance = useMemo(() => {
+    if (!listing?.saleRecord || !listing.price) return null;
+    const diff = listing.saleRecord.soldPrice - listing.price;
+    const pct = Number(((diff / listing.price) * 100).toFixed(1));
+    return { diff, pct };
+  }, [listing?.saleRecord, listing?.price]);
+
+  const mediaList = listing?.media || [];
+  const photosCount = mediaList.filter((m) => m.type.toUpperCase() !== 'VIDEO').length;
+  const videosCount = mediaList.filter((m) => m.type.toUpperCase() === 'VIDEO').length;
 
   return (
-    <main className="space-y-5 pb-10">
+    <div className="w-full space-y-3 pb-8">
+      {/* Top Breadcrumb & Control Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={backUrl}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 transition hover:border-amber-400 hover:bg-amber-50 hover:text-amber-950 focus:outline-none"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back</span>
+          </Link>
 
-      {loading ? <BrandLoader variant="section" size="md" bg="light" text="Loading listing intelligence…" className="rounded-3xl border border-slate-200 bg-white p-16 shadow-sm" /> : null}
+          <span className="text-slate-300">/</span>
 
-      {!loading && error ? <div role="alert" className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />{error}</div> : null}
+          <span className="text-xs font-bold text-slate-500">Analytics</span>
+
+          <span className="text-slate-300">/</span>
+
+          {listing ? (
+            <>
+              <CopyPill label="ID" text={listing.id} />
+              <StatusBadge value={listing.status} />
+              {listing.category?.name ? (
+                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-200/70">
+                  {listing.category.name}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-xs font-semibold text-slate-400">Loading details...</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10.5px] font-bold text-emerald-700 border border-emerald-200/70">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live Telemetry
+          </span>
+          <button
+            type="button"
+            onClick={() => void load(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+            title="Refresh analytics data"
+          >
+            <RefreshCw className="h-3 w-3" />
+            <span className="hidden sm:inline">Sync</span>
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <BrandLoader
+          variant="section"
+          size="md"
+          bg="light"
+          text="Aggregating listing intelligence & telemetry..."
+          className="rounded-2xl border border-slate-200 bg-white p-12 shadow-xs"
+        />
+      ) : null}
+
+      {!loading && error ? (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+          <div className="space-y-1">
+            <p className="font-bold">Unable to load machine telemetry</p>
+            <p className="text-rose-700">{error}</p>
+          </div>
+        </div>
+      ) : null}
 
       {!loading && listing ? (
         <>
-          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-7">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-3">
+          {/* Header Hero Banner: Equipment Identity & Asking / Sold Valuation */}
+          <section className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4.5 shadow-xs">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              {/* Left Machine Identity */}
+              <div className="min-w-0 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={backUrl}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 transition hover:border-amber-400 hover:bg-amber-50 hover:text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    Back
-                  </Link>
-                  <Badge value={listing.status} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60">Analytics Detail</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded">
+                    Equipment Dossier
+                  </span>
+                  {listing.condition ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-700 border border-slate-200">
+                      <Sparkles className="h-2.5 w-2.5 text-amber-500" />
+                      {labelify(listing.condition)} Condition
+                    </span>
+                  ) : null}
+                  {listing.operatingHours ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-100">
+                      <Clock3 className="h-2.5 w-2.5 text-blue-500" />
+                      {fmt(listing.operatingHours)} Hours
+                    </span>
+                  ) : null}
                 </div>
-                <h1 className="text-2xl font-black leading-tight tracking-tight text-slate-900 sm:text-3xl">{listing.title}</h1>
-                <p className="text-sm font-semibold text-slate-500">{[listing.brand?.name, listing.model?.name, listing.manufacturingYear].filter(Boolean).join(' · ') || 'Machine profile'}</p>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-slate-600 pt-1">
-                  <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-amber-500" />{location || 'Location not recorded'}</span>
-                  <span className="inline-flex items-center gap-1.5"><Calendar className="h-4 w-4 text-amber-500" />Listed {fmtDate(listing.createdAt)}</span>
+
+                <h1 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl leading-snug break-words">
+                  {listing.title}
+                </h1>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 font-medium">
+                  <span className="font-bold text-slate-900">
+                    {[listing.brand?.name, listing.model?.name, listing.manufacturingYear].filter(Boolean).join(' · ')}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-slate-500">
+                    <MapPin className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    {location || 'Location unrecorded'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-slate-500">
+                    <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    Listed {fmtDate(listing.createdAt)} ({fmtRelativeTime(listing.createdAt)})
+                  </span>
                 </div>
               </div>
-              <div className="rounded-2xl border border-amber-200/80 bg-amber-50/60 px-6 py-4 lg:text-right shrink-0">
-                <p className="text-[10px] font-black uppercase tracking-wider text-amber-800/80">Asking price</p>
-                <p className="mt-1 text-2xl font-black tracking-tight text-amber-900 sm:text-3xl">{fmtCurrency(listing.price)}</p>
-                {listing.isNegotiable ? <p className="mt-1 text-xs font-bold text-amber-700">Negotiable</p> : null}
+
+              {/* Right Commercial Valuation Card */}
+              <div className="flex flex-wrap items-center gap-3 shrink-0 lg:flex-col lg:items-end lg:justify-center">
+                <div className="rounded-xl border border-amber-200/90 bg-gradient-to-br from-amber-50/80 to-amber-100/40 px-4 py-2.5 text-left lg:text-right shadow-xs min-w-[200px]">
+                  <div className="flex items-center justify-between lg:justify-end gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900/80">Asking Price</span>
+                    <span className={`rounded px-1.5 py-0.25 text-[9px] font-black uppercase tracking-wider ${listing.isNegotiable ? 'bg-amber-200/80 text-amber-950' : 'bg-slate-200/80 text-slate-800'}`}>
+                      {listing.isNegotiable ? 'Negotiable' : 'Fixed'}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-2xl font-black tracking-tight text-amber-950 font-mono">
+                    {fmtCurrency(listing.price)}
+                  </p>
+                  {listing.saleRecord ? (
+                    <div className="mt-1 pt-1.5 border-t border-amber-200/60 flex items-center justify-between lg:justify-end gap-2 text-[11px] font-bold">
+                      <span className="text-emerald-700">Sold: {fmtCurrency(listing.saleRecord.soldPrice)}</span>
+                      {saleVariance ? (
+                        <span className={`text-[10px] font-black ${saleVariance.diff <= 0 ? 'text-emerald-800' : 'text-blue-800'}`}>
+                          ({saleVariance.pct > 0 ? `+${saleVariance.pct}` : saleVariance.pct}%)
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-0.5 text-[10.5px] font-semibold text-amber-800/80">
+                      Status: <span className="font-bold">{labelify(listing.status)}</span>
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <MetricCard icon={<Eye className="h-4 w-4" />} label="Legacy views" value={fmt(listing.views)} note="Cumulative counter" />
-            <MetricCard icon={<Users className="h-4 w-4" />} label="Unique views" value={fmt(data?.availability.uniqueViews)} note="Distinct visitor identities" accent="green" />
-            <MetricCard icon={<Users className="h-4 w-4" />} label="Total leads" value={fmt(totalLeadCount)} note={`${fmt(leadSummary.active)} active`} accent="violet" />
-            <MetricCard icon={<Award className="h-4 w-4" />} label="Won leads" value={fmt(leadSummary.won)} note="Successful conversions" accent="green" />
-            <MetricCard icon={<TrendingUp className="h-4 w-4" />} label="Conversion" value={`${leadSummary.conversionRate}%`} note="Won ÷ total leads" />
-            <MetricCard icon={<ImageIcon className="h-4 w-4" />} label="Media assets" value={fmt(mediaCount)} note="Listing attachments" accent="blue" />
+          {/* High-Density 6-KPI Velocity Strip */}
+          <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            {/* 1. Total Impressions */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Views</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+                  <Eye className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-black tracking-tight text-slate-950 font-mono">
+                {fmt(viewsTotal)}
+              </p>
+              <div className="mt-1 flex items-center justify-between text-[10.5px] text-slate-500 font-medium">
+                <span>{fmt(listing.trackedViews)} events</span>
+                <span className="font-bold text-amber-800">{trackedShare}% tracked</span>
+              </div>
+            </article>
+
+            {/* 2. Unique Visitors */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Unique Visitors</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                  <Users className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-black tracking-tight text-slate-950 font-mono">
+                {fmt(data?.availability.uniqueViews)}
+              </p>
+              <p className="mt-1 text-[10.5px] font-medium text-emerald-700 truncate">
+                {viewsTotal > 0 ? `${Math.round(((data?.availability.uniqueViews || 0) / Math.max(viewsTotal, 1)) * 100)}% of impressions` : 'Distinct sessions'}
+              </p>
+            </article>
+
+            {/* 3. Total Leads */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Inquiries / Leads</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-700">
+                  <UsersRound className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-black tracking-tight text-slate-950 font-mono">
+                {fmt(totalLeadCount)}
+              </p>
+              <p className="mt-1 text-[10.5px] font-medium text-blue-700">
+                <strong className="font-bold">{fmt(leadSummary.active)}</strong> active pipeline
+              </p>
+            </article>
+
+            {/* 4. Deals Won */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Deals Closed</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-50 text-purple-700">
+                  <Award className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-black tracking-tight text-slate-950 font-mono">
+                {fmt(leadSummary.won)}
+              </p>
+              <p className="mt-1 text-[10.5px] font-medium text-purple-700">
+                <strong className="font-bold">{leadSummary.conversionRate}%</strong> win rate
+              </p>
+            </article>
+
+            {/* 5. Media Assets */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Media Assets</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-700">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-black tracking-tight text-slate-950 font-mono">
+                {fmt(mediaList.length)}
+              </p>
+              <p className="mt-1 text-[10.5px] font-medium text-slate-500">
+                {photosCount} photos · {videosCount} videos
+              </p>
+            </article>
+
+            {/* 6. Commercial Status */}
+            <article className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs transition hover:border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Commercial State</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                  <WalletCards className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-2 text-base font-black tracking-tight text-slate-950 truncate">
+                {listing.saleRecord ? 'Closed / Sold' : paymentRecords.length ? `${paymentRecords.length} Submissions` : 'Available'}
+              </p>
+              <p className="mt-1 text-[10.5px] font-medium text-slate-500 truncate">
+                {listing.saleRecord ? `Sold on ${fmtDate(listing.saleRecord.soldAt)}` : `${paymentRecords.filter((p) => p.status === 'APPROVED' || p.status === 'PAID').length} approved payments`}
+              </p>
+            </article>
           </section>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6">
-              <SectionHeading icon={<Gauge className="h-4 w-4" />} eyebrow="Reach and demand" title="Performance pulse" detail="A compact view of attention, lead quality and tracked activity for this listing." />
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-center justify-between"><p className="text-xs font-bold text-slate-700">Tracked share of recorded views</p><span className="text-sm font-black text-slate-950">{trackedShare}%</span></div><div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#f7b500] transition-all" style={{ width: `${trackedShare}%` }} /></div><p className="mt-3 text-xs leading-5 text-slate-500">Legacy views and durable events are different sources; they should not be added as unique visitors.</p></div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-center justify-between"><p className="text-xs font-bold text-slate-700">Lead pipeline health</p><span className="text-sm font-black text-slate-950">{leadSummary.active} active</span></div><div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200">{leadBreakdown.map((item) => <div key={item.status} className={`${LEAD_STYLES[item.status]?.bar || 'bg-slate-400'} h-full`} style={{ width: `${totalLeadCount ? (item.count / totalLeadCount) * 100 : 0}%` }} title={`${labelify(item.status)}: ${item.count}`} />)}</div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500"><span><strong className="text-slate-900">{leadSummary.won}</strong> won</span><span><strong className="text-slate-900">{leadSummary.active}</strong> active</span><span><strong className="text-slate-900">{Math.max(totalLeadCount - leadSummary.active - leadSummary.won, 0)}</strong> lost</span></div></div>
+          {/* Traffic Velocity & Timeline Area Chart */}
+          {timelineData.length > 0 ? (
+            <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                    <TrendingUp className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Traffic Velocity & Daily Views Timeline</h2>
+                    <p className="text-[11px] text-slate-500">Daily buyer activity trends recorded from high-confidence telemetry events</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                    {data?.availability.sampledTrackedViewEvents || timelineData.reduce((acc, curr) => acc + curr.count, 0)} total timeline views
+                  </span>
+                  <span className="rounded-md bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 border border-amber-200/60">
+                    {timelineData.length} active dates
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 h-44 sm:h-52 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={timelineData} margin={{ top: 8, right: 10, left: -24, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="viewTimelineGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="shortDate"
+                      tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <RechartsTooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0].payload as { date: string; count: number };
+                        return (
+                          <div className="rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-xs text-xs">
+                            <p className="font-bold text-slate-900">{fmtDate(row.date)}</p>
+                            <p className="mt-1 font-mono font-bold text-amber-700">
+                              {fmt(row.count)} <span className="text-slate-500 font-sans font-normal">views recorded</span>
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#d97706"
+                      strokeWidth={2.5}
+                      fill="url(#viewTimelineGradient)"
+                      activeDot={{ r: 5, fill: '#d97706', stroke: '#fff', strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </section>
+          ) : null}
 
-            <div className="flex flex-col gap-5">
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6">
-                <SectionHeading icon={<BarChart3 className="h-4 w-4" />} eyebrow="Lead intelligence" title="Status breakdown" detail={`${fmt(totalLeadCount)} total leads across the complete listing history.`} />
-                {leadBreakdown.length ? (
-                  <div className="max-h-[180px] overflow-y-auto pr-1 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                    {leadBreakdown.map((item) => {
-                      const percent = totalLeadCount ? Math.round((item.count / totalLeadCount) * 100) : 0;
-                      return (
-                        <div key={item.status}>
-                          <div className="mb-1.5 flex items-center justify-between gap-3">
-                            <Badge value={item.status} type="lead" />
-                            <span className="text-xs font-bold text-slate-800">{fmt(item.count)} <span className="font-normal text-slate-400">({percent}%)</span></span>
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div className={`h-full rounded-full ${LEAD_STYLES[item.status]?.bar || 'bg-slate-400'}`} style={{ width: `${percent}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
+          {/* Main 12-Column High-Density Workstation */}
+          <div className="grid gap-3 xl:grid-cols-12 items-start">
+            {/* LEFT COLUMN: 8 COLS (Technical Dossier, Descriptions, Media Showcase & Leads Table) */}
+            <div className="space-y-3 xl:col-span-8">
+              {/* Technical Specifications Sheet */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+                      <PackageCheck className="h-3.5 w-3.5" />
+                    </span>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Machine Specifications & Record</h2>
                   </div>
-                ) : (
-                  <EmptyState icon={<Users className="h-8 w-8" />} title="No leads recorded" detail="Lead status data will appear here when buyers enquire about this listing." />
-                )}
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Updated {fmtDateTime(listing.updatedAt)}
+                  </span>
+                </div>
+
+                {/* Dense Spec Grid */}
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 text-xs">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Category</p>
+                    <p className="mt-1 font-bold text-slate-900 truncate">{displayValue(listing.category?.name)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">OEM / Brand</p>
+                    <p className="mt-1 font-bold text-slate-900 truncate">{displayValue(listing.brand?.name)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Model Name</p>
+                    <p className="mt-1 font-bold text-slate-900 truncate">{displayValue(listing.model?.name)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Manufacture Year</p>
+                    <p className="mt-1 font-mono font-bold text-slate-900">{displayValue(listing.manufacturingYear)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Operating Hours</p>
+                    <p className="mt-1 font-mono font-bold text-slate-900">
+                      {listing.operatingHours ? `${fmt(listing.operatingHours)} hrs` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Horse Power / Engine</p>
+                    <p className="mt-1 font-mono font-bold text-slate-900">
+                      {listing.grossPower ? `${listing.grossPower} HP` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Condition Grade</p>
+                    <p className="mt-1 font-bold text-slate-900">{labelify(listing.condition)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Mode</p>
+                    <p className="mt-1 font-bold text-slate-900">{labelify(listing.contactMode)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">City</p>
+                    <p className="mt-1 font-bold text-slate-900 truncate">{displayValue(listing.locationCity)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">State / Region</p>
+                    <p className="mt-1 font-bold text-slate-900 truncate">{displayValue(listing.locationState)}</p>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registered Address</p>
+                    <p className="mt-1 font-semibold text-slate-800 truncate" title={listing.address || ''}>
+                      {displayValue(listing.address)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Description & Inspector Notes */}
+                {listing.description || listing.additionalDescription ? (
+                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        Description & Condition Notes
+                      </span>
+                      {(listing.description?.length || 0) > 280 || (listing.additionalDescription?.length || 0) > 280 ? (
+                        <button
+                          type="button"
+                          onClick={() => setDescExpanded(!descExpanded)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:text-amber-800"
+                        >
+                          {descExpanded ? (
+                            <>
+                              <span>Collapse notes</span>
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Read full description</span>
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </>
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                      {listing.description ? (
+                        <div className="rounded-xl border border-amber-200/70 bg-amber-50/30 p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Primary Description</p>
+                          <p className={`mt-1.5 whitespace-pre-wrap leading-relaxed text-slate-800 font-medium ${!descExpanded && listing.description.length > 280 ? 'line-clamp-4' : ''}`}>
+                            {listing.description}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {listing.additionalDescription ? (
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Technical & Inspection Notes</p>
+                          <p className={`mt-1.5 whitespace-pre-wrap leading-relaxed text-slate-700 font-medium ${!descExpanded && listing.additionalDescription.length > 280 ? 'line-clamp-4' : ''}`}>
+                            {listing.additionalDescription}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6">
-                <SectionHeading icon={<WalletCards className="h-4 w-4" />} eyebrow="Commercial activity" title="Payment submissions" detail="Payment records linked to this listing, including their current review state." />
-                {paymentRecords.length ? (
-                  <div className="max-h-[220px] overflow-y-auto pr-1 space-y-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                    {paymentRecords.map((payment) => (
-                      <div key={payment.id} className="rounded-2xl border border-slate-200 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">{labelify(payment.method)}</p>
-                            <p className="mt-1 text-xs text-slate-500">Submitted {fmtDateTime(payment.submittedAt)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-base font-black text-slate-950">{fmtCurrency(payment.amount)}</p>
-                            <Badge value={payment.status} type="payment" />
-                          </div>
-                        </div>
-                        {payment.transactionRef ? <p className="mt-3 break-all text-xs text-slate-500">Reference: <span className="font-mono text-slate-700">{payment.transactionRef}</span></p> : null}
-                        {payment.reviewedAt ? <p className="mt-2 text-[11px] font-semibold text-slate-500">Reviewed {fmtDateTime(payment.reviewedAt)}</p> : null}
-                      </div>
-                    ))}
+              {/* Media Asset Showcase Strip */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <AnalyticsMediaGallery media={listing.media} />
+              </section>
+
+              {/* Buyer Enquiries & Lead Timeline (Full Data Table) */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                {/* Header with Search and Filter pills */}
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-700">
+                      <Users className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Buyer Inquiries & Leads Log</h2>
+                      <p className="text-[11px] text-slate-500">
+                        {fmt(recentLeads.length)} total inquiries recorded ({filteredLeads.length} matching filter)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Search Input */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative min-w-[160px] sm:min-w-[200px]">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={leadSearch}
+                        onChange={(e) => {
+                          setLeadSearch(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Search lead ID / type..."
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50/70 pl-8 pr-2.5 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:outline-none"
+                      />
+                      {leadSearch ? (
+                        <button
+                          type="button"
+                          onClick={() => setLeadSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Quick-Filter Chips */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pb-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                    <Filter className="h-3 w-3" />
+                    Status:
+                  </span>
+                  {[
+                    { key: 'ALL', label: `All (${recentLeads.length})` },
+                    ...leadBreakdown.map((b) => ({
+                      key: b.status,
+                      label: `${labelify(b.status)} (${b.count})`,
+                    })),
+                  ].map((filterTab) => {
+                    const isActive = leadStatusFilter === filterTab.key;
+                    return (
+                      <button
+                        key={filterTab.key}
+                        type="button"
+                        onClick={() => {
+                          setLeadStatusFilter(filterTab.key);
+                          setPage(1);
+                        }}
+                        className={`rounded-md px-2 py-0.5 text-[10.5px] font-bold transition ${
+                          isActive
+                            ? 'bg-[#f7b500] text-slate-950 shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                        }`}
+                      >
+                        {filterTab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Table */}
+                {paginatedLeads.length ? (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200/80">
+                    <table className="w-full min-w-[620px] text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        <tr>
+                          <th className="px-3.5 py-2">Lead ID</th>
+                          <th className="px-3.5 py-2">Pipeline Status</th>
+                          <th className="px-3.5 py-2">Enquiry Category</th>
+                          <th className="px-3.5 py-2">Created Date</th>
+                          <th className="px-3.5 py-2">Last Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {paginatedLeads.map((lead) => (
+                          <tr key={lead.id} className="transition hover:bg-amber-50/30">
+                            <td className="px-3.5 py-2">
+                              <CopyPill text={lead.id} />
+                            </td>
+                            <td className="px-3.5 py-2">
+                              <LeadBadge value={lead.status} />
+                            </td>
+                            <td className="px-3.5 py-2 font-semibold text-slate-800">
+                              {labelify(lead.enquiryType)}
+                            </td>
+                            <td className="whitespace-nowrap px-3.5 py-2 text-slate-600">
+                              <div className="font-semibold text-slate-800">{fmtDate(lead.createdAt)}</div>
+                              <div className="text-[10px] text-slate-400">{fmtRelativeTime(lead.createdAt)}</div>
+                            </td>
+                            <td className="whitespace-nowrap px-3.5 py-2 text-slate-500 font-medium">
+                              {fmtDateTime(lead.updatedAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
-                  <EmptyState icon={<WalletCards className="h-8 w-8" />} title="No payment submissions" detail="Payment activity linked to this listing will appear here when available." />
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-8 text-center text-xs text-slate-500">
+                    <Users className="h-6 w-6 text-slate-300 mb-1.5" />
+                    <p className="font-bold text-slate-700">No matching inquiries</p>
+                    <p className="text-slate-400">No lead records found matching the active search or status filter.</p>
+                  </div>
                 )}
+
+                {/* Pagination footer */}
+                {filteredLeads.length > PAGE_SIZE ? (
+                  <div className="mt-2.5 flex flex-col gap-2 pt-2 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600">
+                    <span>
+                      Showing <strong className="text-slate-900">{(currentPage - 1) * PAGE_SIZE + 1}</strong> to{' '}
+                      <strong className="text-slate-900">{Math.min(currentPage * PAGE_SIZE, filteredLeads.length)}</strong> of{' '}
+                      <strong className="text-slate-900">{filteredLeads.length}</strong> inquiries
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPage((c) => Math.max(1, c - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        Prev
+                      </button>
+                      {paginationItems.map((item, index) =>
+                        typeof item === 'number' ? (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setPage(item)}
+                            className={`h-7 min-w-7 rounded-md px-1.5 text-xs font-bold transition ${
+                              item === currentPage
+                                ? 'bg-[#f7b500] text-slate-950 font-black'
+                                : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ) : (
+                          <span key={`el-${index}`} className="px-1 text-slate-400">
+                            …
+                          </span>
+                        )
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPage((c) => Math.min(totalPages, c + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            </div>
+
+            {/* RIGHT COLUMN: 4 COLS (Commercial & Sale Record, Pipeline Funnel, Dealer Dossier, Quality Audit) */}
+            <div className="space-y-3 xl:col-span-4">
+              {/* Commercial & Sale Outcome Card */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                      <DollarSign className="h-3.5 w-3.5" />
+                    </span>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Commercial & Financials</h2>
+                  </div>
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                    {paymentRecords.length} records
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2.5">
+                  {/* Valuation summary */}
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Listed Price</span>
+                      <span className="font-mono text-sm font-bold text-slate-900">{fmtCurrency(listing.price)}</span>
+                    </div>
+
+                    {listing.saleRecord ? (
+                      <>
+                        <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-200">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Closed Sale Price</span>
+                          <span className="font-mono text-base font-black text-emerald-700">
+                            {fmtCurrency(listing.saleRecord.soldPrice)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>Sold Date: {fmtDate(listing.saleRecord.soldAt)}</span>
+                          {saleVariance ? (
+                            <span className={`font-bold ${saleVariance.diff <= 0 ? 'text-emerald-700' : 'text-blue-700'}`}>
+                              {saleVariance.diff <= 0 ? 'Discount:' : 'Premium:'} {fmtCurrency(Math.abs(saleVariance.diff))} ({saleVariance.pct}%)
+                            </span>
+                          ) : null}
+                        </div>
+                        {listing.saleRecord.invoiceNo ? (
+                          <div className="mt-2 flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-100">
+                            <span className="text-slate-500">Invoice:</span>
+                            <span className="font-mono font-bold text-slate-800">{listing.saleRecord.invoiceNo}</span>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-200/80 text-[11px] text-slate-500">
+                        <span>Sale Status:</span>
+                        <span className="font-bold text-amber-700">Active in Marketplace</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payment Submissions List */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Payment Submissions ({paymentRecords.length})
+                    </p>
+                    {paymentRecords.length ? (
+                      <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 [scrollbar-width:thin]">
+                        {paymentRecords.map((pay) => (
+                          <div key={pay.id} className="rounded-lg border border-slate-200/90 bg-white p-2.5 shadow-2xs text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-900">{labelify(pay.method)}</span>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-slate-900">{fmtCurrency(pay.amount)}</span>
+                                <div className="mt-0.5">
+                                  <PaymentBadge value={pay.status} />
+                                </div>
+                              </div>
+                            </div>
+                            {pay.transactionRef ? (
+                              <p className="mt-1 text-[10.5px] font-mono text-slate-500 truncate">
+                                Ref: {pay.transactionRef}
+                              </p>
+                            ) : null}
+                            <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Submitted: {fmtDate(pay.submittedAt)}</span>
+                              {pay.reviewedAt ? <span>Reviewed: {fmtDate(pay.reviewedAt)}</span> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-center text-xs text-slate-400">
+                        No payment submissions recorded for this listing.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* Lead Conversion Funnel & Pipeline Health */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-50 text-purple-700">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                    </span>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Pipeline Funnel Health</h2>
+                  </div>
+                  <span className="text-[11px] font-bold text-purple-700">
+                    {leadSummary.won} Won · {leadSummary.conversionRate}%
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2.5">
+                  {/* Status distribution bars */}
+                  {leadBreakdown.length ? (
+                    <div className="space-y-2">
+                      {leadBreakdown.map((item) => {
+                        const pct = totalLeadCount ? Math.round((item.count / totalLeadCount) * 100) : 0;
+                        const cfg = LEAD_STAGE_MAP[item.status] || {
+                          label: labelify(item.status),
+                          bar: 'bg-slate-400',
+                          text: 'text-slate-600',
+                          badge: 'border-slate-200 bg-slate-100 text-slate-700',
+                        };
+                        return (
+                          <div key={item.status} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-700">{cfg.label}</span>
+                              <span className="font-mono text-slate-600">
+                                <strong className="font-bold text-slate-900">{fmt(item.count)}</strong>{' '}
+                                <span className="text-[10.5px] text-slate-400">({pct}%)</span>
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                              <div className={`h-full rounded-full ${cfg.bar}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-center text-xs text-slate-400">
+                      No lead breakdown data available yet.
+                    </div>
+                  )}
+
+                  {/* Pipeline Metric Chips */}
+                  <div className="mt-3 grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-100 text-center">
+                    <div className="rounded-lg bg-blue-50/70 p-2 border border-blue-100/60">
+                      <p className="text-[9.5px] font-bold uppercase tracking-wider text-blue-700">Active</p>
+                      <p className="mt-0.5 font-mono text-sm font-black text-blue-900">{leadSummary.active}</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50/70 p-2 border border-emerald-100/60">
+                      <p className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-700">Won</p>
+                      <p className="mt-0.5 font-mono text-sm font-black text-emerald-900">{leadSummary.won}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100/80 p-2 border border-slate-200/60">
+                      <p className="text-[9.5px] font-bold uppercase tracking-wider text-slate-600">Closed/Lost</p>
+                      <p className="mt-0.5 font-mono text-sm font-black text-slate-900">
+                        {Math.max(totalLeadCount - leadSummary.active - leadSummary.won, 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Dealer / Source Account Dossier */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+                      <Building2 className="h-3.5 w-3.5" />
+                    </span>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Dealer & Origin Account</h2>
+                  </div>
+                  {listing.partner?.id ? <CopyPill label="UID" text={listing.partner.id} /> : null}
+                </div>
+
+                <div className="mt-3 space-y-2 text-xs">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Business / Dealership Name</p>
+                    <p className="mt-1 font-bold text-slate-900">{partnerName}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Person</p>
+                      <p className="mt-1 font-bold text-slate-900 truncate">
+                        {displayValue(listing.partner?.partnerProfile?.ownerName || listing.partner?.name)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Partner Role</p>
+                      <p className="mt-1 font-bold text-slate-900 truncate">
+                        {displayValue(listing.partner?.partnerProfile?.partnerType || listing.partner?.role)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registered Email</p>
+                    <p className="mt-1 font-mono font-semibold text-slate-800 truncate">
+                      {displayValue(listing.partner?.email)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 text-[11px]">
+                    <span className="font-bold text-slate-500">Contact Preference:</span>
+                    <span className="font-bold text-amber-800">
+                      {displayValue(listing.partner?.partnerProfile?.contactPreference || listing.contactMode)}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Data Quality & Auditing Strip */}
+              <section className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  </span>
+                  <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Data Integrity & Audit</h2>
+                </div>
+
+                <div className="mt-2.5 space-y-1.5 text-xs text-slate-600">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>Sampled Durable Events:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {fmt(data?.availability.sampledTrackedViewEvents)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>Active Telemetry Days:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {data?.availability.trackedViewTimelineDays ?? '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>Tracking Model:</span>
+                    <span className="font-bold text-emerald-700">Durable Event Sink</span>
+                  </div>
+                </div>
               </section>
             </div>
           </div>
-
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6"><SectionHeading icon={<PackageCheck className="h-4 w-4" />} eyebrow="Inventory record" title="Listing profile" detail="All searchable attributes returned by the listing record." /><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><InfoItem label="Category" value={listing.category?.name} /><InfoItem label="Brand" value={listing.brand?.name} /><InfoItem label="Model" value={listing.model?.name} /><InfoItem label="Manufacturing year" value={listing.manufacturingYear} /><InfoItem label="Operating hours" value={listing.operatingHours} /><InfoItem label="Horse Power" value={listing.grossPower ? `${listing.grossPower} HP` : null} /><InfoItem label="Condition" value={listing.condition} /><InfoItem label="Contact mode" value={listing.contactMode} /><InfoItem label="Last updated" value={fmtDateTime(listing.updatedAt)} /><InfoItem label="Address" value={listing.address} icon={<MapPin className="h-3 w-3" />} /><InfoItem label="City" value={listing.locationCity} /><InfoItem label="State" value={listing.locationState} /></div>{listing.description || listing.additionalDescription ? <div className="mt-6 grid gap-4 lg:grid-cols-2"><div className="relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-b from-amber-50/50 to-transparent p-5 shadow-sm"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800"><FileText className="h-3.5 w-3.5" />Description</div><div className="mt-3 max-h-[220px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-200"><p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">{listing.description || 'Not recorded'}</p></div></div><div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50/80 to-transparent p-5 shadow-sm"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-slate-600"><FileText className="h-3.5 w-3.5" />Additional description</div><div className="mt-3 max-h-[220px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200"><p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">{listing.additionalDescription || 'Not recorded'}</p></div></div></div> : null}</section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6"><SectionHeading icon={<Landmark className="h-4 w-4" />} eyebrow="Ownership context" title="Partner and source" detail="The account and source context attached to this listing." /><div className="space-y-3"><InfoItem label="Partner / dealer" value={partnerName} /><InfoItem label="Owner name" value={listing.partner?.partnerProfile?.ownerName} /><InfoItem label="Partner type" value={listing.partner?.partnerProfile?.partnerType || listing.partner?.role} /><InfoItem label="Contact preference" value={listing.partner?.partnerProfile?.contactPreference} /><InfoItem label="Account email" value={listing.partner?.email} /></div></section>
-          </div>
-
-          <AnalyticsMediaGallery media={listing.media} />
-
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-6"><SectionHeading icon={<Users className="h-4 w-4" />} eyebrow="Buyer activity" title="Lead timeline" detail={`Showing the latest ${Math.min(recentLeads.length, 100)} records. Complete lead totals and status counts are shown above.`} action={<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{fmt(totalLeadCount)} total</span>} />{recentLeads.length ? <><div className="overflow-x-auto overflow-y-auto max-h-[400px] rounded-2xl border border-slate-200 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"><table className="w-full min-w-[720px] text-left text-sm relative"><thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 shadow-sm"><tr>{['Lead ID', 'Status', 'Enquiry type', 'Created', 'Last updated'].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{paginatedLeads.map((lead) => <tr key={lead.id} className="transition hover:bg-amber-50/30"><td className="px-4 py-3"><code className="block max-w-[180px] truncate font-mono text-[11px] text-slate-500">{lead.id}</code></td><td className="px-4 py-3"><Badge value={lead.status} type="lead" /></td><td className="px-4 py-3 text-xs font-semibold text-slate-600">{labelify(lead.enquiryType)}</td><td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{fmtDateTime(lead.createdAt)}</td><td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{fmtDateTime(lead.updatedAt)}</td></tr>)}</tbody></table></div>{recentLeads.length > PAGE_SIZE ? <div className="flex flex-col gap-3 border-x border-b border-slate-200 px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between rounded-b-2xl"><span>Showing <strong className="text-slate-950">{(currentPage - 1) * PAGE_SIZE + 1}</strong> to <strong className="text-slate-950">{Math.min(currentPage * PAGE_SIZE, recentLeads.length)}</strong> of {recentLeads.length} recent records</span><div className="flex items-center gap-1">{paginationItems.map((item, index) => typeof item === 'number' ? <button key={item} type="button" onClick={() => setPage(item)} className={`h-8 min-w-8 rounded-lg px-2 text-xs font-bold transition ${item === currentPage ? 'bg-[#f7b500] text-slate-950' : 'text-slate-600 hover:bg-slate-100'}`}>{item}</button> : <span key={`ellipsis-${index}`} className="px-1 text-slate-400">…</span>)}</div></div> : null}</> : <EmptyState icon={<Users className="h-8 w-8" />} title="No leads yet" detail="Leads will appear here once buyers enquire about this listing." />}</section>
-
-          {listing.saleRecord ? <section className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-[0_2px_12px_rgba(16,185,129,0.06)] sm:p-6"><SectionHeading icon={<CheckCircle2 className="h-4 w-4" />} eyebrow="Sale outcome" title="Sale record" detail="The recorded sale outcome attached to this listing." /><div className="grid gap-3 sm:grid-cols-2"><InfoItem label="Sold price" value={fmtCurrency(listing.saleRecord.soldPrice)} /><InfoItem label="Sold date" value={fmtDate(listing.saleRecord.soldAt)} icon={<Clock3 className="h-3 w-3" />} /></div></section> : null}
         </>
       ) : null}
-    </main>
+    </div>
   );
 }

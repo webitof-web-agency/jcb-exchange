@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { NextFunction, Request, Response } from 'express';
 import prisma from '../../lib/prisma';
+import { getApprovedPartnerProfileWhere } from '../../utils/publicListingVisibility';
 import { CRM_ANY_PERMISSIONS, CRM_PERMISSIONS as P, LEGACY_ENQUIRIES_PERMISSION } from './permissions';
 import { forbidden } from './http';
 
@@ -70,6 +71,12 @@ export const requireCrmUser = async (req: Request, res: Response, next: NextFunc
     if (!user?.id) return res.status(401).json({ error: 'Authentication required.' });
     if (!['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE', 'PARTNER'].includes(user.role)) {
       return res.status(403).json({ error: 'CRM access required.' });
+    }
+    // A customer who has only started partner signup is treated as PARTNER by the auth layer;
+    // the CRM opens once the partner is approved, as listing creation does.
+    if (user.role === 'PARTNER') {
+      const approved = await prisma.partnerProfile.count({ where: { userId: user.id, ...getApprovedPartnerProfileWhere() } });
+      if (!approved) return res.status(403).json({ error: 'The CRM opens once your partner KYC is approved.' });
     }
     const permissions = user.role === 'EMPLOYEE' ? await loadPermissions(user.id) : [];
     if (user.role === 'EMPLOYEE' && !permissions.includes('ALL_ACCESS') && !CRM_ANY_PERMISSIONS.some((key) => permissions.includes(key))) {

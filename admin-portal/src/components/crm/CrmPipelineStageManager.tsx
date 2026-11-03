@@ -5,6 +5,7 @@ import { Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { CrmLoadingState, crmError } from './crmShared';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 export type CrmPipelineStage = {
   id: string;
@@ -78,7 +79,7 @@ export default function CrmPipelineStageManager({ onChanged }: { onChanged: () =
 
   const deleteStage = async (stage: CrmPipelineStage) => {
     if (stage.usageCount > 0 || (!stage.isTerminal && openStageCount <= 1) || stage.code === 'WON' || stage.code === 'LOST') return;
-    if (!window.confirm(`Delete the empty stage "${stage.name}"?`)) return;
+    if (!(await confirmDelete({ title: 'Delete this pipeline stage?', itemName: stage.name }))) return;
     try {
       await api.delete(`/crm/pipeline-stages/${encodeURIComponent(stage.code)}`);
       toast.success('Pipeline stage deleted.');

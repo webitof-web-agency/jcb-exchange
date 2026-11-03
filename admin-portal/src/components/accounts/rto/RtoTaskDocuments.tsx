@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { getUploadValidationError, uploadFileToServer } from '@/lib/fileUpload';
 import { createSecureDocumentPreviewUrl, downloadSecureDocument } from '@/lib/secureDownload';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 export type RtoTaskDocument = {
   id: string;
@@ -94,7 +95,7 @@ export default function RtoTaskDocuments<TWorkspace>({
   };
 
   const remove = async (document: RtoTaskDocument) => {
-    if (!window.confirm(`Remove "${document.fileName}" from ${taskLabel}?`)) return;
+    if (!(await confirmDelete({ title: `Remove this document from ${taskLabel}?`, itemName: document.fileName, confirmLabel: 'Remove' }))) return;
     setBusy(document.id);
     try {
       const response = await api.delete<TWorkspace>(`${base}/${encodeURIComponent(document.id)}`);

@@ -18,6 +18,7 @@ import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
 import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { getAccountDeletePermissions, getAccountUpdatePermissions } from '@/lib/accountsPermissions';
+import { generateAdminRtoDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 import { useAuthStore } from '@/store/authStore';
 import BrandLoader from '@/components/ui/BrandLoader';
 import {
@@ -211,6 +212,12 @@ export default function SellAccountDetailView() {
     return () => { cancelled = true; };
   }, [id]);
 
+  useEffect(() => {
+    if (!record) return;
+    const canonicalPath = generateAdminSoldVehicleDetailPath(listPath, record);
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [listPath, pathname, record, router]);
+
   if (loading) return <BrandLoader variant="section" size="sm" bg="light" text="Loading sold vehicle..." />;
 
   if (!record) {
@@ -312,12 +319,12 @@ export default function SellAccountDetailView() {
             <StatusIcon className="h-3.5 w-3.5" />{statusInfo.label}
           </span>
           {record.rtoRecord?.id ? (
-            <button type="button" onClick={() => router.push(`${rtoBasePath}/${encodeURIComponent(record.rtoRecord!.id)}${record.isLocked ? '' : '/edit'}`)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
+            <button type="button" onClick={() => router.push(`${generateAdminRtoDetailPath(rtoBasePath, { id: record.rtoRecord!.id, vehicleNumber: record.vehicleNumber })}${record.isLocked ? '' : '/edit'}`)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
               <ClipboardCheck className="h-3.5 w-3.5" />RTO Work{rtoProgress.total ? ` · ${rtoProgress.done}/${rtoProgress.total}` : ''}
             </button>
           ) : null}
           {!record.isLocked && canUpdate ? (
-            <button onClick={() => router.push(`${listPath}/${encodeURIComponent(record.id)}/edit`)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">
+            <button onClick={() => router.push(`${generateAdminSoldVehicleDetailPath(listPath, record)}/edit`)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">
               <Edit2 className="h-3.5 w-3.5" />Edit
             </button>
           ) : null}

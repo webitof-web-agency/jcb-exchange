@@ -374,7 +374,7 @@ function Contacts() {
         }
       />
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
+      <section className="w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
         {/* FILTERS TOOLBAR */}
         <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3.5 sm:p-4 md:grid-cols-3 xl:grid-cols-[minmax(260px,2fr)_repeat(4,minmax(0,1fr))]">
           <form
@@ -458,17 +458,17 @@ function Contacts() {
             description="Try modifying search keywords or add a new customer contact directly."
           />
         ) : (
-          <div className="overflow-x-auto border-t border-slate-100">
-            <table className="w-full min-w-[960px] text-left text-xs">
+          <div className="w-full overflow-x-auto border-t border-slate-100 [scrollbar-width:thin]">
+            <table className="w-full min-w-full text-left text-xs">
               <thead className={tableHeadClass}>
                 <tr>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Customer Identity</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Role, Lifecycle & Stage</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Lead History</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Next Follow-up</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Assigned To</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700">Created</th>
-                  <th className="px-3.5 py-2.5 font-bold text-slate-700 text-right">Quick Dial</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 min-w-[200px]">Customer Identity</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 min-w-[180px]">Role, Lifecycle &amp; Stage</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 whitespace-nowrap min-w-[120px]">Lead History</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 whitespace-nowrap min-w-[130px]">Next Follow-up</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 whitespace-nowrap min-w-[140px]">Assigned To</th>
+                  <th className="px-3.5 py-2.5 font-bold text-slate-700 whitespace-nowrap min-w-[100px]">Created</th>
+                  <th className="w-20 px-3.5 py-2.5 font-bold text-slate-700 text-right whitespace-nowrap">Quick Dial</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -480,7 +480,7 @@ function Contacts() {
                     <tr
                       key={`${c.id}:${c.crmProfile?.owner?.id || ''}`}
                       className="cursor-pointer hover:bg-slate-50/80 transition-colors"
-                      onClick={() => router.push(contactHref(base, c.id))}
+                      onClick={() => router.push(contactHref(base, c))}
                     >
                       <td className={cellClass}>
                         <div className="flex items-center gap-2">
@@ -556,7 +556,7 @@ function Contacts() {
                         <span className="text-[11px] text-slate-500">{fmtDate(c.createdAt)}</span>
                       </td>
 
-                      <td className={`${cellClass} text-right`} onClick={(e) => e.stopPropagation()}>
+                      <td className={`${cellClass} w-20 text-right whitespace-nowrap`} onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {links.wa ? (
                             <a
@@ -871,7 +871,7 @@ function ContactForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
 
 export default function CrmContactsPage() {
   return (
-    <CrmPageFrame>
+    <CrmPageFrame fluid={true}>
       <Contacts />
     </CrmPageFrame>
   );

@@ -22,6 +22,8 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import FinancePageHeader from '@/components/financeWorkspace/FinancePageHeader';
 import { Badge, Button, Field, inputClass, Modal, ModalFooter } from '@/components/financeWorkspace/ui';
+import { confirmDelete } from '@/store/confirmDeleteStore';
+import { generateFinanceTransactionDetailPath } from '@/lib/routePaths';
 
 type FinanceType = 'DEBIT' | 'CREDIT';
 type PaymentMethod = 'CASH' | 'UPI' | 'NEFT' | 'RTGS' | 'IMPS' | 'BANK_TRANSFER' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'CHEQUE' | 'OTHER';
@@ -211,6 +213,13 @@ export default function ExpenseDetailPage() {
     void loadDetail();
   }, [loadDetail]);
 
+  // Show the readable URL whichever link opened the record.
+  useEffect(() => {
+    if (!transaction) return;
+    const canonicalPath = generateFinanceTransactionDetailPath(listPath, transaction);
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [listPath, pathname, router, transaction]);
+
   useEffect(() => {
     if (!hasHydrated || !isAuthenticated || !canRead) return;
     api
@@ -286,7 +295,11 @@ export default function ExpenseDetailPage() {
 
   const deleteTransaction = async () => {
     if (!transaction) return;
-    if (!window.confirm(`Are you sure you want to delete this transaction of ${moneyLabel(transaction.amount)}?`)) return;
+    if (!(await confirmDelete({
+      title: 'Delete this transaction?',
+      itemName: moneyLabel(transaction.amount),
+      note: 'The transaction is marked Void: it leaves totals and reports but stays in the audit trail.',
+    }))) return;
 
     try {
       await api.delete(`/finance/transactions/${transaction.id}`);

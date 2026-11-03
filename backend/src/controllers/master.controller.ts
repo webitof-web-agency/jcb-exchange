@@ -112,6 +112,15 @@ const getPublicListingAvailability = (status?: string | null) => {
   }
 };
 
+// The website shows "Sold to Sun***". Mask on the server so the full name (or the phone/email that a
+// website payment falls back to) never reaches the browser.
+export const maskPublicBuyerName = (name?: string | null) => {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.length <= 3) return trimmed.padEnd(6, '*');
+  return `${trimmed.slice(0, 3)}***`;
+};
+
 const getPublicListingPrice = (listing: ListingPricingSource & {
   status?: string | null;
   saleRecord?: {
@@ -1551,7 +1560,7 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
       createdAt: listing.createdAt,
       updatedAt: listing.updatedAt,
       saleRecord: listing.status === 'SOLD' && listing.saleRecord ? {
-        buyerName: listing.saleRecord.buyerName,
+        buyerName: maskPublicBuyerName(listing.saleRecord.buyerName),
         buyerCity: listing.saleRecord.buyerCity,
         buyerState: listing.saleRecord.buyerState,
         soldAt: listing.saleRecord.soldAt,

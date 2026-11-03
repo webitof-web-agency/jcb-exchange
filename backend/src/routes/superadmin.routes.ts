@@ -5,6 +5,7 @@ import {
   getAdminPartnerOnboarding,
   getAdminPartners,
   deleteManagedUser,
+  getManagedUserDeletionImpact,
   deletePartnerUser,
   getAdminListings,
   getFinanceSupportContent,
@@ -107,6 +108,10 @@ const canViewVerifications = requireSuperAdminOrEmployeePermissions(['kyc.manage
 const canManageEnquiries = requireSuperAdminOrEmployeePermissions(['enquiries.manage']);
 const canViewVisitors = requireSuperAdminOrEmployeePermissions(['visitors.read']);
 const canUpdateAccountStatus = requireSuperAdminOrEmployeePermissions(['users.update', 'partners.change_status', 'visitors.change_status']);
+// The delete dialog also offers deactivate / suspend / block, so status managers may open it too.
+const canViewDeletionImpact = requireSuperAdminOrEmployeePermissions([
+  'users.delete', 'partners.delete', 'visitors.delete', 'users.update', 'partners.change_status', 'visitors.change_status',
+]);
 const canManageCategories = requireSuperAdminOrEmployeePermissions(['categories.read', 'categories.create', 'categories.update', 'categories.delete']);
 const canManageListings = requireSuperAdminOrEmployeePermissions(['partners.read', 'kyc.manage', 'listings.read']);
 const canAccessBlogs = requireSuperAdminOrEmployeePermissions(['blog.read', 'blog.create', 'blog.update', 'blog.delete']);
@@ -169,6 +174,7 @@ router.post('/users', canCreateUsers, createManagedUser);
 router.post('/partners', canCreatePartners, createPartnerUser);
 router.patch('/users/:id', canUpdateUsers, updateManagedUserAccount);
 router.patch('/users/:id/password', canUpdateUsers, resetManagedUserPassword);
+router.get('/users/:id/delete-impact', canViewDeletionImpact, getManagedUserDeletionImpact);
 router.delete('/users/:id', canDeleteUsers, deleteManagedUser);
 router.get('/partners/:id/onboarding', canViewPartnerOnboarding, getAdminPartnerOnboarding);
 router.put('/partners/:id/onboarding', canEditPartnerOnboarding, saveAdminPartnerOnboarding);
@@ -181,6 +187,7 @@ router.patch('/verifications/:id/status', canManageVerifications, updateVerifica
 router.patch('/listings/:id/status', canManageListings, updateAdminListingStatus);
 router.patch('/users/:id/status', canUpdateAccountStatus, updateAdminUserStatus);
 router.patch('/partners/:id', canUpdatePartners, updatePartnerUser);
+router.get('/partners/:id/delete-impact', canViewDeletionImpact, getManagedUserDeletionImpact);
 router.delete('/partners/:id', canDeletePartners, deletePartnerUser);
 
 // Custom Roles
