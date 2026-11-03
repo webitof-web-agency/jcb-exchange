@@ -857,6 +857,7 @@ export default function AuthModal() {
                   ? (emailOtpChallengeId ? handleVerifyEmailOtp : handleSendEmailOtp)
                   : handleSubmit
             }
+            autoComplete="off"
             className="space-y-3"
           >
             {!isPasswordReset ? (
@@ -956,9 +957,12 @@ export default function AuthModal() {
                   <div className="relative">
                     <input
                       type="email"
+                      name={isLogin ? 'jcb-login-email' : 'email'}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      autoComplete={isLogin ? 'username' : 'email'}
+                      autoComplete={isLogin ? 'new-password' : 'email'}
+                      data-lpignore={isLogin ? 'true' : undefined}
+                      data-1p-ignore={isLogin ? 'true' : undefined}
                       className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                       placeholder="you@example.com"
                       required
@@ -1056,9 +1060,12 @@ export default function AuthModal() {
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
+                        name={isLogin ? 'jcb-login-password' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        autoComplete={isLogin ? 'current-password' : 'new-password'}
+                        autoComplete="new-password"
+                        data-lpignore={isLogin ? 'true' : undefined}
+                        data-1p-ignore={isLogin ? 'true' : undefined}
                         className="block w-full rounded-md border border-gray-300 px-4 py-2 pl-10 pr-10 text-sm outline-none focus:border-jcb-yellow focus:ring-jcb-yellow"
                         placeholder="********"
                         required
