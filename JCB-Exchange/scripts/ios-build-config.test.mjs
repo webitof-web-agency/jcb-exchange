@@ -47,7 +47,7 @@ test('Firebase configuration is optional locally but copied into release bundles
 
 test('GitHub Actions exposes a signed IPA workflow with safe signing inputs', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /runs-on: macos-14/);
+  assert.match(workflow, /runs-on: macos-15/);
   assert.match(workflow, /build_output:/);
   assert.match(workflow, /- ipa/);
   assert.match(workflow, /Xcode_16\.4\.app\/Contents\/Developer/);
