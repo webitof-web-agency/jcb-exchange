@@ -59,6 +59,7 @@ backups/
 
 # Local Codex skill/playbook artifacts (do not commit)
 codex-skills/
+/.codex-tmp/
 docs/GOOGLE_DRIVE_MEDIA_PORTING_GUIDE.md
 
 # Logs
