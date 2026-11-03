@@ -174,6 +174,12 @@ jobs:
             exit 1
           fi
 
+          PROFILE_APS_ENVIRONMENT="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$PROFILE_PLIST_PATH" 2>/dev/null || true)"
+          if [[ "$PROFILE_APS_ENVIRONMENT" != "production" ]]; then
+            echo "::error::The provisioning profile must include aps-environment=production for an App Store IPA."
+            exit 1
+          fi
+
       - name: Archive signed iOS app
         env:
           VERSION_NAME: ${{ inputs.version_name }}

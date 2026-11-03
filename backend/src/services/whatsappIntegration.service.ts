@@ -17,6 +17,7 @@ import {
   getWhatsAppPublishedBroadcastConsentCategory,
   getWhatsAppPublishedBroadcastRecipientType,
   getWhatsAppPublishedTemplateComponents,
+  getMarketplaceTemplateComponents,
   type WhatsAppTemplatePurpose,
   type WhatsAppPublishedBroadcastEvent,
 } from '../modules/whatsapp-core';
@@ -695,6 +696,12 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
       return { queued: false, reason: decision.shouldQueue ? 'AUTOMATION_CONFIGURATION_INVALID' : decision.reason };
     }
 
+    const resolvedTemplateComponents = input.templateComponents ?? getMarketplaceTemplateComponents(
+      input.eventCode,
+      input.payloadSnapshot || {},
+      rule.template.components,
+    );
+
     const dedupeKey = buildDedupeKey(input, decision.recipientPhone);
     const existing = await prisma.whatsAppMessageLog.findUnique({ where: { dedupeKey } });
     if (existing) return { queued: false, duplicate: true, messageLogId: existing.id };
@@ -712,7 +719,7 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
           templateId: rule.template.id,
           templateName: rule.template.name,
           templateLanguage: rule.template.language,
-          templateComponents: input.templateComponents || [],
+          templateComponents: resolvedTemplateComponents,
         },
         outbox: {
           create: {
@@ -721,7 +728,7 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
               templateId: rule.template.id,
               templateName: rule.template.name,
               templateLanguage: rule.template.language,
-              templateComponents: input.templateComponents || [],
+              templateComponents: resolvedTemplateComponents,
               ...(typeof input.payloadSnapshot?.offerLetterUrl === 'string' ? { offerLetterUrl: input.payloadSnapshot.offerLetterUrl } : {}),
               ...(typeof input.payloadSnapshot?.offerLetterFileName === 'string' ? { offerLetterFileName: input.payloadSnapshot.offerLetterFileName } : {}),
             },

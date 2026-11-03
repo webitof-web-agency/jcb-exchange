@@ -1160,6 +1160,8 @@ export default function SellVehicleModal({
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
         fuelType: mapped.fuelType || current.fuelType,
+        transmission: mapped.transmission || current.transmission,
+        grossPower: mapped.grossPower || current.grossPower,
         title: current.title.trim() || mapped.titleSuggestion,
         insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
         rtoDetails: {
@@ -1262,6 +1264,8 @@ export default function SellVehicleModal({
         engineNumber: mapped.engineNumber || current.engineNumber,
         previousOwners: mapped.previousOwners || current.previousOwners,
         fuelType: mapped.fuelType || current.fuelType,
+        transmission: mapped.transmission || current.transmission,
+        grossPower: mapped.grossPower || current.grossPower,
         title: current.title.trim() || mapped.titleSuggestion,
         insuranceExpiry: mapped.insuranceExpiry || current.insuranceExpiry,
         rtoDetails: { ...current.rtoDetails, ...mapped.rtoDetails },

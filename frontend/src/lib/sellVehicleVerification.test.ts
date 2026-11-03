@@ -88,6 +88,47 @@ test('maps financing aliases and string boolean values for Sell Vehicle autofill
   assert.equal(mapped.rtoDetails.financerName, 'HDFC BANK');
 });
 
+test('maps nested financing provider fields used by RC responses', () => {
+  const mapped = mapProviderVehicleToListing({
+    details: {
+      finance_company: 'HDFC BANK',
+      hire_purchase_status: 'ACTIVE',
+    },
+  });
+
+  assert.equal(mapped.rtoDetails.hirePurchaseStatus, 'ACTIVE');
+  assert.equal(mapped.rtoDetails.financerName, 'HDFC BANK');
+});
+
+test('maps provider status, HSRP and non-ISO date aliases into the matching form inputs', () => {
+  const mapped = mapProviderVehicleToListing({
+    rc_number: 'CG04HY3874',
+    owner_number: 2,
+    registration_date: '23-09-2015',
+    registration_valid_upto: '22/09/2030',
+    tax_valid_upto: '31-03-2030',
+    fit_up_to: '31/03/2030',
+    insurance_upto: '2030/03/31',
+    pucc_upto: '2030.03.31',
+    hsrp_status: 'YES',
+    hsrp_number: 'CG04-HSRP-1234',
+    registered_at: 'Raipur RTO, Chhattisgarh',
+  });
+
+  assert.equal(mapped.registrationDate, '2015-09-23');
+  assert.equal(mapped.registrationUpto, '2030-09-22');
+  assert.equal(mapped.previousOwners, '2');
+  assert.equal(mapped.rtoDetails.taxStatus, 'VALID');
+  assert.equal(mapped.rtoDetails.taxValidUntil, '2030-03-31');
+  assert.equal(mapped.rtoDetails.fitnessValidUntil, '2030-03-31');
+  assert.equal(mapped.rtoDetails.insuranceStatus, 'VALID');
+  assert.equal(mapped.insuranceExpiry, '2030-03-31');
+  assert.equal(mapped.rtoDetails.pucValidUntil, '2030-03-31');
+  assert.equal(mapped.rtoDetails.hsrpStatus, 'YES');
+  assert.equal(mapped.rtoDetails.hsrpNumber, 'CG04-HSRP-1234');
+  assert.equal(mapped.rtoDetails.rtoOffice, 'Raipur RTO, Chhattisgarh');
+});
+
 test('does not call a missing or malformed provider date valid', () => {
   assert.equal(getProviderDateStatus('', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');
   assert.equal(getProviderDateStatus('2026-02-30', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');

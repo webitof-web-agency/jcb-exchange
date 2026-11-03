@@ -263,8 +263,12 @@ export class ChassisToRcVerificationService {
         : undefined;
       const body = await runtime.provider.verifyChassisToRc({ chassis_number: chassisNumber });
       const { response, data, details } = ensureProviderData(body);
+      const providerFields = Object.fromEntries(
+        Object.entries(data).filter(([key]) => key !== 'details'),
+      );
       const normalized = normalizeRcOwnerHistoryResult({
         ...details,
+        ...providerFields,
         client_id: data.client_id,
         rc_number: data.rc_number ?? details.rc_number,
         vehicle_chasi_number: data.vehicle_chasi_number ?? details.vehicle_chasi_number,

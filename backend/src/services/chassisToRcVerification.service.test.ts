@@ -55,6 +55,11 @@ test('calls the chassis-to-RC endpoint and persists an encrypted normalized resu
             client_id: 'chassis-client-1',
             rc_number: 'PB00AZ1234',
             vehicle_chasi_number: 'MALBM51ABC123456',
+            vehicle_engine_number: 'ENGINE-AT-DATA-LEVEL',
+            financer: 'HDFC BANK',
+            financed: 'true',
+            hsrp_number: 'PB00-HSRP-1234',
+            hsrp_status: 'YES',
             details: {
               rc_number: 'PB00AZ1234',
               owner_name: 'TARSEM SINGH',
@@ -76,6 +81,11 @@ test('calls the chassis-to-RC endpoint and persists an encrypted normalized resu
   assert.equal(result.record.maskedChassisNumber, 'MALB********3456');
   assert.equal(result.record.rcNumber, 'PB00AZ1234');
   assert.equal((result.result as Record<string, unknown>).ownerName, 'TARSEM SINGH');
+  assert.equal((result.result as Record<string, unknown>).vehicleEngineNumber, 'ENGINE-AT-DATA-LEVEL');
+  assert.equal((result.result as Record<string, unknown>).financer, 'HDFC BANK');
+  assert.equal((result.result as Record<string, unknown>).financed, true);
+  assert.equal((result.result as Record<string, unknown>).hsrpNumber, 'PB00-HSRP-1234');
+  assert.equal((result.result as Record<string, unknown>).hsrpStatus, 'YES');
   assert.equal(records[0].encryptedResult.includes('PRIVATE-ENGINE'), false);
   assert.deepEqual(auditEvents.map((event) => event.action), [
     'CHASSIS_TO_RC_REQUESTED',

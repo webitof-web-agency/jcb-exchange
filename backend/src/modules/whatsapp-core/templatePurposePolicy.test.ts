@@ -28,6 +28,11 @@ test('infers automation purpose from prefixed template names when Meta returns G
   assert.equal(resolveWhatsAppTemplatePurpose('recruitment_offer_sent', 'GENERAL'), 'RECRUITMENT');
 });
 
+test('maps Meta utility templates into marketplace automation automatically', () => {
+  assert.equal(resolveWhatsAppTemplatePurpose('vehicle_sale_invoice', 'UTILITY'), 'MARKETPLACE');
+  assert.equal(resolveWhatsAppTemplatePurpose('vehicle_payment_receipt', 'utility'), 'MARKETPLACE');
+});
+
 test('keeps valid explicit campaign purposes for non-prefixed templates', () => {
   assert.equal(resolveWhatsAppTemplatePurpose('prime_offer', 'MARKETING'), 'MARKETING');
   assert.equal(resolveWhatsAppTemplatePurpose('unknown_template', 'GENERAL'), null);
