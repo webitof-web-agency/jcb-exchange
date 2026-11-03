@@ -316,6 +316,24 @@ const providerFailure = (error: SurepassProviderError) => {
   return new AadhaarVerificationError(safe.message, safe.status, safe.code);
 };
 
+const aadhaarDownloadLocks = new Map<string, Promise<void>>();
+
+const withAadhaarDownloadLock = async <T>(recordId: string, task: () => Promise<T>): Promise<T> => {
+  const previous = aadhaarDownloadLocks.get(recordId) || Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  const queued = previous.then(() => current);
+  aadhaarDownloadLocks.set(recordId, queued);
+  await previous;
+
+  try {
+    return await task();
+  } finally {
+    release();
+    if (aadhaarDownloadLocks.get(recordId) === queued) aadhaarDownloadLocks.delete(recordId);
+  }
+};
+
 export class AadhaarVerificationService {
   private readonly record: AadhaarRecordRepository;
   private readonly template: AadhaarTemplateRepository;
@@ -443,31 +461,44 @@ export class AadhaarVerificationService {
       return { record: recordSummary(record), result: JSON.parse(decryptPanData(record.encryptedResult, runtime.dataSecret)), template: aadhaarTemplateSummary(record.template), cacheHit: true as const };
     }
     if (record.status !== AadhaarVerificationStatus.PENDING || record.providerClientId !== clientId) throw new AadhaarVerificationError('Aadhaar verification session has expired or is invalid.', 409, 'invalid_session');
-    const runtime = await this.getRuntime();
-    try {
-      const body = await runtime.provider.downloadAadhaar(clientId);
-      const { response, data } = responseData(body);
-      const result = normalizeAadhaarDownloadResult(data);
-      if (!result.clientId || !result.fullName || !result.maskedAadhaar) throw new AadhaarVerificationError('Surepass returned incomplete Aadhaar data.', 502, 'provider_malformed_response');
-      if (record.maskedAadhaar && record.maskedAadhaar !== 'PENDING' && !aadhaarMatchesMasked(record.maskedAadhaar, result.maskedAadhaar)) {
-        throw new AadhaarVerificationError('The DigiLocker Aadhaar does not match the entered Aadhaar number.', 409, 'aadhaar_mismatch');
+    return withAadhaarDownloadLock(record.id, async () => {
+      const latestRecord = await this.record.findUnique({ where: { id: record.id }, include: { template: true } });
+      if (!latestRecord || latestRecord.requestedById !== requestedById) {
+        throw new AadhaarVerificationError('Aadhaar verification session was not found.', 404, 'session_not_found');
       }
-      const completedAt = new Date();
-      const enrichedResult: SafeResult = {
-        ...result,
-        issueDate: result.issueDate || completedAt.toISOString().slice(0, 10),
-      };
-      const completed = await this.record.update({ where: { id: record.id }, data: { status: AadhaarVerificationStatus.SUCCESS, providerClientId: result.clientId, maskedAadhaar: result.maskedAadhaar, messageCode: safeString(response.message_code, 100), encryptedResult: encryptPanData(JSON.stringify(enrichedResult), runtime.dataSecret), rawDataExpiresAt: getAadhaarRawDataExpiresAt(completedAt), completedAt }, include: { template: true } });
-      return { record: recordSummary(completed), result: enrichedResult, template: null, cacheHit: false as const };
-    } catch (error) {
-      const normalized = error instanceof SurepassProviderError
-        ? providerFailure(error)
-        : error instanceof AadhaarVerificationError
-          ? error
-          : new AadhaarVerificationError('Aadhaar data could not be downloaded.', 502, 'verification_failed');
-      await this.markFailed(record.id, normalized, error instanceof SurepassProviderError ? error.messageCode : null);
-      throw normalized;
-    }
+      const runtime = await this.getRuntime();
+      if (latestRecord.status === AadhaarVerificationStatus.SUCCESS && latestRecord.encryptedResult) {
+        return { record: recordSummary(latestRecord), result: JSON.parse(decryptPanData(latestRecord.encryptedResult, runtime.dataSecret)), template: aadhaarTemplateSummary(latestRecord.template), cacheHit: true as const };
+      }
+      if (latestRecord.status !== AadhaarVerificationStatus.PENDING || latestRecord.providerClientId !== clientId) {
+        throw new AadhaarVerificationError('Aadhaar verification session has expired or is invalid.', 409, 'invalid_session');
+      }
+
+      try {
+        const body = await runtime.provider.downloadAadhaar(clientId);
+        const { response, data } = responseData(body);
+        const result = normalizeAadhaarDownloadResult(data);
+        if (!result.clientId || !result.fullName || !result.maskedAadhaar) throw new AadhaarVerificationError('Surepass returned incomplete Aadhaar data.', 502, 'provider_malformed_response');
+        if (latestRecord.maskedAadhaar && latestRecord.maskedAadhaar !== 'PENDING' && !aadhaarMatchesMasked(latestRecord.maskedAadhaar, result.maskedAadhaar)) {
+          throw new AadhaarVerificationError('The DigiLocker Aadhaar does not match the entered Aadhaar number.', 409, 'aadhaar_mismatch');
+        }
+        const completedAt = new Date();
+        const enrichedResult: SafeResult = {
+          ...result,
+          issueDate: result.issueDate || completedAt.toISOString().slice(0, 10),
+        };
+        const completed = await this.record.update({ where: { id: latestRecord.id }, data: { status: AadhaarVerificationStatus.SUCCESS, providerClientId: result.clientId, maskedAadhaar: result.maskedAadhaar, messageCode: safeString(response.message_code, 100), encryptedResult: encryptPanData(JSON.stringify(enrichedResult), runtime.dataSecret), rawDataExpiresAt: getAadhaarRawDataExpiresAt(completedAt), completedAt }, include: { template: true } });
+        return { record: recordSummary(completed), result: enrichedResult, template: null, cacheHit: false as const };
+      } catch (error) {
+        const normalized = error instanceof SurepassProviderError
+          ? providerFailure(error)
+          : error instanceof AadhaarVerificationError
+            ? error
+            : new AadhaarVerificationError('Aadhaar data could not be downloaded.', 502, 'verification_failed');
+        await this.markFailed(latestRecord.id, normalized, error instanceof SurepassProviderError ? error.messageCode : null);
+        throw normalized;
+      }
+    });
   }
 
   async checkStatus(recordIdValue: unknown, requestedById: string, role?: string) {
@@ -510,48 +541,67 @@ export class AadhaarVerificationService {
 
     if (record.status === AadhaarVerificationStatus.PENDING && record.providerClientId) {
       try {
-        const runtime = await this.getRuntime();
-        const body = await runtime.provider.downloadAadhaar(record.providerClientId);
-        const { response, data } = responseData(body);
-        const result = normalizeAadhaarDownloadResult(data);
-        if (result.clientId && result.fullName && result.maskedAadhaar) {
-          if (record.maskedAadhaar && record.maskedAadhaar !== 'PENDING' && !aadhaarMatchesMasked(record.maskedAadhaar, result.maskedAadhaar)) {
-            const mismatchError = new AadhaarVerificationError('The DigiLocker Aadhaar does not match the entered Aadhaar number.', 409, 'aadhaar_mismatch');
-            await this.markFailed(record.id, mismatchError);
+        return await withAadhaarDownloadLock(record.id, async () => {
+          const latestRecord = await this.record.findUnique({ where: { id: record.id }, include: { template: true } });
+          if (!latestRecord) return { status: AadhaarVerificationStatus.PENDING, ready: false };
+          if (latestRecord.status === AadhaarVerificationStatus.SUCCESS && latestRecord.encryptedResult) {
+            const runtime = await this.getRuntime();
             return {
-              status: AadhaarVerificationStatus.FAILED,
-              ready: false,
-              safeMessage: mismatchError.message,
-              messageCode: 'aadhaar_mismatch',
-              record: recordSummary(record),
+              status: latestRecord.status,
+              ready: true,
+              record: recordSummary(latestRecord),
+              result: JSON.parse(decryptPanData(latestRecord.encryptedResult, runtime.dataSecret)),
+              template: aadhaarTemplateSummary(latestRecord.template),
             };
           }
-          const completedAt = new Date();
-          const enrichedResult: SafeResult = {
-            ...result,
-            issueDate: result.issueDate || completedAt.toISOString().slice(0, 10),
-          };
-          const completed = await this.record.update({
-            where: { id: record.id },
-            data: {
-              status: AadhaarVerificationStatus.SUCCESS,
-              providerClientId: result.clientId,
-              maskedAadhaar: result.maskedAadhaar,
-              messageCode: safeString(response.message_code, 100),
-              encryptedResult: encryptPanData(JSON.stringify(enrichedResult), runtime.dataSecret),
-              rawDataExpiresAt: getAadhaarRawDataExpiresAt(completedAt),
-              completedAt,
-            },
-            include: { template: true },
-          });
-          return {
-            status: completed.status,
-            ready: true,
-            record: recordSummary(completed),
-            result: enrichedResult,
-            template: null,
-          };
-        }
+          if (latestRecord.status !== AadhaarVerificationStatus.PENDING || !latestRecord.providerClientId) {
+            return { status: latestRecord.status, ready: false, record: recordSummary(latestRecord) };
+          }
+
+          const runtime = await this.getRuntime();
+          const body = await runtime.provider.downloadAadhaar(latestRecord.providerClientId);
+          const { response, data } = responseData(body);
+          const result = normalizeAadhaarDownloadResult(data);
+          if (result.clientId && result.fullName && result.maskedAadhaar) {
+            if (latestRecord.maskedAadhaar && latestRecord.maskedAadhaar !== 'PENDING' && !aadhaarMatchesMasked(latestRecord.maskedAadhaar, result.maskedAadhaar)) {
+              const mismatchError = new AadhaarVerificationError('The DigiLocker Aadhaar does not match the entered Aadhaar number.', 409, 'aadhaar_mismatch');
+              await this.markFailed(latestRecord.id, mismatchError);
+              return {
+                status: AadhaarVerificationStatus.FAILED,
+                ready: false,
+                safeMessage: mismatchError.message,
+                messageCode: 'aadhaar_mismatch',
+                record: recordSummary(latestRecord),
+              };
+            }
+            const completedAt = new Date();
+            const enrichedResult: SafeResult = {
+              ...result,
+              issueDate: result.issueDate || completedAt.toISOString().slice(0, 10),
+            };
+            const completed = await this.record.update({
+              where: { id: latestRecord.id },
+              data: {
+                status: AadhaarVerificationStatus.SUCCESS,
+                providerClientId: result.clientId,
+                maskedAadhaar: result.maskedAadhaar,
+                messageCode: safeString(response.message_code, 100),
+                encryptedResult: encryptPanData(JSON.stringify(enrichedResult), runtime.dataSecret),
+                rawDataExpiresAt: getAadhaarRawDataExpiresAt(completedAt),
+                completedAt,
+              },
+              include: { template: true },
+            });
+            return {
+              status: completed.status,
+              ready: true,
+              record: recordSummary(completed),
+              result: enrichedResult,
+              template: null,
+            };
+          }
+          return { status: latestRecord.status, ready: false, record: recordSummary(latestRecord) };
+        });
       } catch {
         // Verification still pending in DigiLocker popup — do not mark failed.
       }

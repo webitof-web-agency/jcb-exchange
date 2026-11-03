@@ -1,14 +1,10 @@
 import prisma from '../lib/prisma';
 import { normalizeSmsRecipientPhone } from '../modules/sms-core';
+import { mergePublishedBroadcastRecipients, type PublishedBroadcastRecipient } from '../utils/publishedBroadcastAudience';
 
 export type SmsPublishedBroadcastAudience = 'MARKETPLACE' | 'RECRUITMENT';
 
-export type SmsAudienceRecipient = {
-  recipientType: 'CUSTOMER' | 'CANDIDATE';
-  recipientPhone: string;
-  sourceEntityType: 'USER' | 'CANDIDATE';
-  sourceEntityId: string;
-};
+export type SmsAudienceRecipient = PublishedBroadcastRecipient;
 
 export const getSmsPublishedBroadcastRecipients = async (
   audience: SmsPublishedBroadcastAudience,
@@ -28,13 +24,24 @@ export const getSmsPublishedBroadcastRecipients = async (
     return Array.from(byPhone.values());
   }
 
-  const candidates = await prisma.candidate.findMany({ select: { id: true, mobile: true } });
-  const byPhone = new Map<string, SmsAudienceRecipient>();
-  for (const candidate of candidates) {
+  const [users, candidates] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: 'CUSTOMER', status: 'ACTIVE' },
+      select: { id: true, mobile: true },
+    }),
+    prisma.candidate.findMany({ select: { id: true, mobile: true } }),
+  ]);
+  const userRecipients = users.flatMap((user) => {
+    const phone = normalizeSmsRecipientPhone(user.mobile);
+    return phone
+      ? [{ recipientType: 'CUSTOMER' as const, recipientPhone: phone, sourceEntityType: 'USER' as const, sourceEntityId: user.id }]
+      : [];
+  });
+  const candidateRecipients = candidates.flatMap((candidate) => {
     const phone = normalizeSmsRecipientPhone(candidate.mobile);
-    if (phone && !byPhone.has(phone)) {
-      byPhone.set(phone, { recipientType: 'CANDIDATE', recipientPhone: phone, sourceEntityType: 'CANDIDATE', sourceEntityId: candidate.id });
-    }
-  }
-  return Array.from(byPhone.values());
+    return phone
+      ? [{ recipientType: 'CANDIDATE' as const, recipientPhone: phone, sourceEntityType: 'CANDIDATE' as const, sourceEntityId: candidate.id }]
+      : [];
+  });
+  return mergePublishedBroadcastRecipients([userRecipients, candidateRecipients]);
 };

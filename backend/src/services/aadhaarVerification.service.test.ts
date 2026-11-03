@@ -9,6 +9,7 @@ import {
   validateAadhaarNumber,
 } from './aadhaarVerification.service';
 import { encryptPanData } from './panVerification.dataCrypto';
+import { SurepassProviderError } from './surepassClient';
 
 test('validates an Aadhaar number with length and Verhoeff checksum', () => {
   assert.equal(validateAadhaarNumber('3114 8765 1231'), null);
@@ -266,4 +267,69 @@ test('checkStatus returns pending without failing when user has not completed OT
   assert.equal(status.status, 'PENDING');
   // Record MUST NOT be marked failed!
   assert.equal(record.status, 'PENDING');
+});
+
+test('serializes DigiLocker download so status polling cannot race the completion callback', async () => {
+  let record: Record<string, any> = {
+    id: 'aadhaar-record-race',
+    requestedById: 'user-1',
+    side: 'SALE',
+    status: 'PENDING',
+    maskedAadhaar: 'XXXXXXXX1231',
+    provider: 'SUREPASS',
+    providerClientId: 'digilocker-race-client',
+    messageCode: null,
+    safeMessage: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    completedAt: null,
+    encryptedResult: null,
+    template: null,
+  };
+  let providerCalls = 0;
+  let releaseFirstDownload!: () => void;
+  let notifyFirstDownload!: () => void;
+  const firstDownloadStarted = new Promise<void>((resolve) => { notifyFirstDownload = resolve; });
+  const firstDownloadGate = new Promise<void>((resolve) => { releaseFirstDownload = resolve; });
+  const providerResult = {
+    success: true,
+    status_code: 200,
+    message_code: 'success',
+    data: {
+      client_id: 'digilocker-race-client',
+      aadhaar_xml_data: { full_name: 'Test User', masked_aadhaar: 'XXXXXXXX1231' },
+    },
+  };
+  const service = new AadhaarVerificationService({
+    record: {
+      findUnique: async () => ({ ...record }),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        record = { ...record, ...data };
+        return { ...record };
+      },
+    } as any,
+    provider: {
+      downloadAadhaar: async () => {
+        providerCalls += 1;
+        if (providerCalls === 1) {
+          notifyFirstDownload();
+          await firstDownloadGate;
+          return providerResult;
+        }
+        throw new SurepassProviderError('Already downloaded.', 422, 'already_downloaded', 'INVALID_REQUEST', false);
+      },
+    } as any,
+    dataSecret: 'a'.repeat(64),
+  });
+
+  const statusPromise = service.checkStatus('aadhaar-record-race', 'user-1');
+  await firstDownloadStarted;
+  const completePromise = service.complete({ recordId: 'aadhaar-record-race', clientId: 'digilocker-race-client' }, 'user-1');
+  releaseFirstDownload();
+
+  const [status, completed] = await Promise.all([statusPromise, completePromise]);
+  assert.equal(providerCalls, 1);
+  assert.equal(status.ready, true);
+  assert.equal(completed.cacheHit, true);
+  assert.equal(completed.record.status, 'SUCCESS');
+  assert.equal(record.status, 'SUCCESS');
 });

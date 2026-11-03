@@ -25,6 +25,7 @@ import { useAuthStore } from '@/store/authStore';
 import { hasPermission } from '@/lib/permissionUtils';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { useTranslation } from '@/hooks/useTranslation';
+import { whatsappPreviewLayout } from '@/lib/whatsappPreviewLayout.mjs';
 import {
   getWhatsAppCredentialFieldState,
   mergeRevealedWhatsAppCredentials,
@@ -274,17 +275,17 @@ function WhatsAppPhonePreview({
   const templateNameDisplay = title.trim() ? title : 'template_name_preview';
 
   return (
-    <div className="relative w-full max-w-[275px] sm:max-w-[290px] mx-auto rounded-[42px] border-[7px] border-slate-950 bg-slate-950 p-1 shadow-[0_20px_50px_rgba(0,0,0,0.35)] overflow-hidden transition-all duration-300 hover:shadow-[0_25px_60px_rgba(0,0,0,0.45)]">
+    <div className={whatsappPreviewLayout.phoneClass} style={{ maxWidth: whatsappPreviewLayout.phoneWidth }}>
       {/* iPhone Dynamic Island Notch */}
-      <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-full z-30 flex items-center justify-between px-2 pointer-events-none shadow-xs">
+      <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-16 h-3.5 bg-black rounded-full z-30 flex items-center justify-between px-1.5 pointer-events-none shadow-xs">
         <div className="h-1.5 w-1.5 rounded-full bg-slate-900 border border-slate-800" />
         <div className="h-1.5 w-1.5 rounded-full bg-[#0d1322]" />
       </div>
 
       {/* iPhone Screen Container */}
-      <div className="rounded-[35px] bg-[#E5DDD5] overflow-hidden flex flex-col min-h-[475px]">
+      <div className={whatsappPreviewLayout.screenClass} style={{ minHeight: whatsappPreviewLayout.screenMinHeight, backgroundColor: '#E5DDD5' }}>
         {/* iPhone Status Bar */}
-        <div className="bg-[#075E54] pt-2.5 px-4 pb-1 text-white flex items-center justify-between text-[10px] font-semibold tracking-tight">
+        <div className="pt-2.5 px-4 pb-1 text-white flex items-center justify-between text-[10px] font-semibold tracking-tight" style={{ backgroundColor: '#075E54' }}>
           <span>9:41</span>
           <div className="flex items-center gap-1 opacity-85 text-[9px]">
             <span>5G</span>
@@ -293,7 +294,7 @@ function WhatsAppPhonePreview({
         </div>
 
         {/* WhatsApp App Header Bar */}
-        <div className="bg-[#075E54] text-white px-3 py-2 flex items-center justify-between shadow-xs border-t border-emerald-700/30">
+        <div className="text-white px-3 py-2 flex items-center justify-between shadow-xs border-t border-emerald-700/30" style={{ backgroundColor: '#075E54' }}>
           <div className="flex items-center gap-2 min-w-0">
             <div className="h-7 w-7 rounded-full bg-white border border-amber-400 p-0.5 shadow-2xs flex items-center justify-center shrink-0 overflow-hidden">
               <Image
@@ -311,16 +312,16 @@ function WhatsAppPhonePreview({
             <div className="min-w-0">
               <div className="flex items-center gap-1">
                 <p className="text-xs font-bold leading-none truncate text-white">JCB Exchange</p>
-                <span className="bg-sky-400 text-[#075E54] text-[7px] font-black rounded-full h-3 w-3 inline-flex items-center justify-center shrink-0">✓</span>
+                <span className="bg-[#00a5f4] text-white text-[7.5px] font-black rounded-full h-3.5 w-3.5 inline-flex items-center justify-center shrink-0 shadow-2xs">✓</span>
               </div>
               <p className="text-[8px] text-emerald-200 font-medium leading-tight mt-0.5">{wt('preview.officialBusinessAccount', 'Official Business Account')}</p>
             </div>
           </div>
-          <span className="text-[8px] bg-emerald-800/80 text-emerald-100 px-1.5 py-0.5 rounded font-mono shrink-0">{language || 'en_US'}</span>
+          <span className="text-[8px] bg-[#004d40] text-emerald-100 px-1.5 py-0.5 rounded font-mono shrink-0">{language || 'en_US'}</span>
         </div>
 
         {/* WhatsApp Chat Wallpaper Screen */}
-        <div className="p-2.5 space-y-2.5 flex-1 min-h-[315px] flex flex-col justify-end bg-[radial-gradient(#0000000d_1px,transparent_1px)] [background-size:10px_10px]">
+        <div className="p-2.5 space-y-2.5 flex-1 min-h-[240px] flex flex-col justify-end bg-[radial-gradient(#0000000d_1px,transparent_1px)] [background-size:10px_10px]">
           {/* System Date Pill */}
           <div className="text-center">
             <span className="bg-white/85 text-[8px] font-bold uppercase tracking-wider text-slate-600 px-2.5 py-0.5 rounded-full shadow-2xs">
@@ -329,13 +330,13 @@ function WhatsAppPhonePreview({
           </div>
 
           {/* WhatsApp Message Bubble */}
-          <div className="relative self-end w-[95%] bg-[#DCF8C6] rounded-2xl rounded-tr-none p-2.5 shadow-md border border-emerald-200/60 space-y-1.5">
+          <div className="relative self-end w-[95%] rounded-2xl rounded-tr-none p-2.5 shadow-md border border-emerald-200/60 space-y-1.5" style={{ backgroundColor: '#DCF8C6' }}>
             {/* Meta Template Header Tag */}
             <div className="flex items-center justify-between border-b border-emerald-300/40 pb-1 gap-1.5">
               <span className="text-[8px] font-extrabold tracking-wider text-emerald-950 uppercase truncate">
                 {category.replace('_', ' ')}
               </span>
-              <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded ${status === 'APPROVED' ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'}`}>
+              <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded ${status === 'APPROVED' ? 'bg-[#bbf7d0] text-[#065f46]' : 'bg-amber-200 text-amber-900'}`}>
                 {status || 'DRAFT'}
               </span>
             </div>
@@ -357,13 +358,13 @@ function WhatsAppPhonePreview({
               </span>
               <span className="flex items-center gap-0.5 font-sans font-medium text-slate-600">
                 10:42 AM
-                <CheckCheck className="h-3 w-3 text-sky-600" />
+                <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
               </span>
             </div>
 
             {/* Quick Action Button Mockup */}
             <div className="mt-1 pt-1.5 border-t border-emerald-200/70 text-center">
-              <span className="text-[10px] font-bold text-teal-850 flex items-center justify-center gap-1 hover:underline cursor-pointer">
+              <span className="text-[10px] font-bold text-slate-900 flex items-center justify-center gap-1 hover:underline cursor-pointer">
                 <span>{wt('preview.viewDetails', 'View Details')}</span>
                 <span className="text-[9px]">➔</span>
               </span>
@@ -372,8 +373,8 @@ function WhatsAppPhonePreview({
         </div>
 
         {/* iPhone Bottom Bar */}
-        <div className="py-1 bg-[#E5DDD5] flex justify-center items-center shrink-0">
-          <div className="w-24 h-1 bg-slate-900/30 rounded-full" />
+        <div className="py-1 flex justify-center items-center shrink-0" style={{ backgroundColor: '#E5DDD5' }}>
+          <div className="w-20 h-1 bg-slate-900/30 rounded-full" />
         </div>
       </div>
     </div>
@@ -1118,7 +1119,10 @@ export default function SuperAdminWhatsAppPage() {
   const showSidePreview = activeTab === 'SETTINGS' || activeTab === 'MARKETPLACE' || activeTab === 'RECRUITMENT';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+      <div
+        className={whatsappPreviewLayout.pageClass}
+        style={{ maxWidth: whatsappPreviewLayout.contentMaxWidth }}
+      >
       {/* Stats Row */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
@@ -1166,7 +1170,7 @@ export default function SuperAdminWhatsAppPage() {
       {notice ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{notice}</div> : null}
 
       {/* Spacious Tab Content Area with Conditional Mobile Preview Sidebar */}
-      <div className={showSidePreview ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px] items-start' : 'w-full space-y-6'}>
+      <div className={showSidePreview ? whatsappPreviewLayout.gridClass : 'w-full space-y-6'}>
         {/* Left Column: Active Tab Content */}
         <div className="space-y-6 min-w-0">
           {/* TAB 1: Setup & Credentials */}
@@ -1943,7 +1947,7 @@ export default function SuperAdminWhatsAppPage() {
 
         {/* Right Column: Sticky iPhone 16 Pro WhatsApp Preview Panel (Shown ONLY on relevant tabs) */}
         {showSidePreview ? (
-          <aside className="sticky top-6 rounded-2xl border border-emerald-100 bg-white p-3.5 shadow-sm space-y-3 flex flex-col items-center justify-center shrink-0 w-full max-w-sm mx-auto xl:max-w-none mt-6 xl:mt-0">
+          <aside className={whatsappPreviewLayout.panelClass} style={{ maxWidth: whatsappPreviewLayout.panelWidth }}>
             <div className="w-full flex items-center justify-between pb-1.5 border-b border-gray-100">
               <p className="text-xs font-bold uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
                 <MessageCircle className="h-4 w-4 text-emerald-600" />

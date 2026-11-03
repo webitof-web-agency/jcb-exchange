@@ -8,7 +8,6 @@ import {
   normalizeSmsRecipientPhone,
   resolveSmsTestRecipientPhone,
   sendDltSms,
-  getSmsPublishedBroadcastRecipientType,
   type SmsPublishedBroadcastEvent,
 } from '../modules/sms-core';
 import {
@@ -405,13 +404,12 @@ export const dispatchPublishedSms = async ({
 }) => {
   try {
     const audience = eventCode === 'MARKETPLACE_NEW_LISTING_PUBLISHED' ? 'MARKETPLACE' as const : 'RECRUITMENT' as const;
-    const recipientType = getSmsPublishedBroadcastRecipientType(eventCode);
     const recipients = await getSmsPublishedBroadcastRecipients(audience);
     const results = await Promise.all(recipients.map((recipient) => dispatchConfiguredSms({
       eventCode,
       relatedEntityType,
       relatedEntityId,
-      recipientType,
+      recipientType: recipient.recipientType,
       recipientPhone: recipient.recipientPhone,
       payloadSnapshot: {
         ...(payloadSnapshot || {}),

@@ -36,9 +36,11 @@ const FIELD = {
   mobile:      { x: 298, y: 1219, maxWidth: 480 },
 
   // Top letter QR & Aadhaar number
-  letterQr:    { x: 520, y: 1260, size: 210 },
+  letterQr:    { x: 620, y: 1260, size: 210 },
   topAadhaar:  { x: 460, y: 1606 },
   topVid:      { x: 405, y: 1642 },
+  topVidWhiteout: { x: 250, y: 1618, width: 500, height: 35 },
+  topVidSeparator: { x1: 300, y: 1618, x2: 620 },
 
   // Bottom left card (Front)
   photo:       { x: 175, y: 1815, width: 170, height: 210 },
@@ -59,6 +61,7 @@ const FIELD = {
   backStatePin:{ x: 930, y: 2016, maxWidth: 395 },
   backQr:      { x: 1350, y: 1825, size: 245 },
   backBottomWhiteout: { x: 1050, y: 2078, width: 460, height: 102 },
+  backDividerLine: { x1: 907, y: 2166, x2: 1681 },
   backAadhaar: { x: 1280, y: 2115 },
   backDottedLine: { x1: 1060, y: 2138, x2: 1500 },
   backVid:     { x: 1280, y: 2165 },
@@ -245,6 +248,19 @@ const fitAndDraw = (
   }
   ctx.fillText(text, x, y);
 };
+
+const fitAndDrawRegular = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number, y: number,
+  maxWidth: number,
+  startSize = 20,
+  minSize = 13,
+  fontFace = 'Arial, "Nirmala UI", sans-serif',
+) => fitAndDraw(ctx, text, x, y, maxWidth, startSize, minSize, fontFace, 'normal');
+
+const getCenteredTextStartX = (centerX: number, measuredWidth: number, textLength: number, letterSpacing: number) =>
+  centerX - (measuredWidth + Math.max(0, textLength - 1) * letterSpacing) / 2;
 
 export type AadhaarData = {
   fullName?: string | null;
@@ -493,23 +509,23 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
 
       // Enrolment Number next to "नामांकन क्रम/ Enrolment No.:"
       if (enrolmentNo) {
-        fitAndDraw(ctx, enrolmentNo, FIELD.enrolmentNo.x, FIELD.enrolmentNo.y, FIELD.enrolmentNo.maxWidth, 20, 15);
+        fitAndDrawRegular(ctx, enrolmentNo, FIELD.enrolmentNo.x, FIELD.enrolmentNo.y, FIELD.enrolmentNo.maxWidth, 20, 15);
       }
 
       // Name under "To"
       if (fullName) {
-        fitAndDraw(ctx, fullName, FIELD.toName.x, FIELD.toName.y, FIELD.toName.maxWidth, 24, 16);
+        fitAndDrawRegular(ctx, fullName, FIELD.toName.x, FIELD.toName.y, FIELD.toName.maxWidth, 24, 16);
       }
       // C/O
       if (careOf) {
-        fitAndDraw(ctx, careOf, FIELD.careOf.x, FIELD.careOf.y, FIELD.careOf.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, careOf, FIELD.careOf.x, FIELD.careOf.y, FIELD.careOf.maxWidth, 20, 14);
       }
 
       // In front of H No & Street Address
       if (hNo) {
-        fitAndDraw(ctx, hNo, FIELD.hNo.x, FIELD.hNo.y, FIELD.hNo.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, hNo, FIELD.hNo.x, FIELD.hNo.y, FIELD.hNo.maxWidth, 20, 14);
         if (streetLoc) {
-          fitAndDraw(ctx, streetLoc, FIELD.streetLine1.x, 975, FIELD.streetLine1.maxWidth, 20, 14);
+          fitAndDrawRegular(ctx, streetLoc, FIELD.streetLine1.x, 975, FIELD.streetLine1.maxWidth, 20, 14);
         }
       } else if (streetLoc) {
         // When hNo is empty, align the house/street identifier right in front of the H No label!
@@ -519,40 +535,40 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
         const part2 = splitIdx !== -1 ? streetLoc.slice(splitIdx + 1).trim() : '';
 
         // Directly in front of H No:
-        fitAndDraw(ctx, part1, FIELD.hNo.x, FIELD.hNo.y, FIELD.hNo.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, part1, FIELD.hNo.x, FIELD.hNo.y, FIELD.hNo.maxWidth, 20, 14);
         // And next line for remaining colony/locality:
         if (part2) {
-          fitAndDraw(ctx, part2, FIELD.streetLine1.x, 975, FIELD.streetLine1.maxWidth, 20, 14);
+          fitAndDrawRegular(ctx, part2, FIELD.streetLine1.x, 975, FIELD.streetLine1.maxWidth, 20, 14);
         }
       }
 
       // VTC
       if (vtc) {
-        fitAndDraw(ctx, vtc, FIELD.vtc.x, FIELD.vtc.y, FIELD.vtc.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, vtc, FIELD.vtc.x, FIELD.vtc.y, FIELD.vtc.maxWidth, 20, 14);
       }
       // PO
       if (po) {
-        fitAndDraw(ctx, po, FIELD.po.x, FIELD.po.y, FIELD.po.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, po, FIELD.po.x, FIELD.po.y, FIELD.po.maxWidth, 20, 14);
       }
       // Sub District
       if (subDist) {
-        fitAndDraw(ctx, subDist, FIELD.subDistrict.x, FIELD.subDistrict.y, FIELD.subDistrict.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, subDist, FIELD.subDistrict.x, FIELD.subDistrict.y, FIELD.subDistrict.maxWidth, 20, 14);
       }
       // District
       if (district) {
-        fitAndDraw(ctx, district, FIELD.district.x, FIELD.district.y, FIELD.district.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, district, FIELD.district.x, FIELD.district.y, FIELD.district.maxWidth, 20, 14);
       }
       // State
       if (state) {
-        fitAndDraw(ctx, state, FIELD.state.x, FIELD.state.y, FIELD.state.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, state, FIELD.state.x, FIELD.state.y, FIELD.state.maxWidth, 20, 14);
       }
       // PIN Code
       if (pinCode) {
-        fitAndDraw(ctx, pinCode, FIELD.pinCode.x, FIELD.pinCode.y, FIELD.pinCode.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, pinCode, FIELD.pinCode.x, FIELD.pinCode.y, FIELD.pinCode.maxWidth, 20, 14);
       }
       // Mobile
       if (mobile) {
-        fitAndDraw(ctx, mobile, FIELD.mobile.x, FIELD.mobile.y, FIELD.mobile.maxWidth, 20, 14);
+        fitAndDrawRegular(ctx, mobile, FIELD.mobile.x, FIELD.mobile.y, FIELD.mobile.maxWidth, 20, 14);
       }
 
       // 3. Draw Letter QR Code
@@ -566,20 +582,45 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
       }
 
       // 4. Draw Large Aadhaar Number & VID on Top Letter
+      let topAadhaarStartX: number | null = null;
       if (effectiveAadhaar) {
         ctx.fillStyle = '#111111';
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 38px "Arial Black", Arial, sans-serif';
-        ctx.letterSpacing = '5px';
-        ctx.fillText(effectiveAadhaar, FIELD.topAadhaar.x, FIELD.topAadhaar.y);
+        ctx.font = 'normal 38px Arial, sans-serif';
+        const aadhaarLetterSpacing = 5;
+        topAadhaarStartX = getCenteredTextStartX(
+          FIELD.topAadhaar.x,
+          ctx.measureText(effectiveAadhaar).width,
+          effectiveAadhaar.length,
+          aadhaarLetterSpacing,
+        );
+        ctx.textAlign = 'left';
+        ctx.letterSpacing = `${aadhaarLetterSpacing}px`;
+        ctx.fillText(effectiveAadhaar, topAadhaarStartX, FIELD.topAadhaar.y);
         ctx.letterSpacing = '0px';
       }
       if (vid) {
+        // Clear the template's original VID row before drawing the combined value.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(
+          FIELD.topVidWhiteout.x,
+          FIELD.topVidWhiteout.y,
+          FIELD.topVidWhiteout.width,
+          FIELD.topVidWhiteout.height,
+        );
+        ctx.save();
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(FIELD.topVidSeparator.x1, FIELD.topVidSeparator.y);
+        ctx.lineTo(FIELD.topVidSeparator.x2, FIELD.topVidSeparator.y);
+        ctx.stroke();
+        ctx.restore();
         ctx.fillStyle = '#111111';
         ctx.textAlign = 'left';
         ctx.font = 'bold 19px Arial, sans-serif';
         ctx.letterSpacing = '2px';
-        ctx.fillText(vid, FIELD.topVid.x, FIELD.topVid.y);
+        ctx.fillText(`VID : ${vid}`, topAadhaarStartX ?? FIELD.topVid.x, FIELD.topVid.y);
         ctx.letterSpacing = '0px';
       }
 
@@ -606,15 +647,15 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
 
       // Name next to "Name:"
       if (fullName) {
-        fitAndDraw(ctx, fullName, FIELD.cardName.x, FIELD.cardName.y, FIELD.cardName.maxWidth, 22, 16);
+        fitAndDrawRegular(ctx, fullName, FIELD.cardName.x, FIELD.cardName.y, FIELD.cardName.maxWidth, 22, 16);
       }
       // DOB next to "जन्म तिथि/DOB:"
       if (dob) {
-        fitAndDraw(ctx, dob, FIELD.cardDob.x, FIELD.cardDob.y, FIELD.cardDob.maxWidth, 21, 15);
+        fitAndDrawRegular(ctx, dob, FIELD.cardDob.x, FIELD.cardDob.y, FIELD.cardDob.maxWidth, 21, 15);
       }
       // Gender next to "Gender:"
       if (gender) {
-        fitAndDraw(ctx, gender, FIELD.cardGender.x, FIELD.cardGender.y, FIELD.cardGender.maxWidth, 21, 15);
+        fitAndDrawRegular(ctx, gender, FIELD.cardGender.x, FIELD.cardGender.y, FIELD.cardGender.maxWidth, 21, 15);
       }
 
       // Card Aadhaar Number (Centered on the front card)
@@ -679,6 +720,15 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(FIELD.backBottomWhiteout.x, FIELD.backBottomWhiteout.y, FIELD.backBottomWhiteout.width, FIELD.backBottomWhiteout.height);
 
+      // Restore the full UIDAI red divider removed by the bottom white-out.
+      ctx.fillStyle = '#e31e24';
+      ctx.fillRect(
+        FIELD.backDividerLine.x1,
+        FIELD.backDividerLine.y,
+        FIELD.backDividerLine.x2 - FIELD.backDividerLine.x1,
+        2,
+      );
+
       // Back Card Large QR Code
       if (cardQrUrl) {
         const qrCardImg = await loadImage(cardQrUrl).catch(() => null);
@@ -692,12 +742,20 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
       // 7. Back Card Bottom - 12-digit Aadhaar Number + Dotted Line + VID (Matching Image 4 exactly)
 
       // Large bold 12-digit Aadhaar number centered above dotted line
+      let backAadhaarStartX: number | null = null;
       if (effectiveAadhaar) {
         ctx.fillStyle = '#111111';
-        ctx.textAlign = 'center';
         ctx.font = 'bold 36px "Arial Black", Arial, sans-serif';
-        ctx.letterSpacing = '4px';
-        ctx.fillText(effectiveAadhaar, FIELD.backAadhaar.x, FIELD.backAadhaar.y);
+        const backAadhaarLetterSpacing = 4;
+        backAadhaarStartX = getCenteredTextStartX(
+          FIELD.backAadhaar.x,
+          ctx.measureText(effectiveAadhaar).width,
+          effectiveAadhaar.length,
+          backAadhaarLetterSpacing,
+        );
+        ctx.textAlign = 'left';
+        ctx.letterSpacing = `${backAadhaarLetterSpacing}px`;
+        ctx.fillText(effectiveAadhaar, backAadhaarStartX, FIELD.backAadhaar.y);
         ctx.letterSpacing = '0px';
       }
 
@@ -712,13 +770,13 @@ export default function AadhaarTemplatePreview({ data, inputAadhaarNumber, recor
       ctx.stroke();
       ctx.restore();
 
-      // VID : 9164 0981 9904 1660 centered below dotted line
+      // VID starts from the same left edge as the Aadhaar number above it.
       if (vid) {
         ctx.fillStyle = '#111111';
-        ctx.textAlign = 'center';
         ctx.font = 'bold 20px Arial, sans-serif';
         ctx.letterSpacing = '2px';
-        ctx.fillText(`VID : ${vid}`, FIELD.backVid.x, FIELD.backVid.y);
+        ctx.textAlign = 'left';
+        ctx.fillText(`VID : ${vid}`, backAadhaarStartX ?? FIELD.backVid.x, FIELD.backVid.y);
         ctx.letterSpacing = '0px';
       }
     };

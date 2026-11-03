@@ -23,6 +23,10 @@ test('iOS native target matches the JavaScript app identity', () => {
   assert.match(appDelegate, /withModuleName: "JCBExchange"/);
 });
 
+test('CocoaPods enables module maps for Firebase static-library integration', () => {
+  assert.match(podfile, /^use_modular_headers!$/m);
+});
+
 test('iOS release metadata and required permissions are configured', () => {
   assert.match(infoPlist, /<string>JCB Exchange<\/string>/);
   assert.match(infoPlist, /NSCameraUsageDescription/);

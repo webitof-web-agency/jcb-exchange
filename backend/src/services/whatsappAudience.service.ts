@@ -1,12 +1,16 @@
 import prisma from '../lib/prisma';
 import { normalizeWhatsAppRecipientPhone } from '../modules/whatsapp-core';
 import type { WhatsAppPublishedBroadcastAudience, WhatsAppPublishedBroadcastConsentCategory } from '../modules/whatsapp-core';
+import { mergePublishedBroadcastRecipients, type PublishedBroadcastRecipient } from '../utils/publishedBroadcastAudience';
 
-export type WhatsAppPublishedAudienceRecipient = {
-  recipientType: 'CUSTOMER' | 'CANDIDATE';
-  recipientPhone: string;
-  sourceEntityType: 'USER' | 'CANDIDATE';
-  sourceEntityId: string;
+export type WhatsAppPublishedAudienceRecipient = PublishedBroadcastRecipient;
+
+const firstValidWhatsAppPhone = (...values: Array<string | null | undefined>) => {
+  for (const value of values) {
+    const normalized = normalizeWhatsAppRecipientPhone(value);
+    if (normalized) return normalized;
+  }
+  return null;
 };
 
 export const getWhatsAppPublishedBroadcastRecipients = async (
@@ -38,19 +42,29 @@ export const getWhatsAppPublishedBroadcastRecipients = async (
       }
     }
   } else {
-    const candidates = await prisma.candidate.findMany({ select: { id: true, mobile: true } });
+    const [users, candidates] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: 'CUSTOMER', status: 'ACTIVE' },
+        select: { id: true, mobile: true, whatsappNumber: true },
+      }),
+      prisma.candidate.findMany({ select: { id: true, mobile: true } }),
+    ]);
 
-    for (const candidate of candidates) {
-      const phone = normalizeWhatsAppRecipientPhone(candidate.mobile);
-      if (phone && optedInPhones.has(phone) && !byPhone.has(phone)) {
-        byPhone.set(phone, {
-          recipientType: 'CANDIDATE',
-          recipientPhone: phone,
-          sourceEntityType: 'CANDIDATE',
-          sourceEntityId: candidate.id,
-        });
-      }
-    }
+    const userRecipients = users.flatMap((user) => {
+      const phone = firstValidWhatsAppPhone(user.whatsappNumber, user.mobile);
+      return phone && optedInPhones.has(phone)
+        ? [{ recipientType: 'CUSTOMER' as const, recipientPhone: phone, sourceEntityType: 'USER' as const, sourceEntityId: user.id }]
+        : [];
+    });
+
+    const candidateRecipients = candidates.flatMap((candidate) => {
+      const phone = firstValidWhatsAppPhone(candidate.mobile);
+      return phone && optedInPhones.has(phone)
+        ? [{ recipientType: 'CANDIDATE' as const, recipientPhone: phone, sourceEntityType: 'CANDIDATE' as const, sourceEntityId: candidate.id }]
+        : [];
+    });
+
+    return mergePublishedBroadcastRecipients([userRecipients, candidateRecipients]);
   }
 
   return Array.from(byPhone.values());

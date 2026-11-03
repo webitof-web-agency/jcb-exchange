@@ -15,7 +15,6 @@ import {
   resolveWhatsAppTemplatePurpose,
   getWhatsAppPublishedBroadcastAudience,
   getWhatsAppPublishedBroadcastConsentCategory,
-  getWhatsAppPublishedBroadcastRecipientType,
   getWhatsAppPublishedTemplateComponents,
   getMarketplaceTemplateComponents,
   type WhatsAppTemplatePurpose,
@@ -785,14 +784,13 @@ export const dispatchPublishedWhatsApp = async ({
   try {
     const audience = getWhatsAppPublishedBroadcastAudience(eventCode);
     const consentCategory = getWhatsAppPublishedBroadcastConsentCategory(eventCode);
-    const recipientType = getWhatsAppPublishedBroadcastRecipientType(eventCode);
     const templateComponents = getWhatsAppPublishedTemplateComponents(eventCode, payloadSnapshot);
     const recipients = await getWhatsAppPublishedBroadcastRecipients(audience, consentCategory);
     const results = await Promise.all(recipients.map((recipient) => dispatchConfiguredWhatsApp({
       eventCode,
       relatedEntityType,
       relatedEntityId,
-      recipientType,
+      recipientType: recipient.recipientType,
       recipientPhone: recipient.recipientPhone,
       templateComponents,
       payloadSnapshot: {
