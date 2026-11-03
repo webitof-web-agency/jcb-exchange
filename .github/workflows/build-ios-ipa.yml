@@ -75,9 +75,6 @@ jobs:
           bundler-cache: true
           working-directory: JCB-Exchange
       
-      - name: Install Fastlane
-        run: gem install fastlane --no-document
-
       - name: Install JavaScript dependencies
         run: npm ci
 
@@ -269,32 +266,41 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          VERSION_NAME: ${{ inputs.version_name }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           set -euo pipefail
-      
+
           IPA_PATH="$(find artifacts -maxdepth 1 -name '*.ipa' -print -quit)"
           if [[ -z "$IPA_PATH" ]]; then
             echo "::error::IPA file not found."
             exit 1
           fi
-      
-          API_KEY_PATH="$RUNNER_TEMP/AppStoreConnectAuthKey.p8"
-          trap 'rm -f "$API_KEY_PATH"' EXIT
-      
-          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$API_KEY_PATH"
-      
-          API_KEY_JSON="$(jq -cn \
-            --arg key_id "$APP_STORE_CONNECT_API_KEY_ID" \
-            --arg issuer_id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --arg filepath "$API_KEY_PATH" \
-            '{key_id:$key_id, issuer_id:$issuer_id, filepath:$filepath}')"
-      
-          fastlane pilot upload \
-            --ipa "$IPA_PATH" \
-            --app_identifier "$IOS_BUNDLE_ID" \
-            --api_key "$API_KEY_JSON" \
-            --skip_submission true \
-            --skip_waiting_for_build_processing true
+
+          KEY_DIR="$RUNNER_TEMP/private_keys"
+          mkdir -p "$KEY_DIR"
+
+          KEY_PATH="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          # Validate the key before attempting the upload.
+          openssl pkey -in "$KEY_PATH" -noout >/dev/null
+
+          xcrun altool --generate-jwt \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$KEY_PATH" >/dev/null
+
+          API_PRIVATE_KEYS_DIR="$KEY_DIR" xcrun altool \
+            --upload-package "$IPA_PATH" \
+            --platform ios \
+            --apple-id 6830078998 \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --bundle-version "$BUILD_NUMBER" \
+            --bundle-short-version-string "$VERSION_NAME" \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
       - name: Clean signing keychain
         if: ${{ always() }}
