@@ -4,14 +4,11 @@
   <meta charset="UTF-8">
   <title>JCB Exchange - System Upgrade & Technical Audit Changelog</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     @page {
       size: A4 portrait;
-      margin: 12mm 14mm 14mm 14mm;
-      @bottom-right {
-        content: counter(page);
-      }
+      margin: 8mm 10mm 8mm 10mm;
     }
 
     * {
@@ -26,18 +23,35 @@
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: #1e293b;
       background-color: #ffffff;
-      line-height: 1.45;
-      font-size: 11.5px;
+      line-height: 1.35;
+      font-size: 10px;
     }
 
+    .page {
+      page-break-after: always;
+      break-after: page;
+      height: 1045px;
+      max-height: 1045px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 4px 2px 2px 2px;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    /* Header Banner */
     .header-banner {
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);
       color: #ffffff;
-      padding: 24px 28px;
-      border-radius: 12px;
-      margin-bottom: 20px;
-      border-left: 6px solid #f59e0b;
-      position: relative;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border-left: 5px solid #f59e0b;
     }
 
     .badge-client {
@@ -45,24 +59,24 @@
       background: #f59e0b;
       color: #0f172a;
       font-weight: 800;
-      font-size: 9px;
+      font-size: 8.5px;
       letter-spacing: 0.8px;
       text-transform: uppercase;
-      padding: 3px 8px;
-      border-radius: 4px;
-      margin-bottom: 8px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      margin-bottom: 5px;
     }
 
     .header-title {
-      font-size: 22px;
+      font-size: 18px;
       font-weight: 800;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.3px;
       color: #ffffff;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .header-subtitle {
-      font-size: 12px;
+      font-size: 10.5px;
       color: #94a3b8;
       font-weight: 500;
     }
@@ -70,14 +84,14 @@
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-top: 16px;
-      padding-top: 14px;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid rgba(255, 255, 255, 0.12);
     }
 
     .meta-item .meta-label {
-      font-size: 9px;
+      font-size: 8px;
       color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -85,25 +99,53 @@
     }
 
     .meta-item .meta-val {
-      font-size: 11px;
+      font-size: 10px;
       color: #f1f5f9;
       font-weight: 700;
       margin-top: 2px;
     }
 
-    /* KPI Cards */
+    /* Sub-page top ribbon */
+    .page-header-ribbon {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 12px;
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #f59e0b;
+    }
+
+    .page-header-title {
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .page-header-meta {
+      font-size: 9px;
+      color: #94a3b8;
+    }
+
+    /* KPI Summary Cards */
     .kpi-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
 
     .kpi-card {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 12px 14px;
+      border-radius: 6px;
+      padding: 8px 10px;
       border-top: 3px solid #0284c7;
     }
 
@@ -112,45 +154,45 @@
     .kpi-card.indigo { border-top-color: #6366f1; }
 
     .kpi-val {
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 800;
       color: #0f172a;
       line-height: 1.1;
     }
 
     .kpi-title {
-      font-size: 10px;
+      font-size: 8.5px;
       font-weight: 600;
       color: #64748b;
-      margin-top: 4px;
+      margin-top: 2px;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
 
     .section-title {
-      font-size: 14px;
+      font-size: 11.5px;
       font-weight: 800;
       color: #0f172a;
       text-transform: uppercase;
       letter-spacing: 0.4px;
-      margin: 18px 0 10px 0;
-      padding-bottom: 6px;
+      margin: 8px 0 6px 0;
+      padding-bottom: 3px;
       border-bottom: 1.5px solid #e2e8f0;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .section-title-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 18px;
-      height: 18px;
-      border-radius: 4px;
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
       background: #0f172a;
       color: #f59e0b;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 800;
     }
 
@@ -158,46 +200,46 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 14px;
-      font-size: 11px;
+      margin-bottom: 8px;
+      font-size: 9.5px;
     }
 
     th {
       background: #f1f5f9;
-      color: #334155;
+      color: #1e293b;
       font-weight: 700;
       text-align: left;
-      padding: 8px 10px;
+      padding: 5px 8px;
       border: 1px solid #cbd5e1;
-      font-size: 10px;
+      font-size: 8.5px;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
 
     td {
-      padding: 8px 10px;
+      padding: 5px 8px;
       border: 1px solid #e2e8f0;
       vertical-align: top;
       color: #334155;
+      line-height: 1.35;
     }
 
     tr:nth-child(even) td {
       background-color: #fafbfc;
     }
 
-    /* Modules Card Container */
+    /* Module Box */
     .module-card {
       background: #ffffff;
       border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      margin-bottom: 14px;
+      border-radius: 6px;
+      margin-bottom: 8px;
       overflow: hidden;
-      page-break-inside: avoid;
     }
 
     .module-header {
       background: #f8fafc;
-      padding: 10px 14px;
+      padding: 6px 10px;
       border-bottom: 1px solid #e2e8f0;
       display: flex;
       justify-content: space-between;
@@ -205,16 +247,16 @@
     }
 
     .module-name {
-      font-size: 12px;
+      font-size: 10.5px;
       font-weight: 700;
       color: #0f172a;
     }
 
     .module-badge {
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
       text-transform: uppercase;
     }
 
@@ -223,39 +265,36 @@
     .badge-warning { background: #fef3c7; color: #b45309; }
 
     .module-body {
-      padding: 12px 14px;
+      padding: 7px 10px;
     }
 
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 8px;
+      gap: 8px;
+      margin-bottom: 5px;
     }
 
     .box-problem {
       background: #fff1f2;
       border: 1px solid #fecdd3;
-      border-radius: 6px;
-      padding: 9px 11px;
+      border-radius: 5px;
+      padding: 6px 8px;
     }
 
     .box-solution {
       background: #f0fdf4;
       border: 1px solid #bbf7d0;
-      border-radius: 6px;
-      padding: 9px 11px;
+      border-radius: 5px;
+      padding: 6px 8px;
     }
 
     .box-title {
-      font-size: 10px;
+      font-size: 8.5px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      margin-bottom: 4px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
+      margin-bottom: 2px;
     }
 
     .box-problem .box-title { color: #be123c; }
@@ -268,19 +307,18 @@
 
     .bullet-list li {
       position: relative;
-      padding-left: 14px;
-      margin-bottom: 4px;
-      font-size: 10.5px;
-      line-height: 1.4;
+      padding-left: 10px;
+      margin-bottom: 2px;
+      font-size: 9px;
+      line-height: 1.3;
       color: #334155;
     }
 
     .bullet-list li::before {
       content: "•";
       position: absolute;
-      left: 2px;
+      left: 1px;
       font-weight: bold;
-      color: #64748b;
     }
 
     .box-problem .bullet-list li::before { color: #e11d48; }
@@ -289,33 +327,32 @@
     .feature-highlights {
       background: #f8fafc;
       border: 1px dashed #cbd5e1;
-      border-radius: 6px;
-      padding: 8px 12px;
-      margin-top: 8px;
+      border-radius: 4px;
+      padding: 5px 8px;
+      margin-top: 5px;
     }
 
     .feature-title {
-      font-size: 10px;
+      font-size: 8.5px;
       font-weight: 700;
       color: #0f172a;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .pill-group {
       display: flex;
       flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 4px;
+      gap: 3px;
     }
 
     .pill {
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 600;
       background: #e2e8f0;
       color: #1e293b;
-      padding: 2px 7px;
-      border-radius: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
       font-family: 'JetBrains Mono', monospace;
     }
 
@@ -324,397 +361,421 @@
       color: #92400e;
     }
 
-    .page-break {
-      page-break-before: always;
-    }
-
     .footer {
-      margin-top: 24px;
-      padding-top: 12px;
+      padding-top: 6px;
       border-top: 1px solid #e2e8f0;
       display: flex;
       justify-content: space-between;
       color: #94a3b8;
-      font-size: 9.5px;
+      font-size: 8.5px;
+      margin-top: auto;
     }
 
     .tag-badge {
       display: inline-block;
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 700;
-      padding: 1px 6px;
+      padding: 1px 5px;
       border-radius: 3px;
     }
-    .tag-red { background: #fee2e2; color: #991b1b; }
     .tag-green { background: #dcfce7; color: #166534; }
-    .tag-blue { background: #dbeafe; color: #1e40af; }
   </style>
 </head>
 <body>
 
-  <!-- HEADER BANNER -->
-  <div class="header-banner">
-    <div class="badge-client">Executive Technical Changelog</div>
-    <div class="header-title">JCB EXCHANGE — SYSTEM UPGRADE & AUDIT REPORT</div>
-    <div class="header-subtitle">Comprehensive Changelog of UI/UX Overhaul, Feature Implementations, Security Hardening & Bug Fixes</div>
-    
-    <div class="meta-grid">
-      <div class="meta-item">
-        <div class="meta-label">Project Platform</div>
-        <div class="meta-val">JCB Exchange Full Stack</div>
+  <!-- ==================== PAGE 1 ==================== -->
+  <div class="page">
+    <div class="content-wrap">
+      <!-- HEADER BANNER -->
+      <div class="header-banner">
+        <div class="badge-client">Executive Technical Changelog</div>
+        <div class="header-title">JCB EXCHANGE — SYSTEM UPGRADE & AUDIT REPORT</div>
+        <div class="header-subtitle">Comprehensive Changelog of UI/UX Overhaul, Feature Implementations, Security Hardening & Bug Fixes</div>
+        
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-label">Project Platform</div>
+            <div class="meta-val">JCB Exchange Full Stack</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Release Phase</div>
+            <div class="meta-val">Pre-Production Staging</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Build Verification</div>
+            <div class="meta-val">Strict TS: 0 Errors (Passed)</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Date Generated</div>
+            <div class="meta-val">November 03, 2026</div>
+          </div>
+        </div>
       </div>
-      <div class="meta-item">
-        <div class="meta-label">Release Phase</div>
-        <div class="meta-val">Pre-Production Staging</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Build Verification</div>
-        <div class="meta-val">Strict TS: 0 Errors (Passed)</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Date Generated</div>
-        <div class="meta-val">November 03, 2026</div>
-      </div>
-    </div>
-  </div>
 
-  <!-- KPI SUMMARY CARDS -->
-  <div class="kpi-row">
-    <div class="kpi-card">
-      <div class="kpi-val">14+</div>
-      <div class="kpi-title">Pages Redesigned</div>
-    </div>
-    <div class="kpi-card emerald">
-      <div class="kpi-val">100%</div>
-      <div class="kpi-title">Space Utilization</div>
-    </div>
-    <div class="kpi-card amber">
-      <div class="kpi-val">4 Critical</div>
-      <div class="kpi-title">Bugs Resolved</div>
-    </div>
-    <div class="kpi-card indigo">
-      <div class="kpi-val">2 Guard</div>
-      <div class="kpi-title">Security Migrations</div>
-    </div>
-  </div>
-
-  <!-- EXECUTIVE SUMMARY -->
-  <div class="section-title">
-    <span class="section-title-icon">1</span>
-    Executive Summary & Scope of Work
-  </div>
-  <p style="margin-bottom: 12px; color: #334155; font-size: 11px;">
-    This technical changelog provides a detailed, auditable account of all recent uncommitted developments across the <strong>JCB Exchange Admin Portal</strong>, <strong>Backend API Services</strong>, and <strong>Public Customer Frontend</strong>. The primary objectives achieved include eliminating dead white spaces through high-density enterprise UX patterns, resolving mission-critical navigation and runtime crashes, establishing canonical human-readable vehicle URLs, and implementing robust anti-fraud identity checks.
-  </p>
-
-  <!-- QUICK COMPARISON TABLE -->
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 22%;">Module</th>
-        <th style="width: 38%;">Identified Problem (Before)</th>
-        <th style="width: 40%;">Implemented Solution & Business Value</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>CRM Hub</strong><br><span class="pill">/admin/crm/*</span></td>
-        <td>Excessive padding, oversized rows causing horizontal table overflow, and unused blank canvas space on 7 CRM screens.</td>
-        <td>Compact enterprise grid (`py-2`, `text-xs`), top KPI metric ribbons, and zero-waste layout boosting operator productivity.</td>
-      </tr>
-      <tr>
-        <td><strong>Listings & Public View</strong><br><span class="pill">/admin/listings</span></td>
-        <td>"View Live" generated invalid URLs (`:3001:3000`). Share button copied wrong link. Search could only query vehicle title.</td>
-        <td>Fixed origin resolver (`:3000`), Web Share API integration (WhatsApp/Apps), and multi-attribute search (Engine, Chassis, Reg Plate).</td>
-      </tr>
-      <tr>
-        <td><strong>Identity & Transport</strong><br><span class="pill">/admin/identity-hub</span></td>
-        <td>Over 65% of screen remained empty blank white space below input forms. Verification logs were fragmented across services.</td>
-        <td>Replaced voids with Unified Verification History table, Executive KPI status bar, and direct sub-service switcher navigation.</td>
-      </tr>
-      <tr>
-        <td><strong>RTO Work Status</strong><br><span class="pill">/admin/accounts/rto</span></td>
-        <td>Unreadable raw UUIDs in URL (`.../rto-work-status/4780eda2-...`). No document readiness flags or expiry tracking.</td>
-        <td>Canonical Vehicle Plate URLs (`.../CG-04-MQ-4364`), 5-point compliance countdown radar, 1-click WhatsApp, and milestone stepper.</td>
-      </tr>
-      <tr>
-        <td><strong>Backend Security</strong><br><span class="pill">backend/services</span></td>
-        <td>Risk of duplicate vehicle listings and orphaned financial records when deleting machines or accounts.</td>
-        <td>Implemented `listingVehicleIdentity.ts` unique guard, deletion impact validation (`deletionImpact.ts`), and 2 database migrations.</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- MODULE DEEP DIVE SECTION -->
-  <div class="section-title">
-    <span class="section-title-icon">2</span>
-    Detailed Functional Audit & Technical Changelog
-  </div>
-
-  <!-- MODULE 1: CRM -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 1: CRM Operations & Pipeline Management</div>
-      <span class="module-badge badge-primary">UI/UX Redesign & Optimization</span>
-    </div>
-    <div class="module-body">
-      <div class="grid-2">
-        <div class="box-problem">
-          <div class="box-title">🔴 Problems Identified</div>
-          <ul class="bullet-list">
-            <li>Oversized table cells with generous 24px padding forcing horizontal scrolling on medium displays.</li>
-            <li>CRM Reports and Campaigns lacked quick executive filters and conversion visualizers.</li>
-            <li>Pipelines and Follow-up lists had large blank gutter areas on wider 1080p+ viewports.</li>
-          </ul>
+      <!-- KPI SUMMARY CARDS -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-val">14+</div>
+          <div class="kpi-title">Screens Redesigned</div>
         </div>
-        <div class="box-solution">
-          <div class="box-title">🟢 Solutions Implemented</div>
-          <ul class="bullet-list">
-            <li>Engineered a full-width dense layout system using concise padding (`py-2 px-3`) and 11px font hierarchy.</li>
-            <li>Built compact 4-metric KPI ribbons on top of Reports, Campaigns, and Leads.</li>
-            <li>Integrated high-contrast status pills for deal pipelines, lead stages, and agent assignments.</li>
-          </ul>
+        <div class="kpi-card emerald">
+          <div class="kpi-val">100%</div>
+          <div class="kpi-title">Space Utilization</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-val">4 Critical</div>
+          <div class="kpi-title">Bugs Resolved</div>
+        </div>
+        <div class="kpi-card indigo">
+          <div class="kpi-val">2 Guard</div>
+          <div class="kpi-title">Security Migrations</div>
         </div>
       </div>
-      <div class="feature-highlights">
-        <div class="feature-title">New Implementations & Add-ons:</div>
-        <div class="pill-group">
-          <span class="pill accent">Compact CRM Reports Grid</span>
-          <span class="pill accent">Campaign ROI & CTR Tracking</span>
-          <span class="pill accent">Dense Kanban Pipeline</span>
-          <span class="pill">CrmLeadsPage</span>
-          <span class="pill">CrmFollowUpsPage</span>
-          <span class="pill">CrmContactsPage</span>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- MODULE 2: LISTINGS & SEARCH -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 2: Vehicle Listings, Analytics & Frontend Resilience</div>
-      <span class="module-badge badge-warning">Bug Fixes & Feature Upgrades</span>
-    </div>
-    <div class="module-body">
-      <div class="grid-2">
-        <div class="box-problem">
-          <div class="box-title">🔴 Problems Identified</div>
-          <ul class="bullet-list">
-            <li><strong>Port Concatenation Bug:</strong> "View Live" generated malformed host `http://localhost:3001:3000/machines/...`.</li>
-            <li><strong>Share Button Defect:</strong> Copied internal admin link without triggering native device sharing.</li>
-            <li><strong>Limited Search:</strong> Search bar ignored Engine Number, Chassis Number, and Registration Number.</li>
-            <li><strong>Frontend Error Overlay:</strong> `MachineDetailClient.tsx` view counter triggered red `Console TypeError` on abort.</li>
-          </ul>
-        </div>
-        <div class="box-solution">
-          <div class="box-title">🟢 Solutions Implemented</div>
-          <ul class="bullet-list">
-            <li>Fixed public origin URL resolver to cleanly direct to port `3000`.</li>
-            <li>Integrated Web Share API (`navigator.share`) with automatic fallback to clipboard copy + toast alert.</li>
-            <li>Rewrote backend and frontend search queries to search across <strong>Title, Model, Engine, Chassis, & Reg Number</strong>.</li>
-            <li>Added non-blocking `keepalive: true` fetch with silent abort handling in `MachineDetailClient.tsx`.</li>
-          </ul>
-        </div>
+      <!-- EXECUTIVE SUMMARY -->
+      <div class="section-title">
+        <span class="section-title-icon">1</span>
+        Executive Summary & Objectives
       </div>
-      <div class="feature-highlights">
-        <div class="feature-title">New Implementations & Add-ons:</div>
-        <div class="pill-group">
-          <span class="pill accent">Universal Multi-Field Search</span>
-          <span class="pill accent">Native Web Share API</span>
-          <span class="pill accent">Silent View Counter</span>
-          <span class="pill">admin/listings/page.tsx</span>
-          <span class="pill">ListingDetailPage.tsx</span>
-          <span class="pill">MachineDetailClient.tsx</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="page-break"></div>
-
-  <!-- MODULE 3: IDENTITY HUB -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 3: Identity Hub & Vehicle Transport Operations</div>
-      <span class="module-badge badge-primary">Space Utilization & Unified Logs</span>
-    </div>
-    <div class="module-body">
-      <div class="grid-2">
-        <div class="box-problem">
-          <div class="box-title">🔴 Problems Identified</div>
-          <ul class="bullet-list">
-            <li>Massive 60-70% unutilized blank white screen area below single-field verification forms.</li>
-            <li>Operators had no instant way to review past verifications across PAN, GST, Aadhaar, DL, and RC lookup.</li>
-            <li>Lacked executive visibility into daily verification volumes, failure rates, and service latencies.</li>
-          </ul>
-        </div>
-        <div class="box-solution">
-          <div class="box-title">🟢 Solutions Implemented</div>
-          <ul class="bullet-list">
-            <li>Eliminated all blank dead space by introducing `UnifiedVehicleHistoryPanel.tsx` in place of empty gutters.</li>
-            <li>Added an Executive Metrics Bar showing total verifications, success rates, and active API gateway health.</li>
-            <li>Added a persistent sub-service switcher ribbon allowing operators to jump between DL, RC, Challan, and Chassis.</li>
-          </ul>
-        </div>
-      </div>
-      <div class="feature-highlights">
-        <div class="feature-title">New Implementations & Add-ons:</div>
-        <div class="pill-group">
-          <span class="pill accent">Unified Verification History Panel</span>
-          <span class="pill accent">Executive Metrics Ribbon</span>
-          <span class="pill accent">Service Switcher Bar</span>
-          <span class="pill">IdentityHubPage.tsx</span>
-          <span class="pill">VehicleTransportPage.tsx</span>
-          <span class="pill">RcChallanVerificationPage</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODULE 4: RTO WORK STATUS -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 4: Accounts & RTO Work Status (Section A & B Complete)</div>
-      <span class="module-badge badge-success">Major Feature Suite</span>
-    </div>
-    <div class="module-body">
-      <div class="grid-2">
-        <div class="box-problem">
-          <div class="box-title">🔴 Problems Identified</div>
-          <ul class="bullet-list">
-            <li><strong>Unreadable URLs:</strong> Navigated using raw UUIDs (`/rto-work-status/4780eda2-b99e-4d6e-8c05...`).</li>
-            <li><strong>Zero Expiry Alerts:</strong> No visual warning if a vehicle's Fitness, Insurance, or PUC was expiring.</li>
-            <li><strong>Slow Manual Communications:</strong> No quick way to message RTO agents or customers regarding missing docs.</li>
-            <li><strong>React Hooks Bug:</strong> Conditional hooks placed after early return caused occasional render crashes.</li>
-          </ul>
-        </div>
-        <div class="box-solution">
-          <div class="box-title">🟢 Solutions Implemented</div>
-          <ul class="bullet-list">
-            <li><strong>Canonical Registration Plate Routing:</strong> URLs now show plate numbers (`.../CG-04-MQ-4364`) with seamless UUID backward compatibility.</li>
-            <li><strong>Document Completeness Badges:</strong> Real-time status chips (`6/6 Docs Ready` / `4/6 Docs Pending`).</li>
-            <li><strong>5-Point Compliance Countdown Radar:</strong> Live visual badges: `Valid for 180 days`, `Expiring in 4 days!`, `Expired 12 days ago`, `Lifetime Valid`.</li>
-            <li><strong>Interactive 5-Stage Stepper:</strong> Click-to-update progress from Document Collection to RC Delivery with remarks.</li>
-            <li><strong>Party Contact Matrix:</strong> 1-Click Call, 1-Click WhatsApp, and Copy for Seller, Buyer, and RTO Agent.</li>
-            <li><strong>Strict Hook Ordering:</strong> Moved all React hooks to top level; zero console/runtime warnings.</li>
-          </ul>
-        </div>
-      </div>
-      <div class="feature-highlights">
-        <div class="feature-title">New Implementations & Add-ons:</div>
-        <div class="pill-group">
-          <span class="pill accent">Vehicle Plate Canonical Routing</span>
-          <span class="pill accent">5-Point Compliance Radar</span>
-          <span class="pill accent">Interactive Milestone Stepper</span>
-          <span class="pill accent">Party WhatsApp & Call Matrix</span>
-          <span class="pill accent">Document Completeness Badges</span>
-          <span class="pill">rto-work-status/[id]/page.tsx</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODULE 5: SECURITY & DATA INTEGRITY -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 5: Backend Security, Data Integrity & Moderation</div>
-      <span class="module-badge badge-success">Security Hardening</span>
-    </div>
-    <div class="module-body">
-      <div class="grid-2">
-        <div class="box-problem">
-          <div class="box-title">🔴 Problems Identified</div>
-          <ul class="bullet-list">
-            <li>No database validation preventing bad actors or brokers from listing the same machine multiple times.</li>
-            <li>Deleting a vehicle listing or account could leave linked invoices, receipts, and RTO vouchers orphaned.</li>
-            <li>Listing approval/rejection actions had no structured moderation audit trail.</li>
-          </ul>
-        </div>
-        <div class="box-solution">
-          <div class="box-title">🟢 Solutions Implemented</div>
-          <ul class="bullet-list">
-            <li>Engineered `listingVehicleIdentity.ts` service with unique normalized database keys for Registration and Chassis.</li>
-            <li>Implemented `deletionImpact.ts` safeguard blocking deletions whenever active transactions or tasks exist.</li>
-            <li>Added `ListingModerationDialog.tsx` with mandatory reason selection, reviewer tracking, and timestamped audit logs.</li>
-            <li>Generated and executed 2 Prisma database migrations establishing identity indexes and moderation enums.</li>
-          </ul>
-        </div>
-      </div>
-      <div class="feature-highlights">
-        <div class="feature-title">New Implementations & Add-ons:</div>
-        <div class="pill-group">
-          <span class="pill accent">Duplicate Vehicle Prevention Guard</span>
-          <span class="pill accent">Deletion Impact Blocker</span>
-          <span class="pill accent">Listing Moderation Pipeline</span>
-          <span class="pill accent">Prisma Migrations</span>
-          <span class="pill">listingVehicleIdentity.ts</span>
-          <span class="pill">deletionImpact.ts</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODULE 6: ARCHITECTURE & CLEANUP -->
-  <div class="module-card">
-    <div class="module-header">
-      <div class="module-name">Module 6: Code Architecture, Route Security & Asset Cleanup</div>
-      <span class="module-badge badge-primary">Platform Maintenance</span>
-    </div>
-    <div class="module-body">
-      <p style="margin-bottom: 8px; color: #334155; font-size: 11px;">
-        Consolidated loose document preview pages (`/aadhaar-preview`, `/pancard-preview`, `/rc-preview`) from the root directory into secured, RBAC-protected administrative routes at <code>/admin/document-templates/*</code>. Purged duplicate static graphics and unused SVGs from the frontend bundle, decreasing bundle weight and build times.
+      <p style="margin-bottom: 8px; color: #334155; font-size: 9.5px; line-height: 1.4;">
+        This technical audit report presents a client-ready, structured changelog of all recent developments across the <strong>JCB Exchange Admin Portal</strong>, <strong>Backend API Services</strong>, and <strong>Customer Frontend</strong>. Every change directly addresses key operational bottlenecks: removing dead whitespace through high-density enterprise UX patterns, fixing mission-critical routing and share links, introducing canonical plate URLs, and enforcing strict anti-fraud database constraints.
       </p>
+
+      <!-- EXECUTIVE COMPARISON TABLE -->
+      <div class="section-title">
+        <span class="section-title-icon">2</span>
+        Strategic Impact Summary (Problem ➔ Solution ➔ Value)
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 20%;">Module</th>
+            <th style="width: 38%;">Identified Problem (Before)</th>
+            <th style="width: 42%;">Implemented Solution & Business Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>CRM Hub</strong><br><span class="pill">/admin/crm/*</span></td>
+            <td>Oversized row padding, horizontal scrolling on 7 CRM screens, and large empty whitespace gaps.</td>
+            <td>Compact enterprise grid (`py-2`, `text-xs`), top KPI ribbons, and dense viewports boosting operator efficiency.</td>
+          </tr>
+          <tr>
+            <td><strong>Listings & Public View</strong><br><span class="pill">/admin/listings</span></td>
+            <td>"View Live" generated invalid URLs (`:3001:3000`). Share button copied wrong link. Search only matched listing title.</td>
+            <td>Corrected public origin (`:3000`), Web Share API integration (WhatsApp/Apps), and search by Engine, Chassis, & Reg Plate.</td>
+          </tr>
+          <tr>
+            <td><strong>Identity & Transport</strong><br><span class="pill">/admin/identity-hub</span></td>
+            <td>Over 65% of screen remained empty blank white space below input forms. Verification logs were fragmented across services.</td>
+            <td>Eliminated dead space with `UnifiedVehicleHistoryPanel.tsx`, KPI health status ribbon, and direct sub-service switcher navigation.</td>
+          </tr>
+          <tr>
+            <td><strong>RTO Work Status</strong><br><span class="pill">/admin/accounts/rto</span></td>
+            <td>Unreadable raw UUIDs in URL (`.../4780eda2-...`). No document readiness tracking or expiry alerts. React Hook violation.</td>
+            <td>Canonical Vehicle Plate URLs (`.../CG-04-MQ-4364`), 5-point compliance countdown radar, 1-click WhatsApp, and milestone stepper.</td>
+          </tr>
+          <tr>
+            <td><strong>Backend Security</strong><br><span class="pill">backend/services</span></td>
+            <td>Duplicate machine listings could be created; deleting listings could orphan active financial transactions.</td>
+            <td>Added `listingVehicleIdentity.ts` unique guard, deletion impact validation (`deletionImpact.ts`), and 2 Prisma migrations.</td>
+          </tr>
+          <tr>
+            <td><strong>Frontend Machine View</strong><br><span class="pill">frontend/machines</span></td>
+            <td>`Console TypeError: Failed to fetch` red popup overlay was triggered by view counter fetch during navigation.</td>
+            <td>Implemented non-blocking `keepalive: true` fetch with silent abort handling in `MachineDetailClient.tsx`.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PAGE 1 FOOTER -->
+    <div class="footer">
+      <div><strong>JCB Exchange Engineering Team</strong> • System Upgrade & Technical Audit Changelog</div>
+      <div>Page 1 of 3 • Confidential & Proprietary Document</div>
     </div>
   </div>
 
-  <!-- QA & VERIFICATION SIGN-OFF -->
-  <div class="section-title">
-    <span class="section-title-icon">3</span>
-    Quality Assurance & System Verification
+  <!-- ==================== PAGE 2 ==================== -->
+  <div class="page">
+    <div class="content-wrap">
+      <div class="page-header-ribbon">
+        <div class="page-header-title">
+          <span>⚙️ Part 1: Operational Modules & Frontend Enhancements</span>
+        </div>
+        <div class="page-header-meta">JCB Exchange Full Stack</div>
+      </div>
+
+      <!-- MODULE 1: CRM -->
+      <div class="module-card">
+        <div class="module-header">
+          <div class="module-name">Module 1: CRM Operations & Pipeline Intelligence</div>
+          <span class="module-badge badge-primary">UI/UX Redesign & Optimization</span>
+        </div>
+        <div class="module-body">
+          <div class="grid-2">
+            <div class="box-problem">
+              <div class="box-title">🔴 Problems Identified</div>
+              <ul class="bullet-list">
+                <li>Oversized table rows with generous 24px padding forced horizontal scrolling on standard screens.</li>
+                <li>CRM Reports & Campaigns lacked executive visual funnels and quick date filters.</li>
+                <li>Pipelines and Follow-up lists had huge blank gutter areas on wider displays.</li>
+              </ul>
+            </div>
+            <div class="box-solution">
+              <div class="box-title">🟢 Solutions Implemented</div>
+              <ul class="bullet-list">
+                <li>Engineered full-width dense layout using compact padding (`py-2 px-3`) and 11px font hierarchy.</li>
+                <li>Built compact 4-metric KPI ribbons on top of Reports, Campaigns, and Leads.</li>
+                <li>Integrated high-contrast status chips for deal pipelines, lead stages, and agent assignments.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="feature-highlights">
+            <div class="feature-title">New Implementations & Add-ons:</div>
+            <div class="pill-group">
+              <span class="pill accent">Compact CRM Reports Grid</span>
+              <span class="pill accent">Campaign ROI & CTR Tracking</span>
+              <span class="pill accent">Dense Kanban Pipeline</span>
+              <span class="pill">CrmLeadsPage</span>
+              <span class="pill">CrmFollowUpsPage</span>
+              <span class="pill">CrmContactsPage</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 2: LISTINGS & SEARCH -->
+      <div class="module-card">
+        <div class="module-header">
+          <div class="module-name">Module 2: Vehicle Listings, Analytics & Frontend Experience</div>
+          <span class="module-badge badge-warning">Bug Fixes & Feature Upgrades</span>
+        </div>
+        <div class="module-body">
+          <div class="grid-2">
+            <div class="box-problem">
+              <div class="box-title">🔴 Problems Identified</div>
+              <ul class="bullet-list">
+                <li><strong>Port Concatenation Bug:</strong> "View Live" generated invalid URL `http://localhost:3001:3000/machines/...`.</li>
+                <li><strong>Share Button Defect:</strong> Copied internal admin link without triggering native device sharing.</li>
+                <li><strong>Limited Search:</strong> Search bar ignored Engine Number, Chassis Number, and Registration Number.</li>
+                <li><strong>Frontend Error Overlay:</strong> `MachineDetailClient.tsx` view counter triggered red `Console TypeError` on abort.</li>
+              </ul>
+            </div>
+            <div class="box-solution">
+              <div class="box-title">🟢 Solutions Implemented</div>
+              <ul class="bullet-list">
+                <li>Fixed public origin URL resolver to cleanly direct to port `3000`.</li>
+                <li>Integrated Web Share API (`navigator.share`) with automatic fallback to clipboard copy + toast alert.</li>
+                <li>Rewrote backend and frontend search queries to search across <strong>Title, Model, Engine, Chassis, & Reg Number</strong>.</li>
+                <li>Added non-blocking `keepalive: true` fetch with silent abort handling in `MachineDetailClient.tsx`.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="feature-highlights">
+            <div class="feature-title">New Implementations & Add-ons:</div>
+            <div class="pill-group">
+              <span class="pill accent">Universal Multi-Field Search</span>
+              <span class="pill accent">Native Web Share API</span>
+              <span class="pill accent">Silent View Counter</span>
+              <span class="pill">admin/listings/page.tsx</span>
+              <span class="pill">ListingDetailPage.tsx</span>
+              <span class="pill">MachineDetailClient.tsx</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 3: IDENTITY HUB & VEHICLE TRANSPORT -->
+      <div class="module-card">
+        <div class="module-header">
+          <div class="module-name">Module 3: Identity Hub & Vehicle Transport Operations</div>
+          <span class="module-badge badge-primary">Space Utilization & Unified Logs</span>
+        </div>
+        <div class="module-body">
+          <div class="grid-2">
+            <div class="box-problem">
+              <div class="box-title">🔴 Problems Identified</div>
+              <ul class="bullet-list">
+                <li>Massive 60-70% unutilized blank white screen area below single-field verification forms.</li>
+                <li>Operators had no instant way to review past verifications across PAN, GST, Aadhaar, DL, and RC lookup.</li>
+                <li>Lacked executive visibility into daily verification volumes, failure rates, and service latencies.</li>
+              </ul>
+            </div>
+            <div class="box-solution">
+              <div class="box-title">🟢 Solutions Implemented</div>
+              <ul class="bullet-list">
+                <li>Eliminated all blank dead space by introducing `UnifiedVehicleHistoryPanel.tsx` in place of empty gutters.</li>
+                <li>Added an Executive Metrics Bar showing total verifications, success rates, and active API gateway health.</li>
+                <li>Added a persistent sub-service switcher ribbon allowing operators to jump between DL, RC, Challan, and Chassis.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="feature-highlights">
+            <div class="feature-title">New Implementations & Add-ons:</div>
+            <div class="pill-group">
+              <span class="pill accent">Unified Verification History Panel</span>
+              <span class="pill accent">Executive Metrics Ribbon</span>
+              <span class="pill accent">Service Switcher Bar</span>
+              <span class="pill">IdentityHubPage.tsx</span>
+              <span class="pill">VehicleTransportPage.tsx</span>
+              <span class="pill">RcChallanVerificationPage</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2 FOOTER -->
+    <div class="footer">
+      <div><strong>JCB Exchange Engineering Team</strong> • System Upgrade & Technical Audit Changelog</div>
+      <div>Page 2 of 3 • Confidential & Proprietary Document</div>
+    </div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Verification Test</th>
-        <th>Target Scope</th>
-        <th>Observed Status</th>
-        <th>Result</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>TypeScript Static Analysis</strong></td>
-        <td>Admin Portal & Backend codebase</td>
-        <td>Strict type verification passed with 0 compile errors</td>
-        <td><span class="tag-badge tag-green">PASSED</span></td>
-      </tr>
-      <tr>
-        <td><strong>URL & Routing Integrity</strong></td>
-        <td>RTO Status Plate URLs & View Live links</td>
-        <td>Canonical plate routing & port 3000 redirection verified</td>
-        <td><span class="tag-badge tag-green">PASSED</span></td>
-      </tr>
-      <tr>
-        <td><strong>Live Server Health</strong></td>
-        <td>Backend (5002), Admin (3001), Web (3000)</td>
-        <td>All 3 local servers running and responding concurrently</td>
-        <td><span class="tag-badge tag-green">PASSED</span></td>
-      </tr>
-      <tr>
-        <td><strong>Anti-Duplicate Guard</strong></td>
-        <td>Listing Vehicle Identity Keys</td>
-        <td>Duplicate plate & chassis numbers successfully rejected</td>
-        <td><span class="tag-badge tag-green">PASSED</span></td>
-      </tr>
-    </tbody>
-  </table>
+  <!-- ==================== PAGE 3 ==================== -->
+  <div class="page">
+    <div class="content-wrap">
+      <div class="page-header-ribbon">
+        <div class="page-header-title">
+          <span>🛡️ Part 2: Compliance, Security & Quality Assurance</span>
+        </div>
+        <div class="page-header-meta">JCB Exchange Full Stack</div>
+      </div>
 
-  <!-- FOOTER -->
-  <div class="footer">
-    <div><strong>JCB Exchange Engineering Team</strong> • System Upgrade & Technical Audit Changelog</div>
-    <div>Page 2 of 2 • Confidential & Proprietary Document</div>
+      <!-- MODULE 4: RTO WORK STATUS -->
+      <div class="module-card">
+        <div class="module-header">
+          <div class="module-name">Module 4: Accounts & RTO Work Status (Section A & B Complete)</div>
+          <span class="module-badge badge-success">Major Feature Suite</span>
+        </div>
+        <div class="module-body">
+          <div class="grid-2">
+            <div class="box-problem">
+              <div class="box-title">🔴 Problems Identified</div>
+              <ul class="bullet-list">
+                <li><strong>Unreadable URLs:</strong> Navigated using raw UUIDs (`/rto-work-status/4780eda2-b99e-4d6e-8c05...`).</li>
+                <li><strong>Zero Expiry Alerts:</strong> No visual warning if a vehicle's Fitness, Insurance, or PUC was expiring.</li>
+                <li><strong>Slow Manual Communications:</strong> No quick way to message RTO agents or customers regarding missing docs.</li>
+                <li><strong>React Hooks Bug:</strong> Conditional hooks placed after early return caused occasional render crashes.</li>
+              </ul>
+            </div>
+            <div class="box-solution">
+              <div class="box-title">🟢 Solutions Implemented</div>
+              <ul class="bullet-list">
+                <li><strong>Canonical Vehicle Plate Routing:</strong> URLs now show plate numbers (`.../CG-04-MQ-4364`) with seamless UUID backward compatibility.</li>
+                <li><strong>Document Completeness Badges:</strong> Real-time status chips (`6/6 Docs Ready` / `4/6 Docs Pending`).</li>
+                <li><strong>5-Point Compliance Countdown Radar:</strong> Live visual badges: `Valid for 180 days`, `Expiring in 4 days!`, `Expired 12 days ago`, `Lifetime Valid`.</li>
+                <li><strong>Interactive 5-Stage Stepper:</strong> Click-to-update progress from Document Collection to RC Delivery with remarks.</li>
+                <li><strong>Party Contact Matrix:</strong> 1-Click Call, 1-Click WhatsApp, and Copy for Seller, Buyer, and RTO Agent.</li>
+                <li><strong>Strict Hook Ordering:</strong> Moved all React hooks to top level; zero console/runtime warnings.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="feature-highlights">
+            <div class="feature-title">New Implementations & Add-ons:</div>
+            <div class="pill-group">
+              <span class="pill accent">Vehicle Plate Canonical Routing</span>
+              <span class="pill accent">5-Point Compliance Radar</span>
+              <span class="pill accent">Interactive Milestone Stepper</span>
+              <span class="pill accent">Party WhatsApp & Call Matrix</span>
+              <span class="pill accent">Document Completeness Badges</span>
+              <span class="pill">rto-work-status/[id]/page.tsx</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 5: SECURITY & DATA INTEGRITY -->
+      <div class="module-card">
+        <div class="module-header">
+          <div class="module-name">Module 5: Backend Security, Anti-Fraud & Data Integrity</div>
+          <span class="module-badge badge-success">Security Hardening</span>
+        </div>
+        <div class="module-body">
+          <div class="grid-2">
+            <div class="box-problem">
+              <div class="box-title">🔴 Problems Identified</div>
+              <ul class="bullet-list">
+                <li>No database validation preventing bad actors or brokers from listing the same machine multiple times.</li>
+                <li>Deleting a vehicle listing or account could leave linked invoices, receipts, and RTO vouchers orphaned.</li>
+                <li>Listing approval/rejection actions had no structured moderation audit trail.</li>
+              </ul>
+            </div>
+            <div class="box-solution">
+              <div class="box-title">🟢 Solutions Implemented</div>
+              <ul class="bullet-list">
+                <li>Engineered `listingVehicleIdentity.ts` service with unique normalized database keys for Registration and Chassis.</li>
+                <li>Implemented `deletionImpact.ts` safeguard blocking deletions whenever active transactions or tasks exist.</li>
+                <li>Added `ListingModerationDialog.tsx` with mandatory reason selection, reviewer tracking, and timestamped audit logs.</li>
+                <li>Generated and executed 2 Prisma database migrations establishing identity indexes and moderation enums.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="feature-highlights">
+            <div class="feature-title">New Implementations & Add-ons:</div>
+            <div class="pill-group">
+              <span class="pill accent">Duplicate Vehicle Prevention Guard</span>
+              <span class="pill accent">Deletion Impact Blocker</span>
+              <span class="pill accent">Listing Moderation Pipeline</span>
+              <span class="pill accent">Prisma Migrations</span>
+              <span class="pill">listingVehicleIdentity.ts</span>
+              <span class="pill">deletionImpact.ts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- QA & VERIFICATION SIGN-OFF -->
+      <div class="section-title">
+        <span class="section-title-icon">4</span>
+        Quality Assurance & System Verification
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Verification Test</th>
+            <th>Target Scope</th>
+            <th>Observed Status</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>TypeScript Static Analysis</strong></td>
+            <td>Admin Portal & Backend codebase</td>
+            <td>Strict type verification passed with 0 compile errors</td>
+            <td><span class="tag-badge tag-green">PASSED</span></td>
+          </tr>
+          <tr>
+            <td><strong>URL & Routing Integrity</strong></td>
+            <td>RTO Status Plate URLs & View Live links</td>
+            <td>Canonical plate routing & port 3000 redirection verified</td>
+            <td><span class="tag-badge tag-green">PASSED</span></td>
+          </tr>
+          <tr>
+            <td><strong>Live Server Health</strong></td>
+            <td>Backend (5002), Admin (3001), Web (3000)</td>
+            <td>All 3 local servers running and responding concurrently</td>
+            <td><span class="tag-badge tag-green">PASSED</span></td>
+          </tr>
+          <tr>
+            <td><strong>Anti-Duplicate Guard</strong></td>
+            <td>Listing Vehicle Identity Keys</td>
+            <td>Duplicate plate & chassis numbers successfully rejected</td>
+            <td><span class="tag-badge tag-green">PASSED</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PAGE 3 FOOTER -->
+    <div class="footer">
+      <div><strong>JCB Exchange Engineering Team</strong> • System Upgrade & Technical Audit Changelog</div>
+      <div>Page 3 of 3 • Confidential & Proprietary Document</div>
+    </div>
   </div>
 
 </body>
