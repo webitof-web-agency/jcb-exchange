@@ -86,11 +86,22 @@ export const resolveLeadId = async (rawParam: string): Promise<string | null> =>
     return response.data.leads || [];
   });
 
-export const resolveListingPaymentId = async (rawParam: string): Promise<string | null> =>
-  resolveFromList(rawParam, async () => {
-    const parsed = parseRouteParam(rawParam);
-    const response = await api.get<ListingPaymentsResponse>('/superadmin/listing-payments', {
+export const resolveListingPaymentId = async (rawParam: string): Promise<string | null> => {
+  const parsed = parseRouteParam(rawParam);
+  if (parsed.kind === 'raw-id' || parsed.kind === 'legacy-slug-id') return parsed.id;
+  if (parsed.kind !== 'slug-short' || !parsed.shortSuffix) return null;
+  try {
+    const paymentResponse = await api.get<ListingPaymentsResponse>('/superadmin/listing-payments', {
       params: { prefix: parsed.shortSuffix },
     });
-    return response.data.payments || [];
-  });
+    const paymentId = findUniqueIdByPrefix(paymentResponse.data.payments || [], parsed.shortSuffix);
+    if (paymentId) return paymentId;
+
+    const listingResponse = await api.get<ListingPaymentsResponse>('/superadmin/listing-payments', {
+      params: { listingPrefix: parsed.shortSuffix },
+    });
+    return listingResponse.data.payments?.[0]?.id || null;
+  } catch {
+    return null;
+  }
+};

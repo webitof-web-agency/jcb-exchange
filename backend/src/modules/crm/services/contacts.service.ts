@@ -172,6 +172,12 @@ export const lookupByMobile = async (access: CrmAccess, mobileValue: string) => 
   if (!mobile) return { mobile: null, contact: null, openLeads: [] };
   const user = await prisma.user.findFirst({ where: { mobile: { in: mobileVariants(mobile) } }, select: { ...contactSelect } });
   if (!user) return { mobile, contact: null, openLeads: [] };
+  // Partners only see people who already have a lead with them; anything else would let a partner
+  // read any user's name, email and city from a phone number.
+  if (access.isPartner) {
+    const sharedLeads = await prisma.lead.count({ where: { AND: [{ customerId: user.id }, leadScopeWhere(access)] } });
+    if (!sharedLeads) return { mobile, contact: null, openLeads: [] };
+  }
   const { terminal } = await listPipelineStageStatusSets();
   const openLeads = await prisma.lead.findMany({
     where: { AND: [{ customerId: user.id, status: { notIn: [...terminal] }, mergedIntoId: null }, leadScopeWhere(access)] },
@@ -324,13 +330,18 @@ const financeSnapshot = async (mobile: string) => {
 
 /** Everything known about one contact, filtered by what the viewer may see. */
 export const getContact360 = async (access: CrmAccess, userId: string) => {
-  await assertContactAccess(access, userId);
+  const routeSuffix = userId.match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1] || null;
+  const contactIdMatches = routeSuffix
+    ? await prisma.user.findMany({ where: { id: { startsWith: routeSuffix } }, select: { id: true }, take: 2 })
+    : [];
+  const resolvedUserId = contactIdMatches.length === 1 ? contactIdMatches[0]?.id || userId : userId;
+  await assertContactAccess(access, resolvedUserId);
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: resolvedUserId },
     select: { ...contactSelect, createdAt: true, crmProfile: { include: { owner: { select: { id: true, name: true } } } } },
   });
   if (!user) throw notFound('Contact not found.');
-  const leadWhere: Prisma.LeadWhereInput = { AND: [{ customerId: userId }, leadScopeWhere(access)] };
+  const leadWhere: Prisma.LeadWhereInput = { AND: [{ customerId: resolvedUserId }, leadScopeWhere(access)] };
   const [leads, followUps, activities] = await Promise.all([
     prisma.lead.findMany({
       where: leadWhere,
@@ -344,12 +355,12 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
       },
     }),
     prisma.crmFollowUp.findMany({
-      where: { contactUserId: userId, ...(access.canSeeAll ? {} : { lead: leadScopeWhere(access) }) },
+      where: { contactUserId: resolvedUserId, ...(access.canSeeAll ? {} : { lead: leadScopeWhere(access) }) },
       orderBy: { dueAt: 'desc' },
       take: 50,
       include: { owner: { select: { id: true, name: true } }, lead: { select: { id: true, status: true, leadType: true, priority: true, temperature: true, listingTitleSnapshot: true } } },
     }),
-    access.isPartner ? Promise.resolve([]) : prisma.crmContactActivity.findMany({ where: { contactUserId: userId }, orderBy: { createdAt: 'desc' }, take: 50 }),
+    access.isPartner ? Promise.resolve([]) : prisma.crmContactActivity.findMany({ where: { contactUserId: resolvedUserId }, orderBy: { createdAt: 'desc' }, take: 50 }),
   ]);
 
   const pipelineStage = selectContactPipelineStage(
@@ -366,8 +377,8 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
   const phones = mobile ? mobileVariants(mobile) : [];
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const [prime, payments, deals, rto, events] = await Promise.all([
-    prisma.customerPrimeSubscription.findMany({ where: { userId }, orderBy: { submittedAt: 'desc' }, take: 5, select: { id: true, status: true, startedAt: true, expiresAt: true, paidAmount: true } }),
-    prisma.listingPaymentSubmission.findMany({ where: { buyerId: userId }, orderBy: { submittedAt: 'desc' }, take: 10, select: { id: true, status: true, amount: true, method: true, submittedAt: true, listing: { select: { id: true, title: true } } } }),
+    prisma.customerPrimeSubscription.findMany({ where: { userId: resolvedUserId }, orderBy: { submittedAt: 'desc' }, take: 5, select: { id: true, status: true, startedAt: true, expiresAt: true, paidAmount: true } }),
+    prisma.listingPaymentSubmission.findMany({ where: { buyerId: resolvedUserId }, orderBy: { submittedAt: 'desc' }, take: 10, select: { id: true, status: true, amount: true, method: true, submittedAt: true, listing: { select: { id: true, title: true } } } }),
     phones.length
       ? prisma.sellAccount.findMany({
         where: { deletedAt: null, OR: [{ purchaserNumber: { in: phones } }, { sellerNumber: { in: phones } }, { ownerNumber: { in: phones } }] },
@@ -385,7 +396,7 @@ export const getContact360 = async (access: CrmAccess, userId: string) => {
       })
       : Promise.resolve([]),
     prisma.analyticsEvent.findMany({
-      where: { actorUserId: userId, occurredAt: { gte: since }, eventType: { in: ['LISTING_VIEW', 'CONTACT_CLICK', 'SEARCH'] } },
+      where: { actorUserId: resolvedUserId, occurredAt: { gte: since }, eventType: { in: ['LISTING_VIEW', 'CONTACT_CLICK', 'SEARCH'] } },
       orderBy: { occurredAt: 'desc' },
       take: 300,
       select: { eventType: true, listingId: true, query: true, occurredAt: true },

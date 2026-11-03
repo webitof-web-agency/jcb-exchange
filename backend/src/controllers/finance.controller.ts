@@ -109,11 +109,15 @@ export const listFinanceTransactions = async (req: Request, res: Response, next:
 
 export const getFinanceTransactionById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = text(req.params.id);
-    if (!id) return res.status(400).json({ error: 'Finance transaction id is required.' });
-
+    const routeId = text(req.params.id);
+    if (!routeId) return res.status(400).json({ error: 'Finance transaction id is required.' });
+    // The detail URL is "<payee>-<category>-<date>-<first 13 characters of the id>".
+    const routeSuffix = routeId.match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1];
     const record = await prisma.financeTransaction.findFirst({
-      where: { id, status: { not: FinanceTransactionStatus.VOIDED } },
+      where: {
+        status: { not: FinanceTransactionStatus.VOIDED },
+        ...(routeSuffix ? { OR: [{ id: routeId }, { id: { startsWith: routeSuffix.toLowerCase() } }] } : { id: routeId }),
+      },
     });
     if (!record) return res.status(404).json({ error: 'Finance transaction not found.' });
 

@@ -1,4 +1,5 @@
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
+import { buildSlugWithShortSuffix, slugify } from '@/lib/routeSlug';
 
 export interface VerificationItem {
   id: string;
@@ -174,6 +175,11 @@ export const verificationsBasePath = (pathname: string) =>
 
 export const partnerEditBasePathFor = (pathname: string) =>
   pathname.startsWith('/employee') ? '/employee/partners' : '/admin/partners';
+
+// Readable review URL: "<business name>-<first 13 characters of the id>". Built from the name only, so
+// the list and the review page (which redirects to this) always agree.
+export const verificationReviewPath = (pathname: string, partner: { id: string; name?: string | null }) =>
+  `${verificationsBasePath(pathname)}/${buildSlugWithShortSuffix(slugify(partner.name || '') || 'partner', partner.id)}`;
 
 // The admin template endpoint is `${base}/${recordId}/template`; template previews append that suffix themselves.
 export const partnerTemplateEndpointBase = (partnerId: string, documentType: string) =>

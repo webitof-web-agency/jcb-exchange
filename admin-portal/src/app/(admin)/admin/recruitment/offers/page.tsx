@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import type { OfferStatus } from '@/components/recruitment/OfferStatusDropdown';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface OfferItem {
   id: string;
@@ -766,7 +767,7 @@ export default function AdminOffersPage() {
 
   const handleDeleteOffer = async (offerId: string) => {
     if (!canDeleteOffer) return;
-    if (!window.confirm('Delete this offer?')) return;
+    if (!(await confirmDelete({ title: 'Delete this offer?' }))) return;
     setOffers((prev) => (prev || []).filter((o) => o.id !== offerId));
     try {
       await api.delete(`/recruitment/admin/offers/${offerId}`);

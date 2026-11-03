@@ -42,7 +42,7 @@ import {
 import type { MachineListingDetail } from './data';
 import { getAbsoluteMediaUrl } from './data';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
-import { generateMachineSlugPath } from '@/lib/seoUtils';
+import { generateDealerSlugPath, generateMachineSlugPath } from '@/lib/seoUtils';
 import { useAuthStore } from '@/store/authStore';
 import CustomerPrimePaymentModal, { type CustomerPrimeFeature } from '@/components/payments/CustomerPrimePaymentModal';
 import ListingBuyNowModal from '@/components/payments/ListingBuyNowModal';
@@ -379,6 +379,7 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   };
 
   useEffect(() => {
+    let cancelled = false;
     const incrementView = async () => {
       try {
         const identity = getPublicAnalyticsIdentity();
@@ -386,16 +387,18 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
           method: 'POST',
           headers: identity ? { 'Content-Type': 'application/json' } : undefined,
           body: identity ? JSON.stringify(identity) : undefined,
+          keepalive: true,
         });
         const data = await response.json();
-        if (data.success && data.data?.views) {
+        if (!cancelled && data?.success && typeof data.data?.views === 'number') {
           setViews(data.data.views);
         }
       } catch (error) {
-        console.error('Failed to increment view', error);
+        // View increment is an analytics signal; never surface error overlays to user
       }
     };
-    incrementView();
+    void incrementView();
+    return () => { cancelled = true; };
   }, [listing.id]);
 
   useEffect(() => {
@@ -509,7 +512,9 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const whatsappUrl = baseWhatsappUrl
     ? `${baseWhatsappUrl}?text=${encodeURIComponent(whatsappMessage)}`
     : null;
-  const dealerProfileHref = listing.partner?.id ? `/dealers/${listing.partner.id}` : null;
+  const dealerProfileHref = listing.partner?.id
+    ? generateDealerSlugPath({ id: listing.partner.id, userId: listing.partner.ownerUserId, businessName: listing.partner.name, district: listing.partner.district })
+    : null;
 
   const handleShare = async () => {
     if (typeof window === 'undefined') return;

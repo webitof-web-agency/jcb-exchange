@@ -10,6 +10,7 @@ import { todayIso } from './ledgerLookups';
 import { Badge, Button, ErrorBanner, Field, inputClass, LoadingState, Modal, ModalFooter } from './ui';
 import { useResource } from './useResource';
 import type { EditableVoucher, ManualType } from './VoucherForm';
+import { generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 export type VoucherStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'POSTED' | 'REJECTED' | 'REVERSED';
 export const statusTone: Record<VoucherStatus, 'slate' | 'amber' | 'green' | 'red' | 'violet'> = {
@@ -79,7 +80,7 @@ export default function VoucherDetail({ voucherId, onClose, onChanged, onEdit, o
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone[voucher.status]}>{enumLabel(voucher.status)}</Badge>
             {voucher.sourceType ? <Badge tone="blue">Auto: {enumLabel(voucher.sourceType)}</Badge> : <Badge>Manual</Badge>}
-            {voucher.sourceType === 'SELL_ACCOUNT' && voucher.sourceId ? <Link href={`${rolePrefix}/accounts/sell-accounts/${voucher.sourceId}`} className="text-xs font-semibold text-blue-700 hover:underline">Open Sold Vehicle</Link> : null}
+            {voucher.sourceType === 'SELL_ACCOUNT' && voucher.sourceId ? <Link href={generateAdminSoldVehicleDetailPath(`${rolePrefix}/accounts/sell-accounts`, { id: voucher.sourceId })} className="text-xs font-semibold text-blue-700 hover:underline">Open Sold Vehicle</Link> : null}
             {voucher.paymentMethod ? <Badge>{enumLabel(voucher.paymentMethod)}</Badge> : null}
             {voucher.reference ? <span className="text-xs text-slate-500">Ref: <span className="font-mono">{voucher.reference}</span></span> : null}
             {voucher.reversalOf ? <button type="button" onClick={() => onOpen(voucher.reversalOf!.id)} className="text-xs font-semibold text-blue-700 hover:underline">Reversal of {voucher.reversalOf.number}</button> : null}

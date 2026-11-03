@@ -21,7 +21,7 @@ import { FINANCE_WORKSPACE_VIEW_PERMISSIONS, financeLegacyLinks, financeWorkspac
 import FinanceSidebarNav from '@/components/layout/FinanceSidebarNav';
 import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandPalette';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
-import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
+import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, UserCheck, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
 import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
@@ -61,6 +61,7 @@ const navItems = [
   { href: '/admin/tasks', labelKey: 'admin.tasks', defaultLabel: 'Tasks', icon: ListTodo },
   { href: '/admin/partners', labelKey: 'admin.partners', icon: List },
   { href: '/admin/visitors', labelKey: 'admin.visitors', icon: UsersRound },
+  { href: '/admin/customers', labelKey: 'admin.customers', defaultLabel: 'Won Customers', icon: UserCheck },
   { href: '/admin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
   { href: '/admin/sms', labelKey: 'admin.smsNotifications', icon: Smartphone },
   { href: '/admin/categories', labelKey: 'admin.categories', icon: Tags },
@@ -84,6 +85,7 @@ const employeeModuleNavItems = [
   { href: '/employee/listings', labelKey: 'admin.listings', icon: Truck, permissions: ['listings.read'] },
   { href: '/employee/partners', labelKey: 'admin.partners', icon: List, permissions: ['partners.read'] },
   { href: '/employee/visitors', labelKey: 'admin.visitors', icon: UsersRound, permissions: ['visitors.read'] },
+  { href: '/employee/customers', labelKey: 'admin.customers', defaultLabel: 'Won Customers', icon: UserCheck, permissions: ['visitors.read'] },
   { href: '/employee/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle, permissions: employeeWhatsAppPermissions },
   { href: '/employee/sms', labelKey: 'admin.smsNotifications', icon: Smartphone, permissions: employeeSmsPermissions },
   { href: '/employee/categories', labelKey: 'admin.categories', icon: Tags, permissions: ['categories.read'] },
@@ -629,6 +631,7 @@ export default function AdminLayout({
     '/admin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/admin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
     '/admin/visitors': t('admin.visitors'),
+    '/admin/customers': t('admin.customers', 'Won Customers'),
     '/admin/recurrence': t('admin.recurrence'),
     '/admin/categories': t('admin.categoryManagement'),
     '/admin/brands': t('admin.brandManagement'),
@@ -663,6 +666,7 @@ export default function AdminLayout({
     '/employee/driving-license-verification': t('admin.vehicleTransport', 'Vehicle & Transport'),
     '/employee/partners': t('admin.partnerDirectory'),
     '/employee/visitors': t('admin.visitors'),
+    '/employee/customers': t('admin.customers', 'Won Customers'),
     '/employee/categories': t('admin.categoryManagement'),
     '/employee/brands': t('admin.brandManagement'),
     '/employee/recurrence': t('admin.recurrence'),
@@ -695,6 +699,8 @@ export default function AdminLayout({
     if (pathname.startsWith('/admin/analytics/') || pathname.startsWith('/employee/analytics/')) {
       return t('admin.analyticsDetail', 'Listing Analytics');
     }
+    if (pathname.startsWith('/admin/customers/') || pathname.startsWith('/employee/customers/')) return t('admin.customer360', 'Customer 360');
+    if (pathname.startsWith('/admin/visitors/') || pathname.startsWith('/employee/visitors/')) return t('admin.visitor360', 'Visitor 360');
     if (pathname.startsWith('/admin/enquiries/') || pathname.startsWith('/employee/enquiries/')) return t('admin.enquiryDetails');
     const crmPage = /^\/(admin|employee)\/crm\/(leads|pipeline|follow-ups|contacts|reports|campaigns|import)$/.exec(pathname)?.[2];
     if (crmPage) {
@@ -757,6 +763,7 @@ export default function AdminLayout({
     '/identity-hub',
     '/vehicle-transport',
     '/visitors',
+    '/customers',
   ].some((suffix) => Boolean(getVisibleNavItem(suffix))) || canShowPartnersMenu;
   // Workspace groups follow the same rule as the route guard: super admin sees all, others by permission.
   const financeNavGroups = isSuperAdmin ? financeWorkspaceGroups : getVisibleFinanceWorkspaceGroups(userPermissions, false);
@@ -1085,6 +1092,7 @@ export default function AdminLayout({
               ) : null}
 
               {renderStandardNavItem(getVisibleNavItem('/visitors'))}
+              {renderStandardNavItem(getVisibleNavItem('/customers'))}
             </section>
           ) : null}
 

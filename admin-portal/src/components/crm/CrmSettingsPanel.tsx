@@ -6,6 +6,7 @@ import { Copy, KeyRound, Play, Plus, Save, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Badge, Button, EmptyState, Field, inputClass, Modal, ModalFooter, Panel, Toggle } from '@/components/financeWorkspace/ui';
 import { crmError, CrmLoadingState, CrmMetaProvider, CrmSelect, fmtDateTime, getJson, label, LEAD_TYPE_LABELS, useCrmMeta, useCrmResource, type CrmMeta } from './crmShared';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 type Config = NonNullable<CrmMeta['config']>;
 type Rule = { id: string; name: string; enabled: boolean; sortOrder: number; strategy: string; assigneeIds: string[]; conditions: { leadTypes?: string[]; sources?: string[]; states?: string[]; cities?: string[]; priorities?: string[] } | null };
@@ -210,7 +211,7 @@ function AssignmentRules({ meta }: { meta: CrmMeta }) {
   const rules = useCrmResource(() => getJson<Rule[]>('/crm/assignment-rules'), 'crm-rules');
   const [editing, setEditing] = useState<Rule | 'new' | null>(null);
   const remove = async (rule: Rule) => {
-    if (!window.confirm(`Delete rule "${rule.name}"?`)) return;
+    if (!(await confirmDelete({ title: 'Delete this assignment rule?', itemName: rule.name, note: 'Leads already assigned keep their owner.' }))) return;
     try { await api.delete(`/crm/assignment-rules/${rule.id}`); rules.reload(); } catch (error) { toast.error(crmError(error, 'Could not delete.')); }
   };
   const names = (ids: string[]) => ids.map((id) => meta.staff.find((s) => s.id === id)?.name || 'Removed user').join(', ');

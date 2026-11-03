@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, KeyRound, Pencil, Plus, Search, Trash2, X, MoreVertical, Check, Ban } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import PortalActionDropdown, { type DropdownItem } from '@/components/ui/PortalActionDropdown';
@@ -340,32 +341,11 @@ export default function SuperAdminUsersPage() {
     }
   };
 
-  const confirmDeleteUser = async () => {
-    if (!deleteUserTarget) {
-      return;
-    }
-
-    if (!canDeleteUsers) {
-      setError(t('userManagement.deletePermissionDenied'));
-      setDeleteUserTarget(null);
-      return;
-    }
-
-    try {
-      setUpdatingId(deleteUserTarget.id);
-      await api.delete(`/superadmin/users/${deleteUserTarget.id}`);
-      setUsers((current) => current.filter((item) => item.id !== deleteUserTarget.id));
-      setDeleteUserTarget(null);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('userManagement.deleteFailed'));
-      } else {
-        setError(t('userManagement.deleteFailed'));
-      }
-      setDeleteUserTarget(null);
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleDeleteAlternative = async (status: string, reason: string) => {
+    if (!deleteUserTarget) return;
+    const response = await api.patch<{ user: ManagedUser }>(`/superadmin/users/${deleteUserTarget.id}/status`, { status, reason });
+    setUsers((current) => current.map((user) => (user.id === deleteUserTarget.id ? response.data.user : user)));
+    setDeleteUserTarget(null);
   };
 
   return (
@@ -806,33 +786,18 @@ export default function SuperAdminUsersPage() {
       ) : null}
 
       {deleteUserTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <Trash2 className="h-6 w-6 text-red-600" />
-            </div>
-            <h3 className="mb-2 text-lg font-bold text-gray-900">{t('userManagement.deleteEmployee')}</h3>
-            <p className="mb-6 text-sm text-gray-600">
-              {t('userManagement.deleteConfirmation', { name: deleteUserTarget.fullName || deleteUserTarget.name })}
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteUserTarget(null)}
-                disabled={updatingId === deleteUserTarget.id}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={() => void confirmDeleteUser()}
-                disabled={updatingId === deleteUserTarget.id}
-                className="w-full rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
-              >
-                {updatingId === deleteUserTarget.id ? t('userManagement.deleting') : t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteImpactDialog
+          open
+          title={t('userManagement.deleteEmployee')}
+          impactPath={`/superadmin/users/${deleteUserTarget.id}/delete-impact`}
+          deletePath={`/superadmin/users/${deleteUserTarget.id}`}
+          onClose={() => setDeleteUserTarget(null)}
+          onDeleted={() => {
+            setUsers((current) => current.filter((item) => item.id !== deleteUserTarget.id));
+            setDeleteUserTarget(null);
+          }}
+          onAlternative={canUpdateUsers ? handleDeleteAlternative : undefined}
+        />
       ) : null}
     </div>
   );

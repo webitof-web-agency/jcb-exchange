@@ -12,6 +12,7 @@ import {
   recruitmentAnyPermissions,
 } from './recruitmentPermissions';
 import { blogAnyPermissions } from './blogPermissions';
+import { FINANCE_WORKSPACE_VIEW_PERMISSIONS } from './financeWorkspace';
 import { CRM_READ_PERMISSIONS } from './adminPermissionCatalog';
 import {
   IDENTITY_HUB_VIEW_PERMISSIONS,
@@ -91,6 +92,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/admin/accounts',
     employeePath: '/employee/accounts',
     permissions: accountAnyPermissions,
+  },
+  {
+    superadminPath: '/admin/finance/workspace',
+    employeePath: '/employee/finance/workspace',
+    permissions: FINANCE_WORKSPACE_VIEW_PERMISSIONS,
   },
   {
     superadminPath: '/admin/tasks',

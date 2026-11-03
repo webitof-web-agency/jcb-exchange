@@ -33,6 +33,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import api from '@/lib/api';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   getAccountCreatePermissions,
@@ -57,6 +58,7 @@ import { mergeSellAccountRecords } from '@/lib/sellAccountDrafts.mjs';
 import { getSourceTypeLabel } from '@/lib/soldVehicleParties.mjs';
 import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
 import { isHighlightedSellAccount } from '@/lib/sellAccountListNavigation.mjs';
+import { generateAdminRtoDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 import {
   DEAL_STATUS_CONFIG,
   formatDisplayDate as formatDate,
@@ -332,47 +334,37 @@ export default function SellAccountsPage() {
       toast.info('This record is locked and can only be viewed.');
       return;
     }
-    router.push(`${accountBasePath}/${encodeURIComponent(record.id)}/edit`);
+    router.push(`${generateAdminSoldVehicleDetailPath(accountBasePath, record)}/edit`);
   };
 
-  const getSellAccountApiError = (error: unknown, fallback: string) => {
-    const response = (error as { response?: { status?: number; data?: { error?: unknown; message?: unknown } } })
-      ?.response;
-    const detail = response?.data?.error ?? response?.data?.message;
-    if (typeof detail === 'string' && detail.trim()) return detail.trim();
-    if (typeof response?.status === 'number') return `${fallback} (HTTP ${response.status})`;
-    return fallback;
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!canDeleteSellAccounts || !deletingRecordId) return;
-    const recordToDelete = records.find((record) => record.id === deletingRecordId);
-    if (recordToDelete?.isLocked) {
-      toast.info('This record is locked and can only be viewed.');
-      setDeletingRecordId(null);
-      return;
-    }
-    if (recordToDelete?.rtoRecord?.id) {
-      toast.info('This Sold Vehicle was transferred to RTO Work. Delete it from the RTO Work section first.');
-      setDeletingRecordId(null);
-      return;
-    }
-    if (!deletingRecordId.startsWith('DRAFT-SELL-')) {
-      try {
-        await api.delete(`/recruitment/admin/sell-accounts/${encodeURIComponent(deletingRecordId)}`);
-      } catch (error) {
-        toast.error(getSellAccountApiError(error, 'Unable to delete Sold Vehicle.'));
-        return;
-      }
-    }
-    const documents = recordToDelete
-      ? (Object.values(normalizeSellAccountDocuments(recordToDelete) as SellAccountDocuments) as any[])
+  // Removes the record from the list once it is gone on the server, and its uploaded files from
+  // storage when the person chose that in the delete dialog.
+  const finishRecordDelete = async (recordId: string, removeFiles = true) => {
+    const recordToDelete = records.find((record) => record.id === recordId);
+    const documents = recordToDelete && removeFiles
+      ? (Object.values(normalizeSellAccountDocuments(recordToDelete) as SellAccountDocuments) as Array<{ fileUrl?: string } | null | undefined>)
       : [];
     const urls = [...new Set(documents.map((document) => document?.fileUrl).filter(Boolean))] as string[];
     await Promise.allSettled(urls.map((fileUrl) => deleteSecureFileFromServer(fileUrl)));
-    setRecords(removeSellAccountRecord(records, deletingRecordId));
+    setRecords(removeSellAccountRecord(records, recordId));
     setDeletingRecordId(null);
     toast.success('Sold Vehicle record removed successfully.');
+  };
+
+  // Unsaved local drafts (DRAFT-SELL-…) exist only in this browser, so they are removed without the server check.
+  const handleLocalDraftDelete = async () => {
+    if (!canDeleteSellAccounts || !deletingRecordId) return;
+    await finishRecordDelete(deletingRecordId);
+  };
+
+  // "Cancel sale" offered in the delete dialog instead of deleting.
+  const handleCancelSaleInstead = async (_status: string, reason: string) => {
+    if (!deletingRecordId) return;
+    const response = await api.post<{ record?: SellAccountApiRecord }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(deletingRecordId)}/cancel-sale`, { reason });
+    const cancelled = response.data?.record ? normalizeServerSellAccount(response.data.record) : null;
+    if (cancelled) setRecords((current) => current.map((record) => (record.id === cancelled.id ? cancelled : record)));
+    setDeletingRecordId(null);
+    toast.success('Sale cancelled. Receipts stay on record; handle any refund from the record.');
   };
 
   const filteredRecords = useMemo(() => {
@@ -893,7 +885,7 @@ export default function SellAccountsPage() {
                     <tr
                       id={`sell-account-row-${encodeURIComponent(item.id)}`}
                       key={item.id}
-                      onClick={() => router.push(`${accountBasePath}/${item.id}`)}
+                      onClick={() => router.push(generateAdminSoldVehicleDetailPath(accountBasePath, item))}
                       className={`group cursor-pointer transition-colors hover:bg-slate-50/80 ${highlightedRecordId === item.id ? 'bg-amber-50/90 shadow-[inset_4px_0_0_#f59e0b] animate-pulse' : ''}`}
                     >
                       {/* Vehicle & Plate */}
@@ -1056,7 +1048,7 @@ export default function SellAccountsPage() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  router.push(`${rtoBasePath}/${item.rtoRecord?.id}`);
+                                  router.push(generateAdminRtoDetailPath(rtoBasePath, { id: item.rtoRecord!.id, vehicleNumber: item.vehicleNumber }));
                                 }}
                                 className="inline-flex items-center gap-1 font-bold text-amber-700 hover:text-amber-900 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.2"
                                 title="Open connected RTO work status"
@@ -1091,7 +1083,7 @@ export default function SellAccountsPage() {
                               {
                                 label: 'View Dossier',
                                 icon: <Eye className="h-4 w-4 text-slate-500" />,
-                                onClick: () => router.push(`${accountBasePath}/${item.id}`),
+                                onClick: () => router.push(generateAdminSoldVehicleDetailPath(accountBasePath, item)),
                               },
                               ...(canUpdateSellAccounts && !item.isLocked
                                 ? [
@@ -1107,7 +1099,7 @@ export default function SellAccountsPage() {
                                     {
                                       label: 'View Connected RTO File',
                                       icon: <ClipboardCheck className="h-4 w-4 text-blue-600" />,
-                                      onClick: () => router.push(`${rtoBasePath}/${item.rtoRecord?.id}`),
+                                      onClick: () => router.push(generateAdminRtoDetailPath(rtoBasePath, { id: item.rtoRecord!.id, vehicleNumber: item.vehicleNumber })),
                                     },
                                   ]
                                 : []),
@@ -1134,7 +1126,7 @@ export default function SellAccountsPage() {
                                     {
                                       label: 'Locked · Finalized Deal',
                                       icon: <LockKeyhole className="h-4 w-4 text-slate-500" />,
-                                      onClick: () => router.push(`${accountBasePath}/${item.id}`),
+                                      onClick: () => router.push(generateAdminSoldVehicleDetailPath(accountBasePath, item)),
                                     },
                                   ]
                                 : []),
@@ -1235,7 +1227,7 @@ export default function SellAccountsPage() {
               return (
                 <div
                   key={item.id}
-                  onClick={() => router.push(`${accountBasePath}/${item.id}`)}
+                  onClick={() => router.push(generateAdminSoldVehicleDetailPath(accountBasePath, item))}
                   className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs transition hover:border-amber-300 hover:shadow-md cursor-pointer"
                 >
                   <div>
@@ -1384,8 +1376,8 @@ export default function SellAccountsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deletingRecordId && (
+      {/* Delete confirmation for unsaved local drafts */}
+      {deletingRecordId?.startsWith('DRAFT-SELL-') && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3 text-rose-600">
@@ -1413,7 +1405,7 @@ export default function SellAccountsPage() {
               </button>
               <button
                 type="button"
-                onClick={handleDeleteConfirm}
+                onClick={() => void handleLocalDraftDelete()}
                 className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-sm"
               >
                 Confirm Delete
@@ -1421,6 +1413,19 @@ export default function SellAccountsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete confirmation for saved records (impact + cancel sale instead) */}
+      {deletingRecordId && !deletingRecordId.startsWith('DRAFT-SELL-') && (
+        <DeleteImpactDialog
+          open
+          title="Delete Sold Vehicle record"
+          impactPath={`/recruitment/admin/sell-accounts/${encodeURIComponent(deletingRecordId)}/delete-impact`}
+          deletePath={`/recruitment/admin/sell-accounts/${encodeURIComponent(deletingRecordId)}`}
+          onClose={() => setDeletingRecordId(null)}
+          onDeleted={(_message, include) => void finishRecordDelete(deletingRecordId, include.includes('documentFiles'))}
+          onAlternative={canDeleteSellAccounts ? handleCancelSaleInstead : undefined}
+        />
       )}
     </div>
   );

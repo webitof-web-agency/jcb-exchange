@@ -4,8 +4,8 @@ import prisma from '../lib/prisma';
 import { normalizeRtoWorkStatus, rtoStatusStorageValues } from '../services/rtoStatus';
 import { syncSellAccountFromRto } from '../services/sellAccount.service';
 import { lockRtoWorkRecord } from '../services/sellAccount.service';
+import { deleteRtoRecordPermanently, getRtoRecordDeletionImpact } from '../services/sellAccountDeletion.service';
 import { assertRecordEditable, RecordLockedError } from '../services/recordLock';
-import { getLinkedRecordDeletionPolicy } from '../services/linkedRecordDeletion';
 import { serializeRtoRecord } from '../services/rtoRecordSerializer';
 import { recordRtoStatusChange } from '../services/rtoTransferStore';
 import { normalizeRemark } from '../services/rtoTransferTasks';
@@ -237,33 +237,21 @@ export const updateRtoRecord = async (req: Request, res: Response, next: NextFun
   }
 };
 
+/** What deleting this RTO record (and its connected Sold Vehicle) would remove, and what stops it. */
+export const getRtoRecordDeletionImpactRecord = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const impact = await getRtoRecordDeletionImpact(text(req.params.id));
+    if (!impact) return res.status(404).json({ success: false, error: 'RTO record not found.' });
+    res.json({ success: true, impact });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Body: { confirmation: 'DELETE', reason }. The connected Sold Vehicle goes too, under the same money rules. */
 export const deleteRtoRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = text(req.params.id);
-    const deleted = await prisma.$transaction(async (tx) => {
-      const existing = await tx.vehicleRtoRecord.findUnique({
-        where: { id },
-        select: { id: true, isLocked: true, sellAccountId: true },
-      });
-      if (!existing) return false;
-
-      const linkedSellAccount = existing.sellAccountId
-        ? await tx.sellAccount.findUnique({ where: { id: existing.sellAccountId }, select: { id: true, isLocked: true } })
-        : null;
-      const policy = getLinkedRecordDeletionPolicy({
-        source: 'RTO',
-        hasLinkedRto: Boolean(linkedSellAccount),
-        isLocked: existing.isLocked || Boolean(linkedSellAccount?.isLocked),
-      });
-      if (policy.action === 'BLOCK') assertRecordEditable(true);
-
-      await tx.vehicleRtoRecord.delete({ where: { id } });
-      if (policy.action === 'DELETE_LINKED_PAIR' && linkedSellAccount) {
-        await tx.sellAccount.delete({ where: { id: linkedSellAccount.id } });
-        return 'pair';
-      }
-      return 'rto';
-    });
+    const deleted = await deleteRtoRecordPermanently(text(req.params.id), { id: req.user!.id }, req.body || {});
     if (!deleted) return res.status(404).json({ success: false, error: 'RTO record not found.' });
     res.json({
       success: true,
@@ -272,7 +260,6 @@ export const deleteRtoRecord = async (req: Request, res: Response, next: NextFun
         : 'RTO record deleted successfully.',
     });
   } catch (error) {
-    if (error instanceof RecordLockedError) return res.status(423).json({ success: false, error: error.message, code: error.code });
     next(error);
   }
 };

@@ -8,7 +8,7 @@ import {
   FileText, DollarSign, AlertTriangle, ShieldCheck, Building2,
   ChevronDown, Check, Loader2, LockKeyhole, CalendarDays, ExternalLink,
   Copy, Share2, Printer, MessageSquare, ArrowUpRight, Gauge,
-  Award, ShieldAlert, Sparkles, CheckCircle
+  Award, ShieldAlert, Sparkles, CheckCircle, History, Send, Shield, Info, CheckCheck
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
@@ -18,6 +18,7 @@ import { useAuthStore } from '@/store/authStore';
 import { normalizeRtoStatus } from '@/lib/rtoWorkStatusForm.mjs';
 import { getRtoDetailActionState } from '@/lib/rtoDetailView.mjs';
 import RemarkDialog from '@/components/accounts/RemarkDialog';
+import { generateAdminListingDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type RtoRecord = {
   id: string;
@@ -100,10 +101,22 @@ const formatRegistrationNumber = (value?: string | null) => {
   return normalized.replace(/[\s-]+/g, '-');
 };
 
-const getWhatsAppUrl = (phone?: string) => {
+type StatusLog = {
+  id: string;
+  oldStatus: string | null;
+  newStatus: string;
+  remark: string;
+  createdAt: string;
+  changedByName: string | null;
+};
+
+const getWhatsAppUrl = (phone?: string, text?: string) => {
   if (!phone) return null;
   const digits = phone.replace(/[^0-9]/g, '');
-  return digits.length >= 10 ? `https://wa.me/91${digits.slice(-10)}` : null;
+  if (digits.length < 10) return null;
+  const clean = digits.length >= 10 ? (digits.startsWith('91') ? digits : `91${digits.slice(-10)}`) : digits;
+  const query = text ? `?text=${encodeURIComponent(text)}` : '';
+  return `https://wa.me/${clean}${query}`;
 };
 
 export default function RtoRecordDetailView() {
@@ -127,6 +140,7 @@ export default function RtoRecordDetailView() {
     hasAnyPermission(currentUser?.permissions || [], getAccountUpdatePermissions('rto-work-status'));
 
   const [record, setRecord] = useState<RtoRecord | null>(null);
+  const [statusLogs, setStatusLogs] = useState<StatusLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -210,6 +224,18 @@ export default function RtoRecordDetailView() {
         // ignore cache write error
       }
       if (nextStatus === 'DEAL_DONE') setRecord({ ...updated, isLocked: true });
+
+      // Append new event to status audit timeline
+      const newLogItem: StatusLog = {
+        id: `log-${Date.now()}`,
+        oldStatus: prevStatus,
+        newStatus: nextStatus,
+        remark: statusRemark,
+        createdAt: new Date().toISOString(),
+        changedByName: currentUser?.name || 'Administrator',
+      };
+      setStatusLogs((prev) => [newLogItem, ...prev]);
+
       setPendingStatus(null);
       toast.success(`RTO Status updated to "${STATUS_CONFIG[nextStatus]?.label || nextStatus}"`);
     } catch (err: unknown) {
@@ -230,12 +256,31 @@ export default function RtoRecordDetailView() {
         return;
       }
 
+      const decodedParam = decodeURIComponent(String(id || '')).trim();
+      const cleanParam = decodedParam.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      const matchRecord = (item: RtoRecord) => {
+        if (String(item.id).toLowerCase() === decodedParam.toLowerCase()) return true;
+        const itemClean = String(item.vehicleNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (itemClean && cleanParam && itemClean === cleanParam) return true;
+        return false;
+      };
+
+      const syncCanonicalUrl = (foundRecord: RtoRecord) => {
+        if (!foundRecord.vehicleNumber) return;
+        const canonicalSlug = formatRegistrationNumber(foundRecord.vehicleNumber) || foundRecord.vehicleNumber.trim().toUpperCase() || foundRecord.id;
+        const canonicalPath = `${basePortalPath}/accounts/rto-work-status/${encodeURIComponent(canonicalSlug)}`;
+        if (pathname !== canonicalPath) {
+          router.replace(canonicalPath);
+        }
+      };
+
       const getCachedRecord = () => {
         try {
           const saved = localStorage.getItem('jcb_rto_records');
           if (!saved) return null;
           const parsed = JSON.parse(saved) as RtoRecord[];
-          return parsed.find((item) => String(item.id) === id) || null;
+          return parsed.find(matchRecord) || null;
         } catch {
           return null;
         }
@@ -243,11 +288,32 @@ export default function RtoRecordDetailView() {
 
       try {
         const response = await api.get('/recruitment/admin/rto-records');
-        const found = ((response.data?.records || []) as RtoRecord[]).find((item) => String(item.id) === id);
-        if (isMounted) setRecord(found ? { ...found, rtoStatus: normalizeRtoStatus(found.rtoStatus) } : null);
+        const found = ((response.data?.records || []) as RtoRecord[]).find(matchRecord);
+        if (isMounted) {
+          const resolved = found ? { ...found, rtoStatus: normalizeRtoStatus(found.rtoStatus) } : null;
+          setRecord(resolved);
+          if (resolved) {
+            syncCanonicalUrl(resolved);
+            // Fetch live statusLogs & workspace remarks for Section B.4 Timeline
+            try {
+              const wsRes = await api.get(`/recruitment/admin/rto-records/${encodeURIComponent(resolved.id)}/workspace`);
+              if (isMounted && Array.isArray(wsRes.data?.statusLogs)) {
+                setStatusLogs(wsRes.data.statusLogs);
+              }
+            } catch {
+              // ignore workspace fetch failure fallback
+            }
+          }
+        }
       } catch {
         const cached = getCachedRecord();
-        if (isMounted) setRecord(cached ? { ...cached, rtoStatus: normalizeRtoStatus(cached.rtoStatus) } : null);
+        if (isMounted) {
+          const resolved = cached ? { ...cached, rtoStatus: normalizeRtoStatus(cached.rtoStatus) } : null;
+          setRecord(resolved);
+          if (resolved) {
+            syncCanonicalUrl(resolved);
+          }
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -258,7 +324,7 @@ export default function RtoRecordDetailView() {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, basePortalPath, pathname, router]);
 
   const complianceScore = useMemo(() => {
     if (!record) return { validCount: 0, total: 5, percent: 0 };
@@ -283,6 +349,193 @@ export default function RtoRecordDetailView() {
     const maintenance = Number(record.vehicleMaintenanceCost || 0);
     const paidPercent = total > 0 ? Math.min(100, Math.round((advance / total) * 100)) : 100;
     return { total, advance, balance, maintenance, paidPercent };
+  }, [record]);
+
+  const formattedPlate = record?.vehicleNumber ? formatRegistrationNumber(record.vehicleNumber) : '';
+
+  const handleShare = useCallback(async () => {
+    if (!record) return;
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const shareTitle = `RTO Work Status - ${formattedPlate || record.vehicleModel || 'Vehicle Transfer'}`;
+    const shareText = `Check RTO transfer status for vehicle ${formattedPlate || record.vehicleNumber} (Customer: ${record.customerName})`;
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    copyText(shareUrl, 'pageUrl');
+  }, [record, formattedPlate, copyText]);
+
+  const validityBadge = (val: string | null | undefined, type: 'validity' | 'hp' | 'hsrp') => {
+    const v = (val || '').toUpperCase();
+    let cls = 'bg-slate-100 text-slate-600 border-slate-200';
+    let labelText = val || '—';
+    if (type === 'validity') {
+      if (v === 'VALID') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Valid'; }
+      else if (v === 'EXPIRED') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Expired'; }
+      else if (v === 'LIFETIME') { cls = 'bg-amber-50 text-amber-900 border-amber-300'; labelText = 'Lifetime'; }
+      else if (v === 'NOT_AVAILABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'N/A'; }
+    } else if (type === 'hp') {
+      if (v === 'TERMINATED') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Terminated'; }
+      else if (v === 'ACTIVE') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Active Loan'; }
+      else if (v === 'NOT_APPLICABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'None'; }
+      else { cls = 'bg-yellow-50 text-yellow-800 border-yellow-300'; labelText = 'Pending'; }
+    } else if (type === 'hsrp') {
+      if (v === 'YES') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Fitted'; }
+      else if (v === 'NO') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Not Fitted'; }
+      else if (v === 'NOT_APPLICABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'N/A'; }
+      else { cls = 'bg-yellow-50 text-yellow-800 border-yellow-300'; labelText = 'Pending'; }
+    }
+    return <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}>{labelText}</span>;
+  };
+
+  // Section B.1: Visual 5-Point Compliance Radar Data with Countdown Days
+  const complianceRadarData = useMemo(() => {
+    if (!record) return [];
+
+    const now = new Date();
+    const getCountdown = (validUntil: string | null | undefined, status: string) => {
+      if (status === 'LIFETIME') {
+        return { text: 'Lifetime Valid', tone: 'lifetime' as const, days: Infinity, isExpired: false, isNear: false };
+      }
+      if (status === 'NOT_APPLICABLE' || status === 'NOT_REQUIRED' || status === 'NOT_AVAILABLE') {
+        return { text: 'Not Required / N/A', tone: 'slate' as const, days: null, isExpired: false, isNear: false };
+      }
+      if (!validUntil) {
+        return { text: status === 'VALID' ? 'Date Missing' : 'Expired / Pending', tone: 'rose' as const, days: null, isExpired: true, isNear: false };
+      }
+      const exp = new Date(validUntil);
+      if (Number.isNaN(exp.getTime())) {
+        return { text: 'Invalid Date', tone: 'rose' as const, days: null, isExpired: true, isNear: false };
+      }
+      const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        return { text: `Expired ${Math.abs(diffDays)}d ago`, tone: 'rose' as const, days: diffDays, isExpired: true, isNear: false };
+      }
+      if (diffDays <= 15) {
+        return { text: `Expiring in ${diffDays} days!`, tone: 'amber' as const, days: diffDays, isExpired: false, isNear: true };
+      }
+      return { text: `Valid for ${diffDays} days`, tone: 'emerald' as const, days: diffDays, isExpired: false, isNear: false };
+    };
+
+    return [
+      {
+        title: 'Road Tax',
+        status: record.taxStatus,
+        statusLabel: record.taxStatus === 'LIFETIME' ? 'Lifetime' : record.taxStatus === 'VALID' ? 'Valid' : 'Expired / N/A',
+        validUntil: record.taxValidUntil,
+        countdown: getCountdown(record.taxValidUntil, record.taxStatus),
+        icon: DollarSign,
+      },
+      {
+        title: 'Fitness (FC)',
+        status: record.fitnessStatus,
+        statusLabel: record.fitnessStatus === 'VALID' ? 'Valid' : 'Expired / N/A',
+        validUntil: record.fitnessValidUntil,
+        countdown: getCountdown(record.fitnessValidUntil, record.fitnessStatus),
+        icon: Gauge,
+      },
+      {
+        title: 'Insurance',
+        status: record.insuranceStatus,
+        statusLabel: record.insuranceStatus === 'VALID' ? 'Valid' : 'Expired / N/A',
+        validUntil: record.insuranceValidUntil,
+        countdown: getCountdown(record.insuranceValidUntil, record.insuranceStatus),
+        icon: ShieldCheck,
+      },
+      {
+        title: 'Pollution (PUC)',
+        status: record.pucStatus,
+        statusLabel: record.pucStatus === 'VALID' ? 'Valid' : 'Expired / N/A',
+        validUntil: record.pucValidUntil,
+        countdown: getCountdown(record.pucValidUntil, record.pucStatus),
+        icon: Award,
+      },
+      {
+        title: 'HSRP Plate',
+        status: record.hsrpStatus,
+        statusLabel: record.hsrpStatus === 'YES' ? 'Fitted' : record.hsrpStatus === 'NO' ? 'Not Fitted' : 'Pending',
+        validUntil: null,
+        extra: record.hsrpNumber ? `Plate #${record.hsrpNumber}` : 'High Security Plate',
+        countdown: {
+          text: record.hsrpStatus === 'YES' ? 'HSRP IND Fitted' : 'Fitment Pending',
+          tone: (record.hsrpStatus === 'YES' ? 'emerald' : 'amber') as 'emerald' | 'amber',
+          days: null,
+          isExpired: record.hsrpStatus === 'NO',
+          isNear: false,
+        },
+        icon: Car,
+      },
+    ];
+  }, [record]);
+
+  // Section B.2: Interactive RTO Milestone Stepper Configuration
+  const RTO_MILESTONES = useMemo(() => {
+    if (!record) return [];
+
+    const isDealDone = record.rtoStatus === 'DEAL_DONE' || Boolean(record.isLocked);
+    const isCompleted = record.rtoStatus === 'RTO_WORK_COMPLETED' || isDealDone;
+    const isInProgress = record.rtoStatus === 'RTO_WORK_IN_PROGRESS' || isCompleted;
+    const isStarted = record.rtoStatus === 'RTO_WORK_STARTED' || isInProgress;
+
+    return [
+      {
+        id: 'DOC_RECEIVED',
+        label: 'Doc Received',
+        sublabel: 'Dossier Ready',
+        statusTarget: null,
+        isDone: true,
+        isActive: record.rtoStatus === 'RTO_WORK_STARTED' && !record.documentSendDate,
+        date: null,
+      },
+      {
+        id: 'RTO_WORK_STARTED',
+        label: 'Sent to RTO',
+        sublabel: record.documentSendDate ? formatDateValue(record.documentSendDate) : 'Dispatched',
+        statusTarget: 'RTO_WORK_STARTED',
+        isDone: Boolean(record.documentSendDate) || isStarted,
+        isActive: record.rtoStatus === 'RTO_WORK_STARTED',
+        date: record.documentSendDate,
+      },
+      {
+        id: 'RTO_WORK_IN_PROGRESS',
+        label: 'Work In Progress',
+        sublabel: 'RTO Office Scrutiny',
+        statusTarget: 'RTO_WORK_IN_PROGRESS',
+        isDone: isInProgress,
+        isActive: record.rtoStatus === 'RTO_WORK_IN_PROGRESS',
+        date: null,
+      },
+      {
+        id: 'RTO_WORK_COMPLETED',
+        label: 'Transfer Done',
+        sublabel: 'RC Approved',
+        statusTarget: 'RTO_WORK_COMPLETED',
+        isDone: isCompleted,
+        isActive: record.rtoStatus === 'RTO_WORK_COMPLETED',
+        date: null,
+      },
+      {
+        id: 'DEAL_DONE',
+        label: 'Deal Finalized & Locked',
+        sublabel: record.isLocked ? 'Permanent Archive' : 'Final Closure',
+        statusTarget: 'DEAL_DONE',
+        isDone: isDealDone,
+        isActive: isDealDone,
+        date: record.lockedAt,
+      },
+    ];
   }, [record]);
 
   if (loading) {
@@ -320,41 +573,17 @@ export default function RtoRecordDetailView() {
   const statusInfo = STATUS_CONFIG[record.rtoStatus || 'RTO_WORK_IN_PROGRESS'] || STATUS_CONFIG.RTO_WORK_IN_PROGRESS;
   const StatusIcon = statusInfo.icon;
   const detailActions = getRtoDetailActionState({ canUpdate: canUpdateRto, isLocked: record.isLocked === true });
-  const formattedPlate = formatRegistrationNumber(record.vehicleNumber);
 
-  const listingDetailUrl = record.listingId ? `${basePortalPath}/listings/${record.listingId}` : null;
-  const sellAccountUrl = record.sellAccountId ? `${basePortalPath}/accounts/sell-accounts/${record.sellAccountId}` : null;
-
-  const validityBadge = (val: string | null | undefined, type: 'validity' | 'hp' | 'hsrp') => {
-    const v = (val || '').toUpperCase();
-    let cls = 'bg-slate-100 text-slate-600 border-slate-200';
-    let labelText = val || '—';
-    if (type === 'validity') {
-      if (v === 'VALID') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Valid'; }
-      else if (v === 'EXPIRED') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Expired'; }
-      else if (v === 'LIFETIME') { cls = 'bg-amber-50 text-amber-900 border-amber-300'; labelText = 'Lifetime'; }
-      else if (v === 'NOT_AVAILABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'N/A'; }
-    } else if (type === 'hp') {
-      if (v === 'TERMINATED') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Terminated'; }
-      else if (v === 'ACTIVE') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Active Loan'; }
-      else if (v === 'NOT_APPLICABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'None'; }
-      else { cls = 'bg-yellow-50 text-yellow-800 border-yellow-300'; labelText = 'Pending'; }
-    } else if (type === 'hsrp') {
-      if (v === 'YES') { cls = 'bg-emerald-50 text-emerald-800 border-emerald-300'; labelText = 'Fitted'; }
-      else if (v === 'NO') { cls = 'bg-rose-50 text-rose-800 border-rose-300'; labelText = 'Not Fitted'; }
-      else if (v === 'NOT_APPLICABLE') { cls = 'bg-slate-100 text-slate-600 border-slate-200'; labelText = 'N/A'; }
-      else { cls = 'bg-yellow-50 text-yellow-800 border-yellow-300'; labelText = 'Pending'; }
-    }
-    return <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}>{labelText}</span>;
-  };
-
-  const RTO_MILESTONES = [
-    { label: 'Document Sent', isDone: Boolean(record.documentSendDate), date: record.documentSendDate },
-    { label: 'Work Initiated', isDone: ['RTO_WORK_STARTED', 'RTO_WORK_IN_PROGRESS', 'RTO_WORK_COMPLETED', 'DEAL_DONE'].includes(record.rtoStatus) },
-    { label: 'In Progress', isDone: ['RTO_WORK_IN_PROGRESS', 'RTO_WORK_COMPLETED', 'DEAL_DONE'].includes(record.rtoStatus) },
-    { label: 'RTO Completed', isDone: ['RTO_WORK_COMPLETED', 'DEAL_DONE'].includes(record.rtoStatus) },
-    { label: 'Deal Done & Locked', isDone: record.rtoStatus === 'DEAL_DONE' || Boolean(record.isLocked) },
-  ];
+  const listingDetailUrl = record.listingId
+    ? generateAdminListingDetailPath(`${basePortalPath}/listings`, { id: record.listingId, title: `${record.brandName || ''} ${record.vehicleModel || ''}`.trim() })
+    : null;
+  const sellAccountUrl = record.sellAccountId
+    ? generateAdminSoldVehicleDetailPath(`${basePortalPath}/accounts/sell-accounts`, {
+        id: record.sellAccountId,
+        vehicleNumber: record.vehicleNumber,
+        listingTitle: `${record.brandName || ''} ${record.vehicleModel || ''}`.trim(),
+      })
+    : null;
 
   return (
     <div className="space-y-4 pb-16 profile-print-target">
@@ -458,12 +687,12 @@ export default function RtoRecordDetailView() {
             </div>
           )}
 
-          {/* Quick Copy Link */}
+          {/* Quick Copy / Native Share Link */}
           <button
             type="button"
-            onClick={() => copyText(typeof window !== 'undefined' ? window.location.href : '', 'pageUrl')}
+            onClick={handleShare}
             className="inline-flex h-8 sm:h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-            title="Copy shareable page link"
+            title="Share RTO dossier link"
           >
             {copiedKey === 'pageUrl' ? (
               <>
@@ -614,52 +843,297 @@ export default function RtoRecordDetailView() {
         </div>
       </div>
 
-      {/* Transfer Lifecycle Stepper (Visual Progress Pipeline) */}
+      {/* Section B.2: Interactive RTO Milestone Stepper */}
       <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs profile-no-print">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-slate-400" />
-            <span>RTO Transfer Lifecycle</span>
-          </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Interactive RTO Milestone Pipeline
+            </span>
+            {detailActions.canChangeStatus && !record.isLocked && (
+              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.2 rounded-full border border-amber-200">
+                Click any milestone to fast-forward stage
+              </span>
+            )}
+          </div>
           {record.documentSendDate ? (
             <span className="text-[11px] font-semibold text-slate-600">
-              Docs Sent Date: <strong className="text-slate-900">{formatDateValue(record.documentSendDate)}</strong>
+              Dispatched to RTO: <strong className="text-slate-900">{formatDateValue(record.documentSendDate)}</strong>
             </span>
           ) : (
             <span className="text-[11px] text-amber-700 font-medium">Docs Not Yet Dispatched</span>
           )}
         </div>
 
-        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-          {RTO_MILESTONES.map((step, idx) => (
-            <div key={step.label} className="flex flex-col gap-1">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {RTO_MILESTONES.map((step, idx) => {
+            const isClickable = detailActions.canChangeStatus && !record.isLocked && Boolean(step.statusTarget) && step.statusTarget !== record.rtoStatus;
+
+            return (
               <div
-                className={`h-1.5 rounded-full transition-all ${
-                  step.isDone
-                    ? 'bg-emerald-500'
-                    : idx === 0
-                      ? 'bg-amber-400'
-                      : 'bg-slate-200'
-                }`}
-              />
-              <div className="flex items-center gap-1 mt-0.5">
-                {step.isDone ? (
-                  <CheckCircle className="h-3 w-3 text-emerald-600 shrink-0" />
-                ) : (
-                  <div className="h-2 w-2 rounded-full border border-slate-400 bg-white shrink-0" />
-                )}
-                <span className={`text-[10px] sm:text-[11px] font-bold truncate ${step.isDone ? 'text-slate-900' : 'text-slate-600'}`}>
-                  {step.label}
+                key={step.id}
+                onClick={() => {
+                  if (isClickable && step.statusTarget) {
+                    requestStatusChange(step.statusTarget);
+                  }
+                }}
+                className={`relative flex flex-col rounded-xl border p-2.5 transition-all select-none ${
+                  step.isActive
+                    ? 'border-amber-400 bg-amber-50/70 shadow-xs ring-1 ring-amber-400/50'
+                    : step.isDone
+                      ? 'border-emerald-200 bg-emerald-50/40 text-emerald-950'
+                      : 'border-slate-200/80 bg-slate-50/60 text-slate-500'
+                } ${isClickable ? 'cursor-pointer hover:border-amber-400 hover:bg-white hover:shadow-xs' : ''}`}
+                title={isClickable ? `Click to advance RTO status to "${step.label}"` : step.label}
+              >
+                {/* Step indicator node */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black shadow-2xs ${
+                      step.isActive
+                        ? 'bg-[#FFC107] text-slate-950 animate-pulse'
+                        : step.isDone
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white border border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    {step.isDone ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+                  </div>
+
+                  <span
+                    className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                      step.isActive
+                        ? 'bg-amber-200/80 text-amber-900'
+                        : step.isDone
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-200/60 text-slate-600'
+                    }`}
+                  >
+                    {step.isActive ? 'Active Stage' : step.isDone ? 'Completed' : 'Upcoming'}
+                  </span>
+                </div>
+
+                <h4 className="text-xs font-bold text-slate-900 truncate">{step.label}</h4>
+                <p className="text-[10px] text-slate-500 truncate mt-0.5">{step.sublabel}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Section B.3: Party Contact Matrix (Seller, Purchaser, RTO Agent) */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-slate-400" />
+            <span>Party Contact &amp; Settlement Matrix</span>
+          </span>
+          <span className="text-[10px] text-slate-400">1-Click Direct Calls, WhatsApp &amp; Clipboard Actions</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {/* Card 1: Seller Party */}
+          <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider text-slate-600">
+                  Seller · Vehicle Origin
                 </span>
+                {record.sellAccountId && (
+                  <Link
+                    href={sellAccountUrl || '#'}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 hover:underline"
+                    title="Open linked sell account"
+                  >
+                    <span>Sell Account</span>
+                    <ExternalLink className="h-2.5 w-2.5" />
+                  </Link>
+                )}
+              </div>
+
+              <div className="mt-2.5">
+                <h4 className="text-sm font-black text-slate-900 truncate" title={record.sellerName}>
+                  {record.sellerName || 'Direct Seller'}
+                </h4>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {record.sellerNumber || 'No phone number provided'}
+                </p>
               </div>
             </div>
-          ))}
+
+            <div className="mt-3 flex items-center gap-1.5 border-t border-slate-50 pt-2.5">
+              {record.sellerNumber ? (
+                <>
+                  <a
+                    href={`tel:${record.sellerNumber}`}
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-100 transition"
+                    title="Direct Phone Call"
+                  >
+                    <Phone className="h-3 w-3 text-emerald-600" />
+                    <span>Call</span>
+                  </a>
+                  <a
+                    href={getWhatsAppUrl(
+                      record.sellerNumber,
+                      `Hello ${record.sellerName}, regarding the RTO ownership transfer for vehicle ${formattedPlate || record.vehicleNumber}: our accounts team is processing your transfer. Thank you.`
+                    )!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition"
+                    title="1-Click WhatsApp Update"
+                  >
+                    <Send className="h-3 w-3 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyText(`${record.sellerName}: ${record.sellerNumber}`, 'sellerContact')}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition"
+                    title="Copy seller details"
+                  >
+                    {copiedKey === 'sellerContact' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">No contact actions available</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 2: Purchaser / Buyer Party */}
+          <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="rounded bg-blue-50 border border-blue-200/60 px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider text-blue-800">
+                  Purchaser · New Owner
+                </span>
+                {record.customerName && record.purchaserName && record.customerName !== record.purchaserName && (
+                  <span className="text-[10px] text-slate-400 truncate max-w-[120px]" title={`Contact: ${record.customerName}`}>
+                    Ref: {record.customerName}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2.5">
+                <h4 className="text-sm font-black text-slate-900 truncate" title={record.purchaserName || record.customerName}>
+                  {record.purchaserName || record.customerName}
+                </h4>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {record.purchaserNumber || record.customerNumber || 'No phone number provided'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-1.5 border-t border-slate-50 pt-2.5">
+              {(record.purchaserNumber || record.customerNumber) ? (
+                <>
+                  <a
+                    href={`tel:${record.purchaserNumber || record.customerNumber}`}
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-100 transition"
+                    title="Direct Phone Call"
+                  >
+                    <Phone className="h-3 w-3 text-emerald-600" />
+                    <span>Call</span>
+                  </a>
+                  <a
+                    href={getWhatsAppUrl(
+                      record.purchaserNumber || record.customerNumber,
+                      `Hello ${record.purchaserName || record.customerName}, update regarding your vehicle ${formattedPlate || record.vehicleNumber} RC transfer: current status is "${statusInfo.label}". Please feel free to reply if you need any assistance.`
+                    )!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition"
+                    title="1-Click WhatsApp Update"
+                  >
+                    <Send className="h-3 w-3 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyText(`${record.purchaserName || record.customerName}: ${record.purchaserNumber || record.customerNumber}`, 'purchaserContact')}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition"
+                    title="Copy purchaser details"
+                  >
+                    {copiedKey === 'purchaserContact' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">No contact actions available</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 3: RTO Agent & Office */}
+          <div className="flex flex-col justify-between rounded-xl border border-amber-200/90 bg-gradient-to-br from-amber-50/30 to-white p-3.5 shadow-2xs">
+            <div>
+              <div className="flex items-center justify-between border-b border-amber-100 pb-2">
+                <span className="rounded bg-amber-100 border border-amber-300 px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider text-amber-900">
+                  RTO Agent · {record.rtoOffice || 'Authority'}
+                </span>
+                <span
+                  className={`text-[10px] font-black ${
+                    financialSummary.balance > 0 ? 'text-amber-900' : 'text-emerald-700'
+                  }`}
+                >
+                  {financialSummary.balance > 0 ? `₹${financialSummary.balance.toLocaleString('en-IN')} Due` : 'Settled'}
+                </span>
+              </div>
+
+              <div className="mt-2.5">
+                <h4 className="text-sm font-black text-slate-900 truncate" title={record.rtoAgentName}>
+                  {record.rtoAgentName || 'Agent Not Assigned'}
+                </h4>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {[record.rtoAgentCity, record.rtoAgentState].filter(Boolean).join(', ') || record.rtoAgentNumber || 'Pending assignment'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-1.5 border-t border-amber-100/60 pt-2.5">
+              {record.rtoAgentNumber ? (
+                <>
+                  <a
+                    href={`tel:${record.rtoAgentNumber}`}
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+                    title="Direct Phone Call"
+                  >
+                    <Phone className="h-3 w-3 text-emerald-600" />
+                    <span>Call</span>
+                  </a>
+                  <a
+                    href={getWhatsAppUrl(
+                      record.rtoAgentNumber,
+                      `Hello ${record.rtoAgentName || 'Agent'}, please share the latest RC transfer status and document updates for vehicle ${formattedPlate || record.vehicleNumber} at ${record.rtoOffice || 'RTO'}. Thank you.`
+                    )!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition"
+                    title="1-Click WhatsApp Follow-up"
+                  >
+                    <Send className="h-3 w-3 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyText(`${record.rtoAgentName}: ${record.rtoAgentNumber} (${record.rtoOffice})`, 'agentContact')}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition"
+                    title="Copy agent details"
+                  >
+                    {copiedKey === 'agentContact' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">No agent phone recorded</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Main Grid: 7 / 5 Layout */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {/* LEFT COLUMN: Vehicle Details, Compliance Matrix, Note Sheet (7 cols) */}
+        {/* LEFT COLUMN: Vehicle Details, Section B.1 Compliance Radar, Note Sheet (7 cols) */}
         <div className="space-y-4 lg:col-span-7 xl:col-span-8">
           {/* CARD 1: Vehicle & Customer Profile */}
           <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
@@ -747,111 +1221,92 @@ export default function RtoRecordDetailView() {
                   </span>
                 </div>
               </div>
-
-              {/* Primary Customer Profile */}
-              <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-3 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-900 font-bold text-sm">
-                    {record.customerName.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Primary Customer</span>
-                    <span className="text-sm font-bold text-slate-900">{record.customerName}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {record.customerNumber ? (
-                    <>
-                      <a
-                        href={`tel:${record.customerNumber}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                        title="Call Customer"
-                      >
-                        <Phone className="h-3 w-3 text-slate-500" />
-                        <span>{record.customerNumber}</span>
-                      </a>
-                      {getWhatsAppUrl(record.customerNumber) && (
-                        <a
-                          href={getWhatsAppUrl(record.customerNumber)!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition"
-                          title="WhatsApp Chat"
-                        >
-                          <MessageSquare className="h-3 w-3 text-emerald-600" />
-                          <span>WhatsApp</span>
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No contact number</span>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
 
-          {/* CARD 2: Compliance & Document Validity Matrix */}
+          {/* CARD 2: Section B.1 Visual 5-Point Compliance Radar */}
           <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-slate-600" />
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Compliance &amp; Document Validity Matrix
+                  Visual 5-Point Compliance Radar
                 </h3>
               </div>
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
-                {complianceScore.validCount} of {complianceScore.total} Compliant
+              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
+                {complianceScore.validCount} of {complianceScore.total} Points Clear ({complianceScore.percent}%)
               </span>
             </div>
 
             <div className="p-4">
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5 text-xs">
-                {/* Tax Status */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Road Tax</span>
-                  <div className="mt-1">{validityBadge(record.taxStatus, 'validity')}</div>
-                  <span className="text-[11px] font-semibold text-slate-700 mt-1 block truncate">
-                    {record.taxStatus === 'LIFETIME' ? 'One-time Lifetime' : formatDateValue(record.taxValidUntil)}
-                  </span>
-                </div>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {complianceRadarData.map((item) => {
+                  const Icon = item.icon;
+                  const isExp = item.countdown.isExpired;
+                  const isNear = item.countdown.isNear;
 
-                {/* Fitness Status */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Fitness (FC)</span>
-                  <div className="mt-1">{validityBadge(record.fitnessStatus, 'validity')}</div>
-                  <span className="text-[11px] font-semibold text-slate-700 mt-1 block truncate">
-                    {formatDateValue(record.fitnessValidUntil)}
-                  </span>
-                </div>
+                  return (
+                    <div
+                      key={item.title}
+                      className={`flex flex-col justify-between rounded-xl border p-3 shadow-2xs transition-all ${
+                        isExp
+                          ? 'border-rose-300 bg-gradient-to-b from-rose-50/60 to-white'
+                          : isNear
+                            ? 'border-amber-300 bg-gradient-to-b from-amber-50/60 to-white'
+                            : item.countdown.tone === 'lifetime'
+                              ? 'border-amber-300/80 bg-gradient-to-b from-amber-50/40 to-white'
+                              : 'border-emerald-200/80 bg-gradient-to-b from-emerald-50/40 to-white'
+                      }`}
+                    >
+                      <div>
+                        {/* Title & Icon */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-900">{item.title}</span>
+                          <div
+                            className={`flex h-6 w-6 items-center justify-center rounded-lg ${
+                              isExp
+                                ? 'bg-rose-100 text-rose-700'
+                                : isNear
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-700'
+                            }`}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                        </div>
 
-                {/* Insurance */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Insurance</span>
-                  <div className="mt-1">{validityBadge(record.insuranceStatus, 'validity')}</div>
-                  <span className="text-[11px] font-semibold text-slate-700 mt-1 block truncate">
-                    {formatDateValue(record.insuranceValidUntil)}
-                  </span>
-                </div>
+                        {/* Status badge */}
+                        <div className="mb-2">
+                          {item.title === 'HSRP Plate'
+                            ? validityBadge(record.hsrpStatus, 'hsrp')
+                            : validityBadge(item.status, 'validity')}
+                        </div>
 
-                {/* PUC */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Pollution (PUC)</span>
-                  <div className="mt-1">{validityBadge(record.pucStatus, 'validity')}</div>
-                  <span className="text-[11px] font-semibold text-slate-700 mt-1 block truncate">
-                    {formatDateValue(record.pucValidUntil)}
-                  </span>
-                </div>
+                        {/* Expiry Date */}
+                        <p className="text-[11px] font-semibold text-slate-700 truncate">
+                          {item.extra ? item.extra : formatDateValue(item.validUntil)}
+                        </p>
+                      </div>
 
-                {/* HSRP */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-center col-span-2 sm:col-span-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">HSRP Plate</span>
-                  <div className="mt-1">{validityBadge(record.hsrpStatus, 'hsrp')}</div>
-                  <span className="text-[11px] font-semibold text-slate-700 mt-1 block truncate">
-                    {record.hsrpNumber ? `No: ${record.hsrpNumber}` : 'High Security Plate'}
-                  </span>
-                </div>
+                      {/* Countdown badge */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-100">
+                        <span
+                          className={`inline-block w-full text-center rounded px-1.5 py-0.75 text-[9.5px] font-black uppercase tracking-wider ${
+                            isExp
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                              : isNear
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : item.countdown.tone === 'lifetime'
+                                  ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {item.countdown.text}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -875,7 +1330,7 @@ export default function RtoRecordDetailView() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Financials, Parties Involved, RTO Agent, Audit Links (5 cols) */}
+        {/* RIGHT COLUMN: Financial Ledger, Section B.4 Live Status Audit Timeline, System Metadata (5 cols) */}
         <div className="space-y-4 lg:col-span-5 xl:col-span-4">
           {/* CARD 1: Financial Ledger & Settlement Progress */}
           <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50/40 via-white to-white shadow-2xs overflow-hidden">
@@ -943,159 +1398,76 @@ export default function RtoRecordDetailView() {
             </div>
           </div>
 
-          {/* CARD 2: Deal Parties (Seller & Purchaser) */}
+          {/* CARD 2: Section B.4 Status Audit & Remark History Timeline */}
           <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-slate-600" />
+                <History className="h-4 w-4 text-slate-600" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Deal Parties (Seller &amp; Purchaser)
+                  Status Audit &amp; Remark Timeline
                 </h3>
               </div>
-              {sellAccountUrl && (
-                <Link
-                  href={sellAccountUrl}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:text-amber-900 transition"
-                  title="View linked sell account deal"
-                >
-                  <span>Sell Account</span>
-                  <ExternalLink className="h-3 w-3" />
-                </Link>
+              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                {statusLogs.length > 0 ? `${statusLogs.length} Events` : 'Active'}
+              </span>
+            </div>
+
+            <div className="p-4">
+              {statusLogs.length > 0 ? (
+                <div className="relative pl-4 space-y-4 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                  {statusLogs.map((log, index) => {
+                    const cfgNew = STATUS_CONFIG[log.newStatus] || STATUS_CONFIG.RTO_WORK_IN_PROGRESS;
+                    return (
+                      <div key={log.id || index} className="relative group">
+                        {/* Timeline circle dot */}
+                        <div className="absolute -left-4 top-1 h-3 w-3 rounded-full border-2 border-white bg-amber-500 shadow-2xs group-hover:scale-125 transition-transform" />
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <span className="text-[11px] font-bold text-slate-900">
+                              {log.changedByName || 'Administrator'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {formatDateTimeValue(log.createdAt)}
+                            </span>
+                          </div>
+                          {/* Status transition badge */}
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold">
+                            {log.oldStatus && (
+                              <>
+                                <span className="text-slate-500 line-through">
+                                  {STATUS_CONFIG[log.oldStatus]?.label || log.oldStatus}
+                                </span>
+                                <span className="text-slate-400">➔</span>
+                              </>
+                            )}
+                            <span className={`rounded px-1.5 py-0.2 font-bold ${cfgNew.bg} ${cfgNew.text} border ${cfgNew.border}`}>
+                              {cfgNew.label}
+                            </span>
+                          </div>
+                          {/* Remark box */}
+                          <div className="mt-1 rounded-lg border border-slate-100 bg-slate-50/80 p-2 text-xs text-slate-700 italic">
+                            "{log.remark}"
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500 space-y-2">
+                  <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Initial RTO transfer case file registered</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Created on {formatDateTimeValue(record.createdAt)}. Every status change, advance payment note, and employee remark will appear here in chronological order with full author tracking.
+                  </p>
+                </div>
               )}
             </div>
-
-            <div className="p-4 space-y-3">
-              {/* Seller */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Seller Profile</span>
-                  <p className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">{record.sellerName}</p>
-                  {record.sellerNumber && (
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">{record.sellerNumber}</p>
-                  )}
-                </div>
-                {record.sellerNumber && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href={`tel:${record.sellerNumber}`}
-                      className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                      title="Call Seller"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                    {getWhatsAppUrl(record.sellerNumber) && (
-                      <a
-                        href={getWhatsAppUrl(record.sellerNumber)!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                        title="WhatsApp Seller"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Purchaser */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Purchaser Profile</span>
-                  <p className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">{record.purchaserName}</p>
-                  {record.purchaserNumber && (
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">{record.purchaserNumber}</p>
-                  )}
-                </div>
-                {record.purchaserNumber && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href={`tel:${record.purchaserNumber}`}
-                      className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                      title="Call Purchaser"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                    {getWhatsAppUrl(record.purchaserNumber) && (
-                      <a
-                        href={getWhatsAppUrl(record.purchaserNumber)!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                        title="WhatsApp Purchaser"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
 
-          {/* CARD 3: RTO Agent & Office Network */}
-          <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-slate-600" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  RTO Agent &amp; Official Office
-                </h3>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-3 text-xs">
-              {/* Office Location */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Jurisdiction Office</span>
-                <p className="text-sm font-bold text-slate-900 mt-0.5">{record.rtoOffice || 'Office not specified'}</p>
-                <span className="inline-block mt-1 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded">
-                  Official Transport Authority
-                </span>
-              </div>
-
-              {/* Agent Card */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Handling Agent</span>
-                  <p className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">{record.rtoAgentName || 'Agent not assigned'}</p>
-                  {[record.rtoAgentCity, record.rtoAgentState].filter(Boolean).length > 0 && (
-                    <p className="text-[11px] font-medium text-slate-500 mt-0.5">
-                      {[record.rtoAgentCity, record.rtoAgentState].filter(Boolean).join(', ')}
-                    </p>
-                  )}
-                  {record.rtoAgentNumber && (
-                    <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{record.rtoAgentNumber}</p>
-                  )}
-                </div>
-
-                {record.rtoAgentNumber && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href={`tel:${record.rtoAgentNumber}`}
-                      className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                      title="Call Agent"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                    {getWhatsAppUrl(record.rtoAgentNumber) && (
-                      <a
-                        href={getWhatsAppUrl(record.rtoAgentNumber)!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                        title="WhatsApp Agent"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* CARD 4: Audit Metadata & System References */}
+          {/* CARD 3: Audit Metadata & System References */}
           <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Audit &amp; System Details</span>

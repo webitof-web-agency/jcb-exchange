@@ -43,6 +43,7 @@ import {
 import { getSourceTypeLabel, JCB_EXCHANGE_COMPANY_NAME } from '@/lib/soldVehicleParties.mjs';
 import { downloadAuthedFile, readBlobErrorMessage } from '@/lib/authedDownload';
 import { accountsPortalBase, DEAL_STATUS_CONFIG, formatInr, type SellAccountDealStatus } from '@/components/accounts/sold-vehicle/soldVehicleModel';
+import { generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type Status = 'RTO_WORK_STARTED' | 'RTO_WORK_IN_PROGRESS' | 'RTO_WORK_FAILED' | 'RTO_WORK_COMPLETED' | 'DEAL_DONE';
 type Validity = 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE' | 'LIFETIME' | 'NOT_APPLICABLE' | 'PENDING';
@@ -800,7 +801,7 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <button type="button" disabled={busy === 'certificate'} onClick={() => void downloadCertificate()} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-800 hover:bg-gray-50"><Download className="h-3.5 w-3.5" />Transfer summary</button>
-                  <button type="button" onClick={() => router.push(`${sellPath}/${encodeURIComponent(sell.id)}`)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-bold text-white"><Receipt className="h-3.5 w-3.5" />Invoice & deal</button>
+                  <button type="button" onClick={() => router.push(generateAdminSoldVehicleDetailPath(sellPath, sell))} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-bold text-white"><Receipt className="h-3.5 w-3.5" />Invoice & deal</button>
                 </div>
               </div>
             ) : progress.allDone ? (

@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
+import { generateAdminRtoDetailPath } from '@/lib/routePaths';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -1302,7 +1303,7 @@ export default function AccountsTasksPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                router.push(`${rtoPath}/${task.rtoRecord.id}/edit`)
+                                router.push(`${generateAdminRtoDetailPath(rtoPath, task.rtoRecord)}/edit`)
                               }
                               className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-2xs transition-colors"
                               title="Open full RTO workspace for this vehicle"
@@ -1533,7 +1534,7 @@ export default function AccountsTasksPage() {
                 {canOpenRto && <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                   <button
                     type="button"
-                    onClick={() => router.push(`${rtoPath}/${group.rtoRecord?.id}`)}
+                    onClick={() => group.rtoRecord && router.push(generateAdminRtoDetailPath(rtoPath, group.rtoRecord))}
                     className="text-xs font-bold text-slate-600 hover:text-slate-900"
                   >
                     View Dossier
@@ -1541,7 +1542,7 @@ export default function AccountsTasksPage() {
 
                   <button
                     type="button"
-                    onClick={() => router.push(`${rtoPath}/${group.rtoRecord?.id}/edit`)}
+                    onClick={() => group.rtoRecord && router.push(`${generateAdminRtoDetailPath(rtoPath, group.rtoRecord)}/edit`)}
                     className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-bold text-white hover:bg-slate-800 shadow-2xs"
                   >
                     <ExternalLink className="h-3 w-3" />

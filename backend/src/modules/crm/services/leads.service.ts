@@ -236,7 +236,17 @@ const requireLead = async (access: CrmAccess, id: string) => {
   return lead;
 };
 
-export const getLead = async (access: CrmAccess, id: string) => {
+// Lead pages use a readable URL that ends in the first 13 characters of the id
+// ("ravi-dewangan-jcb-3dx-0d2a5ff0-0a1f"); resolve that back to the lead, as contacts do.
+const resolveLeadRouteId = async (raw: string) => {
+  const suffix = raw.match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1];
+  if (!suffix) return raw;
+  const matches = await prisma.lead.findMany({ where: { id: { startsWith: suffix.toLowerCase() } }, select: { id: true }, take: 2 });
+  return matches.length === 1 ? matches[0]!.id : raw;
+};
+
+export const getLead = async (access: CrmAccess, routeId: string) => {
+  const id = await resolveLeadRouteId(routeId);
   await requireLead(access, id);
   const lead = await prisma.lead.findUnique({
     where: { id },

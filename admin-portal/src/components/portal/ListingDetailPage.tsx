@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  EyeOff,
   FileText,
   Fuel,
   Hash,
@@ -72,7 +73,7 @@ import { hasPermission } from '@/lib/permissionUtils';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import { useHeaderStore } from '@/store/headerStore';
 import { resolveListingId } from '@/lib/routeResolvers';
-import { generateAdminListingDetailPath } from '@/lib/routePaths';
+import { generateAdminListingDetailPath, generateAdminListingPaymentLookupPath } from '@/lib/routePaths';
 import { YEAR_SELECT_OPTIONS } from '@/lib/listingDateOptions';
 import {
   isValidDigitsOnlyValue,
@@ -83,6 +84,12 @@ import {
   sanitizeListingFormData,
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import VehicleIdentityHint from '@/components/listings/VehicleIdentityHint';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
+import ListingModerationDialog from '@/components/listings/ListingModerationDialog';
+import { availableListingActions, isHiddenListingStatus, LISTING_ACTION_META, LISTING_STATUS_BADGES, moderateListing, type ListingVisibilityAction } from '@/lib/listingVisibility';
+import VehicleIdentityBadges from '@/components/listings/VehicleIdentityBadges';
+import { getVehicleIdentityBlockMessage, useVehicleIdentityCheck, type AdminVehicleIdentity } from '@/hooks/useVehicleIdentityCheck';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, mapChassisToRcVehicle, normalizeMasterName } from '@/lib/listingVehicleVerification';
 import { ApiFillBox } from '@/components/ui/ApiFillBadge';
@@ -93,6 +100,10 @@ type ListingDetail = {
   id: string;
   title: string;
   price: string;
+  // Why it was unlisted, suspended or blocked.
+  moderationReason?: string | null;
+  // Admin-only: resale / duplicate details for this vehicle.
+  vehicleIdentity?: AdminVehicleIdentity | null;
   manufacturingYear: number;
   locationState: string;
   locationCity: string;
@@ -681,7 +692,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [visibilityAction, setVisibilityAction] = useState<ListingVisibilityAction | null>(null);
   const [savingSection, setSavingSection] = useState<DetailSection | 'all' | null>(null);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
   const vehicleApiFill = { source: 'chassis verification', filled: chassisVerificationStatus === 'VERIFIED' };
@@ -715,6 +726,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const isSuperAdmin = currentUserRole === 'SUPER_ADMIN';
   const isEmployee = currentUserRole === 'EMPLOYEE';
   const isPartner = currentUserRole === 'PARTNER';
+  // Suspend, restore, block and unblock need listing approval rights (the server checks again).
+  const canModerateListing = currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'ADMIN' || hasPermission(user?.permissions, 'listings.approve');
   const canEdit =
     currentUserRole === 'PARTNER' ||
     currentUserRole === 'SUPER_ADMIN' ||
@@ -733,19 +746,65 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     '';
 
   const publicListingUrl = useMemo(() => {
-    if (!listing) return '#';
-    const frontendBase = process.env.NEXT_PUBLIC_FRONTEND_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3000` : '');
-    return `${frontendBase}/machines/${listing.id}`;
-  }, [listing]);
+    if (!listing?.id) return '#';
+    const envUrl = process.env.NEXT_PUBLIC_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_FRONTEND_URL;
+    let origin = '';
+
+    if (envUrl && envUrl.trim()) {
+      origin = envUrl.trim().replace(/\/+$/, '');
+      if (origin.includes(':3001')) {
+        origin = origin.replace(':3001', ':3000');
+      }
+    } else if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol || 'http:';
+      const rawHost = window.location.hostname || window.location.host || 'localhost';
+      const cleanHostname = rawHost.split(':')[0] || 'localhost';
+
+      if (cleanHostname.includes('jcbexchange.com')) {
+        origin = 'https://jcbexchange.com';
+      } else {
+        origin = `${protocol}//${cleanHostname}:3000`;
+      }
+    } else {
+      origin = process.env.NODE_ENV === 'production' ? 'https://jcbexchange.com' : 'http://localhost:3000';
+    }
+
+    return `${origin}/machines/${listing.id}`;
+  }, [listing?.id]);
+
+  const handleShareListing = useCallback(async () => {
+    if (!listing || publicListingUrl === '#') return;
+    const shareUrl = publicListingUrl;
+    const shareTitle = listing.title || 'Machine Details | JCB Exchange';
+    const shareText = `Check out ${listing.title} on JCB Exchange`;
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        console.warn('Native share failed or dismissed, falling back to copy:', err);
+      }
+    }
+
+    copyText(shareUrl, 'pageUrl');
+  }, [listing, publicListingUrl, copyText]);
 
   const analyticsUrl = useMemo(() => {
     if (!listing) return '#';
-    return isSuperAdmin ? `/admin/analytics/${listing.id}` : `/employee/analytics/${listing.id}`;
+    return generateAdminListingDetailPath(isSuperAdmin ? '/admin/analytics' : '/employee/analytics', listing);
   }, [listing, isSuperAdmin]);
 
   const paymentsUrl = useMemo(() => {
     if (!listing) return '#';
-    return isSuperAdmin ? `/admin/listings/payments/${listing.id}` : `/employee/listings/payments/${listing.id}`;
+    return generateAdminListingPaymentLookupPath(isSuperAdmin ? '/admin/listings/payments' : '/employee/listings/payments', listing);
   }, [listing, isSuperAdmin]);
 
   useEffect(() => {
@@ -907,6 +966,14 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
   const parsedDetails = useMemo(() => parseListingDescription(listing?.description), [listing?.description]);
   const baseForm = useMemo(() => (listing ? createEditForm(listing) : null), [listing]);
   const hasPendingMediaChanges = pendingMediaUploads.length > 0;
+  const vehicleIdentity = useVehicleIdentityCheck({
+    registrationNumber: form?.registrationNo || '',
+    chassisNumber: form?.chassisOrSerialNo || '',
+    listingId: listing?.id,
+    savedRegistrationNumber: baseForm?.registrationNo,
+    savedChassisNumber: baseForm?.chassisOrSerialNo,
+    enabled: isEditing,
+  });
 
   const conditionOptions = useMemo(
     () =>
@@ -1109,6 +1176,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       return;
     }
 
+    if (vehicleIdentity.blocked) {
+      setError(getVehicleIdentityBlockMessage(vehicleIdentity.result));
+      return;
+    }
+
     const sanitizedForm = sanitizeListingFormData(form);
     const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
     if (sanitizedRto.insuranceStatus !== 'VALID') {
@@ -1205,7 +1277,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
       const response = await api.put<{ listing: ListingDetail; message: string }>(`/listings/${listing.id}`, payload);
       const normalizedListing = normalizeListingResponse(response.data);
-      setListing(normalizedListing);
+      // PUT responses leave out the admin-only vehicle history, so keep the loaded one.
+      setListing((current) => ({ ...normalizedListing, vehicleIdentity: normalizedListing.vehicleIdentity ?? current?.vehicleIdentity ?? null }));
       setForm(createEditForm(normalizedListing));
       setMessage(response.data.message || t('listingDetails.updatedSuccessfully', 'Listing section updated successfully.'));
     } catch (saveError: unknown) {
@@ -1214,7 +1287,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     } finally {
       setSavingSection(null);
     }
-  }, [baseForm, chassisVerificationId, form, listing, t, uploadingMedia]);
+  }, [baseForm, chassisVerificationId, form, listing, t, uploadingMedia, vehicleIdentity.blocked, vehicleIdentity.result]);
 
   const saveAllChanges = useCallback(async () => {
     if (!listing || !form || !baseForm) return;
@@ -1230,6 +1303,11 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     if (changedSections.length === 0) {
       setMessage(t('listingDetails.noChanges', 'No changes to save.'));
       setIsEditing(false);
+      return;
+    }
+
+    if (vehicleIdentity.blocked) {
+      setError(getVehicleIdentityBlockMessage(vehicleIdentity.result));
       return;
     }
 
@@ -1310,7 +1388,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
       const response = await api.put<{ listing: ListingDetail; message: string }>(`/listings/${listing.id}`, payload);
       const normalizedListing = normalizeListingResponse(response.data);
-      setListing(normalizedListing);
+      // PUT responses leave out the admin-only vehicle history, so keep the loaded one.
+      setListing((current) => ({ ...normalizedListing, vehicleIdentity: normalizedListing.vehicleIdentity ?? current?.vehicleIdentity ?? null }));
       setForm(createEditForm(normalizedListing));
       setIsEditing(false);
       setMessage(response.data.message || 'All changes saved successfully.');
@@ -1320,7 +1399,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     } finally {
       setSavingSection(null);
     }
-  }, [baseForm, chassisVerificationId, form, listing, t, uploadingMedia]);
+  }, [baseForm, chassisVerificationId, form, listing, t, uploadingMedia, vehicleIdentity.blocked, vehicleIdentity.result]);
 
   const savePartnerMedia = async () => {
     if (!listing) {
@@ -1360,7 +1439,8 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       });
 
       const normalizedListing = normalizeListingResponse(response.data);
-      setListing(normalizedListing);
+      // PUT responses leave out the admin-only vehicle history, so keep the loaded one.
+      setListing((current) => ({ ...normalizedListing, vehicleIdentity: normalizedListing.vehicleIdentity ?? current?.vehicleIdentity ?? null }));
       setForm(createEditForm(normalizedListing));
       clearPendingMediaUploads();
       setActiveMediaIndex(0);
@@ -1373,19 +1453,17 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     }
   };
 
-  const handleDeleteListing = async () => {
-    if (!listing || isDeleting) return;
+  // Safer option chosen in the delete dialog: pause (or reject, for admins) instead of deleting.
+  const applyVisibilityChange = (updated: { status: string; moderationReason: string | null }) => {
+    setListing((current) => (current ? { ...current, status: updated.status, moderationReason: updated.moderationReason } : current));
+    setMessage(`Listing is now ${updated.status.replace(/_/g, ' ').toLowerCase()}.`);
+  };
 
-    try {
-      setIsDeleting(true);
-      setError(null);
-      await api.delete(`/listings/${listing.id}`);
-      router.push(backHref);
-    } catch (deleteError: unknown) {
-      setIsDeleting(false);
-      setIsDeleteDialogOpen(false);
-      setError(getErrorMessage(deleteError, t('listingDetails.deleteFailed', 'Failed to delete listing.')));
-    }
+  // Safer option chosen in the delete dialog: unlist (or suspend / block, for admins) instead of deleting.
+  const handleDeleteAlternative = async (action: string, reason: string) => {
+    if (!listing) return;
+    applyVisibilityChange(await moderateListing(listing.id, action as ListingVisibilityAction, reason));
+    setIsDeleteDialogOpen(false);
   };
 
   const handlePartnerMediaSelection = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1693,9 +1771,9 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
 
           <button
             type="button"
-            onClick={() => copyText(typeof window !== 'undefined' ? window.location.href : '', 'pageUrl')}
+            onClick={handleShareListing}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-            title="Copy shareable link"
+            title="Share machine link"
           >
             {copiedKey === 'pageUrl' ? (
               <>
@@ -1814,6 +1892,55 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
           </div>
         </div>
       </div>
+
+      {!isPartner ? <div className="profile-no-print"><VehicleIdentityBadges identity={listing.vehicleIdentity} detailed /></div> : null}
+
+      {(() => {
+        const actions = availableListingActions(listing.status, { isAdmin: canModerateListing, isOwner: isPartner });
+        const statusKey = String(listing.status || '').toUpperCase();
+        const hidden = isHiddenListingStatus(statusKey);
+        if (!hidden && !actions.length) return null;
+        const badge = LISTING_STATUS_BADGES[statusKey];
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs profile-no-print">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-800">Website visibility:</span>
+              {hidden && badge ? (
+                <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badge.className}`}>{badge.label}</span>
+              ) : (
+                <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Live</span>
+              )}
+              {hidden && listing.moderationReason ? <span className="text-slate-600">Reason: {listing.moderationReason}</span> : null}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {actions.map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => setVisibilityAction(action)}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${LISTING_ACTION_META[action].tone === 'danger' ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {action === 'RELIST' || action === 'RESTORE' || action === 'UNBLOCK' || action === 'REQUEST_REVIEW' ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  {LISTING_ACTION_META[action].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {visibilityAction ? (
+        <ListingModerationDialog
+          listing={{ id: listing.id, title: listing.title, status: listing.status }}
+          action={visibilityAction}
+          isAdmin={canModerateListing}
+          onClose={() => setVisibilityAction(null)}
+          onDone={(updated) => {
+            applyVisibilityChange(updated);
+            setVisibilityAction(null);
+          }}
+        />
+      ) : null}
 
       {/* Verification Status Banner (Compact & Integrated) */}
       <div className={`flex flex-wrap items-center justify-between gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs ${verificationMeta.className} profile-no-print`}>
@@ -2234,6 +2361,16 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                         <span>{chassisVerificationStatus === 'VERIFIED' ? 'Verified' : 'Verify'}</span>
                       </button>
                     </div>
+                    <div className="mt-1">
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.chassis}
+                        result={vehicleIdentity.result}
+                        ready={vehicleIdentity.chassisReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="chassis number"
+                        listingBasePath={backHref}
+                      />
+                    </div>
                   </Field>
 
                   <Field label={t('listingDetails.engineNumber', 'Engine Number')} apiFill={vehicleApiFill}>
@@ -2271,6 +2408,16 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       className={inputClassName}
                       placeholder="e.g. CG-13-AB-1234"
                     />
+                    <div className="mt-1">
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.registration}
+                        result={vehicleIdentity.result}
+                        ready={vehicleIdentity.registrationReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="vehicle number"
+                        listingBasePath={backHref}
+                      />
+                    </div>
                   </Field>
 
                   <Field label={t('listingDetails.registrationDate', 'Registration Date')} apiFill={vehicleApiFill}>
@@ -3022,43 +3169,18 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete confirmation (impact + safer options) */}
       {isDeleteDialogOpen && listing && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
-              <Trash2 className="h-5 w-5" />
-            </div>
-            <h3 className="mt-4 text-base font-bold text-slate-900">
-              {t('listingDetails.deleteListing', 'Delete Machine Listing?')}
-            </h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              {t(
-                'listingDetails.deleteListingConfirmation',
-                'This will permanently remove this machine, its specifications, and uploaded gallery media from the database. This action cannot be reversed.'
-              )}
-            </p>
-            <div className="mt-6 flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setIsDeleteDialogOpen(false)}
-                disabled={isDeleting}
-                className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 cursor-pointer"
-              >
-                {t('listingDetails.cancel', 'Cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDeleteListing()}
-                disabled={isDeleting}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-60 cursor-pointer"
-              >
-                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                <span>{isDeleting ? 'Deleting...' : 'Confirm Delete'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteImpactDialog
+          open
+          title={t('listingDetails.deleteListing', 'Delete Machine Listing?')}
+          impactPath={`/listings/${listing.id}/delete-impact`}
+          deletePath={`/listings/${listing.id}`}
+          reasonRequired={!isPartner}
+          onClose={() => setIsDeleteDialogOpen(false)}
+          onDeleted={() => router.push(backHref)}
+          onAlternative={handleDeleteAlternative}
+        />
       )}
     </div>
   );

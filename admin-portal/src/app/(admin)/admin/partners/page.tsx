@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { usePathname, useRouter } from 'next/navigation';
@@ -476,26 +477,12 @@ export default function SuperAdminPartnersPage() {
     void handleStatusUpdate(partner, partner.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE');
   };
 
-  const handlePartnerDelete = async (partner: ManagedUser) => {
-    if (!canDeletePartners) {
-      setError('You do not have permission to delete partners.');
-      return;
-    }
-
-    try {
-      setUpdatingId(partner.id);
-      await api.delete(`/superadmin/partners/${partner.id}`);
-      setPartners((current) => current.filter((item) => item.id !== partner.id));
-      setPartnerToDelete(null);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || 'Unable to delete partner.');
-      } else {
-        setError('Unable to delete partner.');
-      }
-    } finally {
-      setUpdatingId(null);
-    }
+  // Safer option chosen in the delete dialog (deactivate / suspend / block / close).
+  const handleDeleteAlternative = async (status: string, reason: string) => {
+    if (!partnerToDelete) return;
+    const response = await api.patch<{ user: ManagedUser }>(`/superadmin/users/${partnerToDelete.id}/status`, { status, reason });
+    syncPartnerState(response.data.user);
+    setPartnerToDelete(null);
   };
 
   return (
@@ -1431,40 +1418,20 @@ export default function SuperAdminPartnersPage() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE CONFIRMATION (impact + safer options) */}
       {partnerToDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" onClick={() => setPartnerToDelete(null)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-600 mb-3">
-              <Trash2 className="h-5 w-5" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900">
-              Delete Partner &ldquo;{partnerToDelete.name}&rdquo;?
-            </h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              This action will permanently delete this partner account and revoke all dashboard access. Deletion is only allowed if no active listings, leads, or financial ledger accounts are attached.
-            </p>
-
-            <div className="mt-6 flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setPartnerToDelete(null)}
-                disabled={updatingId === partnerToDelete.id}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handlePartnerDelete(partnerToDelete)}
-                disabled={updatingId === partnerToDelete.id}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-60 cursor-pointer"
-              >
-                {updatingId === partnerToDelete.id ? 'Deleting...' : 'Confirm Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteImpactDialog
+          open
+          title="Delete partner"
+          impactPath={`/superadmin/partners/${partnerToDelete.id}/delete-impact`}
+          deletePath={`/superadmin/partners/${partnerToDelete.id}`}
+          onClose={() => setPartnerToDelete(null)}
+          onDeleted={() => {
+            setPartners((current) => current.filter((item) => item.id !== partnerToDelete.id));
+            setPartnerToDelete(null);
+          }}
+          onAlternative={canChangePartnerStatus ? handleDeleteAlternative : undefined}
+        />
       )}
     </div>
   );

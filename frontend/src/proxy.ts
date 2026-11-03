@@ -7,7 +7,9 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const policy = buildContentSecurityPolicy({
     nonce,
-    apiOrigin: apiOriginFrom(process.env.NEXT_PUBLIC_API_URL),
+    // Same fallback as lib/api.ts: without it, a missing NEXT_PUBLIC_API_URL leaves the API origin out of
+    // connect-src and the browser blocks every API call (the machines list stays empty).
+    apiOrigin: apiOriginFrom(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'),
     isDev: process.env.NODE_ENV === 'development',
   });
 

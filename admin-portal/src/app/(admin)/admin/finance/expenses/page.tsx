@@ -36,6 +36,8 @@ import { useRequestedNew } from '@/lib/financeWorkspaceClient';
 import { financeModulePath, financePortalPrefix } from '@/lib/financeWorkspace';
 import FinancePageHeader from '@/components/financeWorkspace/FinancePageHeader';
 import { Badge, Button, buttonLinkClass, DatePresets, Field, inputClass, Modal, ModalFooter, tableHeadClass } from '@/components/financeWorkspace/ui';
+import { confirmDelete } from '@/store/confirmDeleteStore';
+import { generateFinanceTransactionDetailPath } from '@/lib/routePaths';
 
 type FinanceType = 'DEBIT' | 'CREDIT';
 type PaymentMethod = 'CASH' | 'UPI' | 'NEFT' | 'RTGS' | 'IMPS' | 'BANK_TRANSFER' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'CHEQUE' | 'OTHER';
@@ -477,7 +479,11 @@ export default function ExpensesPage() {
   };
 
   const deleteTransaction = async (transaction: FinanceTransaction) => {
-    if (!window.confirm(`Delete this ${transaction.type.toLowerCase()} transaction for ${moneyLabel(transaction.amount)}?`)) return;
+    if (!(await confirmDelete({
+      title: `Delete this ${transaction.type.toLowerCase()} transaction?`,
+      itemName: moneyLabel(transaction.amount),
+      note: 'The transaction is marked Void: it leaves totals and reports but stays in the audit trail.',
+    }))) return;
     try {
       await api.delete(`/finance/transactions/${transaction.id}`);
       toast.success('Transaction deleted.');
@@ -672,13 +678,13 @@ export default function ExpensesPage() {
             <tbody className="divide-y divide-slate-100">
               {paginatedTransactions.map((transaction) => {
                 const actions = [
-                  { label: 'View details', icon: <Eye className="h-4 w-4 text-blue-600" />, onClick: () => router.push(`${pathname}/${transaction.id}`) },
+                  { label: 'View details', icon: <Eye className="h-4 w-4 text-blue-600" />, onClick: () => router.push(generateFinanceTransactionDetailPath(pathname, transaction)) },
                   canUpdate ? { label: 'Edit transaction', icon: <Pencil className="h-4 w-4 text-amber-600" />, onClick: () => openEdit(transaction) } : null,
                   canDelete ? { label: 'Delete transaction', icon: <Trash2 className="h-4 w-4 text-red-500" />, onClick: () => void deleteTransaction(transaction), variant: 'danger' as const } : null,
                 ].filter(Boolean) as Array<{ label: string; icon: React.ReactNode; onClick: () => void; variant?: 'danger' }>;
                 const debit = transaction.type === 'DEBIT';
                 return (
-                  <tr key={transaction.id} onClick={() => router.push(`${pathname}/${transaction.id}`)} className="h-9 cursor-pointer transition hover:bg-amber-50/40">
+                  <tr key={transaction.id} onClick={() => router.push(generateFinanceTransactionDetailPath(pathname, transaction))} className="h-9 cursor-pointer transition hover:bg-amber-50/40">
                     <td className="whitespace-nowrap px-3 text-slate-700">{dateLabel(transaction.transactionDate)}</td>
                     <td className="px-3"><Badge tone={debit ? 'red' : 'green'}>{label(transaction.type)}</Badge>{transaction.source === 'IMPORT' ? <span className="ml-1 text-[11px] text-blue-600">Imported</span> : null}</td>
                     <td className="max-w-[180px] truncate px-3 font-medium text-slate-900" title={transaction.name}>{transaction.name}</td>

@@ -9,7 +9,9 @@ const pdfSource = fs.readFileSync(new URL('../components/identityHub/PanTemplate
 
  test('PAN template preview uses the supplied asset and secure upload endpoint', () => {
   assert.match(previewSource, /\/images\/pancard\/pan-card-base-template\.jpg/);
-  assert.match(previewSource, /\/pan-verification\/\$\{response\.record\.id\}\/template/);
+  // The endpoint base is a prop (partner KYC reuses the preview); the Identity Hub default is /pan-verification.
+  assert.match(previewSource, /templateEndpointBase = '\/pan-verification'/);
+  assert.match(previewSource, /\$\{templateEndpointBase\}\/\$\{response\.record\.id\}\/template/);
   assert.match(previewSource, /Upload template/);
 });
 

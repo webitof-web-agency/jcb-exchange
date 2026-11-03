@@ -10,8 +10,9 @@ const readSource = (relativePath) => readFileSync(resolve(here, relativePath), '
 
 test('vehicle transport overview does not render removed service cards', () => {
   const source = readSource('../components/vehicleTransport/VehicleTransportPage.tsx');
-  const gridStart = source.indexOf('{/* Service Cards Grid */}');
-  const emptyStateStart = source.indexOf('{/* Empty State */}');
+  const gridStart = source.indexOf('{/* Service Cards Grid');
+  const emptyStateStart = source.indexOf('{/* Empty State');
+  assert.ok(gridStart >= 0 && emptyStateStart > gridStart, 'service card grid markers should exist');
   const cardGrid = source.slice(gridStart, emptyStateStart);
 
   assert.equal(cardGrid.includes('RC Mobile Number Check'), false, 'RC Mobile Number Check should not be rendered in the service card grid');
@@ -21,13 +22,14 @@ test('vehicle transport overview does not render removed service cards', () => {
   assert.equal(source.includes('mobile-to-rc'), false, 'Mobile to RC should not remain an active vehicle transport route');
 });
 
-test('identity hub overview does not render the removed Mobile To PAN card', () => {
+// Mobile To PAN came back as a live service (route, permission, history); its overview card must stay
+// behind the Mobile To PAN view permission.
+test('identity hub overview shows the Mobile To PAN card only with its permission', () => {
   const source = readSource('../components/identityHub/IdentityHubPage.tsx');
   const overviewStart = source.indexOf("if (activeTab === 'overview') {");
-  const servicesStart = source.indexOf("\n  return (\n    <div className=\"space-y-6 animate-in fade-in duration-300\">", overviewStart);
-  const overview = source.slice(overviewStart, servicesStart);
-
-  assert.equal(overview.includes('Mobile To PAN'), false, 'Mobile To PAN should not be rendered in the overview cards');
+  const cardStart = source.indexOf("onClick={() => setActiveTab('mobileToPan')}", overviewStart);
+  assert.ok(cardStart > overviewStart, 'Mobile To PAN card should be in the overview');
+  assert.match(source.slice(Math.max(overviewStart, cardStart - 300), cardStart), /\{canMobileToPanView && \(/);
 });
 
 test('unconfigured API prices are not rendered as placeholder text', () => {

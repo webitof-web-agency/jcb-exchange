@@ -5,7 +5,6 @@ import {
   cancelSellAccountReceipt,
   cancelSellAccountSale,
   createSellAccount,
-  deleteSellAccount,
   deleteSellAccountPayment,
   getSellAccount,
   issueSellAccountReceipt,
@@ -22,6 +21,7 @@ import {
   requestSellAccountRefund,
 } from '../services/sellAccountRefund.service';
 import { RecordLockedError } from '../services/recordLock';
+import { deleteSellAccountPermanently, getSellAccountDeletionImpact } from '../services/sellAccountDeletion.service';
 import { RtoHandoffRequiredError } from '../services/linkedRecordDeletion';
 import { completeVehicleSale, issueAndDeliverVehicleSaleInvoiceAfterFullPayment, resendVehicleSaleInvoice, VehicleSaleCompletionError } from '../services/vehicleSaleCompletion.service';
 import {
@@ -102,17 +102,25 @@ export const updateAndStartSellAccountRtoRecord = async (req: Request, res: Resp
   }
 };
 
+/** What deleting this Sold Vehicle would remove or change, and what stops it (money records). */
+export const getSellAccountDeletionImpactRecord = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const impact = await getSellAccountDeletionImpact(String(req.params.id));
+    if (!impact) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
+    res.json({ success: true, impact });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Body: { confirmation: 'DELETE', reason }. Refused (409, with the impact) while money records exist. */
 export const deleteSellAccountRecord = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const deleted = await deleteSellAccount(String(req.params.id), req.user?.id);
+    const deleted = await deleteSellAccountPermanently(String(req.params.id), { id: req.user!.id }, req.body || {});
     if (!deleted) return res.status(404).json({ success: false, error: 'Sold Vehicle not found.' });
-    res.json({ success: true });
+    res.json({ success: true, message: 'Sold Vehicle record deleted permanently.' });
   } catch (error) {
-    res.status(errorStatus(error)).json({
-      success: false,
-      error: errorMessage(error),
-      ...(error instanceof RtoHandoffRequiredError ? { code: error.code } : {}),
-    });
+    next(error);
   }
 };
 

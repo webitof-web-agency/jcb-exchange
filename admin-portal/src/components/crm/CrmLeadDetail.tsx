@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import {
   ArrowLeft,
@@ -27,6 +28,7 @@ import {
   Send,
   Shuffle,
   StickyNote,
+  User,
   UserCog,
   XCircle,
 } from 'lucide-react';
@@ -66,6 +68,7 @@ import {
   type FollowUp,
   type LeadRow,
 } from './crmShared';
+import { generateAdminLeadDetailPath, generateAdminListingDetailPath, generateAdminListingPaymentDetailPath, generateAdminSoldVehicleDetailPath } from '@/lib/routePaths';
 
 type Activity = {
   id: string;
@@ -305,6 +308,19 @@ function Detail({ leadId }: { leadId: string }) {
   const user = useAuthStore((s) => s.user);
   const [now] = useState(() => Date.now());
   const data = useCrmResource(() => getJson<Detail>(`/crm/leads/${leadId}`), `crm-lead-${leadId}`);
+  const router = useRouter();
+  const pathname = usePathname();
+  // Whichever link opened the lead, show the readable URL: customer-listing-<short id>.
+  useEffect(() => {
+    const loaded = data.data?.lead;
+    if (!loaded) return;
+    const canonicalPath = generateAdminLeadDetailPath(`${base}/leads`, {
+      id: loaded.id,
+      customerName: loaded.customer?.name,
+      listingTitle: loaded.listing?.title || loaded.listingTitleSnapshot,
+    });
+    if (pathname !== canonicalPath) router.replace(canonicalPath);
+  }, [base, data.data, pathname, router]);
   const [modal, setModal] = useState<null | 'status' | 'schedule' | 'log' | 'assign' | 'edit' | 'merge' | 'template'>(null);
   const [targetStatus, setTargetStatus] = useState<string | undefined>(undefined);
   const [completing, setCompleting] = useState<FollowUp | null>(null);
@@ -419,7 +435,7 @@ function Detail({ leadId }: { leadId: string }) {
   });
 
   return (
-    <div className="mx-auto max-w-[1540px] space-y-3.5 p-3 sm:p-5 text-slate-800">
+    <div className="w-full space-y-3.5 text-slate-800">
       {/* 1. TOP BREADCRUMB & METRICS HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <Link
@@ -448,7 +464,7 @@ function Detail({ leadId }: { leadId: string }) {
                 {isPartner ? (
                   lead.customer.name || 'Unnamed Customer'
                 ) : (
-                  <Link href={contactHref(base, lead.customer.id)} className="hover:text-amber-600 transition-colors">
+                  <Link href={contactHref(base, lead.customer)} className="hover:text-amber-600 transition-colors">
                     {lead.customer.name || 'Unnamed Customer'}
                   </Link>
                 )}
@@ -552,26 +568,26 @@ function Detail({ leadId }: { leadId: string }) {
         </div>
 
         {/* Middle Tier: Live KPI Strip */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 rounded-xl bg-slate-50/80 border border-slate-100 p-2.5 text-xs">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Deal Value</p>
-            <p className="font-extrabold text-slate-900 text-sm mt-0.5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 rounded-xl bg-slate-50/90 border border-slate-200/90 p-3 text-xs shadow-2xs divide-y sm:divide-y-0 sm:divide-x divide-slate-200/60">
+          <div className="sm:px-2.5 first:pl-0">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Deal Value</p>
+            <p className="font-black text-slate-900 text-sm mt-0.5">
               {lead.listingPriceSnapshot || lead.expectedValue
                 ? fmtInr(lead.listingPriceSnapshot || lead.expectedValue)
                 : 'Not Specified'}
             </p>
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Channels</p>
-            <div className="mt-0.5">
+          <div className="sm:px-2.5">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Channels</p>
+            <div className="mt-1">
               <EnquiryChannelBadge enquiryType={lead.enquiryType} tags={lead.tags} />
             </div>
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Executive / Owner</p>
-            <p className="font-bold text-slate-800 mt-0.5 truncate">
+          <div className="sm:px-2.5">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Executive / Owner</p>
+            <p className="font-bold text-slate-900 mt-0.5 truncate">
               {lead.owner?.name || (access?.canAssign ? (
                 <button
                   type="button"
@@ -586,16 +602,16 @@ function Detail({ leadId }: { leadId: string }) {
             </p>
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Response SLA</p>
-            <div className="mt-0.5">
+          <div className="sm:px-2.5">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Response SLA</p>
+            <div className="mt-1">
               {lead.slaBreachedAt && !lead.firstResponseAt ? (
-                <span className="inline-flex items-center gap-1 rounded bg-rose-50 border border-rose-200 px-1.5 py-0.2 text-[10px] font-bold text-rose-700">
+                <span className="inline-flex items-center gap-1 rounded bg-rose-50 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
                   SLA Breached
                 </span>
               ) : lead.firstResponseAt ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
                   <Check className="h-3 w-3 text-emerald-600" />
                   Contacted
                 </span>
@@ -608,19 +624,19 @@ function Detail({ leadId }: { leadId: string }) {
             </div>
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Lead Source</p>
-            <p className="font-semibold text-slate-800 mt-0.5 truncate">
+          <div className="sm:px-2.5">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Lead Source</p>
+            <p className="font-bold text-slate-900 mt-0.5 truncate">
               {label(lead.source)}
               {lead.dealer.role === 'PARTNER' && !isPartner ? (
-                <span className="text-[10px] text-slate-400 block truncate">via {lead.dealer.name}</span>
+                <span className="text-[10.5px] text-slate-500 font-normal block truncate">via {lead.dealer.name}</span>
               ) : null}
             </p>
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Next Follow-up</p>
-            <p className="font-semibold text-slate-800 mt-0.5 truncate">
+          <div className="sm:px-2.5 last:pr-0">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Next Follow-up</p>
+            <p className={`font-bold text-xs mt-0.5 truncate ${lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() < now ? 'text-rose-600' : 'text-slate-900'}`}>
               {lead.nextFollowUpAt ? fmtDate(lead.nextFollowUpAt) : 'Not Planned'}
             </p>
           </div>
@@ -757,7 +773,7 @@ function Detail({ leadId }: { leadId: string }) {
             <div className="flex flex-col sm:items-end gap-1.5">
               {lead.wonSellAccountId ? (
                 <Link
-                  href={`${adminPrefix}/accounts/sell-accounts/${lead.wonSellAccountId}`}
+                  href={generateAdminSoldVehicleDetailPath(`${adminPrefix}/accounts/sell-accounts`, { id: lead.wonSellAccountId, listingTitle: soldMachineName })}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all"
                 >
                   <FileText className="h-4 w-4" />
@@ -781,10 +797,10 @@ function Detail({ leadId }: { leadId: string }) {
         </section>
       ) : null}
 
-      {/* 3. CORE 2-COLUMN WORKSPACE */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(330px,1fr)]">
+      {/* 3. CORE 2-COLUMN WORKSPACE - FULLY RESPONSIVE */}
+      <div className="grid gap-4 lg:grid-cols-12 items-start">
         {/* LEFT COLUMN: ACTIVE WORKFLOW & ENGAGEMENT HISTORY */}
-        <div className="space-y-4">
+        <div className="lg:col-span-7 xl:col-span-7 2xl:col-span-8 space-y-4">
           {/* FAST IN-LINE ACTIVITY LOGGER (NO MODAL NEEDED FOR FAST CALL/NOTE ENTRY) */}
           {access?.canManage ? (
             <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-2xs space-y-3">
@@ -857,7 +873,7 @@ function Detail({ leadId }: { leadId: string }) {
                       ? 'WhatsApp chat summary: machine brochure shared, customer replied...'
                       : 'Add an internal note or context about this lead...'
                   }
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 text-xs text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20"
+                  className="w-full rounded-xl border border-slate-300 bg-white p-3 text-xs sm:text-[13px] text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-400/20 shadow-xs leading-relaxed"
                 />
               </div>
 
@@ -1034,10 +1050,10 @@ function Detail({ leadId }: { leadId: string }) {
                         <Icon className="h-3.5 w-3.5" />
                       </span>
 
-                      <div className="min-w-0 flex-1 rounded-xl bg-slate-50/70 border border-slate-100/90 p-2.5 transition-colors hover:bg-slate-50">
+                      <div className="min-w-0 flex-1 rounded-xl bg-slate-50/90 border border-slate-200/90 p-3 transition-colors hover:bg-slate-50 shadow-2xs">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs font-bold text-slate-900">{a.title}</p>
+                            <p className="text-xs sm:text-[13px] font-bold text-slate-900">{a.title}</p>
                             <span className={`inline-flex items-center rounded px-1.5 py-0.2 text-[10px] font-bold border ${visuals.badgeCls}`}>
                               {visuals.badgeText}
                             </span>
@@ -1047,30 +1063,31 @@ function Detail({ leadId }: { leadId: string }) {
                               </span>
                             ) : null}
                             {duration ? (
-                              <span className="text-[10px] font-medium text-slate-500">
+                              <span className="text-[11px] font-medium text-slate-600">
                                 ({duration}{meta2.direction === 'INBOUND' ? ', incoming' : ''})
                               </span>
                             ) : null}
                           </div>
 
-                          <span className="text-[10px] font-semibold text-slate-400">
+                          <span className="text-[11px] font-bold text-slate-500">
                             {relative(a.createdAt, now)}
                           </span>
                         </div>
 
                         {a.content ? (
-                          <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700 font-medium leading-relaxed">
+                          <div className="mt-2 rounded-lg bg-white border border-slate-200/80 p-2.5 text-xs sm:text-[13px] text-slate-800 font-normal leading-relaxed whitespace-pre-wrap shadow-2xs">
                             {a.content}
-                          </p>
+                          </div>
                         ) : null}
 
-                        <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
-                          <span>{fmtDateTime(a.createdAt)}</span>
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 font-medium flex-wrap">
+                          <span className="font-semibold text-slate-600">{fmtDateTime(a.createdAt)}</span>
                           <span>•</span>
-                          <span>
+                          <span className="inline-flex items-center gap-1 text-slate-600">
+                            <User className="h-3 w-3 text-slate-400" />
                             {a.actor?.role === 'CUSTOMER'
                               ? 'Customer Action'
-                              : a.actor?.name || (meta2.automated ? 'Automation' : 'System')}
+                              : a.actor?.name || (meta2.automated ? 'System Automation' : 'System')}
                           </span>
                         </div>
                       </div>
@@ -1117,14 +1134,14 @@ function Detail({ leadId }: { leadId: string }) {
         </div>
 
         {/* RIGHT COLUMN: INTELLIGENCE, ASSETS & CONTEXT */}
-        <div className="space-y-4">
+        <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-4 space-y-4">
           {/* CUSTOMER CONTACT CARD */}
           <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer Profile</h3>
               {!isPartner ? (
                 <Link
-                  href={contactHref(base, lead.customer.id)}
+                  href={contactHref(base, lead.customer)}
                   className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:underline"
                 >
                   Customer 360
@@ -1134,26 +1151,26 @@ function Detail({ leadId }: { leadId: string }) {
             </div>
 
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-900 font-bold text-sm">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-900 font-black text-base shadow-2xs">
                 {(lead.customer.name || 'C').slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-slate-900 text-sm truncate">{lead.customer.name || 'Customer'}</p>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">{lead.customer.mobile || '—'}</p>
-                {lead.customer.email ? <p className="text-xs text-slate-500 truncate">{lead.customer.email}</p> : null}
+                <p className="font-black text-slate-900 text-sm sm:text-base truncate">{lead.customer.name || 'Customer'}</p>
+                <p className="text-xs sm:text-[13px] text-slate-700 font-mono font-bold mt-0.5">{lead.customer.mobile || '—'}</p>
+                {lead.customer.email ? <p className="text-xs text-slate-500 truncate mt-0.5">{lead.customer.email}</p> : null}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 text-xs">
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400">City / State</span>
-                <p className="font-semibold text-slate-800 mt-0.5">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">City / State</span>
+                <p className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">
                   {[lead.customer.city, lead.customer.state].filter(Boolean).join(', ') || '—'}
                 </p>
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Lifecycle</span>
-                <p className="font-semibold text-slate-800 mt-0.5">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Lifecycle</span>
+                <p className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">
                   {label(lead.customer.crmProfile?.lifecycle || 'Lead')}
                 </p>
               </div>
@@ -1165,27 +1182,27 @@ function Detail({ leadId }: { leadId: string }) {
             <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Enquired Machine</h3>
-                <span className="rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 text-[10px] font-bold">
+                <span className="rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-xs font-black">
                   {fmtInr(lead.listing.price)}
                 </span>
               </div>
 
               <div>
-                <h4 className="font-bold text-slate-900 text-sm hover:text-amber-700 transition-colors">
+                <h4 className="font-black text-slate-900 text-sm sm:text-[15px] hover:text-amber-700 transition-colors">
                   {lead.listing.title}
                 </h4>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                <p className="text-xs text-slate-600 mt-1 font-semibold">
                   {lead.listing.brand.name} {lead.listing.model.name} • {lead.listing.manufacturingYear} • {lead.listing.locationCity}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
-                <span className="text-[11px] text-slate-500 font-medium">
-                  Status: <strong>{label(lead.listing.status)}</strong>
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                <span className="text-xs text-slate-600 font-medium">
+                  Status: <strong className="font-bold text-slate-900">{label(lead.listing.status)}</strong>
                 </span>
                 {!isPartner ? (
                   <Link
-                    href={`${adminPrefix}/listings/${lead.listing.id}`}
+                    href={generateAdminListingDetailPath(`${adminPrefix}/listings`, lead.listing)}
                     className="inline-flex items-center gap-1 font-bold text-amber-700 hover:underline"
                   >
                     View Listing
@@ -1197,9 +1214,9 @@ function Detail({ leadId }: { leadId: string }) {
           ) : lead.listingTitleSnapshot ? (
             <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Enquired Machine Snapshot</h3>
-              <p className="font-bold text-slate-900 text-sm">{lead.listingTitleSnapshot}</p>
+              <p className="font-black text-slate-900 text-sm sm:text-base">{lead.listingTitleSnapshot}</p>
               {lead.listingPriceSnapshot ? (
-                <p className="text-xs font-bold text-emerald-700">{fmtInr(lead.listingPriceSnapshot)}</p>
+                <p className="text-xs sm:text-sm font-black text-emerald-700">{fmtInr(lead.listingPriceSnapshot)}</p>
               ) : null}
             </div>
           ) : null}
@@ -1221,49 +1238,53 @@ function Detail({ leadId }: { leadId: string }) {
               ) : null}
             </div>
 
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Category</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">{lead.requirement.category?.name || '—'}</dd>
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Category</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">{lead.requirement.category?.name || '—'}</dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Brand / Model</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5 truncate">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Brand / Model</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5 truncate">
                   {[lead.requirement.brand?.name, lead.requirement.model?.name].filter(Boolean).join(' ') || '—'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Year Range</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Year Range</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">
                   {lead.yearFrom || lead.yearTo ? `${lead.yearFrom || '…'} – ${lead.yearTo || '…'}` : '—'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Budget Range</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Budget Range</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">
                   {lead.budgetMin || lead.budgetMax
                     ? `${lead.budgetMin ? fmtInr(lead.budgetMin) : '…'} – ${lead.budgetMax ? fmtInr(lead.budgetMax) : '…'}`
                     : '—'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Required Location</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5 truncate">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Required Location</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5 truncate">
                   {[lead.requirementCity, lead.requirementState].filter(Boolean).join(', ') || '—'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase text-slate-400">Expected Value</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">Expected Value</dt>
+                <dd className="font-bold text-slate-900 text-xs sm:text-[13px] mt-0.5">
                   {lead.expectedValue ? fmtInr(lead.expectedValue) : '—'}
                 </dd>
               </div>
             </dl>
 
             {lead.requirementNotes || lead.message ? (
-              <div className="border-t border-slate-100 pt-2 text-xs text-slate-600 font-medium">
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Notes / Message</span>
-                <p className="whitespace-pre-wrap">{lead.requirementNotes || lead.message}</p>
+              <div className="border-t border-slate-100 pt-2.5">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Notes / Requirement Message
+                </span>
+                <div className="rounded-xl bg-slate-50/90 border border-slate-200/90 p-2.5 sm:p-3 text-xs sm:text-[13px] text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">
+                  {lead.requirementNotes || lead.message}
+                </div>
               </div>
             ) : null}
 
@@ -1287,7 +1308,7 @@ function Detail({ leadId }: { leadId: string }) {
               payments={payments}
               canVerify={canVerifyPayment}
               onChanged={data.reload}
-              paymentHref={(id) => `${adminPrefix}/listings/payments/${id}`}
+              paymentHref={(id) => generateAdminListingPaymentDetailPath(`${adminPrefix}/listings/payments`, { id, listingTitle: lead.listingTitleSnapshot, method: null })}
             />
           ) : null}
 
@@ -1305,7 +1326,7 @@ function Detail({ leadId }: { leadId: string }) {
                     <li key={m.id} className="flex items-center justify-between gap-2 py-2 text-xs">
                       <div className="min-w-0">
                         <Link
-                          href={`${adminPrefix}/listings/${m.id}`}
+                          href={generateAdminListingDetailPath(`${adminPrefix}/listings`, m)}
                           className="block truncate font-bold text-slate-900 hover:text-amber-700"
                         >
                           {m.title}

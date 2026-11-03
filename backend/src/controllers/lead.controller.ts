@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
+import { isModeratedListingStatus } from '../services/listingModeration.service';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAppSettings } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
@@ -843,7 +844,8 @@ export const createPublicContactLead = async (req: Request, res: Response, next:
       });
     }
 
-    if (!listing) {
+    // Unlisted, suspended and blocked listings are off the website and take no enquiries.
+    if (!listing || isModeratedListingStatus(listing.status)) {
       return res.status(404).json({ error: 'Listing not found.' });
     }
 

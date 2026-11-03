@@ -6,6 +6,7 @@ import type { AxiosError } from 'axios';
 import api, { API_ORIGIN } from '@/lib/api';
 import { compressAvatarImage } from '@/lib/avatarUpload';
 import type { User } from '@/store/authStore';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 type AvatarUploadProps = {
   user: User | null;
@@ -89,7 +90,7 @@ export default function AvatarUpload({ user, onUploaded, size = 'profile' }: Ava
 
   const handleRemove = async () => {
     if (!user?.avatarUrl || typeof window === 'undefined') return;
-    if (!window.confirm('Remove your profile photo?')) return;
+    if (!(await confirmDelete({ title: 'Remove your profile photo?', confirmLabel: 'Remove' }))) return;
 
     setError(null);
     setRemoving(true);

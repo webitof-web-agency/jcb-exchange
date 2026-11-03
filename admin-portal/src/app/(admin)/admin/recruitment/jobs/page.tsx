@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import { generateRecruitmentJobDetailPath, getRecruitmentPortalBasePath } from '@/lib/routePaths';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface JobDepartment {
   id: string;
@@ -547,14 +548,20 @@ export default function AdminJobsPage() {
 
   const handleDeleteJob = async (jobId: string) => {
     if (!canDelete) return;
-    if (confirm('Are you sure you want to delete this job posting? This action cannot be undone.')) {
+    if (await confirmDelete({
+      title: 'Delete this job posting?',
+      alsoDeleted: ['Custom application questions of this job'],
+      note: 'A job that already has applications cannot be deleted. Close or archive it instead.',
+    })) {
       try {
         const res = await api.delete(`/recruitment/admin/jobs/${jobId}`);
         if (res.data?.success) {
           fetchJobs();
         }
-      } catch {
-        alert('Failed to delete job posting.');
+      } catch (deleteError) {
+        // A job with applications is refused with a reason (close or archive it instead).
+        const serverMessage = (deleteError as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        alert(serverMessage || 'Failed to delete job posting.');
       }
     }
   };

@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { CRM_PERMISSION_GROUPS, FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface EmployeeRole {
   id: string;
@@ -491,7 +492,11 @@ export default function RolesPage() {
       return;
     }
 
-    if (!confirm(t('roleManagement.deleteRoleConfirm'))) return;
+    if (!(await confirmDelete({
+      title: t('roleManagement.deleteRoleConfirm'),
+      itemName: roles.find((role) => role.id === id)?.name,
+      note: 'A role that is still given to employees cannot be deleted.',
+    }))) return;
     try {
       await api.delete(`/superadmin/roles/${id}`);
       fetchRoles();

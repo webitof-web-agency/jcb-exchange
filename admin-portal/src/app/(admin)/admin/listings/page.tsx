@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, FileText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus, ShieldCheck, CheckCircle2, Loader2, Sparkles, LayoutGrid, List, RefreshCw, MapPin, AlertCircle, TrendingUp, Handshake, Eye, Camera } from 'lucide-react';
+import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, FileText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus, ShieldCheck, CheckCircle2, Loader2, Sparkles, LayoutGrid, List, RefreshCw, MapPin, AlertCircle, TrendingUp, Handshake, Eye, EyeOff, Camera } from 'lucide-react';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import axios from 'axios';
 import api from '@/lib/api';
@@ -53,6 +53,12 @@ import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import { getModerationStatus, getPendingModerationOptions } from '@/lib/listingModeration.mjs';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 import { isHighlightedListing } from '@/lib/listingListNavigation.mjs';
+import VehicleIdentityHint from '@/components/listings/VehicleIdentityHint';
+import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
+import ListingModerationDialog from '@/components/listings/ListingModerationDialog';
+import { availableListingActions, isHiddenListingStatus, LISTING_ACTION_META, LISTING_STATUS_BADGES, moderateListing, type ListingVisibilityAction } from '@/lib/listingVisibility';
+import VehicleIdentityBadges from '@/components/listings/VehicleIdentityBadges';
+import { getVehicleIdentityBlockMessage, useVehicleIdentityCheck, type AdminVehicleIdentity } from '@/hooks/useVehicleIdentityCheck';
 
 type ListingFormState = {
   category: string;
@@ -103,7 +109,7 @@ type CategoryOption = {
   name: string;
 };
 
-type ListingSortKey = 'title' | 'price' | 'year' | 'location' | 'date';
+type ListingSortKey = 'title' | 'regNo' | 'price' | 'year' | 'location' | 'date';
 
 const formatEntryDate = (dateString?: string | null) => {
   if (!dateString) return '-';
@@ -163,6 +169,12 @@ type ListingRecord = {
   price: string;
   // Seller price + admin margin + expenses; buyers see finalPrice.
   pricing?: ListingPricing | null;
+  // Admin-only: resale / duplicate details for this vehicle.
+  vehicleIdentity?: AdminVehicleIdentity | null;
+  // Why it was unlisted, suspended or blocked.
+  moderationReason?: string | null;
+  registrationNumberKey?: string | null;
+  chassisNumberKey?: string | null;
   manufacturingYear: number;
   locationState: string;
   locationCity: string;
@@ -671,6 +683,89 @@ const getCoverMedia = (listing: ListingRecord) =>
   listing.media?.find((item) => item.type === 'IMAGE') ||
   null;
 
+const getListingRegistrationNumber = (listing: ListingRecord) => {
+  const parsed = parseListingDescription(listing.description);
+  return (
+    listing.vehicleVerification?.verifiedRegistrationNumber ||
+    listing.rtoRecords?.[0]?.vehicleNumber ||
+    listing.registrationNumberKey ||
+    parsed.registrationNo ||
+    ''
+  ).trim().toUpperCase();
+};
+
+const matchesListingQuery = (listing: ListingRecord, rawQuery: string) => {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return true;
+
+  const parsedDetails = parseListingDescription(listing.description);
+  const regNo = getListingRegistrationNumber(listing);
+
+  const tokens = [
+    // 1. Vehicle name & Title
+    listing.title,
+    listing.brand?.name,
+    listing.model?.name,
+    listing.category?.name,
+    parsedDetails.variant,
+    `${listing.brand?.name || ''} ${listing.model?.name || ''}`.trim(),
+
+    // 2. Model
+    listing.model?.name,
+
+    // 3. Title
+    listing.title,
+
+    // 4. Vehicle Registration Number
+    regNo,
+    listing.registrationNumberKey,
+    listing.vehicleVerification?.verifiedRegistrationNumber,
+    listing.rtoRecords?.[0]?.vehicleNumber,
+    parsedDetails.registrationNo,
+
+    // 5. Chassis Number (Chasis Number)
+    listing.chassisNumberKey,
+    listing.vehicleVerification?.verifiedChassisNumber,
+    parsedDetails.chassisOrSerialNo,
+
+    // 6. Engine Number
+    listing.engineNumber,
+    listing.vehicleVerification?.verifiedEngineNumber,
+    parsedDetails.engineNumber,
+
+    // Other helpful metadata
+    listing.dealer,
+    listing.ownerName,
+    parsedDetails.ownerName,
+    listing.locationCity,
+    listing.locationState,
+    listing.condition,
+    listing.address,
+    parsedDetails.address,
+    parsedDetails.fuelType,
+    parsedDetails.transmission,
+  ]
+    .filter(Boolean)
+    .map((str) => String(str).toLowerCase());
+
+  const fullHaystack = tokens.join(' ');
+  if (fullHaystack.includes(q)) {
+    return true;
+  }
+
+  // Alphanumeric comparison for registration number, chassis number, engine number & vehicle model
+  // (e.g. "CG04AB1234" matches "CG 04 AB 1234" or "CG-04-AB-1234", "JCB3DX" matches "JCB 3DX")
+  const cleanQ = q.replace(/[^a-z0-9]/g, '');
+  if (cleanQ.length >= 2) {
+    const cleanHaystack = fullHaystack.replace(/[^a-z0-9]/g, '');
+    if (cleanHaystack.includes(cleanQ)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const hasAdminPricing = (listing: { pricing?: ListingPricing | null }) =>
   Boolean(listing.pricing && (listing.pricing.marginAmount > 0 || listing.pricing.expenseAmount > 0));
 
@@ -699,6 +794,10 @@ const availabilityToListingStatus = (value: string) => {
 
 const listingStatusToAvailability = (value: string) => {
   switch (value.toUpperCase()) {
+    case 'UNLISTED':
+    case 'SUSPENDED':
+    case 'BLOCKED':
+      return value.toUpperCase();
     case 'PUBLISHED':
     case 'PAUSED':
     case 'DRAFT':
@@ -1110,7 +1209,6 @@ export default function PartnerListingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
-  const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<'UNVERIFIED' | 'VERIFYING' | 'VERIFIED' | 'FAILED'>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
@@ -1122,6 +1220,17 @@ export default function PartnerListingsPage() {
   const chassisVerificationRequestRef = useRef(0);
   const originalChassisNumberRef = useRef('');
   const originalRegistrationNumberRef = useRef('');
+  const listingBasePath = pathname.startsWith('/employee') ? '/employee/listings' : '/admin/listings';
+  // Numbers the edited listing was saved with; set when the edit form opens.
+  const [savedVehicleNumbers, setSavedVehicleNumbers] = useState({ registration: '', chassis: '' });
+  const vehicleIdentity = useVehicleIdentityCheck({
+    registrationNumber: form.registrationNo,
+    chassisNumber: form.chassisOrSerialNo,
+    listingId: editingListingId,
+    savedRegistrationNumber: savedVehicleNumbers.registration,
+    savedChassisNumber: savedVehicleNumbers.chassis,
+    enabled: isModalOpen,
+  });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -1152,6 +1261,7 @@ export default function PartnerListingsPage() {
 
   const [pendingPaymentVerificationsCount, setPendingPaymentVerificationsCount] = useState(0);
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
+  const [visibilityTarget, setVisibilityTarget] = useState<{ listing: ListingRecord; action: ListingVisibilityAction } | null>(null);
   const [pricingTarget, setPricingTarget] = useState<{ listing: ListingRecord; mode: 'approve' | 'edit' } | null>(null);
   const [updatingAvailabilityIds, setUpdatingAvailabilityIds] = useState<string[]>([]);
   const [moderatingListingIds, setModeratingListingIds] = useState<string[]>([]);
@@ -1493,23 +1603,8 @@ export default function PartnerListingsPage() {
         });
       }
 
-      const q = pendingSearch.trim().toLowerCase();
-      if (q) {
-        pendingList = pendingList.filter((listing) => {
-          const haystack = [
-            listing.title,
-            listing.dealer,
-            listing.brand?.name,
-            listing.model?.name,
-            listing.category?.name,
-            listing.locationCity,
-            listing.locationState,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(q);
-        });
+      if (pendingSearch.trim()) {
+        pendingList = pendingList.filter((listing) => matchesListingQuery(listing, pendingSearch));
       }
 
       return pendingList;
@@ -1549,36 +1644,11 @@ export default function PartnerListingsPage() {
       });
     }
 
-    const query = search.trim().toLowerCase();
-    if (!query) {
-      return scopedListings;
+    if (search.trim()) {
+      scopedListings = scopedListings.filter((listing) => matchesListingQuery(listing, search));
     }
 
-    return scopedListings.filter((listing) => {
-      const parsedDetails = parseListingDescription(listing.description);
-      const haystack = [
-        listing.title,
-        listing.brand?.name,
-        listing.model?.name,
-        listing.category?.name,
-        listing.locationCity,
-        listing.locationState,
-        listing.condition,
-        listing.address,
-        listing.description,
-        parsedDetails.address,
-        parsedDetails.variant,
-        parsedDetails.registrationNo,
-        parsedDetails.chassisOrSerialNo,
-        parsedDetails.fuelType,
-        parsedDetails.transmission,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(query);
-    });
+    return scopedListings;
   }, [
     listings,
     listingView,
@@ -1622,6 +1692,13 @@ export default function PartnerListingsPage() {
         const aVal = a.title || '';
         const bVal = b.title || '';
         const cmp = aVal.localeCompare(bVal);
+        return sortDir === 'asc' ? cmp : -cmp;
+      } else if (sortKey === 'regNo') {
+        const aReg = getListingRegistrationNumber(a);
+        const bReg = getListingRegistrationNumber(b);
+        if (!aReg && bReg) return 1;
+        if (aReg && !bReg) return -1;
+        const cmp = aReg.localeCompare(bReg);
         return sortDir === 'asc' ? cmp : -cmp;
       } else if (sortKey === 'price') {
         const aNum = parseFloat(String(a.price || '0').replace(/[^\d.]/g, '')) || 0;
@@ -1744,6 +1821,10 @@ export default function PartnerListingsPage() {
     const parsedDetails = parseListingDescription(listing.description);
     originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
+    setSavedVehicleNumbers({
+      registration: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
+      chassis: parsedDetails.chassisOrSerialNo,
+    });
     originalRegistrationNumberRef.current = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
     const initialBuyerStateId =
       availableStates.find((option) => option.name.toLowerCase() === (listing.saleRecord?.buyerState || '').toLowerCase())?.id
@@ -2146,6 +2227,12 @@ export default function PartnerListingsPage() {
       return;
     }
 
+    if (vehicleIdentity.blocked) {
+      setError(getVehicleIdentityBlockMessage(vehicleIdentity.result));
+      setModalTab('equipment');
+      return;
+    }
+
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
     const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
       required: vehicleVerificationRequired,
@@ -2413,24 +2500,17 @@ export default function PartnerListingsPage() {
     }
   };
 
-  const handleDeleteListing = async () => {
+  // Applies an unlist / suspend / block result to the list.
+  const applyVisibilityChange = (updated: { id: string; status: string; moderationReason: string | null }) => {
+    setListings((current) => current.map((item) => (item.id === updated.id ? { ...item, status: updated.status, moderationReason: updated.moderationReason } : item)));
+    setMessage(`Listing is now ${updated.status.replace(/_/g, ' ').toLowerCase()}.`);
+  };
+
+  // Safer option chosen in the delete dialog: unlist, suspend or block instead of deleting.
+  const handleDeleteAlternative = async (action: string, reason: string) => {
     if (!deleteListingRecord) return;
-
-    setDeletingListingId(deleteListingRecord.id);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.delete<{ message: string }>(`/listings/${deleteListingRecord.id}`);
-      setListings((current) => current.filter((item) => item.id !== deleteListingRecord.id));
-
-      setMessage(response.data.message || 'Listing deleted successfully.');
-      setDeleteListingRecord(null);
-    } catch (deleteError) {
-      setError(getApiErrorMessage(deleteError, 'Unable to delete the listing.'));
-    } finally {
-      setDeletingListingId(null);
-    }
+    applyVisibilityChange(await moderateListing(deleteListingRecord.id, action as ListingVisibilityAction, reason));
+    setDeleteListingRecord(null);
   };
 
   const handleUpdateAvailability = async (listingId: string, newAvailability: string) => {
@@ -2659,6 +2739,12 @@ export default function PartnerListingsPage() {
           },
         ]
       : []),
+    ...availableListingActions(listing.status, { isAdmin: canApprove, isOwner: false }).map((action) => ({
+      label: `${LISTING_ACTION_META[action].label} Listing`,
+      icon: action === 'RELIST' || action === 'RESTORE' || action === 'UNBLOCK' ? <Eye size={14} /> : <EyeOff size={14} />,
+      variant: (LISTING_ACTION_META[action].tone === 'danger' ? 'danger' : LISTING_ACTION_META[action].tone === 'warning' ? 'warning' : 'default') as 'danger' | 'warning' | 'default',
+      onClick: () => setVisibilityTarget({ listing, action }),
+    })),
     ...(canDelete && !isProtectedListing(listing, user?.role)
       ? [
           {
@@ -2985,7 +3071,7 @@ export default function PartnerListingsPage() {
                     setSearch(event.target.value);
                     setCurrentPage(1);
                   }}
-                  placeholder="Search title, brand, model, city, reg..."
+                  placeholder="Search vehicle, model, title, reg no, chassis, engine..."
                   className="w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-xs font-medium text-gray-900 shadow-2xs placeholder:text-gray-400 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
                 {search ? (
@@ -3079,7 +3165,7 @@ export default function PartnerListingsPage() {
                     setPendingSearch(event.target.value);
                     setCurrentPage(1);
                   }}
-                  placeholder="Search pending listing, dealer..."
+                  placeholder="Search vehicle, model, title, reg no, chassis, engine..."
                   className="w-full rounded-lg border border-amber-200 bg-white py-1.5 pl-8 pr-7 text-xs font-medium text-gray-900 shadow-2xs placeholder:text-gray-400 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                 />
                 {pendingSearch ? (
@@ -3231,20 +3317,26 @@ export default function PartnerListingsPage() {
                       </div>
 
                       <div className="absolute right-2.5 top-2.5 z-10" onClick={(e) => e.stopPropagation()}>
-                        <TableAvailabilityDropdown
-                          value={isPendingListing ? 'PENDING' : availability}
-                          onChange={(val) => {
-                            if (isPendingListing) {
-                              const nextStatus = getModerationStatus(val);
-                              if (nextStatus) void handleListingModeration(listing.id, nextStatus);
-                              return;
-                            }
-                            void handleUpdateAvailability(listing.id, val);
-                          }}
-                          options={isPendingListing ? getPendingModerationOptions() : availabilityTypes}
-                          optionLabels={isPendingListing ? { APPROVE: 'Approve', REJECT: 'Reject' } : undefined}
-                          disabled={isPendingListing ? !canApprove : isUpdatingAvailability || !canEdit}
-                        />
+                        {isHiddenListingStatus(listing.status) ? (
+                          <span title={listing.moderationReason || undefined} className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${LISTING_STATUS_BADGES[String(listing.status).toUpperCase()]?.className || ''}`}>
+                            {LISTING_STATUS_BADGES[String(listing.status).toUpperCase()]?.label || listing.status}
+                          </span>
+                        ) : (
+                          <TableAvailabilityDropdown
+                            value={isPendingListing ? 'PENDING' : availability}
+                            onChange={(val) => {
+                              if (isPendingListing) {
+                                const nextStatus = getModerationStatus(val);
+                                if (nextStatus) void handleListingModeration(listing.id, nextStatus);
+                                return;
+                              }
+                              void handleUpdateAvailability(listing.id, val);
+                            }}
+                            options={isPendingListing ? getPendingModerationOptions() : availabilityTypes}
+                            optionLabels={isPendingListing ? { APPROVE: 'Approve', REJECT: 'Reject' } : undefined}
+                            disabled={isPendingListing ? !canApprove : isUpdatingAvailability || !canEdit}
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -3267,6 +3359,7 @@ export default function PartnerListingsPage() {
                       >
                         {listing.title}
                       </h4>
+                      <VehicleIdentityBadges identity={listing.vehicleIdentity} />
 
                       {/* Model & Fuel Specs */}
                       <p className="mt-0.5 text-xs text-gray-500 line-clamp-1">
@@ -3443,6 +3536,7 @@ export default function PartnerListingsPage() {
               <table className="w-full table-fixed border-collapse text-left text-xs text-gray-600">
                 <colgroup>
                   <col className="w-auto" />
+                  <col className="w-[110px]" style={{ width: '110px' }} />
                   <col className="w-[125px]" style={{ width: '125px' }} />
                   <col className="w-[95px]" style={{ width: '95px' }} />
                   <col className="w-[48px]" style={{ width: '48px' }} />
@@ -3462,6 +3556,16 @@ export default function PartnerListingsPage() {
                       <div className="flex items-center gap-1">
                         <span className="truncate">Equipment &amp; Specs</span>
                         <SortIcon col="title" sortKey={sortKey} sortDir={sortDir} />
+                      </div>
+                    </th>
+                    <th
+                      className="w-[110px] px-2 py-2 cursor-pointer select-none hover:text-amber-600 transition-colors"
+                      onClick={() => handleSort('regNo')}
+                      title="Vehicle Registration Number"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="truncate">Reg. No.</span>
+                        <SortIcon col="regNo" sortKey={sortKey} sortDir={sortDir} />
                       </div>
                     </th>
                     <th className="w-[125px] px-2 py-2">
@@ -3576,6 +3680,7 @@ export default function PartnerListingsPage() {
                               >
                                 {listing.title}
                               </span>
+                              <VehicleIdentityBadges identity={listing.vehicleIdentity} />
                               <div className="mt-0.5 flex items-center gap-1 min-w-0 text-[10px] text-gray-500 font-medium truncate">
                                 {listing.category?.name ? (
                                   <span className="rounded bg-gray-100 px-1 py-0.2 text-[8.5px] font-bold uppercase tracking-wider text-gray-600 shrink-0">
@@ -3589,6 +3694,25 @@ export default function PartnerListingsPage() {
                               </div>
                             </div>
                           </div>
+                        </td>
+
+                        {/* Vehicle Registration Number Column */}
+                        <td className="w-[110px] px-2 py-1.5 text-xs">
+                          {(() => {
+                            const regNumber = getListingRegistrationNumber(listing);
+                            return regNumber ? (
+                              <span
+                                className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10.5px] font-bold uppercase tracking-wider text-slate-800 border border-slate-200/90 shadow-2xs group-hover:border-amber-400/60 group-hover:bg-amber-50/50 transition-colors"
+                                title={`Vehicle Registration: ${regNumber}`}
+                              >
+                                {regNumber}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-medium text-gray-400 pl-1" title="No registration number recorded">
+                                —
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* Listed By Column */}
@@ -3660,21 +3784,27 @@ export default function PartnerListingsPage() {
                         {/* Availability Column */}
                         <td className="w-[86px] px-1 py-1.5 text-center">
                           <div className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                            <TableAvailabilityDropdown
-                              value={isPendingListing ? 'PENDING' : availability}
-                              onChange={(val) => {
-                                if (isPendingListing) {
-                                   const nextStatus = getModerationStatus(val);
-                                  if (nextStatus) void handleListingModeration(listing.id, nextStatus);
-                                  return;
-                                }
-                                void handleUpdateAvailability(listing.id, val);
-                              }}
-                              options={isPendingListing ? getPendingModerationOptions() : availabilityTypes}
-                              optionLabels={isPendingListing ? { APPROVE: 'Approve', REJECT: 'Reject' } : undefined}
-                              disabled={isPendingListing ? isModeratingListing || !canApprove : isUpdatingAvailability || !canEdit}
-                              openUpwards={isNearBottom}
-                            />
+                            {isHiddenListingStatus(listing.status) ? (
+                              <span title={listing.moderationReason || undefined} className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${LISTING_STATUS_BADGES[String(listing.status).toUpperCase()]?.className || ''}`}>
+                                {LISTING_STATUS_BADGES[String(listing.status).toUpperCase()]?.label || listing.status}
+                              </span>
+                            ) : (
+                              <TableAvailabilityDropdown
+                                value={isPendingListing ? 'PENDING' : availability}
+                                onChange={(val) => {
+                                  if (isPendingListing) {
+                                     const nextStatus = getModerationStatus(val);
+                                    if (nextStatus) void handleListingModeration(listing.id, nextStatus);
+                                    return;
+                                  }
+                                  void handleUpdateAvailability(listing.id, val);
+                                }}
+                                options={isPendingListing ? getPendingModerationOptions() : availabilityTypes}
+                                optionLabels={isPendingListing ? { APPROVE: 'Approve', REJECT: 'Reject' } : undefined}
+                                disabled={isPendingListing ? isModeratingListing || !canApprove : isUpdatingAvailability || !canEdit}
+                                openUpwards={isNearBottom}
+                              />
+                            )}
                             {(isPendingListing || isUpdatingAvailability) && (
                               <span className="text-[9px] text-gray-400 font-medium">
                                 {isPendingListing ? 'Awaiting approval' : 'Updating...'}
@@ -4060,6 +4190,14 @@ export default function PartnerListingsPage() {
                           {registrationButtonState.isVerified ? '✓ Verified using RC. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Verify to auto-fill vehicle details.'}
                         </p>
                       ) : null}
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.registration}
+                        result={vehicleIdentity.result}
+                        ready={vehicleIdentity.registrationReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="vehicle number"
+                        listingBasePath={listingBasePath}
+                      />
                     </div>
 
                     {/* Chassis / Serial No. */}
@@ -4114,6 +4252,14 @@ export default function PartnerListingsPage() {
                           {listingVerificationPolicy?.registrationEnabled ? 'Registration verification can auto-fill chassis.' : 'Manual listing mode active.'}
                         </p>
                       )}
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.chassis}
+                        result={vehicleIdentity.result}
+                        ready={vehicleIdentity.chassisReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="chassis number"
+                        listingBasePath={listingBasePath}
+                      />
                     </div>
                   </div>
 
@@ -4892,7 +5038,8 @@ export default function PartnerListingsPage() {
 
                     <button
                       type="submit"
-                      disabled={saving || uploadingCount > 0}
+                      disabled={saving || uploadingCount > 0 || vehicleIdentity.blocked}
+                      title={vehicleIdentity.blocked ? getVehicleIdentityBlockMessage(vehicleIdentity.result) : undefined}
                       className="flex-1 sm:flex-none h-10 sm:h-[34px] px-4 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-xs hover:bg-[#E5AD06] transition flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
                     >
                       {saving ? (
@@ -5229,34 +5376,33 @@ export default function PartnerListingsPage() {
         />
       ) : null}
 
+      {visibilityTarget ? (
+        <ListingModerationDialog
+          listing={visibilityTarget.listing}
+          action={visibilityTarget.action}
+          isAdmin={canApprove}
+          onClose={() => setVisibilityTarget(null)}
+          onDone={(updated) => {
+            applyVisibilityChange(updated);
+            setVisibilityTarget(null);
+          }}
+        />
+      ) : null}
+
       {deleteListingRecord && !isProtectedListing(deleteListingRecord, user?.role) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <Trash2 className="h-6 w-6 text-red-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Delete Listing</h3>
-            <p className="mt-2 text-sm text-gray-500">
-              Are you sure you want to delete <span className="font-semibold text-gray-700">{deleteListingRecord.title}</span>? This action cannot be undone.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setDeleteListingRecord(null)}
-                disabled={deletingListingId === deleteListingRecord.id}
-                className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleDeleteListing()}
-                disabled={deletingListingId === deleteListingRecord.id}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
-              >
-                {deletingListingId === deleteListingRecord.id ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteImpactDialog
+          open
+          title="Delete listing"
+          impactPath={`/listings/${deleteListingRecord.id}/delete-impact`}
+          deletePath={`/listings/${deleteListingRecord.id}`}
+          onClose={() => setDeleteListingRecord(null)}
+          onDeleted={(deletedMessage) => {
+            setListings((current) => current.filter((item) => item.id !== deleteListingRecord.id));
+            setMessage(deletedMessage || 'Listing deleted successfully.');
+            setDeleteListingRecord(null);
+          }}
+          onAlternative={handleDeleteAlternative}
+        />
       )}
     </div>
   );

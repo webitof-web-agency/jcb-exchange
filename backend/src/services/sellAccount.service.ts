@@ -27,7 +27,6 @@ import {
 } from './sellAccountFinance';
 import { normalizeRtoWorkStatus, statusForSellAccountHandoff } from './rtoStatus';
 import { assertDealDoneBeforeLock, assertRecordEditable } from './recordLock';
-import { getLinkedRecordDeletionPolicy, RtoHandoffRequiredError } from './linkedRecordDeletion';
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
 import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
@@ -104,8 +103,10 @@ const nextSellAccountRecordNumber = async (client: any) => {
 
 const assertListingAvailable = async (listingId: string | null, currentId?: string) => {
   if (!listingId) return;
-  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true } });
+  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, status: true } });
   if (!listing) throw new Error('Linked listing was not found.');
+  // A blocked listing (fraud, stolen or fake vehicle) cannot be sold through the platform.
+  if (listing.status === 'BLOCKED') throw new Error('This listing is blocked and cannot be linked to a sale. Unblock it first.');
   const linked = await prisma.sellAccount.findFirst({
     where: { listingId, ...(currentId ? { NOT: { id: currentId } } : {}) },
     select: { recordNumber: true },
@@ -499,7 +500,21 @@ export const listSellAccounts = async (query: { q?: unknown; status?: unknown })
 };
 
 export const getSellAccount = async (id: string) => {
-  const record = await prisma.sellAccount.findFirst({ where: buildSellAccountLookup(id), include });
+  let record = await prisma.sellAccount.findFirst({ where: buildSellAccountLookup(id), include });
+  if (!record) {
+    const shortId = String(id).match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1];
+    if (shortId) {
+      const matches = await prisma.sellAccount.findMany({
+        where: { id: { startsWith: shortId }, deletedAt: null },
+        select: { id: true },
+        take: 2,
+      });
+      const match = matches[0];
+      if (matches.length === 1 && match) {
+        record = await prisma.sellAccount.findFirst({ where: { id: match.id, deletedAt: null }, include });
+      }
+    }
+  }
   if (!record) return null;
   const synced = await syncStatus(prisma, record);
   const refreshed = await prisma.sellAccount.findUnique({ where: { id: record.id }, include });
@@ -565,50 +580,7 @@ export const updateSellAccount = async (id: string, body: unknown, actorId?: str
   return serialize(record, synced.rtoState, synced.nextStatus);
 };
 
-export const deleteSellAccount = async (id: string, actorId?: string) => {
-  const existing = await prisma.sellAccount.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      deletedAt: true,
-      isLocked: true,
-      rtoRecord: { select: { id: true, isLocked: true } },
-    },
-  });
-  if (!existing || existing.deletedAt) return false;
-
-  const policy = getLinkedRecordDeletionPolicy({
-    source: 'SELL_ACCOUNT',
-    hasLinkedRto: Boolean(existing.rtoRecord),
-    isLocked: existing.isLocked || Boolean(existing.rtoRecord?.isLocked),
-  });
-  if (policy.action === 'BLOCK') {
-    if (policy.code === 'RECORD_LOCKED') assertRecordEditable(true);
-    throw new RtoHandoffRequiredError();
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const current = await tx.sellAccount.findUnique({
-      where: { id },
-      select: {
-        id: true, isLocked: true, invoiceNumber: true, creditNoteNumber: true,
-        rtoRecord: { select: { id: true, isLocked: true } },
-        payments: { where: { side: SellAccountPaymentSide.PURCHASER_RECEIPT, receiptStatus: SellAccountReceiptStatus.ISSUED }, select: { id: true }, take: 1 },
-        refunds: { where: { status: { not: 'REJECTED' } }, select: { id: true }, take: 1 },
-      },
-    });
-    if (!current) return;
-    assertRecordEditable(current.isLocked || Boolean(current.rtoRecord?.isLocked));
-    if (current.rtoRecord) throw new RtoHandoffRequiredError();
-    // Issued documents (receipts handed to the customer, Bill of Supply, credit note, refunds)
-    // must stay on record; the sale is cancelled instead of deleted.
-    if (current.invoiceNumber || current.creditNoteNumber || current.payments.length || current.refunds.length) {
-      throw new Error('This Sold Vehicle has real money receipts, a Bill of Supply or refunds, so it cannot be deleted. Cancel the sale instead (or cancel receipts whose money was never received).');
-    }
-    await tx.sellAccount.delete({ where: { id } });
-  });
-  return true;
-};
+// Permanent deletes of Sold Vehicle and RTO records live in sellAccountDeletion.service.ts.
 
 const paymentAmount = (value: unknown) => {
   const amount = Number(value);
@@ -759,11 +731,23 @@ export const cancelSellAccountSale = async (id: string, body: any, actorId?: str
       data: { sellAccountId: id, oldStatus: current.dealStatus, newStatus: SellAccountDealStatus.CANCELLED, reason, changedById: actorId || null },
     });
 
-    // Undo what the sale changed elsewhere: the listing goes back (paused until an admin checks the
-    // vehicle and publishes it), open RTO work stops, and the CRM deal is closed as lost.
+    // Undo what the sale changed elsewhere: the listing goes back hidden (Unlisted, since a paused
+    // listing still shows on the website) until an admin checks the vehicle and relists it, open RTO
+    // work stops, and the CRM deal is closed as lost.
     if (current.listingId) {
       const listing = await tx.listing.findUnique({ where: { id: current.listingId }, select: { id: true, status: true } });
-      if (listing?.status === 'SOLD') await tx.listing.update({ where: { id: listing.id }, data: { status: 'PAUSED', soldAt: null } });
+      if (listing?.status === 'SOLD') {
+        await (tx as any).listing.update({
+          where: { id: listing.id },
+          data: {
+            status: 'UNLISTED',
+            soldAt: null,
+            moderationReason: `Sale ${current.recordNumber} was cancelled. Check the vehicle before relisting it.`,
+            moderatedAt: now,
+            moderatedById: actorId || null,
+          },
+        });
+      }
       await tx.saleRecord.deleteMany({ where: { listingId: current.listingId } });
     }
     const rto = await tx.vehicleRtoRecord.findUnique({ where: { sellAccountId: id }, include: { transferTasks: true } });

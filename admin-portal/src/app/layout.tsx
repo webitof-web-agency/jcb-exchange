@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import LocaleSync from "@/components/LocaleSync";
 import FormSanitizer from "@/components/FormSanitizer";
 import ToastProvider from "@/components/ToastProvider";
+import ConfirmDeleteHost from "@/components/ui/ConfirmDeleteHost";
 import "react-toastify/dist/ReactToastify.css";
 import "./globals.css";
 import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n/config";
@@ -95,6 +96,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <ToastProvider>
             {children}
           </ToastProvider>
+          <ConfirmDeleteHost />
         </SiteLogoProvider>
       </body>
     </html>

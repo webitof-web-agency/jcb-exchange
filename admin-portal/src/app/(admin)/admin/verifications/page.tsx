@@ -32,11 +32,12 @@ import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 import VerificationDecisionModal from '@/components/verifications/VerificationDecisionModal';
+import { generateAdminPartnerEditPath } from '@/lib/routePaths';
 import {
   formatDate,
   partnerEditBasePathFor,
   statusLabel,
-  verificationsBasePath,
+  verificationReviewPath,
   type VerificationDecisionStatus,
   type VerificationItem,
 } from '@/lib/verificationReview';
@@ -60,7 +61,6 @@ export default function SuperAdminVerificationsPage() {
     hasAnyPermission(viewer?.permissions, ['kyc.manage']);
 
   const partnerEditBasePath = partnerEditBasePathFor(pathname);
-  const reviewBasePath = verificationsBasePath(pathname);
 
   // Data State
   const [verifications, setVerifications] = useState<VerificationItem[]>([]);
@@ -190,8 +190,8 @@ export default function SuperAdminVerificationsPage() {
     });
   }, [search, statusFilter, typeFilter, sortBy, verifications]);
 
-  const openReview = (id: string) => {
-    router.push(`${reviewBasePath}/${id}`);
+  const openReview = (partner: VerificationItem) => {
+    router.push(verificationReviewPath(pathname, partner));
   };
 
   const handleDecided = (id: string, targetStatus: VerificationDecisionStatus) => {
@@ -536,7 +536,7 @@ export default function SuperAdminVerificationsPage() {
                           <div className="min-w-0">
                             <button
                               type="button"
-                              onClick={() => openReview(partner.id)}
+                              onClick={() => openReview(partner)}
                               className="text-left font-bold text-slate-900 hover:text-amber-600 transition-colors truncate block max-w-xs"
                             >
                               {partner.name}
@@ -644,7 +644,7 @@ export default function SuperAdminVerificationsPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => openReview(partner.id)}
+                            onClick={() => openReview(partner)}
                             className="inline-flex items-center gap-1 rounded-lg bg-[#FFC107] px-2.5 py-1 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs transition-colors"
                           >
                             <Eye className="h-3 w-3" />
@@ -657,7 +657,7 @@ export default function SuperAdminVerificationsPage() {
                                 label: 'Open Dossier',
                                 icon: <Eye className="h-4 w-4" />,
                                 onClick: () => {
-                                  openReview(partner.id);
+                                  openReview(partner);
                                 },
                               },
                               ...(canEditKyc
@@ -666,7 +666,7 @@ export default function SuperAdminVerificationsPage() {
                                       label: 'Edit KYC',
                                       icon: <Pencil className="h-4 w-4" />,
                                       onClick: () => {
-                                        router.push(`${partnerEditBasePath}/${partner.id}/edit`);
+                                        router.push(generateAdminPartnerEditPath(partnerEditBasePath, { id: partner.id, businessName: partner.name }));
                                       },
                                     },
                                   ]
@@ -743,7 +743,7 @@ export default function SuperAdminVerificationsPage() {
                       <div className="min-w-0">
                         <button
                           type="button"
-                          onClick={() => openReview(partner.id)}
+                          onClick={() => openReview(partner)}
                           className="text-left font-bold text-slate-900 hover:text-amber-600 transition-colors truncate block"
                         >
                           {partner.name}
@@ -821,7 +821,7 @@ export default function SuperAdminVerificationsPage() {
                 <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => openReview(partner.id)}
+                    onClick={() => openReview(partner)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#FFC107] py-1.5 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs"
                   >
                     <Eye className="h-3.5 w-3.5" />
@@ -831,7 +831,7 @@ export default function SuperAdminVerificationsPage() {
                   {canEditKyc && (
                     <button
                       type="button"
-                      onClick={() => router.push(`${partnerEditBasePath}/${partner.id}/edit`)}
+                      onClick={() => router.push(generateAdminPartnerEditPath(partnerEditBasePath, { id: partner.id, businessName: partner.name }))}
                       className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50"
                       title="Edit KYC"
                     >

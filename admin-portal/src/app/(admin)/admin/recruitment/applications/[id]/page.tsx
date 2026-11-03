@@ -55,6 +55,7 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react';
+import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface StageSelectDropdownProps {
   currentStage: string;
@@ -684,7 +685,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   const handleDeleteNote = async (noteId: string) => {
     if (!canDeleteNote) return;
-    if (!window.confirm('Delete this note?')) return;
+    if (!(await confirmDelete({ title: 'Delete this note?' }))) return;
 
     try {
       setDeletingNoteId(noteId);
@@ -746,7 +747,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   const handleDeleteRating = async (ratingId: string) => {
     if (!canDeleteRating) return;
-    if (!window.confirm('Delete this rating?')) return;
+    if (!(await confirmDelete({ title: 'Delete this rating?' }))) return;
 
     try {
       setDeletingRatingId(ratingId);
@@ -855,7 +856,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   const handleDeleteInterview = async (interviewId: string) => {
     if (!canDeleteInterview) return;
-    if (!window.confirm('Delete this scheduled interview?')) return;
+    if (!(await confirmDelete({ title: 'Delete this scheduled interview?', alsoDeleted: ['Interview feedback and scorecards for it'] }))) return;
     try {
       await api.delete(`/recruitment/admin/interviews/${interviewId}`);
       toast.success('Interview deleted successfully.');
@@ -884,7 +885,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   const handleDeleteOffer = async (offerId: string) => {
     if (!canDeleteOffer) return;
-    if (!window.confirm('Delete this employment offer?')) return;
+    if (!(await confirmDelete({ title: 'Delete this employment offer?' }))) return;
     try {
       await api.delete(`/recruitment/admin/offers/${offerId}`);
       toast.success('Offer deleted successfully.');

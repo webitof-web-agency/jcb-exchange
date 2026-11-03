@@ -22,8 +22,9 @@ export const sanitizeMixedText = (value: string, maxLength = 160) =>
 export const sanitizeUppercaseCode = (value: string, maxLength = 40) =>
   value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, maxLength);
 
+// Same rule as formSanitizers 'engine' in both apps: letters, digits, '/' and '-'.
 export const sanitizeEngineNumber = (value: string, maxLength = 40) =>
-  value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, maxLength);
+  value.toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, maxLength);
 
 export const SELL_VEHICLE_AVAILABILITY_OPTIONS = ['AVAILABLE', 'SOLD'] as const;
 

@@ -9,6 +9,8 @@ import apiWalletBillingWebhookRoutes from './routes/apiWalletBillingWebhook.rout
 import { publicUploadDir } from './utils/documentUpload';
 import { sanitizeRequest } from './middlewares/sanitizeRequest.middleware';
 import { FieldValidationError } from './utils/fieldValidation';
+import { VehicleAlreadyListedError, vehicleAlreadyListedResponse } from './services/listingVehicleIdentity';
+import { DeletionBlockedError } from './services/deletionImpact';
 import { FILE_CONTENT_MISMATCH_MESSAGE } from './utils/fileSignature';
 
 dotenv.config();
@@ -70,6 +72,25 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     return res.status(400).json({ success: false, error: err.message, field: err.field });
   }
 
+  // The same vehicle already has an open listing (see services/listingVehicleIdentity.ts).
+  if (err instanceof VehicleAlreadyListedError) {
+    return res.status(err.statusCode).json({ success: false, ...vehicleAlreadyListedResponse(err) });
+  }
+
+  // A permanent delete was refused; the impact tells the admin portal what stopped it.
+  if (err instanceof DeletionBlockedError) {
+    return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code, ...(err.impact ? { impact: err.impact } : {}) });
+  }
+
+  // Any delete the database refuses because other records still point at it (foreign key).
+  if ((err as { code?: string }).code === 'P2003') {
+    return res.status(409).json({
+      success: false,
+      error: 'This record is still linked to other records, so it cannot be deleted. Remove or close the linked records first, or deactivate it instead.',
+      code: 'LINKED_RECORDS_EXIST',
+    });
+  }
+
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({
       success: false,
@@ -92,6 +113,17 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
   if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
     return res.status(404).json({ success: false, error: 'Requested file was not found.' });
+  }
+
+  // Google Drive: a file that is gone is a 404 and storage that is not set up is a 503, not a server bug.
+  const driveResponseStatus = (err as { name?: string; response?: { status?: number } }).name === 'GaxiosError'
+    ? (err as { response?: { status?: number } }).response?.status
+    : undefined;
+  if (driveResponseStatus === 404 || err.message === 'A Drive file id is required.') {
+    return res.status(404).json({ success: false, error: 'Requested file was not found.' });
+  }
+  if (err.message.startsWith('Google Drive') || err.message.startsWith('Configured Google Drive')) {
+    return res.status(503).json({ success: false, error: 'File storage is not available right now. Please try again later.' });
   }
 
   res.status(500).json({ success: false, message: 'Internal Server Error' });

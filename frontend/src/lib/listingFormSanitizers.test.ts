@@ -12,7 +12,7 @@ import {
 } from './listingFormSanitizers';
 
 test('sanitizes engine numbers without changing valid vehicle identifiers', () => {
-  assert.equal(sanitizeEngineNumber(' eng-12/ab. 45! '), 'ENG-12/AB. 45');
+  assert.equal(sanitizeEngineNumber(' eng-12/ab. 45! '), 'ENG-12/AB45');
   assert.equal(sanitizeEngineNumber(''), '');
 });
 

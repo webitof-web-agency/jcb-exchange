@@ -9,7 +9,6 @@ import {
   Upload,
   ImagePlus,
   PlayCircle,
-  Trash2,
   UserCheck,
   Sparkles,
   CheckCircle2,
@@ -33,6 +32,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
 import ListingRtoFields from '@/components/sell/ListingRtoFields';
+import VehicleIdentityHint from '@/components/sell/VehicleIdentityHint';
+import { useVehicleIdentityCheck } from '@/hooks/useVehicleIdentityCheck';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import {
   buildListingRtoDetails,
@@ -298,6 +299,20 @@ export type EditableListing = {
 
 type ModalTabKey = 'equipment' | 'rto' | 'media' | 'pricing' | 'sale' | 'all';
 
+type PersistedListingDraft = {
+  version: 1;
+  savedAt: string;
+  editingListingId: string | null;
+  form: ListingFormState;
+  modalTab: ModalTabKey;
+  mediaState: MediaSlotState;
+  chassisVerificationStatus: ChassisVerificationStatus;
+  verifiedChassisNumber: string;
+  verifiedRegistrationNumber: string;
+  vehicleVerificationSource: VehicleVerificationSource | '';
+  chassisVerificationId: string;
+};
+
 const initialForm: ListingFormState = {
   category: '',
   brand: '',
@@ -339,6 +354,47 @@ const initialForm: ListingFormState = {
   selectedBuyerStateId: '',
   selectedBuyerCityId: '',
   rtoDetails: emptyListingRtoForm,
+};
+
+const getListingDraftStorageKey = (userId: string, listingId?: string | null) =>
+  `jcbexchange:vehicle-listing-draft:v1:${userId}:${listingId || 'new'}`;
+
+const readListingDraft = (storageKey: string): PersistedListingDraft | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawDraft = window.localStorage.getItem(storageKey);
+    if (!rawDraft) return null;
+
+    const draft = JSON.parse(rawDraft) as Partial<PersistedListingDraft>;
+    if (draft.version !== 1 || !draft.form || !draft.mediaState || !draft.savedAt) return null;
+
+    return draft as PersistedListingDraft;
+  } catch {
+    return null;
+  }
+};
+
+const clearListingDraft = (storageKey: string) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // Storage can be unavailable in private browsing or when quota is exceeded.
+  }
+};
+
+const hasListingDraftContent = (form: ListingFormState, mediaState: MediaSlotState, editingListingId: string | null) => {
+  if (editingListingId) return true;
+  if (Object.values(mediaState).some(Boolean)) return true;
+
+  return Object.entries(form).some(([key, value]) => {
+    if (key === 'soldAt') return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'boolean') return value;
+    return Object.values(value as ListingRtoFormState).some((item) => String(item || '').trim().length > 0);
+  });
 };
 
 const createEmptyMediaState = (): MediaSlotState => ({
@@ -705,10 +761,14 @@ export default function SellVehicleModal({
   isOpen,
   onClose,
   listingToEdit,
+  addVehicleLabel = 'Sell Vehicle',
+  onSaved,
 }: {
   isOpen: boolean;
   onClose: () => void;
   listingToEdit?: EditableListing | null;
+  addVehicleLabel?: string;
+  onSaved?: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const [form, setForm] = useState<ListingFormState>(initialForm);
@@ -727,10 +787,11 @@ export default function SellVehicleModal({
   const [previewState, setPreviewState] = useState<MediaPreviewState>(createEmptyPreviewState);
   const [saving, setSaving] = useState(false);
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
-  const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [isOnline, setIsOnline] = useState(true);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<ChassisVerificationStatus>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
   const [verifiedRegistrationNumber, setVerifiedRegistrationNumber] = useState('');
@@ -740,12 +801,23 @@ export default function SellVehicleModal({
   const [listingVerificationPolicy, setListingVerificationPolicy] = useState<ListingVerificationPolicyResponse['vehicleListingVerification'] | null>(null);
   const chassisVerificationRequestRef = useRef(0);
   const originalChassisNumberRef = useRef('');
+  const [savedVehicleNumbers, setSavedVehicleNumbers] = useState({ registration: '', chassis: '' });
+  const vehicleIdentity = useVehicleIdentityCheck({
+    registrationNumber: form.registrationNo,
+    chassisNumber: form.chassisOrSerialNo,
+    listingId: editingListingId,
+    savedRegistrationNumber: savedVehicleNumbers.registration,
+    savedChassisNumber: savedVehicleNumbers.chassis,
+    enabled: isOpen,
+  });
   const [viewListing, setViewListing] = useState<ListingRecord | null>(null);
-  const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
+  const draftInitializationKeyRef = useRef<string | null>(null);
+  const draftSaveEnabledRef = useRef(false);
   const showToast = useToastStore((state) => state.showToast);
   const { token, user, hasHydrated, setAuthModalOpen } = useAuthStore();
   const imageUploadHelper = `${t('sellModal.autoCompressed', 'Auto-compressed')} ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB max`;
   const videoUploadHelper = `${t('sellModal.autoOptimizedVideo', 'Auto-compressed video (muted).')} Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB, ${MAX_LISTING_VIDEO_DURATION_SECONDS}s`;
+  const draftStorageKey = user?.id ? getListingDraftStorageKey(user.id, listingToEdit?.id || editingListingId) : null;
 
   const localizedAvailability = (value: string) => {
     switch (value.toUpperCase()) {
@@ -844,6 +916,20 @@ export default function SellVehicleModal({
   }, [hasHydrated, isOpen, t, token]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) {
       return;
     }
@@ -902,8 +988,10 @@ export default function SellVehicleModal({
   function resetFormState() {
     chassisVerificationRequestRef.current += 1;
     originalChassisNumberRef.current = '';
+    setSavedVehicleNumbers({ registration: '', chassis: '' });
     setMessage('');
     setError('');
+    setDraftStatus('idle');
     setForm(initialForm);
     setMediaState(createEmptyMediaState());
     setPreviewState(createEmptyPreviewState());
@@ -918,6 +1006,34 @@ export default function SellVehicleModal({
     setSampleGuideSlot(null);
   }
 
+  const restoreDraft = useCallback((draft: PersistedListingDraft) => {
+    const restoredMediaState = {
+      ...createEmptyMediaState(),
+      ...draft.mediaState,
+    } as MediaSlotState;
+    const restoredPreviewState = createEmptyPreviewState();
+
+    mediaSlots.forEach((slot) => {
+      const uploadedFile = restoredMediaState[slot.key];
+      if (uploadedFile) {
+        restoredPreviewState[slot.key] = uploadedFile.absoluteUrl || getAbsoluteFileUrl(uploadedFile.fileUrl);
+      }
+    });
+
+    setForm({ ...initialForm, ...draft.form, rtoDetails: { ...emptyListingRtoForm, ...draft.form.rtoDetails } });
+    setModalTab(['equipment', 'rto', 'media', 'pricing', 'sale', 'all'].includes(draft.modalTab) ? draft.modalTab : 'equipment');
+    setMediaState(restoredMediaState);
+    setPreviewState(restoredPreviewState);
+    setEditingListingId(draft.editingListingId || null);
+    setChassisVerificationStatus(draft.chassisVerificationStatus || 'UNVERIFIED');
+    setVerifiedChassisNumber(draft.verifiedChassisNumber || '');
+    setVerifiedRegistrationNumber(draft.verifiedRegistrationNumber || '');
+    setVehicleVerificationSource(draft.vehicleVerificationSource || '');
+    setChassisVerificationId(draft.chassisVerificationId || '');
+    setMessage(`Saved draft restored from ${new Date(draft.savedAt).toLocaleString()}.`);
+    setDraftStatus('saved');
+  }, []);
+
   const openEditModal = useCallback((listing: EditableListing) => {
     chassisVerificationRequestRef.current += 1;
     setMessage('');
@@ -928,6 +1044,10 @@ export default function SellVehicleModal({
     const parsedDetails = parseListingDescription(listing.description);
     originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
+    setSavedVehicleNumbers({
+      registration: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
+      chassis: parsedDetails.chassisOrSerialNo,
+    });
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const initialBuyerStateId =
       states.find((option) => option.name.toLowerCase() === buyerStateName.toLowerCase())?.id
@@ -1021,16 +1141,81 @@ export default function SellVehicleModal({
   }, [states]);
 
   useEffect(() => {
-    if (isOpen) {
-      queueMicrotask(() => {
-        if (listingToEdit) {
-          openEditModal(listingToEdit);
-        } else {
-          resetFormState();
-        }
-      });
+    if (!isOpen || !hasHydrated || !user?.id) {
+      if (!isOpen) {
+        draftInitializationKeyRef.current = null;
+        draftSaveEnabledRef.current = false;
+      }
+      return;
     }
-  }, [isOpen, listingToEdit, openEditModal]);
+
+    const initializationKey = `${user.id}:${listingToEdit?.id || 'new'}`;
+    if (draftInitializationKeyRef.current === initializationKey) {
+      return;
+    }
+
+    draftInitializationKeyRef.current = initializationKey;
+    draftSaveEnabledRef.current = false;
+
+    queueMicrotask(() => {
+      if (listingToEdit) {
+        openEditModal(listingToEdit);
+      } else {
+        resetFormState();
+      }
+
+      const storageKey = getListingDraftStorageKey(user.id, listingToEdit?.id);
+      const savedDraft = readListingDraft(storageKey);
+      if (savedDraft) {
+        restoreDraft(savedDraft);
+      }
+
+      draftSaveEnabledRef.current = true;
+    });
+  }, [hasHydrated, isOpen, listingToEdit, openEditModal, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !draftStorageKey || !draftSaveEnabledRef.current) {
+      return;
+    }
+
+    const persistDraft = () => {
+      if (!draftSaveEnabledRef.current || !hasListingDraftContent(form, mediaState, editingListingId)) {
+        return;
+      }
+
+      const draft: PersistedListingDraft = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        editingListingId,
+        form,
+        modalTab,
+        mediaState,
+        chassisVerificationStatus,
+        verifiedChassisNumber,
+        verifiedRegistrationNumber,
+        vehicleVerificationSource,
+        chassisVerificationId,
+      };
+
+      try {
+        setDraftStatus('saving');
+        window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+        setDraftStatus('saved');
+      } catch {
+        // Keep the form usable even if browser storage is unavailable.
+        setDraftStatus('idle');
+      }
+    };
+
+    const timer = window.setTimeout(persistDraft, 450);
+    window.addEventListener('pagehide', persistDraft);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pagehide', persistDraft);
+    };
+  }, [chassisVerificationId, chassisVerificationStatus, draftStorageKey, editingListingId, form, isOpen, mediaState, modalTab, verifiedChassisNumber, verifiedRegistrationNumber, vehicleVerificationSource]);
 
   useEffect(() => {
     if (!isOpen || form.currentAvailability !== 'SOLD') {
@@ -1062,6 +1247,7 @@ export default function SellVehicleModal({
       return;
     }
 
+    draftSaveEnabledRef.current = false;
     resetFormState();
     onClose();
   };
@@ -1313,6 +1499,19 @@ export default function SellVehicleModal({
       return;
     }
 
+    if (vehicleIdentity.blocked) {
+      const duplicateError = vehicleIdentity.result?.registration.message
+        || vehicleIdentity.result?.chassis.message
+        || 'This vehicle is already listed on JCB Exchange.';
+      setError(duplicateError);
+      showToast({
+        title: t('sellModal.notSubmitted', 'Not Submitted'),
+        description: duplicateError,
+        variant: 'error',
+      });
+      return;
+    }
+
     const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
     const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
       required: vehicleVerificationRequired,
@@ -1520,11 +1719,16 @@ export default function SellVehicleModal({
       const successMessage =
         response.data.message || (editingListingId ? t('sellModal.updatedSuccessfully', 'Vehicle listing updated successfully.') : t('sellModal.postedSuccessfully', 'Vehicle listing submitted successfully.'));
       setMessage(successMessage);
+      await onSaved?.();
       showToast({
         title: editingListingId ? t('sellModal.vehicleUpdated', 'Vehicle Updated') : t('sellModal.vehicleSubmitted', 'Vehicle Submitted'),
         description: successMessage,
         variant: 'success',
       });
+      if (draftStorageKey) {
+        clearListingDraft(draftStorageKey);
+      }
+      draftSaveEnabledRef.current = false;
       resetFormState();
       shouldCloseAfterSave = true;
     } catch (submitError) {
@@ -1551,28 +1755,6 @@ export default function SellVehicleModal({
       if (shouldCloseAfterSave) {
         onClose();
       }
-    }
-  };
-
-  const handleDeleteListing = async () => {
-    if (!deleteListingRecord) return;
-
-    setDeletingListingId(deleteListingRecord.id);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.delete<{ message: string }>(`/listings/${deleteListingRecord.id}`);
-      setListings((current) => current.filter((item) => item.id !== deleteListingRecord.id));
-      if (viewListing?.id === deleteListingRecord.id) {
-        setViewListing(null);
-      }
-      setMessage(response.data.message || t('sellModal.deletedSuccessfully', 'Listing deleted successfully.'));
-      setDeleteListingRecord(null);
-    } catch (deleteError) {
-      setError(getApiErrorMessage(deleteError, t('sellModal.deleteFailed', 'Failed to delete listing.')));
-    } finally {
-      setDeletingListingId(null);
     }
   };
 
@@ -1637,7 +1819,7 @@ export default function SellVehicleModal({
               <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-5 py-3">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <h2 className="text-base sm:text-lg font-bold text-gray-900">
-                    {editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}
+                    {editingListingId ? 'Edit Vehicle' : addVehicleLabel}
                   </h2>
                   {editingListingId ? (
                     <>
@@ -1655,6 +1837,15 @@ export default function SellVehicleModal({
                   {uploadingCount > 0 ? (
                     <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
                       <Loader2 className="h-3 w-3 animate-spin" /> Uploading ({uploadingCount})
+                    </span>
+                  ) : null}
+                  {draftStatus === 'saving' ? (
+                    <span className="hidden sm:inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Saving draft
+                    </span>
+                  ) : draftStatus === 'saved' ? (
+                    <span className={`hidden sm:inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                      <CheckCircle2 className="h-3 w-3" /> {isOnline ? 'Draft saved' : 'Offline — saved on device'}
                     </span>
                   ) : null}
                   <button
@@ -1772,6 +1963,12 @@ export default function SellVehicleModal({
                           {registrationButtonState.isVerified ? '✓ Verified using RC. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Verify to auto-fill vehicle details.'}
                         </p>
                       ) : null}
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.registration}
+                        ready={vehicleIdentity.registrationReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="vehicle number"
+                      />
                     </div>
 
                     {/* Chassis / Serial No. */}
@@ -1826,6 +2023,12 @@ export default function SellVehicleModal({
                           {listingVerificationPolicy?.registrationEnabled ? 'Registration verification can auto-fill chassis.' : 'Manual listing mode active.'}
                         </p>
                       )}
+                      <VehicleIdentityHint
+                        check={vehicleIdentity.result?.chassis}
+                        ready={vehicleIdentity.chassisReady}
+                        isChecking={vehicleIdentity.isChecking}
+                        label="chassis number"
+                      />
                     </div>
                   </div>
 
@@ -2610,7 +2813,8 @@ export default function SellVehicleModal({
 
                     <button
                       type="submit"
-                      disabled={saving || uploadingCount > 0}
+                      disabled={saving || uploadingCount > 0 || vehicleIdentity.blocked}
+                      title={vehicleIdentity.blocked ? 'This vehicle is already listed on JCB Exchange.' : undefined}
                       className="flex-1 sm:flex-none h-10 sm:h-[34px] px-4 rounded-lg bg-[#FFC107] text-xs font-bold text-gray-950 shadow-xs hover:bg-[#E5AD06] transition flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
                     >
                       {saving ? (
@@ -2618,7 +2822,7 @@ export default function SellVehicleModal({
                       ) : uploadingCount > 0 ? (
                         <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading...</>
                       ) : (
-                        <><Check className="h-3.5 w-3.5" /> {editingListingId ? 'Update Vehicle' : 'Add Vehicle'}</>
+                        <><Check className="h-3.5 w-3.5" /> {editingListingId ? 'Update Vehicle' : addVehicleLabel}</>
                       )}
                     </button>
                   </div>
@@ -3067,35 +3271,6 @@ export default function SellVehicleModal({
         </div>
       ) : null}
 
-      {deleteListingRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <Trash2 className="h-6 w-6 text-red-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Delete Listing</h3>
-            <p className="mt-2 text-sm text-gray-500">
-              Are you sure you want to delete <span className="font-semibold text-gray-700">{deleteListingRecord.title}</span>? This action cannot be undone.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setDeleteListingRecord(null)}
-                disabled={deletingListingId === deleteListingRecord.id}
-                className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleDeleteListing()}
-                disabled={deletingListingId === deleteListingRecord.id}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
-              >
-                {deletingListingId === deleteListingRecord.id ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -3173,7 +3348,8 @@ function ListingMediaUploadBox({
   const [error, setError] = useState('');
   const { token, setAuthModalOpen } = useAuthStore();
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
-  const hasUploadedPreview = Boolean(previewUrl);
+  const restoredFileUrl = uploadedFile?.absoluteUrl || (uploadedFile?.fileUrl ? getAbsoluteFileUrl(uploadedFile.fileUrl) : '');
+  const hasUploadedPreview = Boolean(previewUrl || uploadedFile);
 
   const handleChange = async (file?: File) => {
     if (!file) return;
@@ -3233,13 +3409,26 @@ function ListingMediaUploadBox({
         }`}
       >
         {hasUploadedPreview ? (
-          <Image
-            src={previewUrl}
-            alt={label}
-            fill
-            unoptimized
-            className="rounded-xl object-cover transition duration-300 group-hover:scale-105"
-          />
+          kind === 'video' ? (
+            <video
+              src={previewUrl || restoredFileUrl}
+              muted
+              loop
+              autoPlay
+              playsInline
+              preload="metadata"
+              aria-label={label}
+              className="h-full w-full rounded-xl object-cover transition duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <Image
+              src={previewUrl || restoredFileUrl}
+              alt={label}
+              fill
+              unoptimized
+              className="rounded-xl object-cover transition duration-300 group-hover:scale-105"
+            />
+          )
         ) : sampleMedia?.kind === 'image' ? (
           <Image
             src={sampleMedia.src}

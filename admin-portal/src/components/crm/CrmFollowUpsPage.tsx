@@ -211,7 +211,7 @@ function FollowUps() {
 
   return (
     <>
-      <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
+      <section className="w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs">
         {/* ROW 1: SAVED VIEW TABS (BUCKETS) + VIEW ACTIONS */}
         <div className="flex items-center justify-between border-b border-slate-100 px-3 pt-2 sm:px-4">
           {/* Scrollable Tabs */}
@@ -448,16 +448,16 @@ function FollowUps() {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-xs">
+          <div className="w-full overflow-x-auto [scrollbar-width:thin]">
+            <table className="w-full min-w-full text-left text-xs">
               <thead className={tableHeadClass}>
                 <tr>
-                  <th className="px-3.5 py-2.5 font-bold">TIME & SLA</th>
-                  <th className="px-3.5 py-2.5 font-bold">CUSTOMER & CONTACT</th>
-                  <th className="px-3.5 py-2.5 font-bold">MACHINE / ENQUIRY</th>
-                  <th className="px-3.5 py-2.5 font-bold">AGENDA & ACTIVITY</th>
-                  <th className="px-3.5 py-2.5 font-bold">EXECUTIVE</th>
-                  <th className="px-3.5 py-2.5 text-right font-bold">QUICK ACTIONS</th>
+                  <th className="px-3.5 py-2.5 font-bold whitespace-nowrap min-w-[130px]">TIME &amp; SLA</th>
+                  <th className="px-3.5 py-2.5 font-bold min-w-[170px]">CUSTOMER &amp; CONTACT</th>
+                  <th className="px-3.5 py-2.5 font-bold min-w-[180px]">MACHINE / ENQUIRY</th>
+                  <th className="px-3.5 py-2.5 font-bold min-w-[200px]">AGENDA &amp; ACTIVITY</th>
+                  <th className="px-3.5 py-2.5 font-bold whitespace-nowrap min-w-[110px]">EXECUTIVE</th>
+                  <th className="w-32 px-3.5 py-2.5 text-right font-bold whitespace-nowrap">QUICK ACTIONS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -578,7 +578,7 @@ function FollowUps() {
                       {/* 3. MACHINE / ENQUIRY */}
                       <td className="px-3.5 py-2.5 align-middle">
                         {f.lead ? (
-                          <div className="space-y-0.5 max-w-[240px]">
+                          <div className="space-y-0.5 min-w-0 max-w-[360px]">
                             <Link
                               href={leadHref(base, f.lead.id)}
                               className="inline-flex items-center gap-1 font-bold text-slate-800 hover:text-amber-600 transition truncate max-w-full"
@@ -610,7 +610,7 @@ function FollowUps() {
                             {label(f.type)}
                           </span>
                           {f.title ? (
-                            <span className="font-semibold text-slate-900 truncate max-w-[200px]" title={f.title}>
+                            <span className="font-semibold text-slate-900 truncate max-w-[360px]" title={f.title}>
                               {f.title}
                             </span>
                           ) : null}
@@ -622,7 +622,7 @@ function FollowUps() {
                         </div>
 
                         {f.notes ? (
-                          <p className="mt-0.5 text-[11px] text-slate-500 truncate max-w-[240px]" title={f.notes}>
+                          <p className="mt-0.5 text-[11px] text-slate-500 truncate max-w-[420px]" title={f.notes}>
                             {f.notes}
                           </p>
                         ) : null}
@@ -633,7 +633,7 @@ function FollowUps() {
                               {OUTCOME_LABELS[f.outcome] || f.outcome}
                             </span>
                             {f.outcomeNotes ? (
-                              <span className="text-slate-500 truncate max-w-[180px]" title={f.outcomeNotes}>
+                              <span className="text-slate-500 truncate max-w-[260px]" title={f.outcomeNotes}>
                                 {f.outcomeNotes}
                               </span>
                             ) : null}
@@ -642,17 +642,17 @@ function FollowUps() {
                       </td>
 
                       {/* 5. EXECUTIVE */}
-                      <td className="px-3.5 py-2.5 align-middle">
+                      <td className="px-3.5 py-2.5 align-middle whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
                           <User className="h-3 w-3 text-slate-400" />
-                          <span className="truncate max-w-[90px]">
+                          <span className="truncate max-w-[140px]">
                             {f.owner?.name || 'Unassigned'}
                           </span>
                         </span>
                       </td>
 
                       {/* 6. QUICK ACTIONS */}
-                      <td className="px-3.5 py-2.5 align-middle text-right">
+                      <td className="w-32 px-3.5 py-2.5 align-middle text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
                           {open ? (
                             <>
@@ -986,7 +986,7 @@ function CalendarView({
 
 export default function CrmFollowUpsPage() {
   return (
-    <CrmPageFrame>
+    <CrmPageFrame fluid={true}>
       <FollowUps />
     </CrmPageFrame>
   );

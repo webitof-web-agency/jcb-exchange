@@ -27,6 +27,9 @@ const LISTING_LABELS: Record<string, string> = {
   RESERVED: 'Reserved',
   SOLD: 'Sold',
   REJECTED: 'Rejected',
+  UNLISTED: 'Unlisted',
+  SUSPENDED: 'Suspended',
+  BLOCKED: 'Blocked',
 };
 
 const LISTING_STATUS_VALUES = new Set(Object.keys(LISTING_LABELS));

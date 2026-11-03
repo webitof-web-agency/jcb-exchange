@@ -41,6 +41,8 @@ interface AuthState {
   refreshSession: (token: string, user: User) => void;
   updateUser: (user: User) => void;
   logout: () => void;
+  // Kept for shared listing forms; the portal has no public auth modal.
+  setAuthModalOpen: (_open: boolean, _mode?: 'login' | 'register') => void;
 }
 
 // Helper to safely get from localStorage
@@ -113,5 +115,6 @@ export const useAuthStore = create<AuthState>((set) => {
       localStorage.removeItem('portal_token:last_activity');
       set({ token: null, user: null, isAuthenticated: false, hasHydrated: true });
     },
+    setAuthModalOpen: () => undefined,
   };
 });

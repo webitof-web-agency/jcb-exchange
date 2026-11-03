@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import {
+  checkListingVehicleIdentity,
   createListing,
   deleteListing,
+  getListingDeleteImpact,
+  moderateListingHandler,
   getListingById,
   getListingVerificationPolicy,
   getListings,
@@ -19,13 +22,15 @@ import {
 } from '../controllers/listing.controller';
 import { verifyRcFullForListing } from '../controllers/rcFull.controller';
 import { requireAuth, requireAdmin } from '../middlewares/auth.middleware';
+import { listingRcLookupRateLimit, vehicleIdentityCheckRateLimit } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
 router.post('/', requireAuth, createListing);
 router.get('/', requireAuth, getListings);
 router.get('/verification-policy', requireAuth, getListingVerificationPolicy);
-router.post('/vehicle-verification/rc-full', requireAuth, verifyRcFullForListing);
+router.get('/vehicle-identity-check', requireAuth, vehicleIdentityCheckRateLimit, checkListingVehicleIdentity);
+router.post('/vehicle-verification/rc-full', requireAuth, listingRcLookupRateLimit, verifyRcFullForListing);
 router.get('/payment-submissions/customer', requireAuth, getCustomerListingPaymentSubmissions);
 router.get('/payment-submissions/partner', requireAuth, getPartnerListingPaymentSubmissions);
 router.get('/:id/payment-settings', requireAuth, getListingPaymentSettings);
@@ -35,9 +40,11 @@ router.post('/:id/phonepe-status', requireAuth, verifyListingPhonePeOrder);
 router.post('/:id/payment-submissions', requireAuth, submitListingPayment);
 router.get('/:id', requireAuth, getListingById);
 router.put('/:id', requireAuth, updateListing);
+router.get('/:id/delete-impact', requireAuth, getListingDeleteImpact);
 router.delete('/:id', requireAuth, deleteListing);
 router.patch('/:id/status', requireAuth, requireAdmin, updateListingStatus);
 router.patch('/:id/pricing', requireAuth, requireAdmin, updateListingPricing);
 router.patch('/:id/availability', requireAuth, updateListingAvailability);
+router.patch('/:id/moderation', requireAuth, moderateListingHandler);
 
 export default router;

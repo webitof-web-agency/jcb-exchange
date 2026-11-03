@@ -423,6 +423,26 @@ export default function AadhaarDigiLockerPanel({ canVerify, onUploaded }: { canV
             </div>
           ) : null}
 
+          {/* Informative Security & Scope Guide when no result is displayed yet */}
+          {!result && (
+            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                UIDAI DigiLocker Verified e-KYC Compliance
+              </div>
+              <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Full 12-Digit Unmasked Card</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Legally Binding Citizen Consent</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Official Profile Photo &amp; Address</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Encrypted XML &amp; Tamper-Proof</div>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-slate-200/60 pt-2 text-[11px] text-slate-500">
+                <span>Citizen Authenticates via: <strong>DigiLocker OTP</strong></span>
+                <span className="font-semibold text-emerald-700">UIDAI Certified Gateway</span>
+              </div>
+            </div>
+          )}
+
           {result && !template ? <AadhaarResultPanel result={result} /> : null}
           {result ? (
             <div className="mt-5">

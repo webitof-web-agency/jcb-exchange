@@ -2,7 +2,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Eye, FileCheck2, History, Loader2, Search, ShieldAlert, XCircle } from 'lucide-react';
+import { Eye, FileCheck2, History, Loader2, Search, ShieldAlert, XCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
@@ -152,7 +152,25 @@ export default function RcLookupPage({ embedded = false, variant }: { embedded?:
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:max-h-[calc(100vh-140px)] lg:overflow-hidden"><div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div className="mb-5 flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" /><p>Enter the vehicle registration number. It is normalized and validated before any provider request.</p></div>
-          <form onSubmit={submit}><label><span className="text-sm font-semibold text-slate-700">Vehicle Registration Number <span className="text-red-500">*</span></span><input value={rcNumber} onChange={(event) => setRcNumber(sanitizeRcNumber(event.target.value))} className={inputClass} placeholder="RJ12XJ1234" autoComplete="off" maxLength={30} /></label>{error ? <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}<button type="submit" disabled={busy || !canAccess} className={`${buttonClass} mt-6 w-full`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}{busy ? 'Verifying…' : canAccess ? `Verify ${config.label}` : 'Verification not permitted'}</button></form>
+          <form onSubmit={submit}><label><span className="text-sm font-semibold text-slate-700">Vehicle Registration Number <span className="text-red-500">*</span></span><input value={rcNumber} onChange={(event) => setRcNumber(sanitizeRcNumber(event.target.value))} className={`${inputClass} font-mono uppercase tracking-wider`} placeholder="RJ12XJ1234" autoComplete="off" maxLength={30} /></label>{error ? <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}<button type="submit" disabled={busy || !canAccess} className={`${buttonClass} mt-6 w-full`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}{busy ? 'Verifying…' : canAccess ? `Verify ${config.label}` : 'Verification not permitted'}</button></form>
+          {!response ? (
+            <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                <Sparkles className="h-3.5 w-3.5 text-violet-500" />
+                Parivahan National Registry Scope
+              </div>
+              <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Owner Name &amp; Serial Count</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Chassis (VIN) &amp; Engine No</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Fitness &amp; Insurance Expiry</div>
+                <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0"/> Vehicle Category &amp; Fuel Type</div>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-slate-200/60 pt-2 text-[11px] text-slate-500">
+                <span>Format: <strong>Standard Indian Plate (e.g. RJ12XJ1234)</strong></span>
+                <span className="font-semibold text-violet-700">Official RTO Database</span>
+              </div>
+            </div>
+          ) : null}
           {response ? (
             response.record.status === 'SUCCESS' ? (
               <RcCardTemplatePreview key={response.record.id} response={response} onUploaded={handleTemplateUploaded} />
