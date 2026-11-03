@@ -13,6 +13,8 @@ const podfile = readFileSync(resolve(appDirectory, 'ios/Podfile'), 'utf8');
 const infoPlist = readFileSync(resolve(appDirectory, 'ios/JCBExchange/Info.plist'), 'utf8');
 const appDelegate = readFileSync(resolve(appDirectory, 'ios/JCBExchange/AppDelegate.swift'), 'utf8');
 const appIcon = readFileSync(resolve(appDirectory, 'ios/JCBExchange/Images.xcassets/AppIcon.appiconset/Contents.json'), 'utf8');
+const releaseEntitlements = readFileSync(resolve(appDirectory, 'ios/JCBExchange/JCBExchange.entitlements'), 'utf8');
+const debugEntitlements = readFileSync(resolve(appDirectory, 'ios/JCBExchange/JCBExchange.Debug.entitlements'), 'utf8');
 
 test('iOS native target matches the JavaScript app identity', () => {
   assert.match(project, /PRODUCT_BUNDLE_IDENTIFIER = "com\.webitof\.jcbexchange";/);
@@ -29,6 +31,13 @@ test('iOS release metadata and required permissions are configured', () => {
   assert.match(appIcon, /AppIcon-1024\.png/);
 });
 
+test('Push Notifications entitlements are mapped to the native target', () => {
+  assert.match(project, /CODE_SIGN_ENTITLEMENTS = JCBExchange\/JCBExchange\.entitlements;/);
+  assert.match(project, /CODE_SIGN_ENTITLEMENTS = JCBExchange\/JCBExchange\.Debug\.entitlements;/);
+  assert.match(releaseEntitlements, /<key>aps-environment<\/key>\s*<string>production<\/string>/);
+  assert.match(debugEntitlements, /<key>aps-environment<\/key>\s*<string>development<\/string>/);
+});
+
 test('Firebase configuration is optional locally but copied into release bundles when supplied', () => {
   assert.match(project, /Copy Firebase configuration when provided/);
   assert.match(project, /GoogleService-Info\.plist/);
@@ -38,12 +47,14 @@ test('Firebase configuration is optional locally but copied into release bundles
 
 test('GitHub Actions exposes a signed IPA workflow with safe signing inputs', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /runs-on: macos-14/);
+  assert.match(workflow, /runs-on: macos-15/);
   assert.match(workflow, /build_output:/);
   assert.match(workflow, /- ipa/);
+  assert.match(workflow, /Xcode_26\.3\.app\/Contents\/Developer/);
   assert.match(workflow, /IOS_CERTIFICATE_BASE64/);
   assert.match(workflow, /IOS_PROVISIONING_PROFILE_BASE64/);
   assert.match(workflow, /IOS_TEAM_ID/);
+  assert.match(workflow, /Print :Entitlements:application-identifier/);
   assert.match(workflow, /bundle exec pod install --project-directory=ios/);
   assert.match(workflow, /-exportArchive/);
   assert.match(workflow, /actions\/upload-artifact@v4/);

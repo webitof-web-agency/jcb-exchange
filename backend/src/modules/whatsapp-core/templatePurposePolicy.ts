@@ -11,6 +11,10 @@ export const resolveWhatsAppTemplatePurpose = (name: string, category?: string |
   if (normalizedName.startsWith('recruitment_')) return 'RECRUITMENT';
 
   const normalizedCategory = category?.trim().toUpperCase();
+  // Meta uses UTILITY for transactional/operational messages. The application
+  // calls this module purpose MARKETPLACE, so synced utility templates must be
+  // available to marketplace automations without requiring a naming prefix.
+  if (normalizedCategory === 'UTILITY') return 'MARKETPLACE';
   return isWhatsAppTemplatePurpose(normalizedCategory) ? normalizedCategory : null;
 };
 

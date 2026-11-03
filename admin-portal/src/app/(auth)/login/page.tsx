@@ -25,6 +25,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { resolveLoginRedirect } from '@/lib/loginRedirect';
+import { navigateToAuthenticatedPortal } from '@/lib/loginNavigation.mjs';
 import { ACCOUNT_INACTIVE_CODE, ACCOUNT_REVOKED_CODE } from '@/lib/sessionAccess';
 import { getEmployeeLandingPath, resolveEmployeeRouteRedirect } from '@/lib/portalRoutes';
 import { formatPortalLabel } from '@/lib/partnerPortal';
@@ -239,13 +240,14 @@ function LoginPageInner() {
       const destination = resolveLoginRedirect(user, nextRoute);
       if (destination) {
         showLoginSuccessToast(user);
-        window.location.assign(destination);
+        navigateToAuthenticatedPortal(router, destination);
         return;
       }
 
       if (user.role === 'EMPLOYEE') {
         showLoginSuccessToast(user);
-        window.location.assign(
+        navigateToAuthenticatedPortal(
+          router,
           resolveEmployeeRouteRedirect(nextRoute || '', user.permissions) ||
             getEmployeeLandingPath(user.permissions)
         );
@@ -260,7 +262,7 @@ function LoginPageInner() {
 
       setError(t('authPortal.portalAccessOnly'));
     },
-    [logout, setAuth, showLoginSuccessToast, t]
+    [logout, router, setAuth, showLoginSuccessToast, t]
   );
 
   useEffect(() => {

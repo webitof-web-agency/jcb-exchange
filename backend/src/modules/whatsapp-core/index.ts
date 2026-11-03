@@ -6,5 +6,6 @@ export * from './campaignPolicy';
 export * from './reminderPolicy';
 export * from './webhookUrl';
 export * from './templatePurposePolicy';
+export * from './marketplaceTemplatePolicy';
 export * from './publishedBroadcastPolicy';
 export * from './recruitmentTemplatePolicy';

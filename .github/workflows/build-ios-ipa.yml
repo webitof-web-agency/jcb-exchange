@@ -23,7 +23,7 @@ on:
       export_method:
         description: Provisioning profile type used for export
         required: true
-        default: ad-hoc
+        default: app-store
         type: choice
         options:
           - ad-hoc
@@ -48,7 +48,7 @@ env:
 
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-15
 
     defaults:
       run:
@@ -74,9 +74,14 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
           working-directory: JCB-Exchange
-
+      
       - name: Install JavaScript dependencies
         run: npm ci
+
+      - name: Select Xcode for App Store
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
 
       - name: Check required iOS signing and Firebase secrets
         env:
@@ -174,6 +179,12 @@ jobs:
             exit 1
           fi
 
+          PROFILE_APS_ENVIRONMENT="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$PROFILE_PLIST_PATH" 2>/dev/null || true)"
+          if [[ "$PROFILE_APS_ENVIRONMENT" != "production" ]]; then
+            echo "::error::The provisioning profile must include aps-environment=production for an App Store IPA."
+            exit 1
+          fi
+
       - name: Archive signed iOS app
         env:
           VERSION_NAME: ${{ inputs.version_name }}
@@ -249,6 +260,47 @@ jobs:
           path: JCB-Exchange/artifacts/*.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload IPA to App Store Connect
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          VERSION_NAME: ${{ inputs.version_name }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          IPA_PATH="$(find artifacts -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [[ -z "$IPA_PATH" ]]; then
+            echo "::error::IPA file not found."
+            exit 1
+          fi
+
+          KEY_DIR="$RUNNER_TEMP/private_keys"
+          mkdir -p "$KEY_DIR"
+
+          KEY_PATH="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          # Validate the key before attempting the upload.
+          openssl pkey -in "$KEY_PATH" -noout >/dev/null
+
+          xcrun altool --generate-jwt \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$KEY_PATH" >/dev/null
+
+          API_PRIVATE_KEYS_DIR="$KEY_DIR" xcrun altool \
+            --upload-package "$IPA_PATH" \
+            --platform ios \
+            --apple-id 6830078998 \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --bundle-version "$BUILD_NUMBER" \
+            --bundle-short-version-string "$VERSION_NAME" \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
       - name: Clean signing keychain
         if: ${{ always() }}

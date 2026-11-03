@@ -89,8 +89,8 @@ export class RcOwnerHistoryError extends Error {
 }
 
 const safeText = (value: unknown, maxLength = 500) => {
-  if (typeof value !== 'string') return null;
-  const normalized = value.trim();
+  if (typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value))) return null;
+  const normalized = String(value).trim();
   return normalized && normalized.length <= maxLength ? normalized : null;
 };
 
@@ -110,9 +110,31 @@ const providerBoolean = (value: unknown): boolean | undefined => {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
   if (['true', 'yes', 'y', '1', 'active', 'financed'].includes(normalized)) return true;
-  if (['false', 'no', 'n', '0', 'not_applicable', 'not_financed'].includes(normalized)) return false;
+  if (['false', 'no', 'n', '0', 'none', 'na', 'not_applicable', 'not_financed', 'not_available', 'no_finance'].includes(normalized)) return false;
   return undefined;
 };
+
+const normalizeValidityStatus = (value: unknown): 'VALID' | 'EXPIRED' | 'NOT_AVAILABLE' | 'LIFETIME' | null => {
+  const normalized = safeText(value, 50)?.toLowerCase().replace(/[-\s]+/g, '_');
+  if (!normalized) return null;
+  if (['valid', 'active', 'yes', 'y', 'ok'].includes(normalized)) return 'VALID';
+  if (['expired', 'inactive', 'no', 'n'].includes(normalized)) return 'EXPIRED';
+  if (['lifetime', 'llt'].includes(normalized)) return 'LIFETIME';
+  if (['not_available', 'unavailable', 'na', 'not_applicable', 'none'].includes(normalized)) return 'NOT_AVAILABLE';
+  return null;
+};
+
+const normalizeHsrpStatus = (value: unknown): 'YES' | 'NO' | 'PENDING' | 'NOT_APPLICABLE' | null => {
+  const normalized = safeText(value, 50)?.toLowerCase().replace(/[-\s]+/g, '_');
+  if (!normalized) return null;
+  if (['yes', 'y', 'true', '1', 'active', 'valid', 'available', 'fitted'].includes(normalized)) return 'YES';
+  if (['no', 'n', 'false', '0', 'not_fitted'].includes(normalized)) return 'NO';
+  if (['pending', 'in_process', 'processing'].includes(normalized)) return 'PENDING';
+  if (['not_applicable', 'not_required', 'na', 'none'].includes(normalized)) return 'NOT_APPLICABLE';
+  return null;
+};
+
+const isHsrpStatusToken = (value: unknown) => Boolean(normalizeHsrpStatus(value));
 
 const objectValue = (value: unknown) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -144,11 +166,15 @@ const dateFromParts = (year: number, month: number, day: number) => {
 };
 
 const safeProviderDate = (value: unknown) => {
-  const date = safeText(value, 30);
+  const date = safeText(value, 40)?.split('T')[0]?.trim().replace(/[/.]/g, '-');
   if (!date) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!match || !dateFromParts(Number(match[1]), Number(match[2]), Number(match[3]))) return null;
-  return date;
+  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(date);
+  const dmyMatch = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(date);
+  const year = Number(isoMatch?.[1] || dmyMatch?.[3] || 0);
+  const month = Number(isoMatch?.[2] || dmyMatch?.[2] || 0);
+  const day = Number(isoMatch?.[3] || dmyMatch?.[1] || 0);
+  if (!dateFromParts(year, month, day)) return null;
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 };
 
 const safeProviderMonth = (value: unknown) => {
@@ -220,14 +246,23 @@ const sellerListingResultFields = new Set([
   'puccUpto',
   'ownerNumber',
   'financer',
+  'hsrpNumber',
+  'hsrpStatus',
   'registeredAt',
   'financed',
 ]);
 
 export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryResult => {
   const root = objectValue(value) || {};
-  const nested = objectValue(root.details);
-  const data = nested ? { ...nested, ...root } : root;
+  const nested = [root.details, root.data, root.vehicle, root.rcDetails, root.rc_details]
+    .map(objectValue)
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+  const data = nested.reduce<Record<string, unknown>>((merged, item) => {
+    Object.entries(item).forEach(([key, rawValue]) => {
+      if (rawValue !== null && rawValue !== undefined && !(typeof rawValue === 'string' && rawValue.trim() === '')) merged[key] = rawValue;
+    });
+    return merged;
+  }, { ...root });
   const result: RcOwnerHistoryResult = {};
   const textFields: Array<[string, unknown, number?]> = [
     ['providerClientId', data.client_id ?? data.clientId, 150],
@@ -255,6 +290,13 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
       data.financier_name,
       data.financeName,
       data.finance_name,
+      data.financeCompany,
+      data.finance_company,
+      data.financierCompany,
+      data.financier_company,
+      data.hypothecation,
+      data.hypothecatedTo,
+      data.hypothecated_to,
     ), 250],
     ['insuranceCompany', data.insurance_company ?? data.insuranceCompany, 250],
     ['insurancePolicyNumber', data.insurance_policy_number ?? data.insurancePolicyNumber, 100],
@@ -282,6 +324,39 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
   ];
   for (const [key, rawValue, maxLength] of textFields) {
     const normalized = safeText(rawValue, maxLength);
+    if (normalized) result[key] = normalized;
+  }
+
+  const hsrpRawValue = firstProviderValue(
+    data.hsrp_number,
+    data.hsrpNumber,
+    data.hsrp_no,
+    data.hsrpNo,
+    data.hsrp_plate_number,
+    data.hsrpPlateNumber,
+    !isHsrpStatusToken(data.hsrp) ? data.hsrp : undefined,
+  );
+  const hsrpNumber = safeText(hsrpRawValue, 100);
+  const hsrpStatus = normalizeHsrpStatus(firstProviderValue(
+    data.hsrp_status,
+    data.hsrpStatus,
+    data.hsrp_valid,
+    data.hsrpValid,
+    data.hsrp_available,
+    data.hsrpAvailable,
+    isHsrpStatusToken(data.hsrp) ? data.hsrp : undefined,
+  ));
+  if (hsrpNumber && !isHsrpStatusToken(hsrpNumber)) result.hsrpNumber = hsrpNumber;
+  if (hsrpStatus) result.hsrpStatus = hsrpStatus;
+
+  const validityStatuses: Array<[string, unknown]> = [
+    ['taxStatus', firstProviderValue(data.tax_status, data.taxStatus, data.tax_validity, data.taxValidity)],
+    ['fitnessStatus', firstProviderValue(data.fitness_status, data.fitnessStatus, data.fitness_validity, data.fitnessValidity)],
+    ['insuranceStatus', firstProviderValue(data.insurance_status, data.insuranceStatus, data.insurance_validity, data.insuranceValidity)],
+    ['pucStatus', firstProviderValue(data.puc_status, data.pucStatus, data.puc_validity, data.pucValidity)],
+  ];
+  for (const [key, rawValue] of validityStatuses) {
+    const normalized = normalizeValidityStatus(rawValue);
     if (normalized) result[key] = normalized;
   }
 
@@ -317,8 +392,15 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     data.is_financed,
     data.hirePurchase,
     data.hire_purchase,
+    data.hirePurchaseStatus,
+    data.hire_purchase_status,
+    data.hypothecated,
+    data.hypothecationStatus,
+    data.hypothecation_status,
   ));
-  if (financed !== undefined) result.financed = financed;
+  const financerName = typeof result.financer === 'string' ? result.financer : '';
+  const effectiveFinanced = financed ?? (financerName && !/^(none|n\/a|not[ -]?financed|not[ -]?applicable)$/i.test(financerName) ? true : undefined);
+  if (effectiveFinanced !== undefined) result.financed = effectiveFinanced;
 
   for (const [key, rawValue] of [
     ['lessInfo', data.less_info ?? data.lessInfo],

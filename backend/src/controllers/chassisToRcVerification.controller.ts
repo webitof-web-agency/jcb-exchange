@@ -29,6 +29,8 @@ const sellerResultFields = new Set([
   'puccUpto',
   'ownerNumber',
   'financer',
+  'hsrpNumber',
+  'hsrpStatus',
   'registeredAt',
   'financed',
 ]);

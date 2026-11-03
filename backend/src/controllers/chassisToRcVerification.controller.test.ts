@@ -16,6 +16,8 @@ test('returns only listing autofill fields to sellers', () => {
     financer: 'INDUSIND BANK LTD.',
     registeredAt: 'FEROZPUR RTA, Punjab',
     financed: false,
+    hsrpNumber: 'PB00-HSRP-1234',
+    hsrpStatus: 'YES',
   }), {
     rcNumber: 'PB00AZ1234',
     registrationUpto: '2040-01-26',
@@ -27,5 +29,7 @@ test('returns only listing autofill fields to sellers', () => {
     financer: 'INDUSIND BANK LTD.',
     registeredAt: 'FEROZPUR RTA, Punjab',
     financed: false,
+    hsrpNumber: 'PB00-HSRP-1234',
+    hsrpStatus: 'YES',
   });
 });

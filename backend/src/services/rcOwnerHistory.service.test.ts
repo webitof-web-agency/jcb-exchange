@@ -354,6 +354,18 @@ test('normalizes financing aliases and string boolean values for listing forms',
   });
 });
 
+test('normalizes nested finance company and hire purchase status aliases', () => {
+  assert.deepEqual(normalizeRcOwnerHistoryResult({
+    details: {
+      finance_company: 'HDFC BANK',
+      hire_purchase_status: 'ACTIVE',
+    },
+  }), {
+    financer: 'HDFC BANK',
+    financed: true,
+  });
+});
+
 test('rejects an RC Full provider response with a different registration number', async () => {
   const service = new RcFullService({
     record: {
