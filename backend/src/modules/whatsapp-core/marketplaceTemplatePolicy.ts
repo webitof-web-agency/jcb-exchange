@@ -1,12 +1,13 @@
 const MARKETPLACE_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
-  PARTNER_KYC_STATUS_UPDATED: ['partnerId', 'kycStatus'],
+  PARTNER_KYC_STATUS_UPDATED: ['kycStatus'],
   PARTNER_LISTING_STATUS_UPDATED: ['listingId', 'listingTitle', 'listingStatus'],
-  LISTING_PAYMENT_SUBMITTED: ['paymentId', 'listingId', 'listingTitle', 'method'],
-  LISTING_PAYMENT_APPROVED: ['paymentId', 'listingId', 'listingTitle', 'status', 'paymentStatus', 'recipientRole'],
-  LISTING_PAYMENT_REJECTED: ['paymentId', 'listingId', 'listingTitle', 'status', 'paymentStatus', 'recipientRole'],
+  LISTING_PAYMENT_SUBMITTED: ['paymentId', 'listingId', 'listingTitle', 'paymentStatus'],
+  LISTING_PAYMENT_APPROVED: ['paymentId', 'listingId', 'listingTitle', 'paymentStatus'],
+  LISTING_PAYMENT_REJECTED: ['paymentId', 'listingId', 'listingTitle', 'paymentStatus'],
   CUSTOMER_PRIME_APPROVED: ['subscriptionId', 'status', 'customerName'],
-  CUSTOMER_PRIME_REJECTED: ['subscriptionId', 'status', 'customerName'],
-  MARKETPLACE_NEW_PAYMENT_SUPERADMIN: ['paymentId', 'listingId', 'listingTitle', 'method'],
+  CUSTOMER_PRIME_REJECTED: ['status', 'customerName'],
+  MARKETPLACE_NEW_LISTING_PUBLISHED: ['listingId', 'vehicleShortTitle', 'listingStatus'],
+  MARKETPLACE_NEW_PAYMENT_SUPERADMIN: ['listingTitle', 'method'],
   MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: ['partnerId'],
 };
 

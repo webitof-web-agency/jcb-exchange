@@ -29,3 +29,25 @@ test('returns no body component when a selected template has no body variables',
     [],
   );
 });
+
+test('keeps marketplace parameters aligned with approved template placeholder meaning', () => {
+  assert.deepEqual(
+    getMarketplaceTemplateComponents('PARTNER_KYC_STATUS_UPDATED', { partnerId: 'partner-1', kycStatus: 'APPROVED' }, [{ type: 'BODY', text: 'KYC status {{1}}' }]),
+    [{ type: 'body', parameters: [{ type: 'text', text: 'APPROVED' }] }],
+  );
+  assert.deepEqual(
+    getMarketplaceTemplateComponents('MARKETPLACE_NEW_LISTING_PUBLISHED', { listingId: 'listing-1', vehicleShortTitle: '2020 JCB 3DX', listingStatus: 'PUBLISHED' }, [{ type: 'BODY', text: 'Listing {{2}} (ID: {{1}}) Status {{3}}' }]),
+    [{
+      type: 'body',
+      parameters: [
+        { type: 'text', text: 'listing-1' },
+        { type: 'text', text: '2020 JCB 3DX' },
+        { type: 'text', text: 'PUBLISHED' },
+      ],
+    }],
+  );
+  assert.deepEqual(
+    getMarketplaceTemplateComponents('MARKETPLACE_NEW_PAYMENT_SUPERADMIN', { listingTitle: 'JCB 3DX', method: 'UPI', paymentId: 'payment-1' }, [{ type: 'BODY', text: 'Vehicle {{1}} Method {{2}}' }]),
+    [{ type: 'body', parameters: [{ type: 'text', text: 'JCB 3DX' }, { type: 'text', text: 'UPI' }] }],
+  );
+});

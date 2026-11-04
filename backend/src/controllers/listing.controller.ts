@@ -3031,7 +3031,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method, paymentStatus: 'PENDING' },
         });
         // Admin audit copy - notify all superadmins about new payment receipt for manual review
         void (async () => {

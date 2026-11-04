@@ -6,6 +6,9 @@ import {
   evaluateWhatsAppAutomation,
   isWhatsAppDeliveryAllowed,
   canRetryWhatsAppOutbox,
+  getNextWhatsAppAttemptAt,
+  isWhatsAppOutboxDue,
+  MAX_WHATSAPP_OUTBOX_ATTEMPTS,
   sendWhatsAppTemplate,
   sendWhatsAppText,
   uploadWhatsAppDocument,
@@ -15,18 +18,21 @@ import {
   resolveWhatsAppTemplatePurpose,
   getWhatsAppPublishedBroadcastAudience,
   getWhatsAppPublishedBroadcastConsentCategory,
-  getWhatsAppPublishedTemplateComponents,
-  getMarketplaceTemplateComponents,
   type WhatsAppTemplatePurpose,
   type WhatsAppPublishedBroadcastEvent,
 } from '../modules/whatsapp-core';
+import { getAutomationTemplateComponents } from '../modules/whatsapp-core/automationTemplateComponents';
 import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
+import { resolveNotificationPreference } from './notificationRecipient.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
 import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
 
 const SETTINGS_ID = 'default';
+
+const isUniqueConstraintError = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 const MAX_TEST_MESSAGE_LENGTH = 500;
 
 export const marketplaceWhatsAppEvents = [
@@ -492,7 +498,7 @@ const streamToBuffer = async (stream: NodeJS.ReadableStream) => {
   return Buffer.concat(chunks);
 };
 
-const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
+const deliverWhatsAppOutboxMessage = async (messageLogId: string, { respectSchedule = false }: { respectSchedule?: boolean } = {}) => {
   const messageLog = await prisma.whatsAppMessageLog.findUnique({
     where: { id: messageLogId },
     include: { outbox: true },
@@ -504,15 +510,36 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
   if (!['PENDING', 'FAILED'].includes(messageLog.outbox.status)) {
     throw new Error('This WhatsApp message is not ready for delivery.');
   }
+  if (respectSchedule && messageLog.outbox.status === 'FAILED' && !isWhatsAppOutboxDue({
+    status: messageLog.outbox.status,
+    attempts: messageLog.outbox.attempts,
+    nextAttemptAt: messageLog.outbox.nextAttemptAt,
+  })) {
+    throw new Error('This WhatsApp message is not due for an automatic retry yet.');
+  }
 
   const { templateName, templateLanguage, templateComponents, eventCode, offerLetterUrl, offerLetterFileName } = getStoredTemplatePayload(messageLog.outbox.payload);
-  await prisma.$transaction([
-    prisma.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'QUEUED', errorCode: null, errorMessage: null } }),
-    prisma.whatsAppOutbox.update({
-      where: { id: messageLog.outbox.id },
-      data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: new Date(), lastError: null },
-    }),
-  ]);
+  const claimedAt = new Date();
+  const retrySchedule = respectSchedule && messageLog.outbox.status === 'FAILED'
+    ? { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: claimedAt } }] }
+    : {};
+  const claimed = await prisma.$transaction(async (tx) => {
+    const claim = await tx.whatsAppOutbox.updateMany({
+      where: {
+        id: messageLog.outbox!.id,
+        status: messageLog.outbox!.status,
+        attempts: { lt: MAX_WHATSAPP_OUTBOX_ATTEMPTS },
+        ...retrySchedule,
+      },
+      data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: claimedAt, lastError: null },
+    });
+    if (claim.count !== 1) return false;
+    await tx.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'QUEUED', errorCode: null, errorMessage: null } });
+    return true;
+  });
+  if (!claimed) {
+    throw new Error('This WhatsApp message is already being processed or is no longer eligible for delivery.');
+  }
 
   try {
     const settings = await getEnabledSettings();
@@ -593,14 +620,23 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string) => {
     });
     await prisma.$transaction([
       prisma.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'SENT', sentAt: new Date(), metaMessageId } }),
-      prisma.whatsAppOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'SENT', processedAt: new Date(), lockedAt: null } }),
+      prisma.whatsAppOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'SENT', nextAttemptAt: null, processedAt: new Date(), lockedAt: null } }),
     ]);
     return { sent: true, messageLogId: messageLog.id };
   } catch (error) {
     const lastError = error instanceof Error ? error.message.slice(0, 1000) : 'Unable to send WhatsApp automation.';
     await prisma.$transaction([
       prisma.whatsAppMessageLog.update({ where: { id: messageLog.id }, data: { status: 'FAILED', errorMessage: lastError } }),
-      prisma.whatsAppOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'FAILED', lastError, processedAt: new Date(), lockedAt: null } }),
+      prisma.whatsAppOutbox.update({
+        where: { id: messageLog.outbox.id },
+        data: {
+          status: 'FAILED',
+          nextAttemptAt: getNextWhatsAppAttemptAt({ attempts: messageLog.outbox.attempts + 1 }),
+          lastError,
+          processedAt: new Date(),
+          lockedAt: null,
+        },
+      }),
     ]);
     return { sent: false, messageLogId: messageLog.id, error: lastError };
   }
@@ -612,6 +648,57 @@ export const retryFailedWhatsAppMessage = async (messageLogId: string) => {
   if (messageLog.status !== 'FAILED') throw new Error('Only failed WhatsApp messages can be retried.');
   if (!canRetryWhatsAppOutbox(messageLog.outbox)) throw new Error('This WhatsApp message has reached the retry limit.');
   return deliverWhatsAppOutboxMessage(messageLogId);
+};
+
+const recoverStaleWhatsAppOutbox = async (now: Date) => {
+  const staleAfter = new Date(now.getTime() - 10 * 60_000);
+  const stale = await prisma.whatsAppOutbox.findMany({
+    where: { status: 'PROCESSING', lockedAt: { lt: staleAfter } },
+    select: { id: true, messageLogId: true, attempts: true },
+  });
+  if (!stale.length) return 0;
+  await prisma.$transaction(stale.flatMap((item) => {
+    const nextAttemptAt = getNextWhatsAppAttemptAt({ attempts: item.attempts, now });
+    return [
+      prisma.whatsAppOutbox.update({
+        where: { id: item.id },
+        data: {
+          status: 'FAILED',
+          nextAttemptAt,
+          lockedAt: null,
+          processedAt: now,
+          lastError: 'Delivery lease expired; the message was scheduled for retry.',
+        },
+      }),
+      prisma.whatsAppMessageLog.update({
+        where: { id: item.messageLogId },
+        data: { status: 'FAILED', errorMessage: 'Delivery lease expired; the message was scheduled for retry.' },
+      }),
+    ];
+  }));
+  return stale.length;
+};
+
+export const processWhatsAppOutbox = async ({ limit = 50 }: { limit?: number } = {}) => {
+  const now = new Date();
+  const recovered = await recoverStaleWhatsAppOutbox(now);
+  const pending = await prisma.whatsAppOutbox.findMany({
+    where: {
+      status: { in: ['PENDING', 'FAILED'] },
+      attempts: { lt: MAX_WHATSAPP_OUTBOX_ATTEMPTS },
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: Math.min(100, Math.max(1, limit)),
+    select: { messageLogId: true },
+  });
+  const results = await Promise.all(pending.map(({ messageLogId }) => deliverWhatsAppOutboxMessage(messageLogId, { respectSchedule: true }).catch((error) => ({ sent: false, error: error instanceof Error ? error.message : 'Unable to process WhatsApp outbox message.' }))));
+  return {
+    recovered,
+    selected: pending.length,
+    sent: results.filter((result) => result.sent).length,
+    failed: results.filter((result) => !result.sent).length,
+  };
 };
 
 export const getWhatsAppMessageLogs = async ({
@@ -635,7 +722,7 @@ export const getWhatsAppMessageLogs = async ({
     },
     orderBy: { createdAt: 'desc' },
     take: Math.min(100, Math.max(1, limit)),
-    include: { outbox: { select: { attempts: true, status: true, processedAt: true, lastError: true } } },
+    include: { outbox: { select: { attempts: true, status: true, nextAttemptAt: true, processedAt: true, lastError: true } } },
   });
   return logs.map((log) => ({
     id: log.id,
@@ -650,7 +737,7 @@ export const getWhatsAppMessageLogs = async ({
     sentAt: log.sentAt,
     deliveredAt: log.deliveredAt,
     readAt: log.readAt,
-    outbox: log.outbox ? { attempts: log.outbox.attempts, status: log.outbox.status, processedAt: log.outbox.processedAt, lastError: log.outbox.lastError } : null,
+    outbox: log.outbox ? { attempts: log.outbox.attempts, status: log.outbox.status, nextAttemptAt: log.outbox.nextAttemptAt, processedAt: log.outbox.processedAt, lastError: log.outbox.lastError } : null,
   }));
 };
 
@@ -671,13 +758,19 @@ const buildDedupeKey = (input: AutomationDispatchInput, recipientPhone: string) 
 
 export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput) => {
   try {
-    const [settings, rule] = await Promise.all([
+    const [settings, rule, preferenceState] = await Promise.all([
       prisma.whatsAppIntegrationSettings.findUnique({ where: { id: SETTINGS_ID } }),
       prisma.whatsAppAutomationRule.findUnique({
         where: { eventCode: input.eventCode },
         include: { template: true },
       }),
+      resolveNotificationPreference({
+        eventCode: input.eventCode,
+        channel: 'WHATSAPP',
+        ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      }),
     ]);
+    if (preferenceState === false) return { queued: false, reason: 'NOTIFICATION_PREFERENCE_DISABLED' };
     const decision = evaluateWhatsAppAutomation({
       integrationEnabled: Boolean(settings && isWhatsAppDeliveryAllowed({ integrationEnabled: settings.enabled, credentialsConfigured: hasEncryptedCredentials(settings) })),
       recipientPhone: input.recipientPhone,
@@ -695,9 +788,10 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
       return { queued: false, reason: decision.shouldQueue ? 'AUTOMATION_CONFIGURATION_INVALID' : decision.reason };
     }
 
-    const resolvedTemplateComponents = input.templateComponents ?? getMarketplaceTemplateComponents(
+    const resolvedTemplateComponents = getAutomationTemplateComponents(
       input.eventCode,
       input.payloadSnapshot || {},
+      input.templateComponents,
       rule.template.components,
     );
 
@@ -705,37 +799,46 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
     const existing = await prisma.whatsAppMessageLog.findUnique({ where: { dedupeKey } });
     if (existing) return { queued: false, duplicate: true, messageLogId: existing.id };
 
-    const messageLog = await prisma.whatsAppMessageLog.create({
-      data: {
-        eventCode: input.eventCode,
-        relatedEntityType: input.relatedEntityType,
-        relatedEntityId: input.relatedEntityId,
-        recipientType: input.recipientType,
-        recipientPhone: decision.recipientPhone,
-        dedupeKey,
-        payloadSnapshot: {
-          ...(input.payloadSnapshot || {}),
-          templateId: rule.template.id,
-          templateName: rule.template.name,
-          templateLanguage: rule.template.language,
-          templateComponents: resolvedTemplateComponents,
-        },
-        outbox: {
-          create: {
-            payload: {
-              eventCode: input.eventCode,
-              templateId: rule.template.id,
-              templateName: rule.template.name,
-              templateLanguage: rule.template.language,
-              templateComponents: resolvedTemplateComponents,
-              ...(typeof input.payloadSnapshot?.offerLetterUrl === 'string' ? { offerLetterUrl: input.payloadSnapshot.offerLetterUrl } : {}),
-              ...(typeof input.payloadSnapshot?.offerLetterFileName === 'string' ? { offerLetterFileName: input.payloadSnapshot.offerLetterFileName } : {}),
+    let messageLog;
+    try {
+      messageLog = await prisma.whatsAppMessageLog.create({
+        data: {
+          eventCode: input.eventCode,
+          relatedEntityType: input.relatedEntityType,
+          relatedEntityId: input.relatedEntityId,
+          recipientType: input.recipientType,
+          recipientPhone: decision.recipientPhone,
+          dedupeKey,
+          payloadSnapshot: {
+            ...(input.payloadSnapshot || {}),
+            templateId: rule.template.id,
+            templateName: rule.template.name,
+            templateLanguage: rule.template.language,
+            templateComponents: resolvedTemplateComponents,
+          },
+          outbox: {
+            create: {
+              payload: {
+                eventCode: input.eventCode,
+                templateId: rule.template.id,
+                templateName: rule.template.name,
+                templateLanguage: rule.template.language,
+                templateComponents: resolvedTemplateComponents,
+                ...(typeof input.payloadSnapshot?.offerLetterUrl === 'string' ? { offerLetterUrl: input.payloadSnapshot.offerLetterUrl } : {}),
+                ...(typeof input.payloadSnapshot?.offerLetterFileName === 'string' ? { offerLetterFileName: input.payloadSnapshot.offerLetterFileName } : {}),
+              },
             },
           },
         },
-      },
-      include: { outbox: true },
-    });
+        include: { outbox: true },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const duplicate = await prisma.whatsAppMessageLog.findUnique({ where: { dedupeKey } });
+        if (duplicate) return { queued: false, duplicate: true, messageLogId: duplicate.id };
+      }
+      throw error;
+    }
 
     const delivery = await deliverWhatsAppOutboxMessage(messageLog.id);
     return { queued: true, ...delivery };
@@ -784,7 +887,6 @@ export const dispatchPublishedWhatsApp = async ({
   try {
     const audience = getWhatsAppPublishedBroadcastAudience(eventCode);
     const consentCategory = getWhatsAppPublishedBroadcastConsentCategory(eventCode);
-    const templateComponents = getWhatsAppPublishedTemplateComponents(eventCode, payloadSnapshot);
     const recipients = await getWhatsAppPublishedBroadcastRecipients(audience, consentCategory);
     const results = await Promise.all(recipients.map((recipient) => dispatchConfiguredWhatsApp({
       eventCode,
@@ -792,7 +894,6 @@ export const dispatchPublishedWhatsApp = async ({
       relatedEntityId,
       recipientType: recipient.recipientType,
       recipientPhone: recipient.recipientPhone,
-      templateComponents,
       payloadSnapshot: {
         ...payloadSnapshot,
         sourceEntityType: recipient.sourceEntityType,

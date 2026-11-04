@@ -67,6 +67,7 @@ import { DatabaseBackupInProgressError, performDatabaseBackup } from '../jobs/db
 import { assertListingStatusChangeAllowed, buildAdminVehicleIdentitySummaries } from '../services/listingVehicleIdentity';
 import { deleteAccountPermanently, getAccountDeletionImpact } from '../services/accountDeletion.service';
 import { isModeratedListingStatus } from '../services/listingModeration.service';
+import { initializeUserNotificationPreferences } from '../services/notificationPreference.service';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -2292,30 +2293,35 @@ export const createManagedUser = async (req: Request, res: Response, next: NextF
       ? permissions.filter((permission) => allowedAdminPermissions.has(permission))
       : [];
 
-    const createdUser = await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        mobile: normalizedMobile || undefined,
-        password: hashedPassword,
-        role,
-        customRoleId: role === 'EMPLOYEE' ? normalizedCustomRoleId : null,
-        status: 'ACTIVE' as any,
-        authProvider: 'LOCAL',
-        createdById: req.user?.id,
-        adminProfile: {
-          create: {
-            title: title || 'Operations Employee',
-            isRootAdmin: false,
+    const createdUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: name.trim(),
+          email: normalizedEmail,
+          mobile: normalizedMobile || undefined,
+          password: hashedPassword,
+          role,
+          customRoleId: role === 'EMPLOYEE' ? normalizedCustomRoleId : null,
+          status: 'ACTIVE' as any,
+          authProvider: 'LOCAL',
+          createdById: req.user?.id,
+          adminProfile: {
+            create: {
+              title: title || 'Operations Employee',
+              isRootAdmin: false,
+            },
           },
-        },
-        adminPermissions: normalizedCustomRoleId || normalizedPermissions.length === 0
-          ? undefined
-          : {
-            create: normalizedPermissions.map((permission) => ({ permission })),
-          },
-      } as any,
-      include: managedUserInclude as any,
+          adminPermissions: normalizedCustomRoleId || normalizedPermissions.length === 0
+            ? undefined
+            : {
+              create: normalizedPermissions.map((permission) => ({ permission })),
+            },
+        } as any,
+        include: managedUserInclude as any,
+      });
+
+      await initializeUserNotificationPreferences(user, tx);
+      return user;
     });
 
     res.status(201).json({
@@ -2399,20 +2405,25 @@ export const createPartnerUser = async (req: Request, res: Response, next: NextF
     const normalizedName = name.trim();
     const normalizedBusinessName = businessName?.trim() || normalizedName;
 
-    const createdUser = await prisma.user.create({
-      data: {
-        name: normalizedName,
-        email: normalizedEmail,
-        mobile: normalizedMobile || undefined,
-        password: hashedPassword,
-        role: 'PARTNER',
-        status: 'ACTIVE' as any,
-        authProvider: 'LOCAL',
-        createdById: req.user?.id,
-      } as any,
-      include: {
-        partnerProfile: true,
-      } as any,
+    const createdUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: normalizedName,
+          email: normalizedEmail,
+          mobile: normalizedMobile || undefined,
+          password: hashedPassword,
+          role: 'PARTNER',
+          status: 'ACTIVE' as any,
+          authProvider: 'LOCAL',
+          createdById: req.user?.id,
+        } as any,
+        include: {
+          partnerProfile: true,
+        } as any,
+      });
+
+      await initializeUserNotificationPreferences(user, tx);
+      return user;
     });
 
     await ensurePartnerProfileForUser(createdUser as any);

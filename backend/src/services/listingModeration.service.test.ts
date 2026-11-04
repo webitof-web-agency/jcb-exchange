@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { availableModerationActions, isModeratedListingStatus } from './listingModeration.service';
+import { availableModerationActions, isModeratedListingStatus, ownerListingsPath } from './listingModeration.service';
 
 const admin = { isAdmin: true, isOwner: false };
 const owner = { isAdmin: false, isOwner: true };
@@ -30,4 +30,11 @@ test('only the three hidden statuses count as moderated', () => {
   assert.equal(isModeratedListingStatus('unlisted'), true);
   assert.equal(isModeratedListingStatus('BLOCKED'), true);
   assert.equal(isModeratedListingStatus('PAUSED'), false);
+});
+
+test('owner notifications open the My Listings screen for every portal role', () => {
+  assert.equal(ownerListingsPath('CUSTOMER'), '/profile?tab=listings');
+  assert.equal(ownerListingsPath('PARTNER'), '/partner/listings');
+  assert.equal(ownerListingsPath('EMPLOYEE'), '/employee/listings');
+  assert.equal(ownerListingsPath('SUPER_ADMIN'), '/admin/listings');
 });

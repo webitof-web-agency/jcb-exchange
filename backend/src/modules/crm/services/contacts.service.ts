@@ -10,6 +10,7 @@ import { selectContactPipelineStage } from '../contactStage';
 import { listPipelineStageStatusSets } from './pipelineStages.service';
 import { notifyAssignment } from './notify.service';
 import { validateField } from '../../../utils/fieldValidation';
+import { initializeUserNotificationPreferences } from '../../../services/notificationPreference.service';
 
 export type ContactInput = {
   name?: unknown;
@@ -75,6 +76,7 @@ export const findOrCreateContact = async (db: Db, input: ContactInput, actorId: 
       },
       select: contactSelect,
     });
+    await initializeUserNotificationPreferences(user, db);
     created = true;
   }
   if (!existing?.crmProfile) {

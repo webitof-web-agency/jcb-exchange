@@ -102,7 +102,15 @@ export const availableModerationActions = (status: unknown, viewer: { isAdmin: b
     return viewer.isAdmin || viewer.isOwner;
   });
 
-const ownerListingsPath = (role: unknown) => (String(role || '').toUpperCase() === 'CUSTOMER' ? '/profile/listings' : '/partner/listings');
+export const ownerListingsPath = (role: unknown) => {
+  const normalizedRole = String(role || '').toUpperCase();
+
+  if (normalizedRole === 'CUSTOMER') return '/profile?tab=listings';
+  if (normalizedRole === 'PARTNER') return '/partner/listings';
+  if (normalizedRole === 'EMPLOYEE') return '/employee/listings';
+  if (['ADMIN', 'SUPER_ADMIN'].includes(normalizedRole)) return '/admin/listings';
+  return '/profile?tab=listings';
+};
 
 const notifyOwner = async (listing: any, title: string, message: string, status: string) => {
   const owner = listing.partner;

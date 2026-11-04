@@ -33,7 +33,6 @@ import {
 import { dispatchPublishedWhatsApp, dispatchRecruitmentWhatsApp } from '../services/whatsappIntegration.service';
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
-import { getRecruitmentTemplateComponents } from '../modules/whatsapp-core';
 import { normalizeOfferLetterData, validateOfferLetterData, type OfferLetterData } from '../utils/offerLetter';
 import { validateField } from '../utils/fieldValidation';
 
@@ -129,7 +128,6 @@ const dispatchRecruitmentCandidateWhatsApp = ({
     relatedEntityId,
     recipientType: 'CANDIDATE',
     recipientPhone: candidate.mobile,
-    templateComponents: getRecruitmentTemplateComponents(eventCode, { candidateName: candidate.fullName || null, ...payloadSnapshot }),
     payloadSnapshot: { candidateName: candidate.fullName || null, ...payloadSnapshot },
   });
 };
@@ -2570,7 +2568,7 @@ export const scheduleInterview = async (req: Request, res: Response, next: NextF
       relatedEntityType: 'INTERVIEW',
       relatedEntityId: interview.id,
       candidate: application.candidate,
-      payloadSnapshot: { applicationId, applicationRef: application.applicationRef, jobTitle: application.job.title, scheduledAt: interview.scheduledAt.toISOString(), interviewType: interview.type },
+      payloadSnapshot: { applicationId, applicationRef: application.applicationRef, jobTitle: application.job.title, scheduledAt: interview.scheduledAt.toISOString(), interviewType: interview.type, status: interview.status },
     });
 
     res.status(201).json({
@@ -2698,7 +2696,7 @@ export const deleteInterview = async (req: Request, res: Response, next: NextFun
       relatedEntityType: 'INTERVIEW',
       relatedEntityId: `${id}:DELETED`,
       candidate: interview.candidate,
-      payloadSnapshot: { applicationId: interview.applicationId, applicationRef: interview.application.applicationRef, jobTitle: interview.job.title, status: 'CANCELLED' },
+      payloadSnapshot: { applicationId: interview.applicationId, applicationRef: interview.application.applicationRef, jobTitle: interview.job.title, scheduledAt: interview.scheduledAt.toISOString(), interviewType: interview.type, status: 'CANCELLED' },
     });
     res.status(200).json({ success: true, message: 'Interview deleted successfully.' });
   } catch (error) {

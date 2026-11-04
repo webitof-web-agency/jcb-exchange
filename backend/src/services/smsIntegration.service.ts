@@ -2,6 +2,9 @@ import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import {
   canRetrySmsOutbox,
+  getNextSmsAttemptAt,
+  isSmsOutboxDue,
+  MAX_SMS_OUTBOX_ATTEMPTS,
   decryptSmsCredential,
   encryptSmsCredential,
   evaluateSmsAutomation,
@@ -17,9 +20,13 @@ import {
   validateSmsTemplateVariableOrder,
 } from '../modules/sms-core/templatePolicy';
 import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
+import { resolveNotificationPreference } from './notificationRecipient.service';
 
 const SETTINGS_ID = 'default';
 const MASKED_SECRET = '********';
+
+const isUniqueConstraintError = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 export const marketplaceSmsEvents = [
   'PARTNER_KYC_STATUS_UPDATED',
@@ -253,16 +260,36 @@ const getStoredPayload = (payload: unknown) => {
   };
 };
 
-const deliverSmsOutboxMessage = async (messageLogId: string) => {
+const deliverSmsOutboxMessage = async (messageLogId: string, { respectSchedule = false }: { respectSchedule?: boolean } = {}) => {
   const messageLog = await prisma.smsMessageLog.findUnique({ where: { id: messageLogId }, include: { outbox: true } });
   if (!messageLog?.outbox) throw new Error('SMS outbox message not found.');
   if (messageLog.outbox.status === 'FAILED' && !canRetrySmsOutbox(messageLog.outbox)) throw new Error('This SMS message has reached the retry limit.');
   if (!['PENDING', 'FAILED'].includes(messageLog.outbox.status)) throw new Error('This SMS message is not ready for delivery.');
+  if (respectSchedule && messageLog.outbox.status === 'FAILED' && !isSmsOutboxDue({
+    status: messageLog.outbox.status,
+    attempts: messageLog.outbox.attempts,
+    nextAttemptAt: messageLog.outbox.nextAttemptAt,
+  })) throw new Error('This SMS message is not due for an automatic retry yet.');
   const stored = getStoredPayload(messageLog.outbox.payload);
-  await prisma.$transaction([
-    prisma.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'QUEUED', errorCode: null, errorMessage: null } }),
-    prisma.smsOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: new Date(), lastError: null } }),
-  ]);
+  const claimedAt = new Date();
+  const retrySchedule = respectSchedule && messageLog.outbox.status === 'FAILED'
+    ? { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: claimedAt } }] }
+    : {};
+  const claimed = await prisma.$transaction(async (tx) => {
+    const claim = await tx.smsOutbox.updateMany({
+      where: {
+        id: messageLog.outbox!.id,
+        status: messageLog.outbox!.status,
+        attempts: { lt: MAX_SMS_OUTBOX_ATTEMPTS },
+        ...retrySchedule,
+      },
+      data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: claimedAt, lastError: null },
+    });
+    if (claim.count !== 1) return false;
+    await tx.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'QUEUED', errorCode: null, errorMessage: null } });
+    return true;
+  });
+  if (!claimed) throw new Error('This SMS message is already being processed or is no longer eligible for delivery.');
   try {
     const settings = await getEnabledSmsSettings();
     const apiKey = decryptSmsCredential(settings.encryptedApiKey!, getCredentialSecret());
@@ -283,14 +310,23 @@ const deliverSmsOutboxMessage = async (messageLogId: string) => {
     });
     await prisma.$transaction([
       prisma.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'SENT', sentAt: new Date(), providerMessageId: result.providerMessageId } }),
-      prisma.smsOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'SENT', processedAt: new Date(), lockedAt: null } }),
+      prisma.smsOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'SENT', nextAttemptAt: null, processedAt: new Date(), lockedAt: null } }),
     ]);
     return { sent: true, messageLogId: messageLog.id };
   } catch (error) {
     const lastError = error instanceof Error ? error.message.slice(0, 1000) : 'Unable to send SMS automation.';
     await prisma.$transaction([
       prisma.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'FAILED', errorMessage: lastError } }),
-      prisma.smsOutbox.update({ where: { id: messageLog.outbox.id }, data: { status: 'FAILED', lastError, processedAt: new Date(), lockedAt: null } }),
+      prisma.smsOutbox.update({
+        where: { id: messageLog.outbox.id },
+        data: {
+          status: 'FAILED',
+          nextAttemptAt: getNextSmsAttemptAt({ attempts: messageLog.outbox.attempts + 1 }),
+          lastError,
+          processedAt: new Date(),
+          lockedAt: null,
+        },
+      }),
     ]);
     return { sent: false, messageLogId: messageLog.id, error: lastError };
   }
@@ -304,6 +340,57 @@ export const retryFailedSmsMessage = async (messageLogId: string) => {
   return deliverSmsOutboxMessage(messageLogId);
 };
 
+const recoverStaleSmsOutbox = async (now: Date) => {
+  const staleAfter = new Date(now.getTime() - 10 * 60_000);
+  const stale = await prisma.smsOutbox.findMany({
+    where: { status: 'PROCESSING', lockedAt: { lt: staleAfter } },
+    select: { id: true, messageLogId: true, attempts: true },
+  });
+  if (!stale.length) return 0;
+  await prisma.$transaction(stale.flatMap((item) => {
+    const nextAttemptAt = getNextSmsAttemptAt({ attempts: item.attempts, now });
+    return [
+      prisma.smsOutbox.update({
+        where: { id: item.id },
+        data: {
+          status: 'FAILED',
+          nextAttemptAt,
+          lockedAt: null,
+          processedAt: now,
+          lastError: 'Delivery lease expired; the message was scheduled for retry.',
+        },
+      }),
+      prisma.smsMessageLog.update({
+        where: { id: item.messageLogId },
+        data: { status: 'FAILED', errorMessage: 'Delivery lease expired; the message was scheduled for retry.' },
+      }),
+    ];
+  }));
+  return stale.length;
+};
+
+export const processSmsOutbox = async ({ limit = 50 }: { limit?: number } = {}) => {
+  const now = new Date();
+  const recovered = await recoverStaleSmsOutbox(now);
+  const pending = await prisma.smsOutbox.findMany({
+    where: {
+      status: { in: ['PENDING', 'FAILED'] },
+      attempts: { lt: MAX_SMS_OUTBOX_ATTEMPTS },
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: Math.min(100, Math.max(1, limit)),
+    select: { messageLogId: true },
+  });
+  const results = await Promise.all(pending.map(({ messageLogId }) => deliverSmsOutboxMessage(messageLogId, { respectSchedule: true }).catch((error) => ({ sent: false, error: error instanceof Error ? error.message : 'Unable to process SMS outbox message.' }))));
+  return {
+    recovered,
+    selected: pending.length,
+    sent: results.filter((result) => result.sent).length,
+    failed: results.filter((result) => !result.sent).length,
+  };
+};
+
 export const getSmsMessageLogs = async ({ status, eventCode, recipientType, limit = 50 }: { status?: string; eventCode?: string; recipientType?: string; limit?: number }) => {
   const allowedStatuses = ['QUEUED', 'SENT', 'FAILED', 'SKIPPED'];
   const logs = await prisma.smsMessageLog.findMany({
@@ -314,7 +401,7 @@ export const getSmsMessageLogs = async ({ status, eventCode, recipientType, limi
     },
     orderBy: { createdAt: 'desc' },
     take: Math.min(100, Math.max(1, limit)),
-    include: { outbox: { select: { attempts: true, status: true, processedAt: true, lastError: true } } },
+    include: { outbox: { select: { attempts: true, status: true, nextAttemptAt: true, processedAt: true, lastError: true } } },
   });
   return logs.map((log) => ({
     id: log.id,
@@ -327,7 +414,7 @@ export const getSmsMessageLogs = async ({ status, eventCode, recipientType, limi
     errorMessage: log.errorMessage,
     createdAt: log.createdAt,
     sentAt: log.sentAt,
-    outbox: log.outbox ? { attempts: log.outbox.attempts, status: log.outbox.status, processedAt: log.outbox.processedAt, lastError: log.outbox.lastError } : null,
+    outbox: log.outbox ? { attempts: log.outbox.attempts, status: log.outbox.status, nextAttemptAt: log.outbox.nextAttemptAt, processedAt: log.outbox.processedAt, lastError: log.outbox.lastError } : null,
   }));
 };
 
@@ -345,10 +432,16 @@ const buildDedupeKey = (input: SmsDispatchInput, recipientPhone: string) => `sms
 
 export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
   try {
-    const [settings, rule] = await Promise.all([
+    const [settings, rule, preferenceState] = await Promise.all([
       prisma.smsIntegrationSettings.findUnique({ where: { id: SETTINGS_ID } }),
       prisma.smsAutomationRule.findUnique({ where: { eventCode: input.eventCode } }),
+      resolveNotificationPreference({
+        eventCode: input.eventCode,
+        channel: 'SMS',
+        ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      }),
     ]);
+    if (preferenceState === false) return { queued: false, reason: 'NOTIFICATION_PREFERENCE_DISABLED' };
     const decision = evaluateSmsAutomation({
       integrationEnabled: Boolean(settings && hasSmsCredentials(settings)),
       recipientPhone: input.recipientPhone,
@@ -358,28 +451,37 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
     const dedupeKey = buildDedupeKey(input, decision.recipientPhone);
     const existing = await prisma.smsMessageLog.findUnique({ where: { dedupeKey } });
     if (existing) return { queued: false, duplicate: true, messageLogId: existing.id };
-    const messageLog = await prisma.smsMessageLog.create({
-      data: {
-        eventCode: input.eventCode,
-        relatedEntityType: input.relatedEntityType,
-        relatedEntityId: input.relatedEntityId,
-        recipientType: input.recipientType,
-        recipientPhone: decision.recipientPhone,
-        dedupeKey,
-        payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
-        outbox: {
-          create: {
-            payload: {
-              eventCode: input.eventCode,
-              messageId: rule.messageId,
-              variablesTemplate: rule.variablesTemplate || '',
-              payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
+    let messageLog;
+    try {
+      messageLog = await prisma.smsMessageLog.create({
+        data: {
+          eventCode: input.eventCode,
+          relatedEntityType: input.relatedEntityType,
+          relatedEntityId: input.relatedEntityId,
+          recipientType: input.recipientType,
+          recipientPhone: decision.recipientPhone,
+          dedupeKey,
+          payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
+          outbox: {
+            create: {
+              payload: {
+                eventCode: input.eventCode,
+                messageId: rule.messageId,
+                variablesTemplate: rule.variablesTemplate || '',
+                payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
+              },
             },
           },
         },
-      },
-      include: { outbox: true },
-    });
+        include: { outbox: true },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const duplicate = await prisma.smsMessageLog.findUnique({ where: { dedupeKey } });
+        if (duplicate) return { queued: false, duplicate: true, messageLogId: duplicate.id };
+      }
+      throw error;
+    }
     const delivery = await deliverSmsOutboxMessage(messageLog.id);
     return { queued: true, ...delivery };
   } catch (error) {

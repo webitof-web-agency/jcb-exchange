@@ -100,6 +100,7 @@ import {
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
 import { getPreferredWhatsAppNumber } from '../utils/whatsappRecipient';
 import { normalizeRegistrationContacts } from '../utils/registrationContact';
+import { initializeUserNotificationPreferences } from '../services/notificationPreference.service';
 import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsApp';
 import { hasPartnerDocumentDraftData, isPartnerProfileComplete } from '../utils/partnerOnboarding';
 import { hasKycDocumentChanges, type KycDocumentSnapshot } from '../utils/kycEditPolicy';
@@ -1407,37 +1408,42 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       ? normalizedRegistrationType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER'
       : 'SUPER_ADMIN';
 
-    const newUser = hasSuperAdmin
-      ? await prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          name: normalizedName,
-          mobile: normalizedMobile || undefined,
-          whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
-          authProvider: 'LOCAL',
-          role: accountRole,
-          status: 'ACTIVE' as any,
-        } as any,
-      })
-      : await prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          name: normalizedName,
-          mobile: normalizedMobile || undefined,
-          whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
-          authProvider: 'LOCAL',
-          role: 'SUPER_ADMIN',
-          status: 'ACTIVE' as any,
-          adminProfile: {
-            create: {
-              title: 'Platform Super Admin',
-              isRootAdmin: true,
+    const newUser = await prisma.$transaction(async (tx) => {
+      const createdUser = hasSuperAdmin
+        ? await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            name: normalizedName,
+            mobile: normalizedMobile || undefined,
+            whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
+            authProvider: 'LOCAL',
+            role: accountRole,
+            status: 'ACTIVE' as any,
+          } as any,
+        })
+        : await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            name: normalizedName,
+            mobile: normalizedMobile || undefined,
+            whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
+            authProvider: 'LOCAL',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE' as any,
+            adminProfile: {
+              create: {
+                title: 'Platform Super Admin',
+                isRootAdmin: true,
+              },
             },
-          },
-        } as any,
-      });
+          } as any,
+        });
+
+      await initializeUserNotificationPreferences(createdUser, tx);
+      return createdUser;
+    });
 
     const authUser = await buildAuthUserPayload(newUser);
     const token = signAuthToken(authUser);
@@ -1895,15 +1901,20 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
         });
       }
 
-      user = await prisma.user.create({
-        data: {
-          email: googleProfile.email,
-          name: googleProfile.name,
-          authProvider: 'GOOGLE',
-          role: 'CUSTOMER',
-          status: 'ACTIVE' as any,
-          isMobileVerified: true,
-        } as any,
+      user = await prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: {
+            email: googleProfile.email,
+            name: googleProfile.name,
+            authProvider: 'GOOGLE',
+            role: 'CUSTOMER',
+            status: 'ACTIVE' as any,
+            isMobileVerified: true,
+          } as any,
+        });
+
+        await initializeUserNotificationPreferences(createdUser, tx);
+        return createdUser;
       });
     } else if (user.authProvider !== 'GOOGLE' || (user.mobile && !user.whatsappNumber)) {
       user = await prisma.user.update({

@@ -10,6 +10,7 @@ import { startRcOwnerHistoryRetentionJob } from './jobs/rcOwnerHistoryRetention.
 import { storagePersistenceConfigured } from './utils/documentUpload';
 import { startFinanceHubWorker } from './modules/finance-hub';
 import { startCrmWorker } from './modules/crm';
+import { startNotificationOutboxJob } from './jobs/notificationOutbox.job';
 
 const PORT = process.env.PORT || 5000;
 
@@ -24,6 +25,8 @@ startRcOwnerHistoryRetentionJob();
 startFinanceHubWorker();
 // CRM follow-up reminders, missed marking, SLA and (opt-in) automation.
 startCrmWorker();
+// Automatic WhatsApp/SMS delivery retries and stale-lease recovery.
+startNotificationOutboxJob();
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

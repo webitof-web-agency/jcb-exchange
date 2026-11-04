@@ -64,6 +64,7 @@ import {
   type VehicleVerificationSource,
 } from '@/lib/sellVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
+import { shouldSyncListingAvailability } from '@/lib/listingEditPolicy.mjs';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingVerificationDisplay } from '@/lib/listingVerificationDisplay.mjs';
 import { isAuthenticationFailure, isUsableAuthToken } from '@/lib/authSession.mjs';
@@ -1610,6 +1611,14 @@ export default function SellVehicleModal({
     setSaving(true);
 
     try {
+      const existingListingStatus = editingListingId
+        ? (listingToEdit?.id === editingListingId
+          ? listingToEdit.status
+          : listings.find((item) => item.id === editingListingId)?.status)
+        : null;
+      const shouldSyncAvailability = editingListingId
+        ? shouldSyncListingAvailability(existingListingStatus, sanitizedForm.currentAvailability)
+        : ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
       const uploadedMedia = mediaSlots
         .map((slot) => {
           const uploadedFile = mediaState[slot.key];
@@ -1654,7 +1663,7 @@ export default function SellVehicleModal({
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability)) {
+      if (shouldSyncAvailability) {
         payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
@@ -1683,7 +1692,6 @@ export default function SellVehicleModal({
 
       if (editingListingId) {
         const updateResponse = await api.put<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}`, payload);
-        const shouldSyncAvailability = ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
         let availabilityResponse;
 
         if (shouldSyncAvailability) {

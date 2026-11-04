@@ -134,7 +134,7 @@ export const getWhatsAppLogs = async (req: Request, res: Response, next: NextFun
     const eventCode = typeof req.query.eventCode === 'string' ? req.query.eventCode.trim() : undefined;
     const rawLimit = Number.parseInt(String(req.query.limit || '50'), 10);
     const allowedStatuses = new Set(['QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'SKIPPED']);
-    const allowedRecipients = new Set(['CUSTOMER', 'PARTNER', 'SUPER_ADMIN', 'RECRUITER', 'CANDIDATE', 'TEST']);
+    const allowedRecipients = new Set(['CUSTOMER', 'PARTNER', 'SUPER_ADMIN', 'RECRUITER', 'CANDIDATE', 'TEST', 'EMPLOYEE']);
     if (status && !allowedStatuses.has(status)) return res.status(400).json({ error: 'Invalid WhatsApp log status filter.' });
     if (recipientType && !allowedRecipients.has(recipientType)) return res.status(400).json({ error: 'Invalid WhatsApp recipient filter.' });
     if (eventCode && eventCode.length > 100) return res.status(400).json({ error: 'Event filter is too long.' });

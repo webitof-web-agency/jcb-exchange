@@ -14,6 +14,23 @@ enum Role {
   EMPLOYEE
 }
 
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+}
+
+enum NotificationCategory {
+  TRANSACTIONAL
+  OPERATIONAL
+  MARKETING
+  JOB_ALERTS
+}
+
+enum NotificationPreferenceStatus {
+  ENABLED
+  DISABLED
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -456,70 +473,72 @@ model User {
   fcmToken         String?
   pushSubscription Json?
 
-  createdBy                          User?                              @relation("UserCreation", fields: [createdById], references: [id])
-  createdUsers                       User[]                             @relation("UserCreation")
-  adminProfile                       AdminProfile?
-  adminPermissions                   AdminPermission[]
-  customRole                         CustomRole?                        @relation("UserCustomRole", fields: [customRoleId], references: [id])
-  partnerProfile                     PartnerProfile?
-  teamMemberships                    PartnerTeamMember[]
-  listings                           Listing[]
-  leads                              Lead[]                             @relation("CustomerLeads")
-  assignedLeads                      Lead[]                             @relation("DealerLeads")
-  reviewedKycDocs                    KycDocument[]                      @relation("KycReviewer")
-  kycReviewActions                   KycReviewLog[]                     @relation("KycReviewActor")
-  verifiedDeposits                   PartnerDeposit[]                   @relation("DepositVerifier")
-  acceptedAgreements                 PartnerAgreement[]                 @relation("AgreementAcceptor")
-  approvedPartners                   PartnerProfile[]                   @relation("PartnerApprover")
-  customerPrimeSubscriptions         CustomerPrimeSubscription[]        @relation("CustomerPrimeSubscriptions")
-  approvedCustomerPrimeSubscriptions CustomerPrimeSubscription[]        @relation("CustomerPrimeApprover")
-  rejectedCustomerPrimeSubscriptions CustomerPrimeSubscription[]        @relation("CustomerPrimeRejector")
-  listingPaymentSubmissions          ListingPaymentSubmission[]         @relation("ListingPaymentBuyer")
-  listingPaymentSellerSubmissions    ListingPaymentSubmission[]         @relation("ListingPaymentSeller")
-  reviewedListingPaymentSubmissions  ListingPaymentSubmission[]         @relation("ListingPaymentReviewer")
-  createdListingBills                ListingBill[]                      @relation("ListingBillCreator")
-  auditLogs                          AuditLog[]                         @relation("AuditActor")
-  drivingLicenseVerificationRecords  DrivingLicenseVerificationRecord[] @relation("DrivingLicenseVerificationRequester")
+  createdBy                           User?                                @relation("UserCreation", fields: [createdById], references: [id])
+  createdUsers                        User[]                               @relation("UserCreation")
+  adminProfile                        AdminProfile?
+  adminPermissions                    AdminPermission[]
+  customRole                          CustomRole?                          @relation("UserCustomRole", fields: [customRoleId], references: [id])
+  partnerProfile                      PartnerProfile?
+  teamMemberships                     PartnerTeamMember[]
+  listings                            Listing[]
+  leads                               Lead[]                               @relation("CustomerLeads")
+  assignedLeads                       Lead[]                               @relation("DealerLeads")
+  reviewedKycDocs                     KycDocument[]                        @relation("KycReviewer")
+  kycReviewActions                    KycReviewLog[]                       @relation("KycReviewActor")
+  verifiedDeposits                    PartnerDeposit[]                     @relation("DepositVerifier")
+  acceptedAgreements                  PartnerAgreement[]                   @relation("AgreementAcceptor")
+  approvedPartners                    PartnerProfile[]                     @relation("PartnerApprover")
+  customerPrimeSubscriptions          CustomerPrimeSubscription[]          @relation("CustomerPrimeSubscriptions")
+  approvedCustomerPrimeSubscriptions  CustomerPrimeSubscription[]          @relation("CustomerPrimeApprover")
+  rejectedCustomerPrimeSubscriptions  CustomerPrimeSubscription[]          @relation("CustomerPrimeRejector")
+  listingPaymentSubmissions           ListingPaymentSubmission[]           @relation("ListingPaymentBuyer")
+  listingPaymentSellerSubmissions     ListingPaymentSubmission[]           @relation("ListingPaymentSeller")
+  reviewedListingPaymentSubmissions   ListingPaymentSubmission[]           @relation("ListingPaymentReviewer")
+  createdListingBills                 ListingBill[]                        @relation("ListingBillCreator")
+  auditLogs                           AuditLog[]                           @relation("AuditActor")
+  drivingLicenseVerificationRecords   DrivingLicenseVerificationRecord[]   @relation("DrivingLicenseVerificationRequester")
   drivingLicenseVerificationTemplates DrivingLicenseVerificationTemplate[] @relation("DrivingLicenseVerificationTemplateRequester")
-  rcOwnerHistoryRecords              RcOwnerHistoryRecord[]             @relation("RcOwnerHistoryRequester")
-  rcOwnerHistoryTemplates            RcOwnerHistoryTemplate[]           @relation("RcOwnerHistoryTemplateRequester")
-  rcChallanVerificationRecords       RcChallanVerificationRecord[]      @relation("RcChallanVerificationRequester")
-  chassisToRcVerificationRecords     ChassisToRcVerificationRecord[]    @relation("ChassisToRcVerificationRequester")
-  rcToMobileVerificationRecords      RcToMobileVerificationRecord[]     @relation("RcToMobileVerificationRequester")
-  mobileToRcLookupRecords            MobileToRcLookupRecord[]           @relation("MobileToRcLookupRequester")
-  rcMobileNumberCheckRecords         RcMobileNumberCheckRecord[]        @relation("RcMobileNumberCheckRequester")
-  leadActivities                     LeadActivity[]                     @relation("LeadActivityActor")
-  notifications                      Notification[]
-  createdJobs                        Job[]                              @relation("JobCreator")
-  assignedApplications               JobApplication[]                   @relation("AssignedRecruiter")
-  stageHistoryChanges                ApplicationStageHistory[]          @relation("StageHistoryChanger")
-  authoredCandidateNotes             CandidateNote[]                    @relation("CandidateNoteAuthor")
-  submittedCandidateRatings          CandidateRating[]                  @relation("CandidateRatingEvaluator")
-  scheduledInterviews                Interview[]                        @relation("InterviewScheduler")
-  conductedInterviews                Interview[]                        @relation("Interviewer")
-  submittedInterviewFeedbacks        InterviewFeedback[]                @relation("InterviewFeedbackAuthor")
-  createdOffers                      Offer[]                            @relation("OfferCreator")
-  recruitmentActivityLogs            RecruitmentActivityLog[]           @relation("RecruitmentActivityActor")
-  mobileOtpChallenges                MobileOtpChallenge[]
-  passwordResetTokens                PasswordResetToken[]
-  emailOtpChallenges                 EmailOtpChallenge[]
-  panVerificationRecords             PanVerificationRecord[]            @relation("PanVerificationRequester")
-  panVerificationTemplates           PanVerificationTemplate[]          @relation("PanVerificationTemplateRequester")
-  apiBillingUsageRecords             ApiUsageRecord[]                   @relation("ApiBillingUsageRequester")
-  apiWalletLedgerEntries             ApiWalletLedger[]                  @relation("ApiWalletLedgerRequester")
-  mobileToPanLookupRecords           MobileToPanLookupRecord[]          @relation("MobileToPanLookupRequester")
-  gstVerificationRecords             GstVerificationRecord[]            @relation("GstVerificationRequester")
-  gstVerificationTemplates           GstVerificationTemplate[]          @relation("GstVerificationTemplateRequester")
-  aadhaarVerificationRecords         AadhaarVerificationRecord[]        @relation("AadhaarVerificationRequester")
-  aadhaarVerificationTemplates       AadhaarVerificationTemplate[]      @relation("AadhaarVerificationTemplateRequester")
-  blogQuestions                      BlogQuestion[]                     @relation("BlogQuestionAuthor")
-  answeredBlogQuestions              BlogQuestion[]                     @relation("BlogQuestionAnswerer")
-  ownedLeads                         Lead[]                             @relation("LeadOwner")
-  crmProfile                         CrmContactProfile?                 @relation("CrmContactProfileUser")
-  crmOwnedContacts                   CrmContactProfile[]                @relation("CrmContactOwner")
-  crmFollowUpsAsContact              CrmFollowUp[]                      @relation("CrmFollowUpContact")
-  crmFollowUpsOwned                  CrmFollowUp[]                      @relation("CrmFollowUpOwner")
-  crmContactActivities               CrmContactActivity[]               @relation("CrmContactActivityContact")
+  rcOwnerHistoryRecords               RcOwnerHistoryRecord[]               @relation("RcOwnerHistoryRequester")
+  rcOwnerHistoryTemplates             RcOwnerHistoryTemplate[]             @relation("RcOwnerHistoryTemplateRequester")
+  rcChallanVerificationRecords        RcChallanVerificationRecord[]        @relation("RcChallanVerificationRequester")
+  chassisToRcVerificationRecords      ChassisToRcVerificationRecord[]      @relation("ChassisToRcVerificationRequester")
+  rcToMobileVerificationRecords       RcToMobileVerificationRecord[]       @relation("RcToMobileVerificationRequester")
+  mobileToRcLookupRecords             MobileToRcLookupRecord[]             @relation("MobileToRcLookupRequester")
+  rcMobileNumberCheckRecords          RcMobileNumberCheckRecord[]          @relation("RcMobileNumberCheckRequester")
+  leadActivities                      LeadActivity[]                       @relation("LeadActivityActor")
+  notifications                       Notification[]
+  notificationPreferences             NotificationPreference[]             @relation("NotificationPreferenceOwner")
+  notificationPreferenceChanges       NotificationPreference[]             @relation("NotificationPreferenceLastChangedBy")
+  createdJobs                         Job[]                                @relation("JobCreator")
+  assignedApplications                JobApplication[]                     @relation("AssignedRecruiter")
+  stageHistoryChanges                 ApplicationStageHistory[]            @relation("StageHistoryChanger")
+  authoredCandidateNotes              CandidateNote[]                      @relation("CandidateNoteAuthor")
+  submittedCandidateRatings           CandidateRating[]                    @relation("CandidateRatingEvaluator")
+  scheduledInterviews                 Interview[]                          @relation("InterviewScheduler")
+  conductedInterviews                 Interview[]                          @relation("Interviewer")
+  submittedInterviewFeedbacks         InterviewFeedback[]                  @relation("InterviewFeedbackAuthor")
+  createdOffers                       Offer[]                              @relation("OfferCreator")
+  recruitmentActivityLogs             RecruitmentActivityLog[]             @relation("RecruitmentActivityActor")
+  mobileOtpChallenges                 MobileOtpChallenge[]
+  passwordResetTokens                 PasswordResetToken[]
+  emailOtpChallenges                  EmailOtpChallenge[]
+  panVerificationRecords              PanVerificationRecord[]              @relation("PanVerificationRequester")
+  panVerificationTemplates            PanVerificationTemplate[]            @relation("PanVerificationTemplateRequester")
+  apiBillingUsageRecords              ApiUsageRecord[]                     @relation("ApiBillingUsageRequester")
+  apiWalletLedgerEntries              ApiWalletLedger[]                    @relation("ApiWalletLedgerRequester")
+  mobileToPanLookupRecords            MobileToPanLookupRecord[]            @relation("MobileToPanLookupRequester")
+  gstVerificationRecords              GstVerificationRecord[]              @relation("GstVerificationRequester")
+  gstVerificationTemplates            GstVerificationTemplate[]            @relation("GstVerificationTemplateRequester")
+  aadhaarVerificationRecords          AadhaarVerificationRecord[]          @relation("AadhaarVerificationRequester")
+  aadhaarVerificationTemplates        AadhaarVerificationTemplate[]        @relation("AadhaarVerificationTemplateRequester")
+  blogQuestions                       BlogQuestion[]                       @relation("BlogQuestionAuthor")
+  answeredBlogQuestions               BlogQuestion[]                       @relation("BlogQuestionAnswerer")
+  ownedLeads                          Lead[]                               @relation("LeadOwner")
+  crmProfile                          CrmContactProfile?                   @relation("CrmContactProfileUser")
+  crmOwnedContacts                    CrmContactProfile[]                  @relation("CrmContactOwner")
+  crmFollowUpsAsContact               CrmFollowUp[]                        @relation("CrmFollowUpContact")
+  crmFollowUpsOwned                   CrmFollowUp[]                        @relation("CrmFollowUpOwner")
+  crmContactActivities                CrmContactActivity[]                 @relation("CrmContactActivityContact")
 }
 
 model MobileOtpChallenge {
@@ -706,8 +725,8 @@ model AadhaarVerificationRecord {
   createdAt          DateTime                  @default(now())
   completedAt        DateTime?
 
-  template           AadhaarVerificationTemplate? @relation("AadhaarVerificationRecordTemplate")
-  requestedBy User @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
+  template    AadhaarVerificationTemplate? @relation("AadhaarVerificationRecordTemplate")
+  requestedBy User                         @relation("AadhaarVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
   @@index([side, status, createdAt])
@@ -824,8 +843,8 @@ model DrivingLicenseVerificationRecord {
   createdAt           DateTime                         @default(now())
   completedAt         DateTime?
 
-  template           DrivingLicenseVerificationTemplate? @relation("DrivingLicenseVerificationRecordTemplate")
-  requestedBy User @relation("DrivingLicenseVerificationRequester", fields: [requestedById], references: [id])
+  template    DrivingLicenseVerificationTemplate? @relation("DrivingLicenseVerificationRecordTemplate")
+  requestedBy User                                @relation("DrivingLicenseVerificationRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
@@ -846,7 +865,7 @@ model DrivingLicenseVerificationTemplate {
   createdAt            DateTime @default(now())
 
   verificationRecord DrivingLicenseVerificationRecord @relation("DrivingLicenseVerificationRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
-  requestedBy        User                            @relation("DrivingLicenseVerificationTemplateRequester", fields: [requestedById], references: [id])
+  requestedBy        User                             @relation("DrivingLicenseVerificationTemplateRequester", fields: [requestedById], references: [id])
   requestedById      String
 
   @@index([requestedById, createdAt])
@@ -873,8 +892,8 @@ model RcOwnerHistoryRecord {
   createdAt          DateTime             @default(now())
   completedAt        DateTime?
 
-  template           RcOwnerHistoryTemplate? @relation("RcOwnerHistoryRecordTemplate")
-  requestedBy User @relation("RcOwnerHistoryRequester", fields: [requestedById], references: [id])
+  template    RcOwnerHistoryTemplate? @relation("RcOwnerHistoryRecordTemplate")
+  requestedBy User                    @relation("RcOwnerHistoryRequester", fields: [requestedById], references: [id])
 
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
@@ -898,7 +917,7 @@ model RcOwnerHistoryTemplate {
   createdAt            DateTime @default(now())
 
   verificationRecord RcOwnerHistoryRecord @relation("RcOwnerHistoryRecordTemplate", fields: [verificationRecordId], references: [id], onDelete: Cascade)
-  requestedBy        User                  @relation("RcOwnerHistoryTemplateRequester", fields: [requestedById], references: [id])
+  requestedBy        User                 @relation("RcOwnerHistoryTemplateRequester", fields: [requestedById], references: [id])
   requestedById      String
 
   @@index([requestedById, createdAt])
@@ -1510,32 +1529,32 @@ model SellAccount {
   invoiceNumber           String?                 @unique
   invoiceGeneratedAt      DateTime?
   // Only a SHA-256 hash of the public invoice link token is stored.
-  invoiceTokenHash      String?                @unique
-  invoiceTokenExpiresAt DateTime?
-  invoiceSentAt         DateTime?
-  invoiceDelivery       Json?
+  invoiceTokenHash        String?                 @unique
+  invoiceTokenExpiresAt   DateTime?
+  invoiceSentAt           DateTime?
+  invoiceDelivery         Json?
   // Sale cancelled (customer backed out / vehicle returned). When a Bill of Supply was already
   // issued, a credit note number is assigned against it.
-  cancelledAt           DateTime?
-  cancelledById         String?
-  cancelReason          String?                @db.Text
-  creditNoteNumber      String?                @unique
-  creditNoteDate        DateTime?
+  cancelledAt             DateTime?
+  cancelledById           String?
+  cancelReason            String?                 @db.Text
+  creditNoteNumber        String?                 @unique
+  creditNoteDate          DateTime?
   // Listing this sale was made on, kept after cancelling: the cancel releases listingId so the
   // vehicle can be sold again on a new record.
-  releasedListingId     String?
-  createdById           String?
-  updatedById           String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  deletedAt             DateTime?
+  releasedListingId       String?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  deletedAt               DateTime?
 
-  listing               Listing?               @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  rtoRecord             VehicleRtoRecord?
-  payments              SellAccountPayment[]
-  refunds               SellAccountRefund[]
-  statusHistory         SellAccountStatusHistory[]
-  deedWorkflows         SellAccountDeedWorkflow[]
+  listing       Listing?                   @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  rtoRecord     VehicleRtoRecord?
+  payments      SellAccountPayment[]
+  refunds       SellAccountRefund[]
+  statusHistory SellAccountStatusHistory[]
+  deedWorkflows SellAccountDeedWorkflow[]
 
   @@index([dealStatus, updatedAt])
   @@index([isDraft, updatedAt])
@@ -1585,27 +1604,27 @@ model SellAccountDeedWorkflow {
 }
 
 model SellAccountPayment {
-  id             String                  @id @default(uuid())
-  sellAccountId  String
-  side           SellAccountPaymentSide
-  amount         Decimal                 @db.Decimal(14, 2)
-  paymentDate    DateTime
-  method         SellAccountPaymentMethod @default(OTHER)
-  reference      String?
+  id                     String                   @id @default(uuid())
+  sellAccountId          String
+  side                   SellAccountPaymentSide
+  amount                 Decimal                  @db.Decimal(14, 2)
+  paymentDate            DateTime
+  method                 SellAccountPaymentMethod @default(OTHER)
+  reference              String?
   // Bank the cheque / transfer was drawn on ("Drawn on" on the money receipt).
-  drawnOn        String?
-  note           String?                 @db.Text
-  receiptStatus  SellAccountReceiptStatus @default(ISSUED)
-  issuedAt       DateTime?
-  issuedById     String?
-  cancelledAt    DateTime?
-  cancelledById  String?
-  cancelReason   String?                 @db.Text
-  receiptNumber  String?                 @unique
-  receiptTokenHash String?               @unique
+  drawnOn                String?
+  note                   String?                  @db.Text
+  receiptStatus          SellAccountReceiptStatus @default(ISSUED)
+  issuedAt               DateTime?
+  issuedById             String?
+  cancelledAt            DateTime?
+  cancelledById          String?
+  cancelReason           String?                  @db.Text
+  receiptNumber          String?                  @unique
+  receiptTokenHash       String?                  @unique
   // Website payment (ListingPaymentSubmission) this receipt records; the books then post the
   // money through the sale instead of as a separate customer advance.
-  listingPaymentId String?               @unique
+  listingPaymentId       String?                  @unique
   receiptTokenCiphertext String?
   receiptTokenExpiresAt  DateTime?
   receiptGeneratedAt     DateTime?
@@ -1622,30 +1641,30 @@ model SellAccountPayment {
 // then marked paid. Only PAID refunds reach the books and the customer balance.
 // forfeitAmount (cancelled deals only) is kept by JCB Exchange as a cancellation charge.
 model SellAccountRefund {
-  id             String                   @id @default(uuid())
-  sellAccountId  String
-  refundNumber   String?                  @unique
-  status         SellAccountRefundStatus  @default(REQUESTED)
-  reason         SellAccountRefundReason
-  amount         Decimal                  @db.Decimal(14, 2)
-  forfeitAmount  Decimal                  @default(0) @db.Decimal(14, 2)
-  method         SellAccountPaymentMethod @default(BANK_TRANSFER)
-  reference      String?
-  drawnOn        String?
-  refundDate     DateTime?
-  note           String?                  @db.Text
-  requestedById  String?
-  approvedById   String?
-  approvedAt     DateTime?
-  rejectedById   String?
-  rejectedAt     DateTime?
-  rejectReason   String?                  @db.Text
-  paidById       String?
-  paidAt         DateTime?
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id            String                   @id @default(uuid())
+  sellAccountId String
+  refundNumber  String?                  @unique
+  status        SellAccountRefundStatus  @default(REQUESTED)
+  reason        SellAccountRefundReason
+  amount        Decimal                  @db.Decimal(14, 2)
+  forfeitAmount Decimal                  @default(0) @db.Decimal(14, 2)
+  method        SellAccountPaymentMethod @default(BANK_TRANSFER)
+  reference     String?
+  drawnOn       String?
+  refundDate    DateTime?
+  note          String?                  @db.Text
+  requestedById String?
+  approvedById  String?
+  approvedAt    DateTime?
+  rejectedById  String?
+  rejectedAt    DateTime?
+  rejectReason  String?                  @db.Text
+  paidById      String?
+  paidAt        DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
 
-  sellAccount    SellAccount              @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+  sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, status])
   @@index([status, createdAt])
@@ -2102,6 +2121,35 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Unified per-recipient channel preferences. Existing WhatsApp/SMS automation
+// tables remain intact; later phases will resolve recipients through this table.
+model NotificationPreference {
+  id                  String                       @id @default(uuid())
+  userId              String?
+  candidateId         String?
+  phone               String
+  channel             NotificationChannel
+  category            NotificationCategory
+  status              NotificationPreferenceStatus @default(DISABLED)
+  source              String?
+  sourceVersion       String?
+  optedInAt           DateTime?
+  optedOutAt          DateTime?
+  lastChangedByUserId String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  user              User?      @relation("NotificationPreferenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  candidate         Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  lastChangedByUser User?      @relation("NotificationPreferenceLastChangedBy", fields: [lastChangedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([phone, channel, category])
+  @@index([userId, channel, category, status])
+  @@index([candidateId, channel, category, status])
+  @@index([phone, channel, category, status])
+  @@map("notification_preferences")
 }
 
 model CustomerPrimeSubscription {
@@ -2743,13 +2791,14 @@ model Candidate {
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 
-  applications JobApplication[]
-  documents    CandidateDocument[]
-  notes        CandidateNote[]
-  ratings      CandidateRating[]
-  interviews   Interview[]
-  offers       Offer[]
-  activityLogs RecruitmentActivityLog[]
+  applications            JobApplication[]
+  documents               CandidateDocument[]
+  notes                   CandidateNote[]
+  ratings                 CandidateRating[]
+  interviews              Interview[]
+  offers                  Offer[]
+  activityLogs            RecruitmentActivityLog[]
+  notificationPreferences NotificationPreference[]
 
   @@index([email])
   @@index([mobile])

@@ -16,7 +16,9 @@
     "seed:blogs": "tsx scripts/seed-blog-posts.ts",
     "seed:listings": "tsx scripts/seed-listings.ts",
     "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts",
-    "roles:sync": "tsx scripts/sync-employee-roles.ts"
+    "roles:sync": "tsx scripts/sync-employee-roles.ts",
+    "notifications:backfill": "tsx scripts/backfill-notification-preferences.ts",
+    "notifications:audit": "tsx scripts/audit-notification-wiring.ts"
   },
   "keywords": [],
   "author": "",
