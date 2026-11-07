@@ -19,7 +19,7 @@ test('keeps GST raw data available only for the five-minute template window', ()
   assert.equal(isGstRawDataAvailable({ encryptedResult: 'cipher', rawDataExpiresAt: expiresAt }, expiresAt.getTime()), false);
 });
 
-test('stores a GST template privately and clears the encrypted result after upload', async () => {
+test('stores a GST template privately and retains the encrypted result after upload', async () => {
   const records: any[] = [{
     id: 'gst-template-record',
     status: 'SUCCESS',
@@ -41,6 +41,7 @@ test('stores a GST template privately and clears the encrypted result after uplo
       findMany: async () => records,
       count: async () => records.length,
       create: async () => ({}),
+      updateMany: async () => ({ count: 0 }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(records[0], data);
         return records[0];
@@ -65,8 +66,61 @@ test('stores a GST template privately and clears the encrypted result after uplo
   const result = await service.uploadTemplate('gst-template-record', 'user-1', 'EMPLOYEE', pdf, 'application/pdf');
   assert.equal(templates.length, 1);
   assert.equal(result.template?.id, 'gst-template-1');
-  assert.equal(records[0].encryptedResult, null);
-  assert.equal(records[0].rawDataExpiresAt, null);
+  assert.equal(records[0].encryptedResult, 'cipher');
+  assert.ok(records[0].rawDataExpiresAt);
+
+  assert.equal(await service.cleanupExpiredRawData(new Date('2030-01-01T00:00:00.000Z')), 0);
+  assert.equal(records[0].encryptedResult, 'cipher');
+});
+
+test('reads retained GST result after the template window has expired', async () => {
+  const resultPayload = normalizeGstVerificationResult({
+    gstin: '08AKWPJ1234H1ZN',
+    business_name: 'Retained Dealer',
+    legal_name: 'Retained Dealer Legal Name',
+    gstin_status: 'Active',
+    address: 'Jaipur, Rajasthan',
+  });
+  const record: any = {
+    id: 'gst-retained-record',
+    status: 'SUCCESS',
+    maskedGstin: '08AK********1ZN',
+    requestedById: 'user-1',
+    provider: 'SUREPASS',
+    providerClientId: null,
+    messageCode: null,
+    safeMessage: null,
+    businessName: 'Retained Dealer',
+    legalName: 'Retained Dealer Legal Name',
+    gstinStatus: 'Active',
+    encryptedResult: encryptPanData(JSON.stringify(resultPayload), dataSecret),
+    rawDataExpiresAt: new Date('2020-01-01T00:00:00.000Z'),
+    requestedBy: null,
+    template: null,
+    createdAt: new Date(),
+    completedAt: new Date(),
+  };
+  let updateCalls = 0;
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => record,
+      findMany: async () => [record],
+      count: async () => 1,
+      create: async () => record,
+      update: async () => {
+        updateCalls += 1;
+        return record;
+      },
+    },
+    dataSecret,
+  });
+
+  const detail = await service.getHistoryDetail(record.id, 'user-1', 'PARTNER');
+
+  assert.equal((detail.result as Record<string, unknown>).businessName, 'Retained Dealer');
+  assert.equal(updateCalls, 0);
+  assert.ok(record.encryptedResult);
 });
 
 test('reuses a saved GST template record instead of starting a new verification', async () => {
@@ -337,7 +391,7 @@ test('recovers the previously saved GST template when a later record has no temp
   };
   const service = new GstVerificationService({
     record: {
-      findFirst: async ({ where }: { where: Record<string, any> }) => where.template ? previousRecord : null,
+      findFirst: async ({ where }: { where: Record<string, any> }) => where.template?.isNot !== undefined ? previousRecord : null,
       findUnique: async () => currentRecord,
       findMany: async () => [currentRecord, previousRecord],
       count: async () => 2,
@@ -351,4 +405,118 @@ test('recovers the previously saved GST template when a later record has no temp
 
   assert.equal(detail.record.id, 'gst-record-previous');
   assert.equal(detail.template?.id, 'gst-template-previous');
+});
+
+test('replaces a legacy one-page GST report with the canonical same-GST template', async () => {
+  const legacyTemplate = {
+    id: 'gst-template-legacy',
+    fileName: 'gst-template-legacy.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 2_534,
+    sha256: 'legacy-template-sha',
+    createdAt: new Date(),
+  };
+  const canonicalTemplate = {
+    id: 'gst-template-canonical',
+    fileName: 'gst-template-canonical.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 24_324,
+    sha256: 'canonical-template-sha',
+    createdAt: new Date(),
+  };
+  const currentRecord = {
+    id: 'gst-record-current-legacy',
+    requestFingerprint: 'gst-fingerprint-shared',
+    requestedById: 'partner-current',
+    status: 'SUCCESS',
+    encryptedResult: null,
+    rawDataExpiresAt: null,
+    template: legacyTemplate,
+    requestedBy: null,
+    createdAt: new Date(),
+    completedAt: new Date(),
+  };
+  const canonicalRecord = {
+    ...currentRecord,
+    id: 'gst-record-canonical',
+    requestedById: 'partner-previous',
+    template: canonicalTemplate,
+  };
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async ({ where }: { where: Record<string, any> }) => where.template?.fileSize?.gte ? canonicalRecord : null,
+      findUnique: async () => currentRecord,
+      findMany: async () => [currentRecord, canonicalRecord],
+      count: async () => 2,
+      create: async () => ({}),
+      update: async () => currentRecord,
+    },
+    dataSecret,
+  });
+
+  const detail = await service.getHistoryDetail(currentRecord.id, currentRecord.requestedById, 'PARTNER');
+
+  assert.equal(detail.record.id, currentRecord.id);
+  assert.equal(detail.template?.id, canonicalTemplate.id);
+});
+
+test('creates an idempotent generated template for a successful signup GST record', async () => {
+  const record: any = {
+    id: 'gst-signup-record',
+    status: 'SUCCESS',
+    maskedGstin: '22AADC********1ZW',
+    requestedById: 'partner-1',
+    businessName: 'Dealer Name',
+    legalName: 'Dealer Legal Name',
+    gstinStatus: 'Active',
+    template: null,
+    encryptedResult: null,
+    rawDataExpiresAt: null,
+  };
+  const templates: any[] = [];
+  let uploadCalls = 0;
+  const service = new GstVerificationService({
+    record: {
+      findFirst: async () => null,
+      findUnique: async () => record,
+      findMany: async () => [record],
+      count: async () => 1,
+      create: async () => ({}),
+      update: async () => record,
+    },
+    template: {
+      findUnique: async () => record.template,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const template = { id: 'gst-generated-template', ...data, createdAt: new Date() };
+        templates.push(template);
+        record.template = template;
+        return template;
+      },
+      delete: async () => ({}),
+    },
+    uploadTemplateFile: async (buffer) => {
+      uploadCalls += 1;
+      assert.ok(buffer.subarray(0, 5).equals(Buffer.from('%PDF-')));
+      return { fileId: 'drive-gst-generated-template' };
+    },
+    dataSecret,
+  });
+
+  const first = await service.ensureGeneratedTemplate(
+    record.id,
+    'partner-1',
+    'PARTNER',
+    { gstin: '22AADCW3373Q1ZW' },
+  );
+  const second = await service.ensureGeneratedTemplate(
+    record.id,
+    'partner-1',
+    'PARTNER',
+    { gstin: '22AADCW3373Q1ZW' },
+  );
+
+  assert.equal(first.template?.id, 'gst-generated-template');
+  assert.equal(second.template?.id, 'gst-generated-template');
+  assert.equal(uploadCalls, 1);
+  assert.equal(templates.length, 1);
 });

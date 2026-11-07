@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import Script from 'next/script';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
@@ -1415,6 +1416,15 @@ export default function AuthModal() {
                 >
                   {isLogin ? t('auth.signUp') : t('auth.logIn')}
                 </button>
+                {!isLogin ? (
+                  <Link
+                    href="/partner-signup"
+                    onClick={() => setAuthModalOpen(false)}
+                    className="ml-3 font-bold text-amber-700 hover:underline"
+                  >
+                    Register as Partner
+                  </Link>
+                ) : null}
               </>
             )}
           </div>

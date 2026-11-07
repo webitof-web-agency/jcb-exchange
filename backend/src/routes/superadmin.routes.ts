@@ -7,6 +7,8 @@ import {
   deleteManagedUser,
   getManagedUserDeletionImpact,
   deletePartnerUser,
+  archivePartnerUser,
+  restorePartnerUser,
   getAdminListings,
   getFinanceSupportContent,
   getFooterContent,
@@ -77,6 +79,7 @@ import {
   revealPanVerificationCredentialController,
   updatePanVerificationSettingsController,
 } from '../controllers/panVerificationSettings.controller';
+import { reverifyPartnerGstin } from '../controllers/partnerGstReverification.controller';
 
 const router = Router();
 
@@ -102,6 +105,7 @@ const canViewPartnerOnboarding = requireSuperAdminOrEmployeePermissions(['partne
 const canCreatePartners = requireSuperAdminOrEmployeePermissions(['partners.create']);
 const canUpdatePartners = requireSuperAdminOrEmployeePermissions(['partners.update']);
 const canEditPartnerOnboarding = requireSuperAdminOrEmployeePermissions(['kyc.edit.override']);
+const canReverifyPartnerGst = requireSuperAdminOrEmployeePermissions(['kyc.edit.override']);
 const canDeletePartners = requireSuperAdminOrEmployeePermissions(['partners.delete']);
 const canManageVerifications = requireSuperAdminOrEmployeePermissions(['kyc.manage']);
 const canViewVerifications = requireSuperAdminOrEmployeePermissions(['kyc.manage', 'kyc.edit.override']);
@@ -188,7 +192,12 @@ router.patch('/listings/:id/status', canManageListings, updateAdminListingStatus
 router.patch('/users/:id/status', canUpdateAccountStatus, updateAdminUserStatus);
 router.patch('/partners/:id', canUpdatePartners, updatePartnerUser);
 router.get('/partners/:id/delete-impact', canViewDeletionImpact, getManagedUserDeletionImpact);
-router.delete('/partners/:id', canDeletePartners, deletePartnerUser);
+router.post('/partners/:id/archive', canDeletePartners, archivePartnerUser);
+router.post('/partners/:id/restore', canDeletePartners, restorePartnerUser);
+router.post('/partners/:id/gst/reverify', canReverifyPartnerGst, reverifyPartnerGstin);
+// DELETE intentionally remains a separate, superadmin-gated permanent action.
+// Archive/restore is the reversible lifecycle path for normal partner removal.
+router.delete('/partners/:id', requireSuperAdmin, deletePartnerUser);
 
 // Custom Roles
 router.get('/roles', canViewRoles, getRoles);

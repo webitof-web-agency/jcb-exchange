@@ -57,7 +57,7 @@ import type { VehicleListingVerificationSettings } from '../utils/listingVerific
 import { panVerificationService } from '../services/panVerification.service';
 import { gstVerificationService } from '../services/gstVerification.service';
 import { aadhaarVerificationService } from '../services/aadhaarVerification.service';
-import { buildKycReviewDocument } from '../utils/kycReviewPresentation';
+import { buildKycReviewDocument, buildSignupGstReviewDocument } from '../utils/kycReviewPresentation';
 import { getAuthUniqueConstraintMessage } from '../utils/authUniqueConstraint';
 import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/profileMobile';
 import { normalizeProfileEmail } from '../utils/profileSecurity';
@@ -68,6 +68,17 @@ import { assertListingStatusChangeAllowed, buildAdminVehicleIdentitySummaries } 
 import { deleteAccountPermanently, getAccountDeletionImpact } from '../services/accountDeletion.service';
 import { isModeratedListingStatus } from '../services/listingModeration.service';
 import { initializeUserNotificationPreferences } from '../services/notificationPreference.service';
+import {
+  buildPartnerDirectoryOrderBy,
+  buildPartnerDirectoryWhere,
+  parsePartnerDirectoryQuery,
+} from '../utils/partnerDirectoryQuery';
+import {
+  archivePartnerUser as archivePartnerAccount,
+  PartnerArchiveError,
+  restorePartnerUser as restorePartnerAccount,
+  buildPartnerEditAudit,
+} from '../services/partnerArchive.service';
 
 const prismaAny = prisma as any;
 const MASKED_SECRET = '********';
@@ -221,7 +232,20 @@ const managedUserInclude = {
     },
   },
   customRole: true,
-  partnerProfile: true,
+  partnerProfile: {
+    include: {
+      country: { select: { id: true, name: true, iso2: true } },
+      state: { select: { id: true, name: true, stateCode: true } },
+      city: { select: { id: true, name: true } },
+      gstVerificationRecord: {
+        select: {
+          status: true,
+          gstinStatus: true,
+          completedAt: true,
+        },
+      },
+    },
+  },
   createdBy: {
     select: {
       id: true,
@@ -279,12 +303,28 @@ const managedUserCompactInclude = {
   },
   partnerProfile: {
     select: {
+      partnerCode: true,
+      ownerName: true,
       businessName: true,
       partnerType: true,
       kycStatus: true,
       onboardingStatus: true,
       accountStatus: true,
       district: true,
+      gstNumber: true,
+      countryId: true,
+      stateId: true,
+      cityId: true,
+      country: { select: { id: true, name: true, iso2: true } },
+      state: { select: { id: true, name: true, stateCode: true } },
+      city: { select: { id: true, name: true } },
+      gstVerificationRecord: {
+        select: {
+          status: true,
+          gstinStatus: true,
+          completedAt: true,
+        },
+      },
       listingLimit: true,
     },
   },
@@ -338,6 +378,16 @@ const managedUserDetailInclude = {
         orderBy: { createdAt: 'desc' },
         take: 20,
       },
+      country: { select: { id: true, name: true, iso2: true } },
+      state: { select: { id: true, name: true, stateCode: true } },
+      city: { select: { id: true, name: true } },
+      gstVerificationRecord: {
+        select: {
+          status: true,
+          gstinStatus: true,
+          completedAt: true,
+        },
+      },
     },
   },
 } as const;
@@ -384,9 +434,16 @@ const mapManagedUser = (user: any) => {
     customRoleId: user.customRoleId || null,
     customRoleName: user.customRole?.name || null,
     status: user.status,
+    archivedAt: user.archivedAt || null,
+    archiveReason: user.archiveReason || null,
+    archivedById: user.archivedById || null,
+    archivedFromStatus: user.archivedFromStatus || null,
+    restoredAt: user.restoredAt || null,
+    restoredById: user.restoredById || null,
     authProvider: user.authProvider || 'LOCAL',
-    city: user.city || null,
-    state: user.state || null,
+    city: user.partnerProfile?.city?.name || user.city || null,
+    state: user.partnerProfile?.state?.name || user.state || null,
+    partnerCode: user.partnerProfile?.partnerCode || null,
     isPrimeCustomer: primeAccessState.isPrimeCustomer,
     customerCategory: primeAccessState.customerCategory,
     primeSubscriptionExpiresAt: primeAccessState.hasActiveSubscription
@@ -403,6 +460,8 @@ const mapManagedUser = (user: any) => {
     kycStatus: user.partnerProfile?.kycStatus || null,
     onboardingStatus: user.partnerProfile?.onboardingStatus || null,
     accountStatus: user.partnerProfile?.accountStatus || null,
+    gstVerificationStatus: user.partnerProfile?.gstVerificationRecord?.status || null,
+    gstVerifiedAt: user.partnerProfile?.gstVerifiedAt || user.partnerProfile?.gstVerificationRecord?.completedAt || null,
     ...normalizePartnerInventory({
       publishedListings: user._count?.listings,
       listingLimit: user.partnerProfile?.listingLimit,
@@ -1879,23 +1938,121 @@ export const getAdminUsers = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+const getPartnerDirectorySummary = async () => {
+  const baseQuery = parsePartnerDirectoryQuery({});
+  const activeQuery = { ...baseQuery, status: 'ACTIVE' as const };
+  const pendingQuery = { ...baseQuery, status: 'PENDING' as const };
+  const changesRequestedQuery = { ...baseQuery, status: 'CHANGES_REQUESTED' as const };
+  const inactiveQuery = { ...baseQuery, status: 'INACTIVE' as const };
+
+  const [total, active, pending, changesRequested, inactive, totalListings, districts] = await Promise.all([
+    prisma.user.count({ where: buildPartnerDirectoryWhere(baseQuery) as any }),
+    prisma.user.count({ where: buildPartnerDirectoryWhere(activeQuery) as any }),
+    prisma.user.count({ where: buildPartnerDirectoryWhere(pendingQuery) as any }),
+    prisma.user.count({ where: buildPartnerDirectoryWhere(changesRequestedQuery) as any }),
+    prisma.user.count({ where: buildPartnerDirectoryWhere(inactiveQuery) as any }),
+    prisma.listing.count({
+      where: {
+        status: ListingStatus.PUBLISHED,
+        partner: {
+          role: 'PARTNER',
+          status: { not: 'CLOSED' },
+          partnerProfile: { isNot: null },
+        },
+      } as any,
+    }),
+    prisma.partnerProfile.findMany({
+      where: {
+        district: { not: null },
+        user: {
+          role: 'PARTNER',
+          status: { not: 'CLOSED' },
+        },
+      } as any,
+      select: { district: true },
+      distinct: ['district'],
+    }),
+  ]);
+
+  return {
+    total,
+    active,
+    pending: pending + changesRequested,
+    inactive,
+    totalListings,
+    districtsCount: districts.length,
+  };
+};
+
 export const getAdminPartners = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const requestedId = req.query.id ? String(req.query.id).trim() : '';
     const requestedPrefix = req.query.prefix ? String(req.query.prefix).trim() : '';
     const compact = String(req.query.compact || '').toLowerCase() === 'true';
-    const partners = await prisma.user.findMany({
-      where: {
-        role: 'PARTNER',
-        ...(requestedId ? { id: requestedId } : {}),
-        ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
-      } as any,
-      include: (compact ? managedUserCompactInclude : requestedId ? managedUserDetailInclude : managedUserInclude) as any,
-      orderBy: [{ createdAt: 'desc' }],
-    });
+
+    // Detail and route-prefix resolution intentionally keep their previous semantics:
+    // they may resolve an archived record by its exact ID/prefix. Directory pages use
+    // the validated, paginated query below and hide archived records by default.
+    if (requestedId || requestedPrefix) {
+      const partners = await prisma.user.findMany({
+        where: {
+          role: 'PARTNER',
+          partnerProfile: { isNot: null },
+          ...(requestedId ? { id: requestedId } : {}),
+          ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
+        } as any,
+        include: (compact ? managedUserCompactInclude : requestedId ? managedUserDetailInclude : managedUserInclude) as any,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      });
+
+      const mappedPartners = (partners as any[]).map(mapManagedUser);
+      res.json({
+        partners: mappedPartners,
+        pagination: {
+          page: 1,
+          pageSize: mappedPartners.length || 1,
+          total: mappedPartners.length,
+          totalPages: mappedPartners.length ? 1 : 0,
+        },
+      });
+      return;
+    }
+
+    let directoryQuery;
+    try {
+      directoryQuery = parsePartnerDirectoryQuery(
+        req.query as unknown as Record<string, string | string[] | undefined>,
+      );
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Invalid partner directory filters.',
+      });
+      return;
+    }
+
+    const where = buildPartnerDirectoryWhere(directoryQuery) as any;
+    const orderBy = buildPartnerDirectoryOrderBy(directoryQuery) as any;
+    const [total, partners, summary] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        include: managedUserCompactInclude as any,
+        orderBy,
+        skip: directoryQuery.skip,
+        take: directoryQuery.pageSize,
+      }),
+      getPartnerDirectorySummary(),
+    ]);
 
     res.json({
-      partners: (partners as any[]).filter(hasPartnerProfile).map(mapManagedUser),
+      partners: (partners as any[]).map(mapManagedUser),
+      pagination: {
+        page: directoryQuery.page,
+        pageSize: directoryQuery.pageSize,
+        total,
+        totalPages: total ? Math.ceil(total / directoryQuery.pageSize) : 0,
+      },
+      summary,
     });
   } catch (error) {
     next(error);
@@ -2484,8 +2641,8 @@ export const getPendingVerifications = async (req: Request, res: Response, next:
         status: partner.partnerProfile?.kycStatus || 'NOT_STARTED',
         mobile: partner.mobile || partner.partnerProfile?.primaryContact || null,
         ownerName: partner.partnerProfile?.ownerName || partner.name || null,
-        city: partner.partnerProfile?.city || partner.city || null,
-        state: partner.partnerProfile?.state || partner.state || null,
+        city: partner.partnerProfile?.city?.name || partner.city || null,
+        state: partner.partnerProfile?.state?.name || partner.state || null,
       })),
     });
   } catch (error) {
@@ -2518,6 +2675,7 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
     res.json({
       verification: {
         id: partner.id,
+        partnerCode: partnerProfile.partnerCode || null,
         ownerName: partner.name,
         email: partner.email,
         mobile: partner.mobile,
@@ -2525,6 +2683,7 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
         city: partner.city,
         state: partner.state,
         profile: {
+          partnerCode: partnerProfile.partnerCode || null,
           ownerName: partnerProfile.ownerName,
           businessName: partnerProfile.businessName,
           partnerType: partnerProfile.partnerType,
@@ -2549,36 +2708,113 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
           accountStatus: partnerProfile.accountStatus,
           approvedAt: partnerProfile.approvedAt,
         },
-        documents: await Promise.all((partnerProfile.kycDocuments || []).map(async (document: any) => {
-          let verificationDetail: {
-            record?: { status?: string | null; createdAt?: Date | null; completedAt?: Date | null } | null;
-            result?: Record<string, unknown> | null;
-            template?: Record<string, unknown> | null;
-          } | null = null;
-
-          if (document.verificationRecordId && ['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType)) {
-            try {
-              const primaryRequesterId = req.user!.role === 'EMPLOYEE' ? partner.id : req.user!.id;
-              const primaryRole = req.user!.role === 'EMPLOYEE' ? 'PARTNER' : req.user!.role;
-              const loadDetail = (requesterId: string, role: string) => document.documentType === 'PAN_CARD'
-                ? panVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role)
-                : document.documentType === 'GST_CERTIFICATE'
-                  ? gstVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role)
-                  : aadhaarVerificationService.getHistoryDetail(document.verificationRecordId, requesterId, role);
-              let detail;
-              try {
-                detail = await loadDetail(primaryRequesterId, primaryRole);
-              } catch (primaryError) {
-                if (primaryRequesterId === req.user!.id) throw primaryError;
-                detail = await loadDetail(req.user!.id, req.user!.role);
+        documents: await (async () => {
+          type ReviewVerificationDetail = {
+            record: { status?: string | null; createdAt?: Date | string | null; completedAt?: Date | string | null } | null;
+            result: Record<string, unknown> | null;
+            template: Record<string, unknown> | null;
+          };
+          const normalizeReviewVerificationDetail = (detail: any): ReviewVerificationDetail => ({
+            record: detail?.record
+              ? {
+                status: detail.record.status ?? null,
+                createdAt: detail.record.createdAt ?? null,
+                completedAt: detail.record.completedAt ?? null,
               }
-              verificationDetail = {
-                record: detail.record,
-                result: null,
-                template: detail.template && typeof detail.template === 'object' && !Array.isArray(detail.template)
-                  ? detail.template as Record<string, unknown>
-                  : null,
-              };
+              : null,
+            result: null,
+            template: detail?.template && typeof detail.template === 'object' && !Array.isArray(detail.template)
+              ? detail.template as Record<string, unknown>
+              : null,
+          });
+          const storedDocuments = partnerProfile.kycDocuments || [];
+          const hasStoredGstDocument = storedDocuments.some((document: any) => document.documentType === 'GST_CERTIFICATE');
+          let signupGstDocument: any = null;
+          let signupGstVerificationDetail: ReviewVerificationDetail | null = null;
+
+          if (!hasStoredGstDocument && partnerProfile.gstNumber && partnerProfile.gstVerificationRecordId) {
+            try {
+              // GST verified during partner signup has a canonical verification
+              // record but no uploaded file from the signup form. Materialize
+              // the internal GST verification PDF once, then render the same
+              // persisted template as every other KYC document.
+              await gstVerificationService.ensureGeneratedTemplate(
+                partnerProfile.gstVerificationRecordId,
+                partner.id,
+                'PARTNER',
+                { gstin: partnerProfile.gstNumber },
+              );
+              const detail = await gstVerificationService.getHistoryDetail(
+                partnerProfile.gstVerificationRecordId,
+                partner.id,
+                'PARTNER',
+              );
+              signupGstVerificationDetail = normalizeReviewVerificationDetail(detail);
+              signupGstDocument = buildSignupGstReviewDocument({
+                id: `signup-gst-${partnerProfile.id}`,
+                gstNumber: partnerProfile.gstNumber,
+                verificationRecordId: partnerProfile.gstVerificationRecordId,
+                hasTemplate: Boolean(signupGstVerificationDetail.template),
+              });
+            } catch {
+              signupGstDocument = buildSignupGstReviewDocument({
+                id: `signup-gst-${partnerProfile.id}`,
+                gstNumber: partnerProfile.gstNumber,
+                verificationRecordId: partnerProfile.gstVerificationRecordId,
+                hasTemplate: false,
+              });
+            }
+          }
+
+          const documentsToReview = signupGstDocument ? [...storedDocuments, signupGstDocument] : storedDocuments;
+          return Promise.all(documentsToReview.map(async (document: any) => {
+          let verificationDetail: ReviewVerificationDetail | null = null;
+          const signupGstRecordId = partnerProfile.gstVerificationRecordId || null;
+          const isSignupGstDocument = document.documentType === 'GST_CERTIFICATE'
+            && signupGstRecordId
+            && (!document.verificationRecordId || document.verificationRecordId === signupGstRecordId);
+          const effectiveVerificationRecordId = isSignupGstDocument
+            ? signupGstRecordId
+            : document.verificationRecordId;
+
+          // Signup GST is a verified canonical record even when the KYC row was
+          // created before Drive template materialization completed. Re-check it
+          // here so the admin review view always reflects the persisted template.
+          if (isSignupGstDocument) {
+            try {
+              await gstVerificationService.ensureGeneratedTemplate(
+                signupGstRecordId,
+                partner.id,
+                'PARTNER',
+                { gstin: partnerProfile.gstNumber },
+              );
+            } catch {
+              // Preserve the verification response; the detail lookup below
+              // will report the real saved-template state if Drive is unavailable.
+            }
+          }
+
+          if (effectiveVerificationRecordId && ['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR_CARD'].includes(document.documentType)) {
+            try {
+              const loadDetail = (requesterId: string, role: string) => document.documentType === 'PAN_CARD'
+                ? panVerificationService.getHistoryDetail(effectiveVerificationRecordId, requesterId, role)
+                : document.documentType === 'GST_CERTIFICATE'
+                  ? gstVerificationService.getHistoryDetail(effectiveVerificationRecordId, requesterId, role)
+                  : aadhaarVerificationService.getHistoryDetail(effectiveVerificationRecordId, requesterId, role);
+              let detail: ReviewVerificationDetail | null = document.id === signupGstDocument?.id && signupGstVerificationDetail
+                ? signupGstVerificationDetail
+                : null;
+              if (!detail) {
+                const primaryRequesterId = req.user!.role === 'EMPLOYEE' ? partner.id : req.user!.id;
+                const primaryRole = req.user!.role === 'EMPLOYEE' ? 'PARTNER' : req.user!.role;
+                try {
+                  detail = normalizeReviewVerificationDetail(await loadDetail(primaryRequesterId, primaryRole));
+                } catch (primaryError) {
+                  if (primaryRequesterId === req.user!.id) throw primaryError;
+                  detail = normalizeReviewVerificationDetail(await loadDetail(req.user!.id, req.user!.role));
+                }
+              }
+              verificationDetail = detail;
             } catch {
               verificationDetail = null;
             }
@@ -2596,13 +2832,14 @@ export const getVerificationDetail = async (req: Request, res: Response, next: N
             submittedNote: document.submittedNote,
             status: document.status,
             reviewComment: document.reviewComment,
-            verificationRecordId: document.verificationRecordId,
+            verificationRecordId: effectiveVerificationRecordId,
             verificationStatus: document.verificationStatus,
             verificationCacheHit: document.verificationCacheHit,
             verificationMessage: document.verificationMessage,
             verificationCompletedAt: document.verificationCompletedAt,
           }, verificationDetail);
-        })),
+          }));
+        })(),
         agreements: (partnerProfile.agreements || []).map((agreement: any) => ({
           agreementType: agreement.agreementType,
           version: agreement.version,
@@ -2632,7 +2869,10 @@ export const getPartnerVerificationTemplate = async (req: Request, res: Response
 
     const partner = await prismaAny.user.findUnique({
       where: { id: partnerId },
-      select: { id: true, partnerProfile: { select: { id: true } } },
+      select: {
+        id: true,
+        partnerProfile: { select: { id: true, gstNumber: true, gstVerificationRecordId: true } },
+      },
     });
     if (!partner?.partnerProfile?.id) {
       return res.status(404).json({ error: 'Partner verification record not found.' });
@@ -2646,8 +2886,19 @@ export const getPartnerVerificationTemplate = async (req: Request, res: Response
       },
       select: { verificationRecordId: true },
     });
-    if (!document?.verificationRecordId) {
+    const isSignupGstTemplate = documentType === 'GST_CERTIFICATE'
+      && partner.partnerProfile.gstVerificationRecordId === recordId;
+    if (!document?.verificationRecordId && !isSignupGstTemplate) {
       return res.status(404).json({ error: 'Saved KYC template not found.' });
+    }
+
+    if (isSignupGstTemplate && partner.partnerProfile.gstVerificationRecordId) {
+      await gstVerificationService.ensureGeneratedTemplate(
+        recordId,
+        partner.id,
+        'PARTNER',
+        { gstin: partner.partnerProfile.gstNumber },
+      );
     }
 
     const service = documentType === 'PAN_CARD'
@@ -2839,10 +3090,17 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
 export const updateVerificationStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = String(req.params.id);
-    const { status } = req.body as { status?: string };
+    const { status, comment } = req.body as { status?: string; comment?: string };
+    const normalizedComment = typeof comment === 'string' ? comment.trim() : '';
 
     if (!status || !allowedVerificationStatuses.has(status)) {
       return res.status(400).json({ error: 'Invalid verification status.' });
+    }
+
+    if (status === 'CHANGES_REQUESTED' && normalizedComment.length < 5) {
+      return res.status(400).json({
+        error: 'Enter a specific correction remark of at least 5 characters.',
+      });
     }
 
     const existingPartner = await prisma.user.findUnique({
@@ -2892,14 +3150,16 @@ export const updateVerificationStatus = async (req: Request, res: Response, next
         partnerProfileId: profile.id,
         action: `SUPER_ADMIN_${status}`,
         actorUserId: req.user?.id,
-        comment: `Verification moved to ${status}`,
+        comment: normalizedComment || `Verification moved to ${status.replaceAll('_', ' ').toLowerCase()}.`,
       },
     });
 
     await createPartnerNotification({
       userId: id,
       title: 'KYC Status Updated',
-      message: `Super admin updated your KYC status to ${status.replaceAll('_', ' ')}.`,
+      message: normalizedComment
+        ? `KYC status updated to ${status.replaceAll('_', ' ')}. Remark: ${normalizedComment}`
+        : `Super admin updated your KYC status to ${status.replaceAll('_', ' ')}.`,
       type: 'KYC_UPDATE',
       link: '/partner/kyc',
     });
@@ -2910,7 +3170,7 @@ export const updateVerificationStatus = async (req: Request, res: Response, next
       relatedEntityId: profile.id,
       recipientType: 'PARTNER',
       recipientPhone: existingPartner.whatsappNumber || existingPartner.mobile,
-      payloadSnapshot: { partnerId: id, kycStatus: status },
+      payloadSnapshot: { partnerId: id, kycStatus: status, remark: normalizedComment || null },
     });
 
     res.json({
@@ -3063,6 +3323,14 @@ export const updateAdminUserStatus = async (req: Request, res: Response, next: N
       return res.status(400).json({ error: 'Super admin status cannot be changed from this screen.' });
     }
 
+    if (targetUser.partnerProfile && status === 'CLOSED') {
+      return res.status(400).json({ error: 'Use the Partner Archive action so the reason and archive audit trail are recorded.' });
+    }
+
+    if (targetUser.partnerProfile && (targetUser as any).status === 'CLOSED') {
+      return res.status(409).json({ error: 'Restore the archived partner before changing its account status.' });
+    }
+
     await prisma.user.update({
       where: { id },
       data: { status: status as any },
@@ -3145,6 +3413,34 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
     const partnerProfile =
       (targetUser as any).partnerProfile || (await ensurePartnerProfileForUser(targetUser as any));
 
+    if (targetUser.status === 'CLOSED' || (targetUser as any).archivedAt) {
+      return res.status(409).json({ error: 'Restore the archived partner before editing its profile.' });
+    }
+
+    const requestedIdentity = (req.body || {}) as { id?: unknown; userId?: unknown; partnerCode?: unknown };
+    if (
+      (requestedIdentity.id !== undefined && String(requestedIdentity.id) !== id) ||
+      (requestedIdentity.userId !== undefined && String(requestedIdentity.userId) !== id) ||
+      (requestedIdentity.partnerCode !== undefined && String(requestedIdentity.partnerCode).trim() !== String(partnerProfile.partnerCode || '').trim())
+    ) {
+      return res.status(400).json({ error: 'Partner user ID is immutable and cannot be changed.' });
+    }
+
+    const beforeEditAudit = {
+      name: targetUser.name,
+      email: targetUser.email,
+      mobile: targetUser.mobile,
+      whatsappNumber: targetUser.whatsappNumber,
+      businessName: partnerProfile.businessName,
+      partnerType: partnerProfile.partnerType,
+      businessAddress: partnerProfile.businessAddress,
+      district: partnerProfile.district,
+      pinCode: partnerProfile.pinCode,
+      countryId: partnerProfile.countryId,
+      stateId: partnerProfile.stateId,
+      cityId: partnerProfile.cityId,
+    };
+
     const normalizedName = name?.trim();
     let normalizedEmail = '';
     try {
@@ -3218,6 +3514,36 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
       include: managedUserInclude as any,
     });
 
+    if (req.user?.id && refreshedUser) {
+      const refreshedProfile = (refreshedUser as any).partnerProfile;
+      const editAudit = buildPartnerEditAudit(beforeEditAudit, {
+        name: refreshedUser.name,
+        email: refreshedUser.email,
+        mobile: refreshedUser.mobile,
+        whatsappNumber: refreshedUser.whatsappNumber,
+        businessName: refreshedProfile?.businessName,
+        partnerType: refreshedProfile?.partnerType,
+        businessAddress: refreshedProfile?.businessAddress,
+        district: refreshedProfile?.district,
+        pinCode: refreshedProfile?.pinCode,
+        countryId: refreshedProfile?.countryId,
+        stateId: refreshedProfile?.stateId,
+        cityId: refreshedProfile?.cityId,
+      });
+      if (editAudit.changed) {
+        await prisma.auditLog.create({
+          data: {
+            actorUserId: req.user.id,
+            entityType: 'PARTNER_PROFILE',
+            entityId: refreshedProfile.id,
+            action: 'PARTNER_PROFILE_EDITED',
+            beforeJson: editAudit.before as any,
+            afterJson: editAudit.after as any,
+          },
+        });
+      }
+    }
+
     res.json({
       message: 'Partner updated successfully.',
       user: mapManagedUser(refreshedUser),
@@ -3228,6 +3554,53 @@ export const updatePartnerUser = async (req: Request, res: Response, next: NextF
       return res.status(409).json({ error: uniqueConstraintMessage });
     }
 
+    next(error);
+  }
+};
+
+export const archivePartnerUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await archivePartnerAccount({
+      partnerId: String(req.params.id),
+      actorUserId: req.user!.id,
+      request: req.body || {},
+    });
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: result.id },
+      include: managedUserInclude as any,
+    });
+    res.json({
+      message: 'Partner archived successfully. Existing listings, KYC, GST and audit history were preserved.',
+      user: mapManagedUser(refreshedUser),
+      archived: true,
+    });
+  } catch (error) {
+    if (error instanceof PartnerArchiveError) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
+    next(error);
+  }
+};
+
+export const restorePartnerUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await restorePartnerAccount({
+      partnerId: String(req.params.id),
+      actorUserId: req.user!.id,
+    });
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: result.id },
+      include: managedUserInclude as any,
+    });
+    res.json({
+      message: 'Partner restored successfully. Existing listings, KYC, GST and audit history were preserved.',
+      user: mapManagedUser(refreshedUser),
+      restored: true,
+    });
+  } catch (error) {
+    if (error instanceof PartnerArchiveError) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
     next(error);
   }
 };
@@ -3291,6 +3664,32 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
       return res.status(404).json({ error: 'Partner onboarding record not found.' });
     }
 
+    if ((existingPartner as any).status === 'CLOSED' || (existingPartner as any).archivedAt) {
+      return res.status(409).json({ error: 'Restore the archived partner before editing its onboarding.' });
+    }
+
+    if (
+      profile.partnerCode !== undefined &&
+      String(profile.partnerCode || '').trim() !== String(existingPartner.partnerProfile?.partnerCode || '').trim()
+    ) {
+      return res.status(400).json({ error: 'Partner user ID is immutable and cannot be changed.' });
+    }
+
+    const beforeEditAudit = {
+      name: existingPartner.name,
+      email: existingPartner.email,
+      mobile: existingPartner.mobile,
+      whatsappNumber: existingPartner.whatsappNumber,
+      businessName: existingPartner.partnerProfile?.businessName,
+      partnerType: existingPartner.partnerProfile?.partnerType,
+      businessAddress: existingPartner.partnerProfile?.businessAddress,
+      district: existingPartner.partnerProfile?.district,
+      pinCode: existingPartner.partnerProfile?.pinCode,
+      countryId: existingPartner.partnerProfile?.countryId,
+      stateId: existingPartner.partnerProfile?.stateId,
+      cityId: existingPartner.partnerProfile?.cityId,
+    };
+
     await saveOnboardingData({
       userId: id,
       ...(req.user?.id ? { actorUserId: req.user.id } : {}),
@@ -3310,6 +3709,42 @@ export const saveAdminPartnerOnboarding = async (req: Request, res: Response, ne
 
     if (!refreshedPartnerUser) {
       return res.status(404).json({ error: 'Partner onboarding record not found after save.' });
+    }
+
+    if (req.user?.id) {
+      const editAudit = buildPartnerEditAudit(beforeEditAudit, {
+        name: refreshedPartnerUser.name,
+        email: refreshedPartnerUser.email,
+        mobile: refreshedPartnerUser.mobile,
+        whatsappNumber: refreshedPartnerUser.whatsappNumber,
+        businessName: refreshedPartnerUser.partnerProfile?.businessName,
+        partnerType: refreshedPartnerUser.partnerProfile?.partnerType,
+        businessAddress: refreshedPartnerUser.partnerProfile?.businessAddress,
+        district: refreshedPartnerUser.partnerProfile?.district,
+        pinCode: refreshedPartnerUser.partnerProfile?.pinCode,
+        countryId: refreshedPartnerUser.partnerProfile?.countryId,
+        stateId: refreshedPartnerUser.partnerProfile?.stateId,
+        cityId: refreshedPartnerUser.partnerProfile?.cityId,
+      });
+      if (editAudit.changed || kycDocuments.length > 0 || agreements.length > 0) {
+        await prisma.auditLog.create({
+          data: {
+            actorUserId: req.user.id,
+            entityType: 'PARTNER_PROFILE',
+            entityId: refreshedPartnerUser.partnerProfile.id,
+            action: 'PARTNER_ONBOARDING_EDITED',
+            beforeJson: editAudit.before as any,
+            afterJson: {
+              ...(editAudit.after as any),
+              sections: {
+                profileChanged: editAudit.changed,
+                kycDocumentsUpdated: kycDocuments.length > 0,
+                agreementsUpdated: agreements.length > 0,
+              },
+            },
+          },
+        });
+      }
     }
 
     const authUser = await buildAuthUserPayload(refreshedPartnerUser);

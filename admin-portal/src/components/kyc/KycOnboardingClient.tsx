@@ -77,6 +77,12 @@ import {
   type KycVerificationDocumentType,
 } from '@/lib/kycVerification';
 import {
+  getLatestPartnerDecision,
+  getPartnerDecisionLabel,
+  getPartnerDecisionRemark,
+} from '@/lib/partnerDecisionPresentation';
+import { mergeVerifiedGstPrefill } from '@/lib/partnerKycPrefill';
+import {
   uploadFileToServer,
   type UploadPurpose,
   getPassportPhotoUploadValidationError,
@@ -120,18 +126,11 @@ const documentLabels: Record<string, string> = {
   AUTHORIZED_PERSON_ID: 'Authorized Place ID',
 };
 
-const individualKycDocumentTypes = [
-  'PAN_CARD',
-  'AADHAAR_CARD',
-  'PASSPORT_PHOTO',
-];
-
-const businessKycDocumentTypes = [
-  'PAN_CARD',
-  'GST_CERTIFICATE',
-  'AADHAAR_CARD',
-  'PASSPORT_PHOTO',
-];
+// Partner signup verifies GST before the account is created. GST is therefore
+// the only mandatory onboarding document; legacy identity documents remain
+// preserved in the backend for existing records but are not requested here.
+const individualKycDocumentTypes = ['GST_CERTIFICATE'];
+const businessKycDocumentTypes = ['GST_CERTIFICATE'];
 
 const optionalIndividualKycDocumentTypes: string[] = [];
 
@@ -156,6 +155,7 @@ const agreementDescriptions: Record<string, string> = {
 };
 
 type OnboardingProfile = {
+  partnerCode: string;
   ownerName: string;
   businessName: string;
   partnerType: string;
@@ -175,6 +175,8 @@ type OnboardingProfile = {
   serviceAreas: string;
   workingHours: string;
   gstNumber: string;
+  gstVerificationRecordId: string;
+  gstVerifiedAt: string;
   businessRegistrationNumber: string;
   websiteUrl: string;
   socialLinks: string;
@@ -261,6 +263,7 @@ type OnboardingResponse = {
 };
 
 const emptyProfile = (email = '', name = '', mobile = '', city = '', state = ''): OnboardingProfile => ({
+  partnerCode: '',
   ownerName: name,
   businessName: '',
   partnerType: '',
@@ -280,6 +283,8 @@ const emptyProfile = (email = '', name = '', mobile = '', city = '', state = '')
   serviceAreas: '',
   workingHours: '',
   gstNumber: '',
+  gstVerificationRecordId: '',
+  gstVerifiedAt: '',
   businessRegistrationNumber: '',
   websiteUrl: '',
   socialLinks: '',
@@ -320,6 +325,23 @@ const getRequiredDocumentsForPartnerType = (partnerType?: string | null) => {
   }
 
   return businessPartnerTypes.has(partnerType) ? businessKycDocumentTypes : individualKycDocumentTypes;
+};
+
+const areRequiredDocumentsReady = (
+  documents: Array<Pick<KycDocumentForm, 'documentType' | 'fileUrl' | 'verificationTemplate'>>,
+  requiredDocumentTypes: string[],
+) => {
+  if (requiredDocumentTypes.length === 0) {
+    return false;
+  }
+
+  const readyDocumentTypes = new Set(
+    documents
+      .filter((document) => Boolean(document.fileUrl || document.verificationTemplate))
+      .map((document) => document.documentType),
+  );
+
+  return requiredDocumentTypes.every((documentType) => readyDocumentTypes.has(documentType));
 };
 
 const getOptionalDocumentsForPartnerType = (partnerType?: string | null) => {
@@ -435,6 +457,15 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
   const currentStatus = currentUser?.kycStatus || 'NOT_STARTED';
   const isApproved = currentUser?.accountStatus === 'ACTIVE' && currentUser?.onboardingStatus === 'APPROVED' && currentUser?.kycStatus === 'APPROVED';
+  const latestChangesRequest = reviewHistory.find(
+    (item) => item.action === 'SUPER_ADMIN_CHANGES_REQUESTED',
+  );
+  const latestPartnerDecision = getLatestPartnerDecision(reviewHistory);
+  const latestPartnerSubmission = reviewHistory.find((item) => item.action === 'PARTNER_SUBMITTED_FULL_ONBOARDING');
+  const showLatestChangesRequest = Boolean(
+    latestChangesRequest &&
+      (!latestPartnerSubmission || new Date(latestChangesRequest.createdAt).getTime() > new Date(latestPartnerSubmission.createdAt).getTime()),
+  );
   const canReadPartners = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || hasAnyPermission(user?.permissions, ['partners.read']);
   const canEditPartnerRecord = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || hasAnyPermission(user?.permissions, ['kyc.edit.override']);
   const canEdit = isAdminMode
@@ -462,7 +493,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     () => [
       { id: 'profile', number: '01', title: 'Account', description: 'Primary contact & signatory identity', icon: User },
       { id: 'business', number: '02', title: 'Business', description: 'Business profile & operating details', icon: Building2 },
-      { id: 'kyc', number: '03', title: 'KYC Docs', description: 'Identity, business & bank document vault', icon: CreditCard },
+      { id: 'kyc', number: '03', title: 'KYC Docs', description: 'Verified business document vault', icon: CreditCard },
       { id: 'agreements', number: '04', title: 'Agreements', description: 'Mandatory platform & compliance declarations', icon: ShieldCheck },
       { id: 'review', number: '05', title: 'Review', description: 'Check completeness & submit for approval', icon: FileCheck2 },
     ],
@@ -498,7 +529,14 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           setLoadedUser(data.user);
         }
 
-        setProfile(data.profile);
+        const gstDocument = data.kycDocuments.find((document) => document.documentType === 'GST_CERTIFICATE');
+        const profileWithGstPrefill = mergeVerifiedGstPrefill(
+          data.profile,
+          gstDocument?.verificationResult,
+          [data.user?.name || ''],
+        );
+
+        setProfile(profileWithGstPrefill);
         setRequiredDocuments(data.requiredDocuments);
         setKycDocuments(data.kycDocuments);
         setAgreements(data.agreements);
@@ -507,24 +545,29 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
         const accountComplete = !!(
           data.profile.ownerName?.trim() &&
-          data.profile.businessName?.trim() &&
-          data.profile.partnerType &&
-          data.profile.primaryContact?.trim() &&
-          data.profile.whatsappNumber?.trim()
+          profileWithGstPrefill.businessName?.trim() &&
+          profileWithGstPrefill.partnerType &&
+          profileWithGstPrefill.primaryContact?.trim() &&
+          profileWithGstPrefill.whatsappNumber?.trim()
         );
         const businessComplete = !!(
-          data.profile.state?.trim() &&
-          data.profile.city?.trim() &&
-          data.profile.pinCode?.trim() &&
-          data.profile.businessAddress?.trim() &&
-          data.profile.businessExperience?.trim() &&
-          (data.profile.partnerType === 'SHOWROOM' || String(data.profile.expectedMonthlyListings || '').trim()) &&
-          (data.profile.partnerType === 'SHOWROOM' || data.profile.contactPreference?.trim())
+          profileWithGstPrefill.state?.trim() &&
+          profileWithGstPrefill.city?.trim() &&
+          profileWithGstPrefill.pinCode?.trim() &&
+          profileWithGstPrefill.businessAddress?.trim() &&
+          profileWithGstPrefill.businessExperience?.trim() &&
+          (profileWithGstPrefill.partnerType === 'SHOWROOM' || String(profileWithGstPrefill.expectedMonthlyListings || '').trim()) &&
+          (profileWithGstPrefill.partnerType === 'SHOWROOM' || profileWithGstPrefill.contactPreference?.trim())
+        );
+        const dataRequiredDocuments = getRequiredDocumentsForPartnerType(profileWithGstPrefill.partnerType);
+        const documentsComplete = areRequiredDocumentsReady(
+          data.kycDocuments,
+          dataRequiredDocuments.length > 0 ? dataRequiredDocuments : data.requiredDocuments,
         );
         setCurrentStep(
           !accountComplete ? 0
             : !businessComplete ? 1
-              : !data.progress.documentsComplete ? 2
+              : !documentsComplete ? 2
                 : !data.progress.agreementsComplete ? 3
                   : 4,
         );
@@ -591,6 +634,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       );
     });
   }, [effectiveRequiredDocuments, kycDocuments]);
+
+  const kycDocumentsComplete = useMemo(
+    () => areRequiredDocumentsReady(documentsByType, effectiveRequiredDocuments),
+    [documentsByType, effectiveRequiredDocuments],
+  );
 
   const optionalDocumentsByType = useMemo(() => {
     const map = new Map(kycDocuments.map((document) => [document.documentType, document]));
@@ -660,10 +708,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
     () => [
       { label: 'Account & Signatory Identity', stepIndex: 0, done: isAccountComplete, subtitle: profile.ownerName || 'Not configured' },
       { label: 'Business & Operating Profile', stepIndex: 1, done: isBusinessComplete, subtitle: profile.businessName ? `${profile.businessName} · ${profile.city || ''}` : 'Location pending' },
-      { label: 'Mandatory KYC Documents', stepIndex: 2, done: progress.documentsComplete, subtitle: `${documentsByType.filter(d => d.fileUrl || d.verificationTemplate).length} of ${documentsByType.length} ready` },
+      { label: 'Mandatory KYC Documents', stepIndex: 2, done: kycDocumentsComplete, subtitle: `${documentsByType.filter(d => d.fileUrl || d.verificationTemplate).length} of ${documentsByType.length} ready` },
       { label: 'Compliance & Declarations', stepIndex: 3, done: progress.agreementsComplete && areAgreementsComplete, subtitle: `${agreements.filter(a => a.checked).length} of ${agreements.length} accepted` },
     ],
-    [progress, isAccountComplete, isBusinessComplete, areAgreementsComplete, profile, documentsByType, agreements]
+    [progress, isAccountComplete, isBusinessComplete, kycDocumentsComplete, areAgreementsComplete, profile, documentsByType, agreements]
   );
 
   const submitBlockers = useMemo(
@@ -671,10 +719,10 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       [
         !isAccountComplete ? 'Account & Signatory details are incomplete (Step 1)' : '',
         !isBusinessComplete ? 'Business information & location are incomplete (Step 2)' : '',
-        !progress.documentsComplete ? 'Required KYC documents are pending (Step 3)' : '',
+        !kycDocumentsComplete ? 'Required KYC documents are pending (Step 3)' : '',
         !(progress.agreementsComplete && areAgreementsComplete) ? 'Mandatory platform agreements must be accepted (Step 4)' : '',
       ].filter(Boolean),
-    [isAccountComplete, isBusinessComplete, progress.documentsComplete, progress.agreementsComplete, areAgreementsComplete]
+    [isAccountComplete, isBusinessComplete, kycDocumentsComplete, progress.agreementsComplete, areAgreementsComplete]
   );
 
   const submitStatus = useMemo(() => {
@@ -802,7 +850,14 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       updateUser(data.user);
     }
     if (data.onboarding) {
-      setProfile(data.onboarding.profile);
+      const gstDocument = data.onboarding.kycDocuments.find((document) => document.documentType === 'GST_CERTIFICATE');
+      const profileWithGstPrefill = mergeVerifiedGstPrefill(
+        data.onboarding.profile,
+        gstDocument?.verificationResult,
+        [data.user?.name || ''],
+      );
+
+      setProfile(profileWithGstPrefill);
       setRequiredDocuments(data.onboarding.requiredDocuments);
       setKycDocuments(data.onboarding.kycDocuments);
       setAgreements(data.onboarding.agreements);
@@ -811,19 +866,24 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
 
       const accountComplete = !!(
         data.onboarding.profile.ownerName?.trim() &&
-        data.onboarding.profile.businessName?.trim() &&
-        data.onboarding.profile.partnerType &&
-        data.onboarding.profile.primaryContact?.trim() &&
-        data.onboarding.profile.whatsappNumber?.trim()
+        profileWithGstPrefill.businessName?.trim() &&
+        profileWithGstPrefill.partnerType &&
+        profileWithGstPrefill.primaryContact?.trim() &&
+        profileWithGstPrefill.whatsappNumber?.trim()
       );
       const businessComplete = !!(
-        data.onboarding.profile.state?.trim() &&
-        data.onboarding.profile.city?.trim() &&
-        data.onboarding.profile.pinCode?.trim() &&
-        data.onboarding.profile.businessAddress?.trim() &&
-        data.onboarding.profile.businessExperience?.trim() &&
-        (data.onboarding.profile.partnerType === 'SHOWROOM' || String(data.onboarding.profile.expectedMonthlyListings || '').trim()) &&
-        (data.onboarding.profile.partnerType === 'SHOWROOM' || data.onboarding.profile.contactPreference?.trim())
+        profileWithGstPrefill.state?.trim() &&
+        profileWithGstPrefill.city?.trim() &&
+        profileWithGstPrefill.pinCode?.trim() &&
+        profileWithGstPrefill.businessAddress?.trim() &&
+        profileWithGstPrefill.businessExperience?.trim() &&
+        (profileWithGstPrefill.partnerType === 'SHOWROOM' || String(profileWithGstPrefill.expectedMonthlyListings || '').trim()) &&
+        (profileWithGstPrefill.partnerType === 'SHOWROOM' || profileWithGstPrefill.contactPreference?.trim())
+      );
+      const dataRequiredDocuments = getRequiredDocumentsForPartnerType(profileWithGstPrefill.partnerType);
+      const documentsComplete = areRequiredDocumentsReady(
+        data.onboarding.kycDocuments,
+        dataRequiredDocuments.length > 0 ? dataRequiredDocuments : data.onboarding.requiredDocuments,
       );
       if (keepCurrentStep) {
         setCurrentStep(getStepToKeepAfterDraftSave(currentStep));
@@ -831,7 +891,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         setCurrentStep(
           !accountComplete ? 0
             : !businessComplete ? 1
-              : !data.onboarding.progress.documentsComplete ? 2
+              : !documentsComplete ? 2
                 : !data.onboarding.progress.agreementsComplete ? 3
                   : 4,
         );
@@ -877,8 +937,9 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   };
 
   const buildPayload = () => {
+    const protectedSignupGstFields = new Set(['gstNumber', 'gstVerificationRecordId', 'gstVerifiedAt']);
     const profileWithoutLegacyGst = Object.fromEntries(
-      Object.entries(profile).filter(([key]) => key !== 'gstNumber'),
+      Object.entries(profile).filter(([key]) => !protectedSignupGstFields.has(key)),
     );
     return {
       profile: {
@@ -950,14 +1011,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       return;
     }
 
-    if (isAdminMode || targetIndex < currentStep) {
+    // Submitted/under-review applications remain immutable, but partners must
+    // still be able to inspect every onboarding section in read-only mode.
+    if (isAdminMode || !canEdit || targetIndex < currentStep) {
       setError('');
       setCurrentStep(targetIndex);
-      return;
-    }
-
-    if (!canEdit) {
-      setError('Onboarding is locked while your application is under review.');
       return;
     }
 
@@ -1357,7 +1415,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
   const completedStepsCount = [
     isAccountComplete,
     isBusinessComplete,
-    progress.documentsComplete,
+    kycDocumentsComplete,
     progress.agreementsComplete && areAgreementsComplete,
     currentUser?.onboardingStatus === 'SUBMITTED' || isApproved,
   ].filter(Boolean).length;
@@ -1383,7 +1441,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
         </span>
       );
     }
-    if (currentUser?.onboardingStatus === 'CHANGES_REQUESTED') {
+    if (showLatestChangesRequest || currentUser?.onboardingStatus === 'CHANGES_REQUESTED') {
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">
           <AlertCircle className="h-3 w-3" /> Changes Requested
@@ -1425,6 +1483,11 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   ? `Editing KYC: ${profile.businessName || profile.ownerName || 'Partner'}`
                   : 'Official Commercial Onboarding & Verification'}
               </h1>
+              {profile.partnerCode && (
+                <p className="mt-1 text-[11px] font-mono text-slate-500">
+                  Partner ID: <span className="font-semibold text-slate-800">{profile.partnerCode}</span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -1474,7 +1537,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                   isCompleted = isBusinessComplete;
                   break;
                 case 'kyc':
-                  isCompleted = progress.documentsComplete;
+                  isCompleted = kycDocumentsComplete;
                   break;
                 case 'agreements':
                   isCompleted = progress.agreementsComplete && areAgreementsComplete;
@@ -1533,7 +1596,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
       </div>
 
       {/* ── 2. SYSTEM ALERTS (Errors / Success / Changes Requested) ── */}
-      {currentUser?.onboardingStatus === 'CHANGES_REQUESTED' && currentStatus !== 'SUBMITTED' && (
+      {showLatestChangesRequest && currentStatus !== 'SUBMITTED' && latestChangesRequest && (
         <div className="rounded-xl border border-rose-300 bg-rose-50/90 p-3.5 shadow-2xs flex items-start gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
             <AlertCircle className="h-4.5 w-4.5" />
@@ -1541,10 +1604,89 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
           <div className="text-xs">
             <h4 className="font-bold text-rose-950">Action Required: Compliance Review Requested Updates</h4>
             <p className="mt-0.5 text-rose-800 leading-relaxed">
-              SuperAdmin has reviewed your dossier and requested corrections. Please review notes in the <b>Current Review Trail</b> (Step 05), update the flagged documents or details, and re-submit for approval.
+              SuperAdmin has reviewed your dossier and requested corrections. Update the flagged documents or details, then re-submit for approval.
             </p>
+            <div className="mt-2 rounded-lg border border-rose-200 bg-white/70 p-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-rose-700">Admin remark</p>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed text-rose-900">{getReviewComment(latestChangesRequest.action, latestChangesRequest.comment)}</p>
+            </div>
           </div>
         </div>
+      )}
+
+      {latestPartnerDecision && (
+        <section
+          id="partner-compliance-decision"
+          aria-labelledby="partner-compliance-decision-title"
+          className={`rounded-xl border p-4 shadow-2xs ${
+            latestPartnerDecision.status === 'APPROVED'
+              ? 'border-emerald-200 bg-emerald-50/80'
+              : latestPartnerDecision.status === 'CHANGES_REQUESTED'
+                ? 'border-amber-200 bg-amber-50/80'
+                : 'border-rose-200 bg-rose-50/80'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                latestPartnerDecision.status === 'APPROVED'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : latestPartnerDecision.status === 'CHANGES_REQUESTED'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-rose-100 text-rose-700'
+              }`}
+            >
+              {latestPartnerDecision.status === 'APPROVED' ? (
+                <ShieldCheck className="h-5 w-5" />
+              ) : latestPartnerDecision.status === 'CHANGES_REQUESTED' ? (
+                <AlertCircle className="h-5 w-5" />
+              ) : (
+                <ShieldAlert className="h-5 w-5" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                    Compliance decision
+                  </p>
+                  <h2 id="partner-compliance-decision-title" className="mt-0.5 text-sm font-bold text-slate-950">
+                    {getPartnerDecisionLabel(latestPartnerDecision.status)}
+                  </h2>
+                </div>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                    latestPartnerDecision.status === 'APPROVED'
+                      ? 'border-emerald-200 bg-white/70 text-emerald-800'
+                      : latestPartnerDecision.status === 'CHANGES_REQUESTED'
+                        ? 'border-amber-200 bg-white/70 text-amber-800'
+                        : 'border-rose-200 bg-white/70 text-rose-800'
+                  }`}
+                >
+                  {latestPartnerDecision.status === 'APPROVED' ? 'Active account' : latestPartnerDecision.status.replaceAll('_', ' ')}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-600">
+                Reviewed on{' '}
+                {new Intl.DateTimeFormat('en-GB', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }).format(new Date(latestPartnerDecision.createdAt))}
+              </p>
+              <div className="mt-3 rounded-lg border border-white/80 bg-white/75 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Compliance note
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-800">
+                  {getPartnerDecisionRemark(latestPartnerDecision)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {error && (
@@ -1586,7 +1728,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               <p className="text-xs font-normal text-slate-500 mt-0.5">
                 {steps[currentStep].id === 'profile' && 'Authorized signatory details and commercial identity classification'}
                 {steps[currentStep].id === 'business' && 'Authorized place location, experience, operating scale and address details'}
-                {steps[currentStep].id === 'kyc' && 'Government PAN, GSTIN verification, ID proofs and official photos'}
+                {steps[currentStep].id === 'kyc' && 'Verified GST certificate and business compliance record'}
                 {steps[currentStep].id === 'agreements' && 'Mandatory regulatory declarations, authenticities and broker covenants'}
                 {steps[currentStep].id === 'review' && 'Final readiness validation, audit history and submission confirmation'}
               </p>
@@ -2006,6 +2148,8 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                       : document.documentType === 'AADHAAR_CARD'
                         ? 'Aadhaar / Accepted ID number'
                         : 'Document reference number';
+                  const isSignupVerifiedGst = document.documentType === 'GST_CERTIFICATE'
+                    && Boolean(profile.gstVerificationRecordId);
 
                   return (
                     <CompactKycDocumentCard
@@ -2015,6 +2159,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
                       partnerType={profile.partnerType}
                       canEdit={canEdit}
                       canVerify={canVerify}
+                      readOnly={isSignupVerifiedGst}
                       isVerifying={isVerifying}
                       verDisplay={verDisplay}
                       sensitiveInputRef={(el) => {
@@ -2350,7 +2495,7 @@ export default function KycOnboardingClient({ partnerId }: { partnerId?: string 
               <button
                 type="button"
                 onClick={() => void handleStepNavigation(Math.min(steps.length - 1, currentStep + 1))}
-                disabled={saving || (!isAdminMode && !canEdit)}
+                disabled={saving}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-all shadow-2xs"
               >
                 <span>Next Step</span>
@@ -2630,6 +2775,7 @@ type CompactKycDocumentCardProps = {
   partnerType?: string | null;
   canEdit: boolean;
   canVerify: boolean;
+  readOnly?: boolean;
   isVerifying: boolean;
   verDisplay: ReturnType<typeof getKycVerificationDisplay> | null;
   isTemplateBacked: boolean;
@@ -2658,6 +2804,7 @@ function CompactKycDocumentCard({
   partnerType,
   canEdit,
   canVerify,
+  readOnly = false,
   isVerifying,
   verDisplay,
   isTemplateBacked,
@@ -2918,7 +3065,7 @@ function CompactKycDocumentCard({
               ↑ Uploaded
             </span>
           )}
-          {(!document.status || document.status === 'NOT_UPLOADED') && (
+          {(!document.status || document.status === 'NOT_UPLOADED') && document.verificationStatus !== 'VERIFIED' && (
             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
               Pending
             </span>
@@ -2957,7 +3104,7 @@ function CompactKycDocumentCard({
                         verificationMessage: '',
                       });
                     }}
-                    disabled={!canEdit}
+                    disabled={!canEdit || readOnly}
                     className={`${inputCompactClassName} pl-8.5 font-mono uppercase tracking-wider text-xs font-medium`}
                     placeholder={document.documentType === 'PAN_CARD' ? 'ABCDE1234F' : document.documentType === 'GST_CERTIFICATE' ? '22AADCW3373Q1ZW' : '1234 5678 9012'}
                     maxLength={document.documentType === 'PAN_CARD' ? 10 : document.documentType === 'GST_CERTIFICATE' ? 15 : 12}
@@ -2970,7 +3117,7 @@ function CompactKycDocumentCard({
                 <button
                   type="button"
                   onClick={onVerify}
-                  disabled={!canEdit || isVerifying || Boolean(document.verificationTemplate) || !document.documentNumber}
+                  disabled={readOnly || !canEdit || isVerifying || Boolean(document.verificationTemplate) || !document.documentNumber}
                   className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shadow-2xs disabled:opacity-40 ${
                     document.verificationStatus === 'VERIFIED'
                       ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
@@ -3009,7 +3156,7 @@ function CompactKycDocumentCard({
                       documentNumber: event.target.value.replace(/\D/g, '').slice(0, 16),
                     })
                   }
-                  disabled={!canEdit}
+                  disabled={!canEdit || readOnly}
                   className={`${inputCompactClassName} pl-8.5 font-mono tracking-widest text-xs font-medium pr-8.5`}
                   placeholder="•••• •••• •••• ••••"
                   maxLength={16}
@@ -3032,7 +3179,7 @@ function CompactKycDocumentCard({
                 type="text"
                 value={document.documentNumber}
                 onChange={(event) => onUpdate({ documentNumber: toUpperCase(event.target.value) })}
-                disabled={!canEdit}
+                disabled={!canEdit || readOnly}
                 className={inputCompactClassName}
                 placeholder="Document reference number"
               />
@@ -3077,14 +3224,20 @@ function CompactKycDocumentCard({
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
               <span className="truncate font-semibold">{document.verificationTemplate ? 'Template saved securely' : 'Verified — template not saved'}</span>
             </div>
-            <button
-              type="button"
-              onClick={document.verificationResult ? onOpenTemplate : onVerify}
-              disabled={!canEdit && !document.verificationTemplate}
-              className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 shadow-2xs ring-1 ring-emerald-200 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {document.verificationTemplate ? 'View template' : document.verificationResult ? 'Preview & upload' : 'Re-verify'}
-            </button>
+            {readOnly && !document.verificationTemplate && !document.verificationResult ? (
+              <span className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200">
+                Verified record retained
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={document.verificationTemplate || document.verificationResult ? onOpenTemplate : onVerify}
+                disabled={!canEdit && !document.verificationTemplate && !document.verificationResult}
+                className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 shadow-2xs ring-1 ring-emerald-200 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {document.verificationTemplate ? 'View template' : document.verificationResult ? 'Preview & upload' : 'Re-verify'}
+              </button>
+            )}
           </div>
         ) : null}
 

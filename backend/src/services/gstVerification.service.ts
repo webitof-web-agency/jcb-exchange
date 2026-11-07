@@ -18,6 +18,7 @@ import {
   isApiWalletBillingError,
   type ApiBillingGateway,
 } from './apiWalletBilling.service';
+import { buildGstVerificationTemplatePdf } from '../utils/gstVerificationTemplatePdf';
 
 const GST_STATUS = {
   PENDING: 'PENDING',
@@ -65,6 +66,10 @@ type GstVerificationDependencies = {
 export const GST_RAW_DATA_TTL_MS = 5 * 60 * 1000;
 export const MAX_GST_TEMPLATE_SIZE = 5 * 1024 * 1024;
 const PDF_SIGNATURE = Buffer.from('%PDF-');
+// The old server-side fallback produced a small one-page internal report.
+// KYC's canonical GST template is the multi-page certificate preview and is
+// materially larger, so legacy reports must never win template resolution.
+const MIN_CANONICAL_GST_TEMPLATE_SIZE = 8 * 1024;
 
 export const getGstRawDataExpiresAt = (completedAt = new Date()) =>
   new Date(completedAt.getTime() + GST_RAW_DATA_TTL_MS);
@@ -594,31 +599,16 @@ export class GstVerificationService {
   }
 
   private async clearExpiredRawData(record: any) {
-    if (isGstRawDataAvailable(record)) return record;
-    if (record.status !== GST_STATUS.SUCCESS || !record.encryptedResult) return record;
-    await this.record.update({
-      where: { id: record.id },
-      data: { encryptedResult: null, rawDataExpiresAt: null },
-    });
-    record.encryptedResult = null;
-    record.rawDataExpiresAt = null;
+    // The expiry timestamp still controls the short template-upload window,
+    // but verified GST data is retained for the authenticated partner view.
     return record;
   }
 
   async cleanupExpiredRawData(now = new Date()) {
-    if (!this.record.updateMany) return 0;
-    const result = await this.record.updateMany({
-      where: {
-        status: GST_STATUS.SUCCESS,
-        encryptedResult: { not: null },
-        OR: [
-          { rawDataExpiresAt: null },
-          { rawDataExpiresAt: { lte: now } },
-        ],
-      },
-      data: { encryptedResult: null, rawDataExpiresAt: null },
-    });
-    return result.count;
+    // Retention is intentional: the scheduled job remains registered for
+    // compatibility, but must never purge verified GST data.
+    void now;
+    return 0;
   }
 
   async uploadTemplate(
@@ -650,14 +640,6 @@ export class GstVerificationService {
       throw new GstVerificationError('You do not have access to this GST template.', 403, 'template_forbidden');
     }
     if (record.template) {
-      if (record.encryptedResult) {
-        await this.record.update({
-          where: { id: record.id },
-          data: { encryptedResult: null, rawDataExpiresAt: null },
-        });
-        record.encryptedResult = null;
-        record.rawDataExpiresAt = null;
-      }
       return { record: recordSummary(record), result: null, template: gstTemplateSummary(record.template), alreadyUploaded: true };
     }
     if (record.status !== GST_STATUS.SUCCESS || !record.encryptedResult) {
@@ -686,12 +668,8 @@ export class GstVerificationService {
         },
       });
       templateId = template.id;
-      await this.record.update({
-        where: { id: record.id },
-        data: { encryptedResult: null, rawDataExpiresAt: null },
-      });
       return {
-        record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, template }),
+        record: recordSummary({ ...record, template }),
         result: null,
         template: gstTemplateSummary(template),
       };
@@ -706,6 +684,74 @@ export class GstVerificationService {
     }
   }
 
+  async ensureGeneratedTemplate(
+    recordId: string,
+    requestedById: string,
+    role: string,
+    context: { gstin?: string | null } = {},
+  ) {
+    const record = await this.record.findUnique({
+      where: { id: recordId },
+      include: { template: true },
+    });
+    if (!record) throw new GstVerificationError('GST verification record not found.', 404, 'record_not_found');
+    if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
+      throw new GstVerificationError('You do not have access to this GST template.', 403, 'template_forbidden');
+    }
+    if (record.template) return { record: recordSummary(record), template: gstTemplateSummary(record.template) };
+    if (record.status !== GST_STATUS.SUCCESS) {
+      throw new GstVerificationError('A successful GST result is required before generating the template.', 409, 'template_result_unavailable');
+    }
+
+    const buffer = await buildGstVerificationTemplatePdf({
+      gstin: context.gstin || null,
+      maskedGstin: record.maskedGstin,
+      businessName: record.businessName,
+      legalName: record.legalName,
+      gstinStatus: record.gstinStatus,
+      provider: record.provider,
+      completedAt: record.completedAt,
+    });
+    const fileName = `gst-template-${record.id}.pdf`;
+    let driveFileId: string | null = null;
+    let templateId: string | null = null;
+    try {
+      const stored = await this.uploadTemplateFile(buffer, 'application/pdf', fileName);
+      driveFileId = stored.fileId;
+      const template = await this.template.create({
+        data: {
+          verificationRecordId: record.id,
+          requestedById: record.requestedById,
+          driveFileId,
+          fileName,
+          mimeType: 'application/pdf',
+          fileSize: buffer.length,
+          sha256: createHash('sha256').update(buffer).digest('hex'),
+        },
+      });
+      templateId = template.id;
+      return {
+        record: recordSummary({ ...record, template }),
+        template: gstTemplateSummary(template),
+      };
+    } catch (error) {
+      if (!templateId) {
+        const current = await this.record.findUnique({ where: { id: record.id }, include: { template: true } }).catch(() => null);
+        if (current?.template) {
+          if (driveFileId) await this.deleteTemplateFile(driveFileId).catch(() => undefined);
+          return { record: recordSummary(current), template: gstTemplateSummary(current.template) };
+        }
+      }
+      if (templateId && this.template.delete) await this.template.delete({ where: { id: templateId } }).catch(() => undefined);
+      if (driveFileId) await this.deleteTemplateFile(driveFileId).catch(() => undefined);
+      throw new GstVerificationError(
+        error instanceof GstVerificationError ? error.message : 'The GST template could not be generated securely.',
+        error instanceof GstVerificationError ? error.statusCode : 502,
+        error instanceof GstVerificationError ? error.code : 'template_generation_failed',
+      );
+    }
+  }
+
   async getTemplateDownload(recordId: string, requestedById: string, role: string) {
     const record = await this.record.findUnique({
       where: { id: recordId },
@@ -715,8 +761,25 @@ export class GstVerificationService {
     if (['EMPLOYEE', 'PARTNER', 'CUSTOMER'].includes(role) && record.requestedById !== requestedById) {
       throw new GstVerificationError('You do not have access to this GST template.', 403, 'template_forbidden');
     }
-    if (!record.template) throw new GstVerificationError('GST template not found.', 404, 'template_not_found');
-    return { ...gstTemplateSummary(record.template), driveFileId: record.template.driveFileId };
+    let template = record.template;
+    if (
+      template &&
+      template.fileSize < MIN_CANONICAL_GST_TEMPLATE_SIZE &&
+      record.requestFingerprint
+    ) {
+      const canonicalRecord = await this.record.findFirst({
+        where: {
+          requestFingerprint: record.requestFingerprint,
+          status: GST_STATUS.SUCCESS,
+          template: { fileSize: { gte: MIN_CANONICAL_GST_TEMPLATE_SIZE } },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: { template: true },
+      });
+      template = canonicalRecord?.template || template;
+    }
+    if (!template) throw new GstVerificationError('GST template not found.', 404, 'template_not_found');
+    return { ...gstTemplateSummary(template), driveFileId: template.driveFileId };
   }
 
   async getHistoryDetail(id: string, requestedById?: string, role?: string) {
@@ -747,9 +810,27 @@ export class GstVerificationService {
       });
       if (savedTemplateRecord?.template) record = savedTemplateRecord;
     }
+    if (
+      record.template &&
+      record.template.fileSize < MIN_CANONICAL_GST_TEMPLATE_SIZE &&
+      record.requestFingerprint
+    ) {
+      const canonicalRecord = await this.record.findFirst({
+        where: {
+          requestFingerprint: record.requestFingerprint,
+          status: GST_STATUS.SUCCESS,
+          template: { fileSize: { gte: MIN_CANONICAL_GST_TEMPLATE_SIZE } },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: { template: true },
+      });
+      if (canonicalRecord?.template) {
+        record = { ...record, template: canonicalRecord.template };
+      }
+    }
     record = await this.clearExpiredRawData(record);
     let result: unknown = null;
-    if (record.status === GST_STATUS.SUCCESS && isGstRawDataAvailable(record)) {
+    if (record.status === GST_STATUS.SUCCESS && typeof record.encryptedResult === 'string' && record.encryptedResult) {
       try {
         const secret = await this.getDataSecret();
         result = JSON.parse(decryptPanData(record.encryptedResult, secret));

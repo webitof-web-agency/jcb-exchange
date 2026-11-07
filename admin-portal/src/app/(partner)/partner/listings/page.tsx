@@ -38,7 +38,6 @@ import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
 import { buildVerificationCacheKey, getVerificationCache, setVerificationCache } from '@/lib/verificationRequestCache';
 import VehicleIdentityHint from '@/components/listings/VehicleIdentityHint';
-import PartnerSellVehicleModal from '@/components/listings/PartnerSellVehicleModal';
 import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import ListingModerationDialog from '@/components/listings/ListingModerationDialog';
 import { availableListingActions, isHiddenListingStatus, LISTING_ACTION_META, LISTING_STATUS_BADGES, moderateListing, type ListingVisibilityAction } from '@/lib/listingVisibility';
@@ -2176,7 +2175,7 @@ export default function PartnerListingsPage() {
         )}
       </div>
 
-      {false && isModalOpen ? (
+      {isModalOpen ? (
         <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:px-4 sm:py-6">
           <div className="relative flex h-[100dvh] sm:h-auto sm:max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 sm:px-6 py-3.5 sm:py-4">
@@ -2707,16 +2706,7 @@ export default function PartnerListingsPage() {
         </div>
       ) : null}
 
-      <PartnerSellVehicleModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        listingToEdit={editingListingRecord as never}
-        onSaved={refreshListings}
-      />
-
-
-
-      {visibilityTarget ? (
+          {visibilityTarget ? (
         <ListingModerationDialog
           listing={visibilityTarget.listing}
           action={visibilityTarget.action}

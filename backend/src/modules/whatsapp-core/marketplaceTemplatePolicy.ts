@@ -20,6 +20,7 @@ const getPayloadValue = (variable: string, payload: Record<string, unknown>) => 
   if (variable === 'status') return payload.status ?? payload.paymentStatus;
   if (variable === 'paymentStatus') return payload.paymentStatus ?? payload.status;
   if (variable === 'recipientRole') return payload.recipientRole ?? payload.recipientType;
+  if (variable === 'partnerId') return payload.partnerCode ?? payload.partnerUserId ?? payload.userId ?? payload.partnerId;
   return payload[variable];
 };
 

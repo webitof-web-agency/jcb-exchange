@@ -4,9 +4,13 @@ import api from '@/lib/api';
 import { API_ORIGIN } from '@/lib/api';
 import { getDriveMediaProxyPath, normalizePublicUploadUrl } from '@/lib/publicUploadUrl.mjs';
 import { normalizeSecureDocumentPath } from '@/lib/secureDocumentPath.mjs';
+import {
+  getPassportPhotoUploadValidationError,
+  TARGET_MAX_PASSPORT_PHOTO_SIZE,
+} from '@/lib/passportPhotoUploadPolicy';
+export { getPassportPhotoUploadValidationError, MAX_PASSPORT_PHOTO_INPUT_SIZE } from '@/lib/passportPhotoUploadPolicy';
 
 export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
-export const MAX_PASSPORT_PHOTO_INPUT_SIZE = 3 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_INPUT_SIZE = 30 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_DURATION_SECONDS = 120;
@@ -169,18 +173,6 @@ export const getUploadValidationError = (file: File) => {
 
   if (isPdf && file.size > MAX_PDF_INPUT_SIZE) {
     return `PDF size must be ${bytesToReadableLimit(MAX_PDF_INPUT_SIZE)} or smaller.`;
-  }
-
-  return null;
-};
-
-export const getPassportPhotoUploadValidationError = (file: File) => {
-  if (!allowedImageTypes.has(file.type)) {
-    return 'Only JPG, PNG, and WEBP passport photos are allowed.';
-  }
-
-  if (file.size > MAX_PASSPORT_PHOTO_INPUT_SIZE) {
-    return `Passport photo size must be ${bytesToReadableLimit(MAX_PASSPORT_PHOTO_INPUT_SIZE)} or smaller.`;
   }
 
   return null;
@@ -582,6 +574,9 @@ export const compressImageForUpload = async (
   options?: {
     targetMinBytes?: number;
     targetMaxBytes?: number;
+    hardMaxBytes?: number;
+    maxWidth?: number;
+    maxHeight?: number;
   }
 ) => {
   validateSelectedFile(file);
@@ -591,7 +586,9 @@ export const compressImageForUpload = async (
   }
 
   const image = await loadImage(file);
-  const dimensions = fitImageWithinBounds(image.width, image.height);
+  const dimensions = options?.maxWidth && options.maxHeight
+    ? fitImageWithinCustomBounds(image.width, image.height, options.maxWidth, options.maxHeight)
+    : fitImageWithinBounds(image.width, image.height);
   const canvas = document.createElement('canvas');
   canvas.width = dimensions.width;
   canvas.height = dimensions.height;
@@ -625,8 +622,46 @@ export const compressImageForUpload = async (
     }
   }
 
+  const hardMaxBytes = options?.hardMaxBytes;
+  if (hardMaxBytes && blob.size > hardMaxBytes) {
+    let shrinkAttempts = 0;
+    while (blob.size > hardMaxBytes && shrinkAttempts < 6) {
+      shrinkAttempts += 1;
+      canvas.width = Math.max(320, Math.round(canvas.width * 0.8));
+      canvas.height = Math.max(240, Math.round(canvas.height * 0.8));
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      quality = Math.max(0.5, quality - 0.06);
+      blob = await canvasToBlob(canvas, quality);
+    }
+
+    if (blob.size > hardMaxBytes) {
+      throw new Error('The passport photo could not be compressed below 3MB. Please choose a smaller image.');
+    }
+  }
+
   const outputName = file.name.replace(/\.[^.]+$/, '') || 'upload';
   return blobToFile(blob, `${outputName}.webp`);
+};
+
+export const preparePassportPhotoForUpload = async (file: File) => {
+  const validationError = getPassportPhotoUploadValidationError(file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const preparedFile = await compressImageForUpload(file, {
+    targetMinBytes: 120 * 1024,
+    targetMaxBytes: TARGET_MAX_PASSPORT_PHOTO_SIZE,
+    hardMaxBytes: TARGET_MAX_PASSPORT_PHOTO_SIZE,
+    maxWidth: 1600,
+    maxHeight: 1600,
+  });
+
+  if (preparedFile.type !== 'image/webp' || preparedFile.size > TARGET_MAX_PASSPORT_PHOTO_SIZE) {
+    throw new Error('The passport photo could not be prepared as a WebP image. Please choose another image.');
+  }
+
+  return preparedFile;
 };
 
 export const prepareFileForUpload = async (file: File) => {
@@ -825,7 +860,9 @@ export const uploadFileToServer = async ({
   visibility: UploadVisibility;
   purpose?: UploadPurpose;
 }) => {
-  const preparedFile = await prepareFileForUpload(file);
+  const preparedFile = purpose === 'passport-photo'
+    ? await preparePassportPhotoForUpload(file)
+    : await prepareFileForUpload(file);
   const formData = new FormData();
   formData.append('file', preparedFile);
 

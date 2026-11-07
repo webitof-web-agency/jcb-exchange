@@ -50,4 +50,8 @@ test('keeps marketplace parameters aligned with approved template placeholder me
     getMarketplaceTemplateComponents('MARKETPLACE_NEW_PAYMENT_SUPERADMIN', { listingTitle: 'JCB 3DX', method: 'UPI', paymentId: 'payment-1' }, [{ type: 'BODY', text: 'Vehicle {{1}} Method {{2}}' }]),
     [{ type: 'body', parameters: [{ type: 'text', text: 'JCB 3DX' }, { type: 'text', text: 'UPI' }] }],
   );
+  assert.deepEqual(
+    getMarketplaceTemplateComponents('MARKETPLACE_KYC_SUBMITTED_SUPERADMIN', { partnerId: 'uuid-1234', partnerCode: 'cg-raipur-meghraj' }, [{ type: 'BODY', text: 'New KYC submission received.\n\nPartner:\n{{1}}\nStatus: Under Review' }]),
+    [{ type: 'body', parameters: [{ type: 'text', text: 'cg-raipur-meghraj' }] }],
+  );
 });

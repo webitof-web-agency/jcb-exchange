@@ -2,6 +2,7 @@
 'use client';
 
 import Image from 'next/image';
+import axios from 'axios';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -76,6 +77,7 @@ import {
 } from '@/lib/partnerDetailPresentation';
 import { createSecureDocumentPreviewUrl, downloadSecureDocument } from '@/lib/secureDownload';
 import PartnerKycTemplateModal, { type PartnerTemplateResponse } from '@/components/kyc/PartnerKycTemplateModal';
+import PartnerAuthKycFields from '@/components/partner/PartnerAuthKycFields';
 import { partnerTemplateEndpointBase } from '@/lib/verificationReview';
 
 interface PartnerListing {
@@ -111,12 +113,12 @@ const statusClassNames: Record<string, string> = {
 
 interface PartnerProfile {
   id: string;
+  partnerCode?: string | null;
   ownerName: string;
   businessName?: string;
   alternateMobile: string;
   businessAddress: string;
   district: string;
-  state: string;
   pinCode: string;
   gstNumber: string;
   businessRegistrationNumber: string;
@@ -135,6 +137,10 @@ interface PartnerProfile {
   contactPreference: string;
   depositStatus?: string;
   businessLogoUrl?: string | null;
+  stateId?: number | null;
+  cityId?: number | null;
+  state?: { id: number; name: string; stateCode?: string | null } | null;
+  city?: { id: number; name: string } | null;
 }
 
 interface ManagedUser {
@@ -152,6 +158,7 @@ interface ManagedUser {
   accountStatus: string;
   kycStatus: string;
   onboardingStatus: string;
+  partnerCode: string | null;
   createdAt: string;
   partnerProfile?: PartnerProfile;
 }
@@ -192,7 +199,7 @@ interface PartnerDetailPageProps {
   listingDetailBaseHref: string;
 }
 
-type ActiveTab = 'inventory' | 'profile' | 'kyc' | 'agreements';
+type ActiveTab = 'inventory' | 'profile' | 'kyc' | 'auth' | 'agreements';
 
 export default function PartnerDetailPage({
   partnerId,
@@ -264,6 +271,11 @@ export default function PartnerDetailPage({
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycDecision, setKycDecision] = useState<'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED'>('APPROVED');
   const [kycNotes, setKycNotes] = useState('');
+  const [showGstReverifyModal, setShowGstReverifyModal] = useState(false);
+  const [gstReverifyNumber, setGstReverifyNumber] = useState('');
+  const [gstReverifyReason, setGstReverifyReason] = useState('');
+  const [gstReverifySubmitting, setGstReverifySubmitting] = useState(false);
+  const [gstReverifyError, setGstReverifyError] = useState('');
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -352,6 +364,38 @@ export default function PartnerDetailPage({
   useEffect(() => {
     void fetchPartnerDetails();
   }, [fetchPartnerDetails]);
+
+  const submitGstReverification = async () => {
+    if (!resolvedPartnerId || gstReverifySubmitting) return;
+    const gstin = gstReverifyNumber.replace(/\s/g, '').toUpperCase();
+    const reason = gstReverifyReason.trim();
+    if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+      setGstReverifyError('Enter a valid 15-character GSTIN.');
+      return;
+    }
+    if (reason.length < 5) {
+      setGstReverifyError('Enter the reason for this GST re-verification.');
+      return;
+    }
+    setGstReverifySubmitting(true);
+    setGstReverifyError('');
+    try {
+      await api.post(`/superadmin/partners/${resolvedPartnerId}/gst/reverify`, { gstin, reason });
+      toast.success('Partner GST verified and updated.');
+      setShowGstReverifyModal(false);
+      setGstReverifyReason('');
+      await fetchPartnerDetails();
+    } catch (reverifyError) {
+      const responseError = axios.isAxiosError(reverifyError) ? reverifyError.response?.data?.error : null;
+      setGstReverifyError(
+        typeof responseError === 'string' && responseError.trim()
+          ? responseError
+          : 'GST re-verification could not be completed.',
+      );
+    } finally {
+      setGstReverifySubmitting(false);
+    }
+  };
 
   // Canonical path redirect
   useEffect(() => {
@@ -581,11 +625,16 @@ export default function PartnerDetailPage({
   // KYC Modal Action
   const handleUpdateKycStatus = async () => {
     if (!partner) return;
+    const normalizedNotes = kycNotes.trim();
+    if (kycDecision === 'CHANGES_REQUESTED' && normalizedNotes.length < 5) {
+      toast.error('Enter a specific correction remark of at least 5 characters.');
+      return;
+    }
     try {
       setKycSubmitting(true);
       await api.patch(`/superadmin/verifications/${partner.id}/status`, {
-        kycStatus: kycDecision,
-        notes: kycNotes,
+        status: kycDecision,
+        comment: normalizedNotes || undefined,
       });
       setPartner((prev) => (prev ? { ...prev, kycStatus: kycDecision } : null));
       setShowKycModal(false);
@@ -653,6 +702,10 @@ export default function PartnerDetailPage({
   }, [listings]);
 
   const profile = partner?.partnerProfile;
+  const visibleVerificationDocuments = useMemo(
+    () => (verificationDetail?.documents || []).filter((document) => document.documentType !== 'PASSPORT_PHOTO'),
+    [verificationDetail],
+  );
   const listingLimit = profile?.listingLimit || 5;
   const quotaPercentage = Math.min(100, Math.round((activeListingsCount / listingLimit) * 100));
 
@@ -779,10 +832,14 @@ export default function PartnerDetailPage({
                     {profile.ownerName}
                   </span>
                 )}
-                {(partner.city || profile?.district || partner.state) && (
+                {(profile?.city?.name || partner.city || profile?.district || profile?.state?.name || partner.state) && (
                   <span className="flex items-center gap-1 text-slate-600">
                     <MapPin className="h-3 w-3 text-amber-600" />
-                    {[partner.city, profile?.district, partner.state].filter(Boolean).join(', ')}
+                    {[
+                      profile?.city?.name || partner.city,
+                      profile?.district,
+                      profile?.state?.name || partner.state,
+                    ].filter(Boolean).join(', ')}
                   </span>
                 )}
                 <span className="flex items-center gap-1 text-slate-400">
@@ -801,6 +858,20 @@ export default function PartnerDetailPage({
                     <Copy className="h-2.5 w-2.5" />
                   )}
                 </div>
+                {partner.partnerCode && (
+                  <div
+                    onClick={() => handleCopy(partner.partnerCode, 'partnerCode')}
+                    className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-amber-700 hover:text-amber-900 cursor-pointer select-all"
+                    title="Copy partner user ID"
+                  >
+                    <span>Partner ID: {partner.partnerCode}</span>
+                    {copiedField === 'partnerCode' ? (
+                      <Check className="h-2.5 w-2.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-2.5 w-2.5" />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1019,11 +1090,11 @@ export default function PartnerDetailPage({
           </div>
           <div className="mt-1">
             <span className="text-sm font-bold text-slate-900 truncate block">
-              {profile?.district || partner.city || 'Location unset'}
+              {profile?.city?.name || partner.city || profile?.district || 'Location unset'}
             </span>
           </div>
           <p className="mt-1 text-[10px] text-slate-500 truncate">
-            {partner.state ? `${partner.state} - ${profile?.pinCode || ''}` : 'State unassigned'}
+            {(profile?.state?.name || partner.state) ? `${profile?.state?.name || partner.state} - ${profile?.pinCode || ''}` : 'State unassigned'}
           </p>
         </div>
       </div>
@@ -1075,7 +1146,7 @@ export default function PartnerDetailPage({
               <ShieldCheck className="h-3.5 w-3.5" />
               KYC & Statutory Vault
               <span className="rounded-full bg-black/20 px-1.5 py-0.2 text-[10px]">
-                {verificationDetail?.documents.length || 0}
+                {visibleVerificationDocuments.length}
               </span>
             </button>
 
@@ -1090,6 +1161,19 @@ export default function PartnerDetailPage({
             >
               <ClipboardCheck className="h-3.5 w-3.5" />
               Agreements & Audit
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('auth')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'auth'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              Auth
             </button>
           </div>
 
@@ -1392,6 +1476,15 @@ export default function PartnerDetailPage({
             </div>
           )}
 
+          {/* TAB 5: PARTNER AUTH */}
+          {activeTab === 'auth' && partner && (
+            <PartnerAuthKycFields
+              gst={null}
+              onboardingEndpoint={`/superadmin/partners/${partner.id}/onboarding`}
+              readOnly
+            />
+          )}
+
           {/* TAB 3: KYC & STATUTORY VAULT */}
           {activeTab === 'kyc' && (
             <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-4">
@@ -1421,7 +1514,7 @@ export default function PartnerDetailPage({
               </div>
 
               {/* Statutory Identification Details */}
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 text-xs">
+              <div className="grid grid-cols-1 gap-2.5 text-xs sm:grid-cols-2">
                 {/* GSTIN */}
                 <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -1446,67 +1539,31 @@ export default function PartnerDetailPage({
                       </button>
                     )}
                   </div>
+                  {canEditOnboarding && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGstReverifyNumber(profile?.gstNumber || '');
+                        setGstReverifyReason('');
+                        setGstReverifyError('');
+                        setShowGstReverifyModal(true);
+                      }}
+                      className="mt-2 text-[10px] font-bold text-amber-700 hover:text-amber-900"
+                    >
+                      Re-verify GST
+                    </button>
+                  )}
                 </div>
 
-                {/* CIN / Reg No */}
-                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Registration / CIN
-                  </span>
-                  <div className="mt-0.5 flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-900 truncate" title={profile?.businessRegistrationNumber}>
-                      {profile?.businessRegistrationNumber || 'Not provided'}
-                    </span>
-                    {profile?.businessRegistrationNumber && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(profile.businessRegistrationNumber, 'tab-reg')}
-                        className="text-slate-400 hover:text-slate-700"
-                        title="Copy Reg #"
-                      >
-                        {copiedField === 'tab-reg' ? (
-                          <Check className="h-3 w-3 text-emerald-600" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Referral Code */}
-                <div className="rounded-lg bg-slate-50/70 p-2.5 border border-slate-100">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Referral Code
-                  </span>
-                  <div className="mt-0.5 flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-900 truncate">
-                      {profile?.referralCode || 'None'}
-                    </span>
-                    {profile?.referralCode && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(profile.referralCode, 'tab-ref')}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
-                        {copiedField === 'tab-ref' ? (
-                          <Check className="h-3 w-3 text-emerald-600" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
 
               {/* Uploaded Documents List */}
               <div className="space-y-2.5">
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Submitted KYC Credentials ({verificationDetail?.documents.length || 0})
+                  Submitted KYC Credentials ({visibleVerificationDocuments.length})
                 </h3>
 
-                {!verificationDetail || verificationDetail.documents.length === 0 ? (
+                {visibleVerificationDocuments.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
                     <ShieldCheck className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-2 text-xs font-bold text-slate-700">No KYC documents on file</p>
@@ -1516,7 +1573,7 @@ export default function PartnerDetailPage({
                   </div>
                 ) : (
                   <div className="grid gap-2.5 sm:grid-cols-2">
-                    {verificationDetail.documents.map((document) => {
+                    {visibleVerificationDocuments.map((document) => {
                       const status = formatPartnerDocumentStatus(document.verificationStatus);
 
                       return (
@@ -1853,7 +1910,7 @@ export default function PartnerDetailPage({
                   Operating Address
                 </span>
                 <p className="mt-0.5 font-semibold text-slate-800 leading-snug">
-                  {[profile?.businessAddress, profile?.district, profile?.pinCode, profile?.state].filter(Boolean).join(', ') ||
+                  {[profile?.businessAddress, profile?.district, profile?.pinCode, profile?.state?.name || partner.state].filter(Boolean).join(', ') ||
                     'Not specified'}
                 </p>
               </div>
@@ -2099,7 +2156,7 @@ export default function PartnerDetailPage({
 
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                  Compliance Notes / Reason
+                  {kycDecision === 'CHANGES_REQUESTED' ? 'Correction remark (Required)' : 'Compliance Notes / Reason'}
                 </label>
                 <textarea
                   rows={3}
@@ -2121,12 +2178,36 @@ export default function PartnerDetailPage({
               </button>
               <button
                 type="button"
-                disabled={kycSubmitting}
+                disabled={kycSubmitting || (kycDecision === 'CHANGES_REQUESTED' && kycNotes.trim().length < 5)}
                 onClick={() => void handleUpdateKycStatus()}
                 className="rounded-lg bg-[#FFC107] px-4 py-1.5 text-xs font-black text-slate-950 hover:bg-[#E5AD06] shadow-2xs disabled:opacity-50"
               >
                 {kycSubmitting ? 'Saving...' : 'Apply Decision'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {showGstReverifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="gst-reverify-title">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 id="gst-reverify-title" className="text-sm font-bold text-slate-900">Re-verify partner GST</h3>
+                <p className="mt-0.5 text-[11px] text-slate-500">This verifies with the provider, replaces the active GST link and keeps the prior record in audit history.</p>
+              </div>
+              <button type="button" onClick={() => setShowGstReverifyModal(false)} disabled={gstReverifySubmitting} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label="Close GST re-verification"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">GSTIN<input value={gstReverifyNumber} onChange={(event) => setGstReverifyNumber(event.target.value.replace(/\s/g, '').toUpperCase().slice(0, 15))} placeholder="15-character GSTIN" className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono text-slate-900 outline-none focus:border-amber-400 focus:bg-white" /></label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Reason (shown in audit history)<textarea rows={3} value={gstReverifyReason} onChange={(event) => setGstReverifyReason(event.target.value)} placeholder="Why is this GST being re-verified?" className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-900 outline-none focus:border-amber-400 focus:bg-white" /></label>
+              {gstReverifyError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{gstReverifyError}</p> : null}
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
+              <button type="button" onClick={() => setShowGstReverifyModal(false)} disabled={gstReverifySubmitting} className="rounded-lg border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => void submitGstReverification()} disabled={gstReverifySubmitting} className="rounded-lg bg-amber-400 px-4 py-1.5 text-xs font-black text-slate-950 hover:bg-amber-300 disabled:opacity-50">{gstReverifySubmitting ? 'Verifying...' : 'Verify & Update GST'}</button>
             </div>
           </div>
         </div>

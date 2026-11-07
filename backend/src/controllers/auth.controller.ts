@@ -104,8 +104,16 @@ import { initializeUserNotificationPreferences } from '../services/notificationP
 import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsApp';
 import { hasPartnerDocumentDraftData, isPartnerProfileComplete } from '../utils/partnerOnboarding';
 import { hasKycDocumentChanges, type KycDocumentSnapshot } from '../utils/kycEditPolicy';
+import { isSecurePartnerPhotoUrl, validatePartnerAuthIdentityPatch } from '../utils/partnerAuthIdentity';
+import { extractDriveFileIdFromSecureUrl } from '../utils/secureDocumentUrl';
 import { isKycVerificationRecordPersistable } from '../utils/kycVerificationPersistence';
 import { mergeVerifiedKycResponseState } from '../utils/partnerKycPersistence';
+import {
+  arePartnerRequiredDocumentsComplete,
+  getPartnerAllowedDocumentTypes,
+  getPartnerRequiredDocumentTypes,
+  isLegacyPartnerDocumentType,
+} from '../utils/partnerKycRequirements';
 import { createVerificationFingerprint } from '../services/verificationCache';
 import { hasAuthCredentialChange } from '../utils/authCredentialChange';
 import {
@@ -113,8 +121,11 @@ import {
   validatePasswordChangeInput,
 } from '../utils/profileSecurity';
 import { panVerificationService } from '../services/panVerification.service';
-import { gstVerificationService } from '../services/gstVerification.service';
+import { GstVerificationError, gstVerificationService } from '../services/gstVerification.service';
 import { aadhaarVerificationService } from '../services/aadhaarVerification.service';
+import { partnerSignupGstVerificationService } from '../services/partnerSignupGstVerification.service';
+import { extractGstVerifiedProfileFields } from '../services/gstVerifiedProfileFields';
+import { findAvailablePartnerCode } from '../utils/partnerCode';
 import { publicUploadDir } from '../utils/documentUpload';
 import { clearLoginFailures, loginLockRemainingMs, recordLoginFailure } from '../utils/loginLockout';
 import { authTokenLifetime } from '../utils/authTokenLifetime';
@@ -154,23 +165,6 @@ const mobileOtpAccountRepository = {
     return user as MobileOtpAccountUser | null;
   },
 };
-
-const businessPartnerTypes = new Set(['SHOWROOM']);
-
-const individualRequiredDocs: KycDocumentType[] = [
-  'PAN_CARD',
-  'AADHAAR_CARD',
-  'PASSPORT_PHOTO',
-];
-
-const businessRequiredDocs: KycDocumentType[] = [
-  'PAN_CARD',
-  'GST_CERTIFICATE',
-  'AADHAAR_CARD',
-  'PASSPORT_PHOTO',
-];
-
-const individualOptionalDocs: KycDocumentType[] = [];
 
 type PartnerDocumentInput = {
   documentType: string;
@@ -265,18 +259,11 @@ const normalizeText = (value?: string | null) => {
   return trimmed ? trimmed : null;
 };
 
-const isBusinessPartnerType = (partnerType?: string | null) =>
-  !!partnerType && businessPartnerTypes.has(partnerType);
-
 const getRequiredDocuments = (partnerType?: string | null) =>
-  !partnerType ? [] : isBusinessPartnerType(partnerType) ? businessRequiredDocs : individualRequiredDocs;
-
-const getOptionalDocuments = (partnerType?: string | null) =>
-  !partnerType || isBusinessPartnerType(partnerType) ? [] : individualOptionalDocs;
+  getPartnerRequiredDocumentTypes(partnerType) as KycDocumentType[];
 
 const getAllowedDocuments = (partnerType?: string | null) => [
-  ...getRequiredDocuments(partnerType),
-  ...getOptionalDocuments(partnerType),
+  ...(getPartnerAllowedDocumentTypes(partnerType) as KycDocumentType[]),
 ];
 
 const isValidPartnerType = (partnerType?: string | null) =>
@@ -449,12 +436,7 @@ const validateVerificationMetadataForDocuments = async (
 ) => Promise.all(documents.map((document) => validateVerificationMetadata(document, requestedById, additionalRequesterIds)));
 
 const areDocumentsComplete = (documents: ReturnType<typeof normalizeDocuments>, partnerType?: string | null) => {
-  const uploadedTypes = new Set(
-    documents
-      .filter((document) => !!document.fileUrl || !!document.verificationTemplateId)
-      .map((document) => document.documentType),
-  );
-  return getRequiredDocuments(partnerType).every((documentType) => uploadedTypes.has(documentType));
+  return arePartnerRequiredDocumentsComplete(documents, partnerType);
 };
 
 const getActivePartnerAgreementDefinitions = async (partnerType?: string | null) => {
@@ -594,6 +576,7 @@ export const buildAuthUserPayload = async (user: any) => {
       : await prismaAny.partnerProfile.findUnique({
         where: { userId: user.id },
         select: {
+          partnerCode: true,
           ownerName: true,
           businessName: true,
           partnerType: true,
@@ -615,6 +598,7 @@ export const buildAuthUserPayload = async (user: any) => {
 
     return {
       ...baseUser,
+      partnerCode: resolvedPartnerProfile?.partnerCode ?? null,
       name: resolvedPartnerProfile?.businessName ?? user.name,
       ownerName: resolvedPartnerProfile?.ownerName ?? user.name,
       onboardingStatus: resolvedPartnerProfile?.onboardingStatus ?? null,
@@ -847,12 +831,11 @@ export const buildOnboardingResponse = async (
     partnerUser.id,
     viewer?.id && viewer.id !== partnerUser.id ? [viewer.id] : [],
   );
-  const documentsComplete = areDocumentsComplete(validatedDocs, profile.partnerType);
   const agreementsComplete = areRequiredPartnerAgreementsAccepted(
     agreementDefinitions,
     profile.agreements || [],
   );
-  const kycDocuments = await Promise.all((profile.kycDocuments || []).map(async (document: any) => {
+  const persistedKycDocuments = await Promise.all((profile.kycDocuments || []).map(async (document: any) => {
     const base = {
       documentType: document.documentType,
       fileUrl: document.fileUrl,
@@ -954,6 +937,61 @@ export const buildOnboardingResponse = async (
     }
   }));
 
+  let signupGstDocument: Record<string, unknown> | null = null;
+  if (profile.gstNumber && profile.gstVerificationRecordId) {
+    try {
+      const detail = await gstVerificationService.getHistoryDetail(
+        profile.gstVerificationRecordId,
+        partnerUser.id,
+        'PARTNER',
+      );
+      if (detail.record?.status === 'SUCCESS') {
+        const result = detail.result as Record<string, unknown> | null;
+        signupGstDocument = {
+          documentType: 'GST_CERTIFICATE',
+          fileUrl: null,
+          fileName: detail.template?.fileName || '',
+          documentNumber: profile.gstNumber,
+          nameOnDocument: typeof result?.businessName === 'string' ? result.businessName : profile.businessName,
+          issueDate: '',
+          expiryDate: '',
+          submittedNote: 'GST verified during partner registration.',
+          status: detail.template ? 'UPLOADED' : 'NOT_UPLOADED',
+          reviewComment: '',
+          verificationStatus: 'VERIFIED',
+          verificationRecordId: profile.gstVerificationRecordId,
+          verificationCacheHit: false,
+          verificationResult: result,
+          verificationTemplate: detail.template,
+          verificationRawDataExpiresAt: detail.record?.rawDataExpiresAt || null,
+          verificationMessage: '',
+        };
+      }
+    } catch {
+      signupGstDocument = null;
+    }
+  }
+
+  const kycDocuments = signupGstDocument
+    ? [
+      ...persistedKycDocuments.filter((document: any) => document.documentType !== 'GST_CERTIFICATE'),
+      signupGstDocument,
+    ]
+    : persistedKycDocuments;
+  // Use the same materialized document state that is returned to the portal.
+  // Signup GST verification remains a verified record; the canonical KYC
+  // certificate is created only when the partner previews and uploads it.
+  const responseDocumentsForCompleteness = (kycDocuments as Array<Record<string, any>>).map((document) => ({
+    documentType: document.documentType as KycDocumentType,
+    fileUrl: typeof document.fileUrl === 'string' ? document.fileUrl : null,
+    verificationTemplateId:
+      document.verificationTemplate
+        ? document.verificationRecordId || `template:${document.documentType}`
+        : null,
+  }));
+  const documentsForCompleteness = [...validatedDocs, ...responseDocumentsForCompleteness];
+  const documentsComplete = areDocumentsComplete(documentsForCompleteness as ReturnType<typeof normalizeDocuments>, profile.partnerType);
+
   return {
     profile: {
       ownerName: profile.ownerName || partnerUser.name || '',
@@ -975,6 +1013,10 @@ export const buildOnboardingResponse = async (
       serviceAreas: profile.serviceAreas || '',
       workingHours: profile.workingHours || '',
       gstNumber: profile.gstNumber || '',
+      gstVerifiedMobile: profile.gstVerifiedMobile || '',
+      gstVerifiedEmail: profile.gstVerifiedEmail || '',
+      gstVerifiedAddress: profile.gstVerifiedAddress || '',
+      aadhaarVerifiedAt: profile.aadhaarVerifiedAt ? new Date(profile.aadhaarVerifiedAt).toISOString() : null,
       businessRegistrationNumber: profile.businessRegistrationNumber || '',
       websiteUrl: profile.websiteUrl || '',
       socialLinks: profile.socialLinks || '',
@@ -1244,6 +1286,7 @@ export const saveOnboardingData = async ({
     verificationTemplateId: string | null;
   }> = existingKycDocs
     .filter((document: ExistingKycDocumentForPreservation) =>
+      isLegacyPartnerDocumentType(document.documentType) ||
       ['CANCELLED_CHEQUE', 'AUTHORIZED_PERSON_ID'].includes(document.documentType)
     )
     .map((document: ExistingKycDocumentForPreservation) => ({
@@ -1255,11 +1298,11 @@ export const saveOnboardingData = async ({
       issueDate: document.issueDate,
       expiryDate: document.expiryDate,
       submittedNote: document.submittedNote,
-      verificationRecordId: null,
-      verificationStatus: 'NOT_STARTED',
-      verificationCacheHit: false,
-      verificationMessage: null,
-      verificationCompletedAt: null,
+      verificationRecordId: document.verificationRecordId,
+      verificationStatus: document.verificationStatus,
+      verificationCacheHit: document.verificationCacheHit,
+      verificationMessage: document.verificationMessage,
+      verificationCompletedAt: document.verificationCompletedAt,
       verificationTemplateId: null,
     }));
   const documentsToPersist = [
@@ -1333,14 +1376,32 @@ export const saveOnboardingData = async ({
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, name, mobile, whatsappNumber, whatsappSameAsMobile, registrationType } = req.body as {
+    const {
+      email,
+      password,
+      name,
+      dealerName,
+      mobile,
+      whatsappNumber,
+      whatsappSameAsMobile,
+      registrationType,
+      gstClaimToken,
+      countryId,
+      stateId,
+      cityId,
+    } = req.body as {
       email?: string;
       password?: string;
       name?: string;
+      dealerName?: string;
       mobile?: string;
       whatsappNumber?: string;
       whatsappSameAsMobile?: boolean;
       registrationType?: string;
+      gstClaimToken?: string;
+      countryId?: number | string;
+      stateId?: number | string;
+      cityId?: number | string;
     };
 
     const normalizedRegistrationType = typeof registrationType === 'string'
@@ -1377,6 +1438,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedName = sanitizeName(name);
+    const normalizedDealerName = sanitizeName(dealerName || name);
     const sanitizedPassword = sanitizePassword(password);
     if (!isValidEmail(normalizedEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -1408,7 +1470,39 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       ? normalizedRegistrationType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER'
       : 'SUPER_ADMIN';
 
+    const isVerifiedPartnerSignup = hasSuperAdmin
+      && normalizedRegistrationType === 'PARTNER'
+      && typeof gstClaimToken === 'string'
+      && gstClaimToken.trim().length > 0;
+    const parseSignupLocationId = (value: unknown) => {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+    const signupLocationIds = isVerifiedPartnerSignup
+      ? {
+        countryId: parseSignupLocationId(countryId),
+        stateId: parseSignupLocationId(stateId),
+        cityId: parseSignupLocationId(cityId),
+      }
+      : null;
+    if (isVerifiedPartnerSignup && (!normalizedDealerName || !signupLocationIds?.countryId || !signupLocationIds.stateId || !signupLocationIds.cityId)) {
+      return res.status(400).json({ error: 'Dealer name, country, state and city are required for partner registration.' });
+    }
+
     const newUser = await prisma.$transaction(async (tx) => {
+      let signupLocation: { country: any; state: any; city: any } | null = null;
+      if (isVerifiedPartnerSignup && signupLocationIds) {
+        const [country, state, city] = await Promise.all([
+          tx.country.findUnique({ where: { id: signupLocationIds.countryId! } }),
+          tx.state.findUnique({ where: { id: signupLocationIds.stateId! } }),
+          tx.city.findUnique({ where: { id: signupLocationIds.cityId! } }),
+        ]);
+        if (!country || !state || !city || state.countryId !== country.id || city.stateId !== state.id || city.countryId !== country.id) {
+          throw new GstVerificationError('Please select a valid country, state and city combination.', 400, 'invalid_signup_location');
+        }
+        signupLocation = { country, state, city };
+      }
+
       const createdUser = hasSuperAdmin
         ? await tx.user.create({
           data: {
@@ -1417,6 +1511,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
             name: normalizedName,
             mobile: normalizedMobile || undefined,
             whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
+            ...(signupLocation ? { state: signupLocation.state.name, city: signupLocation.city.name } : {}),
             authProvider: 'LOCAL',
             role: accountRole,
             status: 'ACTIVE' as any,
@@ -1442,6 +1537,66 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         });
 
       await initializeUserNotificationPreferences(createdUser, tx);
+
+      if (isVerifiedPartnerSignup && signupLocation && signupLocationIds && gstClaimToken) {
+        const promoted = await partnerSignupGstVerificationService.consumeAndPromoteVerifiedClaim(
+          gstClaimToken,
+          {
+            email: normalizedEmail,
+            mobile: normalizedMobile,
+            whatsappNumber: normalizedWhatsapp,
+            countryId: signupLocationIds.countryId,
+            stateId: signupLocationIds.stateId,
+            cityId: signupLocationIds.cityId,
+          },
+          createdUser.id,
+          tx,
+        );
+        const partnerCode = await findAvailablePartnerCode(
+          {
+            stateCode: signupLocation.state.stateCode,
+            stateName: signupLocation.state.name,
+            cityName: signupLocation.city.name,
+            dealerName: normalizedDealerName,
+          },
+          tx.partnerProfile,
+        );
+        const verifiedProfileFields = extractGstVerifiedProfileFields(promoted.result);
+        const partnerProfile = await tx.partnerProfile.create({
+          data: {
+            userId: createdUser.id,
+            partnerCode,
+            ownerName: normalizedName,
+            businessName: normalizedDealerName,
+            partnerType: 'SHOWROOM',
+            gstNumber: String(promoted.result.gstin || promoted.record.gstin),
+            gstVerificationRecordId: promoted.verificationRecord.id,
+            gstVerifiedAt: promoted.verificationRecord.completedAt || new Date(),
+            gstVerifiedMobile: verifiedProfileFields.mobile || null,
+            gstVerifiedEmail: verifiedProfileFields.email || null,
+            gstVerifiedAddress: verifiedProfileFields.address || null,
+            countryId: signupLocation.country.id,
+            stateId: signupLocation.state.id,
+            cityId: signupLocation.city.id,
+            onboardingStatus: 'PROFILE_PENDING',
+            accountStatus: 'PENDING',
+            kycStatus: 'NOT_STARTED',
+          },
+        });
+        await tx.kycDocument.create({
+          data: {
+            partnerProfileId: partnerProfile.id,
+            documentType: 'GST_CERTIFICATE',
+            documentNumber: String(promoted.result.gstin || promoted.record.gstin),
+            nameOnDocument: typeof promoted.result.businessName === 'string' ? promoted.result.businessName : normalizedDealerName,
+            submittedNote: 'GST verified during partner registration.',
+            status: 'NOT_UPLOADED',
+            verificationRecordId: promoted.verificationRecord.id,
+            verificationStatus: 'VERIFIED',
+            verificationCompletedAt: promoted.verificationRecord.completedAt || new Date(),
+          },
+        });
+      }
       return createdUser;
     });
 
@@ -1456,6 +1611,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       user: authUser,
     });
   } catch (error) {
+    if (error instanceof GstVerificationError) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
     const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'register');
     if (uniqueConstraintMessage) {
       return res.status(409).json({ error: uniqueConstraintMessage });
@@ -2884,6 +3042,87 @@ export const savePartnerOnboarding = async (req: Request, res: Response, next: N
   }
 };
 
+export const updatePartnerAuthIdentity = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.id || req.user.role !== 'PARTNER') {
+      return res.status(403).json({ error: 'Partner identity access required.' });
+    }
+
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? req.body as Record<string, unknown>
+      : {};
+    const patchValidationError = validatePartnerAuthIdentityPatch(body);
+    if (patchValidationError) return res.status(400).json({ error: patchValidationError });
+
+    const photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl.trim() : '';
+    const photoName = typeof body.photoName === 'string' ? body.photoName.trim().slice(0, 255) : '';
+    if (!isSecurePartnerPhotoUrl(photoUrl)) {
+      return res.status(400).json({ error: 'Upload a valid private partner photo first.' });
+    }
+
+    const partnerProfile = await prisma.partnerProfile.findUnique({
+      where: { userId: req.user.id },
+      select: {
+        id: true,
+        kycDocuments: {
+          where: { documentType: KycDocumentType.PASSPORT_PHOTO },
+          select: { id: true, documentType: true, fileUrl: true, fileName: true, documentNumber: true },
+        },
+      },
+    });
+    if (!partnerProfile) return res.status(404).json({ error: 'Partner profile not found.' });
+
+    const existingPhoto = partnerProfile.kycDocuments.find((document) => document.documentType === KycDocumentType.PASSPORT_PHOTO);
+    const saved = await prisma.$transaction(async (transaction) => {
+      let photoDocument = existingPhoto;
+
+      const data = {
+        fileUrl: photoUrl,
+        fileName: photoName || 'partner-photo',
+        status: 'UPLOADED' as const,
+        verificationRecordId: null,
+        verificationStatus: 'NOT_STARTED',
+        verificationCacheHit: false,
+        verificationMessage: null,
+        verificationCompletedAt: null,
+        submittedNote: 'Passport photo uploaded from the partner Auth profile.',
+      };
+      photoDocument = existingPhoto
+        ? await transaction.kycDocument.update({ where: { id: existingPhoto.id }, data })
+        : await transaction.kycDocument.create({
+          data: { partnerProfileId: partnerProfile.id, documentType: KycDocumentType.PASSPORT_PHOTO, ...data },
+        });
+
+      await transaction.kycReviewLog.create({
+        data: {
+          partnerProfileId: partnerProfile.id,
+          kycDocumentId: photoDocument?.id || null,
+          action: 'PARTNER_PROFILE_EDITED',
+          comment: 'Partner photo uploaded from Auth profile.',
+          actorUserId: req.user!.id,
+        },
+      });
+
+      return { photoDocument };
+    });
+
+    if (existingPhoto?.fileUrl && existingPhoto.fileUrl !== photoUrl) {
+      const oldFileId = extractDriveFileIdFromSecureUrl(existingPhoto.fileUrl);
+      if (oldFileId) await deleteFileFromDrive(oldFileId).catch(() => undefined);
+    }
+
+    return res.json({
+      message: 'Partner identity details updated successfully.',
+      photo: saved.photoDocument ? {
+        fileUrl: saved.photoDocument.fileUrl,
+        fileName: saved.photoDocument.fileName,
+      } : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const submitPartnerOnboarding = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user?.id || !canHoldPartnerProfile(req.user.role)) {
@@ -2924,6 +3163,17 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
     // Admin audit copy - notify all superadmins when a partner submits KYC for review
     void (async () => {
       try {
+        const partnerProfile = await prisma.partnerProfile.findUnique({
+          where: { userId: req.user!.id },
+          select: { partnerCode: true, businessName: true, ownerName: true },
+        });
+
+        const partnerIdentifier =
+          partnerProfile?.partnerCode ||
+          partnerProfile?.businessName ||
+          (req.user as any).name ||
+          req.user!.id;
+
         const superAdmins = await prisma.user.findMany({
           where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
           select: { id: true, mobile: true, whatsappNumber: true },
@@ -2935,7 +3185,11 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
             relatedEntityId: req.user!.id,
             recipientType: 'SUPER_ADMIN',
             recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
-            payloadSnapshot: { partnerId: req.user!.id },
+            payloadSnapshot: {
+              partnerId: partnerIdentifier,
+              partnerCode: partnerProfile?.partnerCode ?? undefined,
+              userId: partnerIdentifier,
+            },
           });
         });
       } catch (adminKycNotifErr) {

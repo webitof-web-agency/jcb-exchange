@@ -25,6 +25,35 @@ export type KycReviewDocumentInput = {
   verificationCompletedAt: DateLike;
 };
 
+export const buildSignupGstReviewDocument = ({
+  id,
+  gstNumber,
+  verificationRecordId,
+  hasTemplate,
+}: {
+  id: string;
+  gstNumber: string;
+  verificationRecordId: string;
+  hasTemplate: boolean;
+}): KycReviewDocumentInput => ({
+  id,
+  documentType: 'GST_CERTIFICATE',
+  fileUrl: null,
+  fileName: null,
+  documentNumber: gstNumber,
+  nameOnDocument: null,
+  issueDate: null,
+  expiryDate: null,
+  submittedNote: 'GST verified during partner registration.',
+  status: hasTemplate ? 'UPLOADED' : 'NOT_UPLOADED',
+  reviewComment: null,
+  verificationRecordId,
+  verificationStatus: 'VERIFIED',
+  verificationCacheHit: false,
+  verificationMessage: null,
+  verificationCompletedAt: null,
+});
+
 type VerificationDetail = {
   record?: VerificationRecordSummary | null;
   result?: Record<string, unknown> | null;

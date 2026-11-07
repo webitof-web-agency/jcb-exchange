@@ -15,6 +15,7 @@ import {
   isPdfMimeType,
   isVideoMimeType,
   MAX_DOCUMENT_UPLOAD_SIZE,
+  MAX_PASSPORT_PHOTO_UPLOAD_SIZE,
   MAX_LISTING_VIDEO_UPLOAD_SIZE,
   secureUploadDir,
 } from '../utils/documentUpload';
@@ -63,8 +64,22 @@ const cleanupFile = async (filePath?: string) => {
 
 const enforceStoredFileSizePolicy = async (
   file: Express.Multer.File,
-  purpose: 'document' | 'listing-media' | 'finance-support' | 'blog-cover' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
+  purpose: 'document' | 'passport-photo' | 'listing-media' | 'finance-support' | 'blog-cover' | 'hero-image' | 'inspection-section' | 'site-logo' | 'site-dark-logo' | 'site-favicon' | 'site-manifest-icon' = 'document'
 ) => {
+  if (purpose === 'passport-photo') {
+    if (file.mimetype !== 'image/webp' || path.extname(file.originalname).toLowerCase() !== '.webp') {
+      await cleanupFile(file.path);
+      throw new Error('Passport photos must be compressed and stored as WebP images.');
+    }
+
+    if (file.size > MAX_PASSPORT_PHOTO_UPLOAD_SIZE) {
+      await cleanupFile(file.path);
+      throw new Error('Passport photos must be 3MB or smaller.');
+    }
+
+    return;
+  }
+
   if (isPdfMimeType(file.mimetype) && file.size > 3 * 1024 * 1024) {
     await cleanupFile(file.path);
     throw new Error('PDF files must be 3MB or smaller.');
@@ -205,6 +220,7 @@ type SecureDocumentDriveUploader = typeof uploadFileToDrive;
 
 export const createUploadSecureDocument = (
   uploadToDrive: SecureDocumentDriveUploader = uploadFileToDrive,
+  purpose: 'document' | 'passport-photo' = 'document',
 ) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = getUploadedFile(req);
@@ -213,7 +229,7 @@ export const createUploadSecureDocument = (
       return res.status(400).json({ error: 'A file is required.' });
     }
 
-    await enforceStoredFileSizePolicy(file, 'document');
+    await enforceStoredFileSizePolicy(file, purpose);
 
     // Upload to Google Drive (Resumes/Secure)
     const { fileId } = await uploadToDrive(
@@ -232,6 +248,10 @@ export const createUploadSecureDocument = (
 };
 
 export const uploadSecureDocument = createUploadSecureDocument();
+export const createUploadSecurePassportPhoto = (
+  uploadToDrive: SecureDocumentDriveUploader = uploadFileToDrive,
+) => createUploadSecureDocument(uploadToDrive, 'passport-photo');
+export const uploadSecurePassportPhoto = createUploadSecurePassportPhoto();
 
 export const uploadPublicDocument = async (req: Request, res: Response, next: NextFunction) => {
   try {

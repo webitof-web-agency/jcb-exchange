@@ -35,6 +35,8 @@ import {
   sanitizeName,
   sanitizePassword,
 } from '@/lib/authSanitization';
+import { isValidPartnerBusinessEmail, isValidPartnerGstin } from '@/lib/partnerSignupValidation';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 type AuthenticatedPortalUser = {
   id: string;
@@ -48,6 +50,20 @@ type AuthenticatedPortalUser = {
 };
 
 type AuthTab = 'login' | 'register';
+
+type LocationOption = {
+  id: string | number;
+  name: string;
+};
+
+type GstVerificationState = {
+  status: 'idle' | 'loading' | 'verified' | 'error';
+  claimToken?: string;
+  businessName?: string | null;
+  legalName?: string | null;
+  maskedGstin?: string | null;
+  message?: string;
+};
 
 function SignupPageInner() {
   const router = useRouter();
@@ -72,6 +88,15 @@ function SignupPageInner() {
   });
   const [whatsappSameAsMobile, setWhatsappSameAsMobile] = useState(true);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [countries, setCountries] = useState<LocationOption[]>([]);
+  const [states, setStates] = useState<LocationOption[]>([]);
+  const [cities, setCities] = useState<LocationOption[]>([]);
+  const [selectedCountryId, setSelectedCountryId] = useState('');
+  const [selectedStateId, setSelectedStateId] = useState('');
+  const [selectedCityId, setSelectedCityId] = useState('');
+  const [locationLoading, setLocationLoading] = useState({ countries: true, states: false, cities: false });
+  const [gstin, setGstin] = useState('');
+  const [gstVerification, setGstVerification] = useState<GstVerificationState>({ status: 'idle' });
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -152,6 +177,134 @@ function SignupPageInner() {
     checkSetupStatus();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    api.get<LocationOption[]>('/locations/countries')
+      .then((response) => {
+        if (cancelled) return;
+        const options = Array.isArray(response.data) ? response.data : [];
+        setCountries(options);
+        const india = options.find((option) => option.name.trim().toLowerCase() === 'india');
+        if (india) {
+          setLocationLoading((current) => ({ ...current, states: true }));
+          setSelectedCountryId(String(india.id));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError('Country list could not be loaded. Please refresh and try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLocationLoading((current) => ({ ...current, countries: false }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCountryId) return;
+
+    let cancelled = false;
+    api.get<LocationOption[]>(`/locations/states/${selectedCountryId}`)
+      .then((response) => {
+        if (!cancelled) setStates(Array.isArray(response.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setError('State list could not be loaded. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLocationLoading((current) => ({ ...current, states: false }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCountryId]);
+
+  useEffect(() => {
+    if (!selectedStateId) return;
+
+    let cancelled = false;
+    api.get<LocationOption[]>(`/locations/cities/${selectedStateId}`)
+      .then((response) => {
+        if (!cancelled) setCities(Array.isArray(response.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setError('City list could not be loaded. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLocationLoading((current) => ({ ...current, cities: false }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStateId]);
+
+  const handleGstVerification = async () => {
+    setError('');
+    const cleanGstin = gstin.replace(/\s/g, '').toUpperCase();
+    const cleanEmail = sanitizeEmail(registerData.email);
+    const cleanMobile = sanitizeMobile(registerData.mobile);
+
+    if (!isValidPartnerGstin(cleanGstin)) {
+      setGstVerification({ status: 'error', message: 'Enter a valid 15-character GSTIN.' });
+      return;
+    }
+    if (!isValidPartnerBusinessEmail(cleanEmail)) {
+      setGstVerification({ status: 'error', message: 'Enter a valid business/contact email first.' });
+      return;
+    }
+    if (!isValidIndianMobile(cleanMobile)) {
+      setGstVerification({ status: 'error', message: 'Enter a valid mobile number first.' });
+      return;
+    }
+    if (!selectedCountryId || !selectedStateId || !selectedCityId) {
+      setGstVerification({ status: 'error', message: 'Select country, state and city before GST verification.' });
+      return;
+    }
+
+    setGstin(cleanGstin);
+    setGstVerification({ status: 'loading' });
+
+    try {
+      const response = await api.post('/auth/partner/signup/verify-gstin', {
+        gstin: cleanGstin,
+        email: cleanEmail,
+        mobile: cleanMobile,
+        countryId: Number(selectedCountryId),
+        stateId: Number(selectedStateId),
+        cityId: Number(selectedCityId),
+      });
+      const result = response.data as {
+        claimToken?: string;
+        status?: string;
+        businessName?: string | null;
+        legalName?: string | null;
+        maskedGstin?: string | null;
+      };
+
+      if (!result.claimToken || result.status !== 'SUCCESS') {
+        throw new Error('GST verification did not return a usable verification claim.');
+      }
+
+      setGstVerification({
+        status: 'verified',
+        claimToken: result.claimToken,
+        businessName: result.businessName,
+        legalName: result.legalName,
+        maskedGstin: result.maskedGstin,
+      });
+    } catch (err: unknown) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || 'GST verification could not be completed.'
+        : 'GST verification could not be completed.';
+      setGstVerification({ status: 'error', message });
+    }
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -211,7 +364,7 @@ function SignupPageInner() {
     const cleanConfirmPassword = sanitizePassword(registerData.confirmPassword);
 
     if (!cleanName) {
-      setError('Please enter your full name or company contact.');
+      setError('Please enter the dealer name.');
       return;
     }
 
@@ -234,8 +387,18 @@ function SignupPageInner() {
       return;
     }
 
-    if (!isValidEmail(cleanEmail)) {
-      setError('Please enter a valid email address.');
+    if (!isValidPartnerBusinessEmail(cleanEmail)) {
+      setError('Please enter a valid business/contact email address.');
+      return;
+    }
+
+    if (!selectedCountryId || !selectedStateId || !selectedCityId) {
+      setError('Please select country, state and city.');
+      return;
+    }
+
+    if (gstVerification.status !== 'verified' || !gstVerification.claimToken) {
+      setError('Please verify the dealer GSTIN before registering.');
       return;
     }
 
@@ -254,12 +417,17 @@ function SignupPageInner() {
     try {
       const response = await api.post('/auth/register', {
         name: cleanName,
+        dealerName: cleanName,
         email: cleanEmail,
         mobile: cleanMobile,
         password: cleanPassword,
         whatsappSameAsMobile,
         whatsappNumber: cleanWhatsappNumber,
         registrationType: 'PARTNER',
+        gstClaimToken: gstVerification.claimToken,
+        countryId: Number(selectedCountryId),
+        stateId: Number(selectedStateId),
+        cityId: Number(selectedCityId),
       });
 
       const { token, user } = response.data;
@@ -374,7 +542,7 @@ function SignupPageInner() {
                   <form onSubmit={handleRegisterSubmit} className="space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Full or Business Contact Name
+                        Dealer Name
                       </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
@@ -392,9 +560,135 @@ function SignupPageInner() {
                             setRegisterData({ ...registerData, name: sanitizeName(e.target.value) });
                           }}
                           className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder="Enter your full name"
+                          placeholder="Enter dealer name"
                           autoComplete="name"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1" htmlFor="partner-country">
+                          Country
+                        </label>
+                        <SearchableSelect
+                          id="partner-country"
+                          required
+                          size="portal"
+                          options={countries}
+                          value={selectedCountryId}
+                          disabled={locationLoading.countries || !countries.length}
+                          loading={locationLoading.countries}
+                          placeholder={locationLoading.countries ? 'Loading…' : 'Select country'}
+                          onChange={(option) => {
+                            const value = String(option.id);
+                            setSelectedCountryId(value);
+                            setStates([]);
+                            setCities([]);
+                            setSelectedStateId('');
+                            setSelectedCityId('');
+                            setLocationLoading((current) => ({ ...current, states: Boolean(value), cities: false }));
+                            setGstVerification({ status: 'idle' });
+                            if (error) setError('');
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1" htmlFor="partner-state">
+                          State
+                        </label>
+                        <SearchableSelect
+                          id="partner-state"
+                          required
+                          size="portal"
+                          options={states}
+                          value={selectedStateId}
+                          disabled={!selectedCountryId || locationLoading.states || !states.length}
+                          loading={locationLoading.states}
+                          placeholder={locationLoading.states ? 'Loading…' : 'Select state'}
+                          onChange={(option) => {
+                            const value = String(option.id);
+                            setSelectedStateId(value);
+                            setCities([]);
+                            setSelectedCityId('');
+                            setLocationLoading((current) => ({ ...current, cities: Boolean(value) }));
+                            setGstVerification({ status: 'idle' });
+                            if (error) setError('');
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1" htmlFor="partner-city">
+                          City
+                        </label>
+                        <SearchableSelect
+                          id="partner-city"
+                          required
+                          size="portal"
+                          align="right"
+                          options={cities}
+                          value={selectedCityId}
+                          disabled={!selectedStateId || locationLoading.cities || !cities.length}
+                          loading={locationLoading.cities}
+                          placeholder={locationLoading.cities ? 'Loading…' : !selectedStateId ? 'Select state' : 'Select city'}
+                          onChange={(option) => {
+                            setSelectedCityId(String(option.id));
+                            setGstVerification({ status: 'idle' });
+                            if (error) setError('');
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="block text-xs font-semibold text-zinc-700" htmlFor="partner-gstin">
+                          GSTIN
+                        </label>
+                        {gstVerification.status === 'verified' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> GST Verified
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          id="partner-gstin"
+                          type="text"
+                          required
+                          maxLength={15}
+                          value={gstin}
+                          onChange={(event) => {
+                            setGstin(event.target.value.replace(/\s/g, '').toUpperCase().slice(0, 15));
+                            setGstVerification({ status: 'idle' });
+                            if (error) setError('');
+                          }}
+                          className="h-11 min-w-0 flex-1 px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm tracking-wide focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                          placeholder="15-character GSTIN"
+                          autoComplete="off"
+                          aria-describedby="partner-gstin-status"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleGstVerification}
+                          disabled={gstVerification.status === 'loading' || loading}
+                          className="h-11 shrink-0 rounded-xl border border-amber-400 bg-amber-50 px-3 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {gstVerification.status === 'loading' ? 'Checking…' : 'Verify'}
+                        </button>
+                      </div>
+                      <div id="partner-gstin-status" aria-live="polite" className="mt-1 text-[10px]">
+                        {gstVerification.status === 'verified' && (
+                          <span className="text-emerald-700">
+                            {gstVerification.businessName || gstVerification.legalName || gstVerification.maskedGstin || 'GSTIN verified'}
+                          </span>
+                        )}
+                        {gstVerification.status === 'error' && (
+                          <span className="text-red-600">{gstVerification.message}</span>
+                        )}
+                        {gstVerification.status === 'idle' && (
+                          <span className="text-zinc-400">Verify GSTIN before registering the dealer.</span>
+                        )}
                       </div>
                     </div>
 
@@ -419,6 +713,7 @@ function SignupPageInner() {
                             onChange={(e) => {
                               const onlyNums = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
                               setRegisterData({ ...registerData, mobile: onlyNums });
+                              setGstVerification({ status: 'idle' });
                               if (error) setError('');
                             }}
                             className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
@@ -478,16 +773,18 @@ function SignupPageInner() {
                           value={registerData.email}
                           onChange={(e) => {
                             setRegisterData({ ...registerData, email: e.target.value });
+                            setGstVerification({ status: 'idle' });
                             if (error) setError('');
                           }}
                           onBlur={(e) => {
                             setRegisterData({ ...registerData, email: sanitizeEmail(e.target.value) });
                           }}
                           className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder="Enter your email address"
+                          placeholder="dealer@yourcompany.in"
                           autoComplete="email"
                         />
                       </div>
+                      <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Use your dealership/company email. Gmail, Yahoo, Outlook and other personal email providers are not accepted.</p>
                     </div>
 
                     <div>

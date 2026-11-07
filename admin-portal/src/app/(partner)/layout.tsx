@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu, BarChart3, CheckCircle2, ChevronRight, Clock, ArrowRight } from 'lucide-react';
+import { CreditCard, FileCheck2, LayoutDashboard, LogOut, ChevronDown, User as UserIcon, Truck, MessagesSquare, Bell, CheckCheck, X, Menu, BarChart3, CheckCircle2, ChevronRight, Clock, ArrowRight, ShieldCheck, Copy, Check } from 'lucide-react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
@@ -60,6 +60,7 @@ export default function PartnerLayout({
   const isApproved = partnerIsApproved(user);
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [copiedPartnerCode, setCopiedPartnerCode] = useState(false);
 
   const [notifications, setNotifications] = useState<PartnerNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -263,7 +264,7 @@ export default function PartnerLayout({
       return;
     }
 
-    if (!isApproved && pathname !== '/partner/kyc' && pathname !== '/partner/profile') {
+    if (!isApproved && pathname !== '/partner/kyc' && pathname !== '/partner/profile' && pathname !== '/partner/auth') {
       router.replace('/partner/kyc');
       return;
     }
@@ -301,7 +302,7 @@ export default function PartnerLayout({
           return;
         }
 
-        if (!partnerIsApproved(response.data.user) && pathname !== '/partner/kyc' && pathname !== '/partner/profile') {
+        if (!partnerIsApproved(response.data.user) && pathname !== '/partner/kyc' && pathname !== '/partner/profile' && pathname !== '/partner/auth') {
           router.replace('/partner/kyc');
         }
 
@@ -389,6 +390,7 @@ export default function PartnerLayout({
     { href: '/partner/listings', label: t('partner.listings'), icon: Truck, disabled: !isApproved },
     { href: '/partner/leads', label: t('partner.enquiries'), icon: MessagesSquare, disabled: !isApproved },
     { href: '/partner/payments', label: 'Payments', icon: CreditCard, disabled: !isApproved },
+    ...(user.role === 'PARTNER' ? [{ href: '/partner/auth', label: 'Auth', icon: ShieldCheck, disabled: false }] : []),
     ...(!isKycApproved ? [{ href: '/partner/kyc', label: t('partner.onboarding'), icon: FileCheck2 }] : []),
   ];
 
@@ -399,6 +401,7 @@ export default function PartnerLayout({
     '/partner/listings': t('partner.myListings'),
     '/partner/leads': t('partner.enquiryManagement'),
     '/partner/payments': 'Listing Payments',
+    '/partner/auth': 'Auth',
     '/partner/profile': t('partner.myProfilePage'),
     '/partner/kyc': t('partner.partnerOnboarding'),
     '/partner/notifications': t('common.notifications', 'Notification Center'),
@@ -553,7 +556,7 @@ export default function PartnerLayout({
                   </p>
                 </div>
 
-                <div className="mt-1 flex items-center gap-1.5">
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${
                       isApproved
@@ -563,6 +566,14 @@ export default function PartnerLayout({
                   >
                     {formatPartnerTypeLabel(user.partnerType, translatedOnboardingStatus || t('partner.onboarding'))}
                   </span>
+                  {user.partnerCode && (
+                    <span
+                      className="text-[10px] font-mono font-medium text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 truncate max-w-[120px]"
+                      title={`Partner ID: ${user.partnerCode}`}
+                    >
+                      #{user.partnerCode}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -761,6 +772,31 @@ export default function PartnerLayout({
                         </div>
                       </div>
                     </div>
+                    {user.partnerCode && (
+                      <div className="px-4 py-2 bg-slate-50 flex items-center justify-between border-t border-b border-slate-100">
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Partner ID</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (user.partnerCode) {
+                              navigator.clipboard.writeText(user.partnerCode);
+                              setCopiedPartnerCode(true);
+                              setTimeout(() => setCopiedPartnerCode(false), 2000);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 text-[10px] font-mono font-bold text-slate-800 border border-slate-200 transition-colors shadow-2xs group cursor-pointer"
+                          title="Click to copy Partner ID"
+                        >
+                          <span>{user.partnerCode}</span>
+                          {copiedPartnerCode ? (
+                            <Check className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <Copy className="h-2.5 w-2.5 text-slate-400 group-hover:text-slate-600 shrink-0" />
+                          )}
+                        </button>
+                      </div>
+                    )}
                     <div className="p-1.5 space-y-0.5 text-xs">
                       <button
                         type="button"

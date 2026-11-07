@@ -21,6 +21,7 @@ import {
 } from '../modules/sms-core/templatePolicy';
 import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
 import { resolveNotificationPreference } from './notificationRecipient.service';
+import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
 
 const SETTINGS_ID = 'default';
 const MASKED_SECRET = '********';
@@ -187,6 +188,7 @@ export const updateSmsSettings = async (input: SmsSettingsInput) => {
 };
 
 const getSmsAutomationConfiguration = async (eventCodes: readonly SmsAutomationEvent[]) => {
+  await provisionAutomationRules(prisma.smsAutomationRule, eventCodes);
   const existingRules = await prisma.smsAutomationRule.findMany({
     where: { eventCode: { in: [...eventCodes] } },
     select: { id: true, eventCode: true, enabled: true, messageId: true, variablesTemplate: true, recipientPolicy: true, updatedAt: true },

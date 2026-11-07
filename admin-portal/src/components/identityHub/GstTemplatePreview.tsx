@@ -5,6 +5,7 @@ import { CheckCircle2, Download, FileText, Loader2, ShieldCheck, Upload, XCircle
 import api from '@/lib/api';
 import type { GstResultResponse } from '@/lib/gstVerification';
 import { getVerificationTemplateBlob } from '@/lib/panTemplateCache';
+import { shouldRenderCanonicalGstTemplate } from '@/lib/partnerGstVerification';
 
 const formatRemaining = (milliseconds: number) => {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
@@ -36,6 +37,7 @@ type Props = {
 
 export default function GstTemplatePreview({ response, onUploaded, templateEndpointBase = '/gst-verification' }: Props) {
   const template = response.template ?? response.record.template;
+  const renderCanonicalTemplate = shouldRenderCanonicalGstTemplate(response);
   const [remaining, setRemaining] = useState(() => response.record.rawDataExpiresAt ? new Date(response.record.rawDataExpiresAt).getTime() - Date.now() : 0);
   const [templateBlob, setTemplateBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -58,7 +60,9 @@ export default function GstTemplatePreview({ response, onUploaded, templateEndpo
     let objectUrl = '';
     const load = async () => {
       try {
-        const blob = template
+        const blob = renderCanonicalTemplate
+          ? await toPdfBlob(response)
+          : template
           ? await getVerificationTemplateBlob(`${response.record.id}:${template.id}`, async () => {
               const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
               return result.data;
@@ -79,13 +83,15 @@ export default function GstTemplatePreview({ response, onUploaded, templateEndpo
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [response, response.record.id, template, templateEndpointBase]);
+  }, [renderCanonicalTemplate, response, response.record.id, template, templateEndpointBase]);
 
   const downloadPdf = async () => {
     setDownloadBusy(true);
     setError('');
     try {
-      const blob = templateBlob || (template
+      const blob = templateBlob || (renderCanonicalTemplate
+        ? await toPdfBlob(response)
+        : template
         ? await getVerificationTemplateBlob(`${response.record.id}:${template.id}`, async () => {
             const result = await api.get<Blob>(`${templateEndpointBase}/${response.record.id}/template`, { responseType: 'blob' });
             return result.data;

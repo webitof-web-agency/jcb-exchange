@@ -196,18 +196,28 @@ export default function AadhaarDigiLockerPanel({
 
   // Sync selected record from history if clicked by operator
   useEffect(() => {
-    if (selectedDetail?.result) {
-      setResult(selectedDetail.result as AadhaarResult);
+    if (!selectedDetail?.result) return undefined;
+
+    const selectedResult = selectedDetail.result;
+    let cancelled = false;
+    const frame = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      setResult(selectedResult as AadhaarResult);
       setRecordId(selectedDetail.record?.id || '');
       setTemplate(selectedDetail.template || selectedDetail.record?.template || null);
-      if (selectedDetail.result.aadhaarNumber) {
-        setAadhaarNumber(selectedDetail.result.aadhaarNumber);
+      if (selectedResult.aadhaarNumber) {
+        setAadhaarNumber(selectedResult.aadhaarNumber);
       } else if (selectedDetail.record?.maskedAadhaar) {
         setAadhaarNumber(selectedDetail.record.maskedAadhaar);
       }
-      setSuccessMessage(`Viewing verified record: ${selectedDetail.result.fullName || selectedDetail.record?.maskedAadhaar}`);
+      setSuccessMessage(`Viewing verified record: ${selectedResult.fullName || selectedDetail.record?.maskedAadhaar}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, [selectedDetail]);
 
   const copyToClipboard = (key: string, text: string) => {
@@ -550,7 +560,7 @@ export default function AadhaarDigiLockerPanel({
               )}
 
               {/* VERIFIED CITIZEN DOSSIER (Rendered inside left card when result is active) */}
-              {result && (
+              {result && !template && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3.5 animate-in fade-in">
                   <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2.5">
                     <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">

@@ -57,6 +57,7 @@ export const authenticatedUserSelect = {
   },
   partnerProfile: {
     select: {
+      partnerCode: true,
       onboardingStatus: true,
       accountStatus: true,
       kycStatus: true,

@@ -46,6 +46,7 @@ export interface VerificationDocument {
 
 export interface VerificationDetail {
   id: string;
+  partnerCode: string | null;
   ownerName: string | null;
   email: string | null;
   mobile: string | null;
@@ -53,6 +54,7 @@ export interface VerificationDetail {
   city: string | null;
   state: string | null;
   profile: {
+    partnerCode: string | null;
     ownerName: string | null;
     businessName: string | null;
     partnerType: string | null;

@@ -20,12 +20,18 @@ export default function VerificationDecisionModal({ partnerId, partnerName, targ
   const [error, setError] = useState('');
 
   const confirm = async () => {
+    const normalizedComment = comment.trim();
+    if (targetStatus === 'CHANGES_REQUESTED' && normalizedComment.length < 5) {
+      setError('Enter a specific correction remark of at least 5 characters.');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
     try {
       await api.patch(`/superadmin/verifications/${partnerId}/status`, {
         status: targetStatus,
-        comment: comment.trim() || undefined,
+        comment: normalizedComment || undefined,
       });
       onDecided(targetStatus);
     } catch (err) {
@@ -70,7 +76,7 @@ export default function VerificationDecisionModal({ partnerId, partnerName, targ
         <div className="space-y-3 text-xs">
           <p className="text-slate-600">
             {targetStatus === 'APPROVED'
-              ? 'This will formally approve the partner dossier, grant access to post inventory, and activate partner privileges.'
+              ? 'This will formally approve the partner dossier, grant access to post inventory, and activate partner privileges. Any note entered below will be visible to the partner.'
               : targetStatus === 'CHANGES_REQUESTED'
               ? 'Enter specific notes for the partner explaining which documents or details require revision before approval.'
               : 'Are you sure you want to reject this onboarding dossier? This will set account status to REJECTED.'}
@@ -78,7 +84,11 @@ export default function VerificationDecisionModal({ partnerId, partnerName, targ
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Compliance / Audit Remark (Optional)
+              {targetStatus === 'CHANGES_REQUESTED'
+                ? 'Correction remark (Required · visible to partner)'
+                : targetStatus === 'APPROVED'
+                ? 'Partner-facing compliance note (Optional)'
+                : 'Decision remark (Visible to partner)'}
             </label>
             <textarea
               value={comment}
@@ -88,7 +98,9 @@ export default function VerificationDecisionModal({ partnerId, partnerName, targ
               placeholder={
                 targetStatus === 'CHANGES_REQUESTED'
                   ? 'e.g. Please re-upload a clear copy of Company PAN and GST certificate.'
-                  : 'Audit or sign-off comment for the review log...'
+                  : targetStatus === 'APPROVED'
+                  ? 'e.g. GST, KYC documents, and business details verified. Account approved and activated for listing activities.'
+                  : 'Explain the reason for this decision to the partner...'
               }
             />
           </div>
@@ -108,7 +120,7 @@ export default function VerificationDecisionModal({ partnerId, partnerName, targ
           <button
             type="button"
             onClick={() => void confirm()}
-            disabled={submitting}
+            disabled={submitting || (targetStatus === 'CHANGES_REQUESTED' && comment.trim().length < 5)}
             className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-black shadow-2xs transition-all disabled:opacity-50 ${
               targetStatus === 'APPROVED'
                 ? 'bg-[#FFC107] text-slate-950 hover:bg-[#E5AD06]'

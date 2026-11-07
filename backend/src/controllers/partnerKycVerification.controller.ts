@@ -11,11 +11,13 @@ import {
   buildVerifiedKycDocumentState,
   type PartnerKycDocumentType,
 } from '../utils/partnerKycPersistence';
+import { markPartnerAuthAadhaarVerified } from '../services/partnerAuthAadhaar.service';
 
 const bodyOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 export const isPartnerKycRole = (role?: string | null) => role === 'PARTNER' || role === 'CUSTOMER';
+export const isPartnerGstDetailsRole = (role?: string | null) => role === 'PARTNER';
 
 const ensurePartnerKycAccess = (req: Request, res: Response) => {
   if (!req.user?.id || !isPartnerKycRole(req.user.role)) {
@@ -23,6 +25,23 @@ const ensurePartnerKycAccess = (req: Request, res: Response) => {
     return false;
   }
 
+  return true;
+};
+
+const ensurePartnerGstDetailsAccess = (req: Request, res: Response) => {
+  if (!req.user?.id || !isPartnerGstDetailsRole(req.user.role)) {
+    res.status(403).json({ error: 'Authenticated partner access required.' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensurePartnerAuthAccess = (req: Request, res: Response) => {
+  if (!req.user?.id || req.user.role !== 'PARTNER') {
+    res.status(403).json({ error: 'Authenticated partner access required.' });
+    return false;
+  }
   return true;
 };
 
@@ -94,6 +113,19 @@ const persistPartnerVerificationDocument = async ({
     documentNumber: nextData.documentNumber ?? existing?.documentNumber ?? null,
     nameOnDocument: nextData.nameOnDocument ?? existing?.nameOnDocument ?? null,
   };
+
+  if (documentType === 'GST_CERTIFICATE') {
+    await prisma.partnerProfile.update({
+      where: { id: partnerProfile.id },
+      data: {
+        gstVerificationRecordId: recordId,
+        ...(typeof data.documentNumber === 'string' && data.documentNumber.trim()
+          ? { gstNumber: data.documentNumber.trim().toUpperCase() }
+          : {}),
+        ...(completedAt instanceof Date ? { gstVerifiedAt: completedAt } : {}),
+      },
+    });
+  }
 
   if (existing) {
     return prisma.kycDocument.update({ where: { id: existing.id }, data });
@@ -288,6 +320,149 @@ export const verifyPartnerGstin = async (req: Request, res: Response, next: Next
     }
 
     return res.status(result.cacheHit ? 200 : 201).json({ success: true, ...result });
+  } catch (error) {
+    return sendError(error, res, next);
+  }
+};
+
+/**
+ * Auth-page Aadhaar verification is deliberately separate from the KYC
+ * document flow. It verifies the number through DigiLocker, returns the
+ * verification result to the current request, retains only the verified-at
+ * status on the partner profile, and then removes the transient verification
+ * record. It never stores the Aadhaar number or creates/updates a KycDocument
+ * or template.
+ */
+export const initializePartnerAuthAadhaar = async (req: Request, res: Response, next: NextFunction) => {
+  if (!ensurePartnerAuthAccess(req, res)) return;
+
+  try {
+    const body = bodyOf(req.body);
+    const result = await aadhaarVerificationService.initialize({
+      aadhaarNumber: body.aadhaarNumber ?? body.aadhaar_number,
+      side: 'SALE',
+    }, req.user!.id);
+    return res.status(201).json({ success: true, verificationOnly: true, ...result });
+  } catch (error) {
+    return sendError(error, res, next);
+  }
+};
+
+export const completePartnerAuthAadhaar = async (req: Request, res: Response, next: NextFunction) => {
+  if (!ensurePartnerAuthAccess(req, res)) return;
+
+  try {
+    const body = bodyOf(req.body);
+    const result = await aadhaarVerificationService.complete({
+      recordId: body.recordId ?? body.record_id,
+      clientId: body.clientId ?? body.client_id,
+    }, req.user!.id);
+    const verificationOnlyResult = {
+      ...result,
+      template: null,
+      verificationOnly: true,
+    };
+    if (result.record?.id && result.record.status === 'SUCCESS') {
+      const partnerProfile = await prisma.partnerProfile.findUnique({
+        where: { userId: req.user!.id },
+        select: { id: true },
+      });
+      if (!partnerProfile) {
+        throw new AadhaarVerificationError('Partner profile was not found.', 404, 'partner_profile_not_found');
+      }
+      const verified = await markPartnerAuthAadhaarVerified(
+        prisma.partnerProfile,
+        partnerProfile.id,
+        result.record.completedAt ? new Date(result.record.completedAt) : new Date(),
+      );
+      await aadhaarVerificationService.discardVerificationRecord(result.record.id, req.user!.id);
+      return res.json({
+        success: true,
+        ...verificationOnlyResult,
+        aadhaarVerifiedAt: verified.aadhaarVerifiedAt,
+      });
+    }
+    return res.json({ success: true, ...verificationOnlyResult });
+  } catch (error) {
+    return sendError(error, res, next);
+  }
+};
+
+export const cancelPartnerAuthAadhaar = async (req: Request, res: Response, next: NextFunction) => {
+  if (!ensurePartnerAuthAccess(req, res)) return;
+
+  try {
+    const body = bodyOf(req.body);
+    const recordId = body.recordId ?? body.record_id;
+    const result = await aadhaarVerificationService.cancel(recordId, req.user!.id);
+    await aadhaarVerificationService.discardVerificationRecord(recordId, req.user!.id);
+    return res.json({ success: true, verificationOnly: true, ...result });
+  } catch (error) {
+    return sendError(error, res, next);
+  }
+};
+
+export const getPartnerAuthAadhaarStatus = async (req: Request, res: Response, next: NextFunction) => {
+  if (!ensurePartnerAuthAccess(req, res)) return;
+
+  try {
+    const result = await aadhaarVerificationService.checkStatus(req.params.id, req.user!.id, req.user!.role);
+    return res.json({ success: true, verificationOnly: true, ...result, template: null });
+  } catch (error) {
+    return sendError(error, res, next);
+  }
+};
+
+export const getPartnerGstVerification = async (req: Request, res: Response, next: NextFunction) => {
+  if (!ensurePartnerGstDetailsAccess(req, res)) return;
+
+  try {
+    const profile = await prisma.partnerProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: {
+        id: true,
+        gstNumber: true,
+        gstVerificationRecordId: true,
+      },
+    });
+
+    let verificationRecordId = profile?.gstVerificationRecordId || null;
+    if (!verificationRecordId && profile?.id) {
+      const legacyDocument = await prisma.kycDocument.findFirst({
+        where: {
+          partnerProfileId: profile.id,
+          documentType: 'GST_CERTIFICATE',
+          verificationRecordId: { not: null },
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: { verificationRecordId: true },
+      });
+      verificationRecordId = legacyDocument?.verificationRecordId || null;
+    }
+
+    if (!verificationRecordId) {
+      return res.json({
+        success: true,
+        available: false,
+        gstNumber: profile?.gstNumber || null,
+        record: null,
+        result: null,
+        template: null,
+      });
+    }
+
+    const detail = await gstVerificationService.getHistoryDetail(
+      verificationRecordId,
+      req.user!.id,
+      req.user!.role,
+    );
+
+    return res.json({
+      success: true,
+      available: detail.record?.status === 'SUCCESS',
+      gstNumber: profile?.gstNumber || null,
+      ...detail,
+    });
   } catch (error) {
     return sendError(error, res, next);
   }

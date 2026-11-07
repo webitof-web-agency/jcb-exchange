@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export interface User {
   id: string;
+  partnerCode?: string | null;
   email: string;
   hasPassword?: boolean;
   name: string;

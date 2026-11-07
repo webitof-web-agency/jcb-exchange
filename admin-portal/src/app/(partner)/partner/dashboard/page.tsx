@@ -18,6 +18,8 @@ import {
   Flame,
   ChevronRight,
   ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
@@ -120,6 +122,14 @@ export default function PartnerDashboard() {
   const [data, setData] = useState<DashboardAnalyticsResponse>(emptyDashboardData);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [copiedPartnerId, setCopiedPartnerId] = useState(false);
+
+  const handleCopyPartnerId = () => {
+    if (!user?.partnerCode) return;
+    navigator.clipboard.writeText(user.partnerCode);
+    setCopiedPartnerId(true);
+    setTimeout(() => setCopiedPartnerId(false), 2000);
+  };
 
   const loadDashboard = async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -163,6 +173,22 @@ export default function PartnerDashboard() {
               <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200/80">
                 {formatPartnerTypeLabel(user?.partnerType, 'Dealer')}
               </span>
+              {user?.partnerCode && (
+                <button
+                  type="button"
+                  onClick={handleCopyPartnerId}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 px-2.5 py-0.5 text-[10px] font-semibold text-slate-800 border border-slate-200/90 transition-all cursor-pointer group shadow-2xs"
+                  title="Click to copy Partner ID"
+                >
+                  <span className="text-slate-500 font-medium">Partner ID:</span>
+                  <span className="font-mono font-bold text-slate-900">{user.partnerCode}</span>
+                  {copiedPartnerId ? (
+                    <Check className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Copy className="h-2.5 w-2.5 text-slate-400 group-hover:text-slate-600 shrink-0" />
+                  )}
+                </button>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5 truncate">
               {partnerCompany ? `${partnerCompany} · ` : ''}Manage active machinery, buyer enquiries, and deal conversions.

@@ -18,7 +18,9 @@
     "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts",
     "roles:sync": "tsx scripts/sync-employee-roles.ts",
     "notifications:backfill": "tsx scripts/backfill-notification-preferences.ts",
-    "notifications:audit": "tsx scripts/audit-notification-wiring.ts"
+    "notifications:audit": "tsx scripts/audit-notification-wiring.ts",
+    "notifications:provision": "tsx scripts/provision-notification-automation-rules.ts",
+    "partners:backfill": "tsx scripts/backfill-partner-profiles.ts"
   },
   "keywords": [],
   "author": "",

@@ -10,8 +10,9 @@ test('maps a sale Aadhaar preview to the sale Aadhaar document slot', () => {
   assert.equal(getGeneratedKycDocumentKey({ side: 'sell', kind: 'aadhaar' }), 'sellAadhaarCard');
 });
 
-test('does not create a generated document slot for GST data previews', () => {
-  assert.equal(getGeneratedKycDocumentKey({ side: 'purchase', kind: 'gst' }), null);
+test('maps GST previews to the GST certificate document slot', () => {
+  assert.equal(getGeneratedKycDocumentKey({ side: 'purchase', kind: 'gst' }), 'purchaseGstCertificate');
+  assert.equal(getGeneratedKycDocumentKey({ side: 'sell', kind: 'gst' }), 'sellGstCertificate');
 });
 
 test('uses Upload as the KYC action label before the document is uploaded', () => {

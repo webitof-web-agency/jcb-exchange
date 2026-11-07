@@ -58,6 +58,7 @@ type AadhaarRecordRepository = {
   count?: (args: any) => Promise<number>;
   create: (args: any) => Promise<any>;
   update: (args: any) => Promise<any>;
+  delete?: (args: any) => Promise<any>;
   updateMany?: (args: any) => Promise<{ count: number }>;
   deleteMany?: (args: any) => Promise<{ count: number }>;
 };
@@ -626,6 +627,25 @@ export class AadhaarVerificationService {
     }
     const cancelled = await this.record.update({ where: { id: record.id }, data: { status: AadhaarVerificationStatus.FAILED, safeMessage: 'Aadhaar verification was cancelled.', messageCode: 'cancelled', completedAt: new Date() } });
     return { record: recordSummary(cancelled), cancelled: true };
+  }
+
+  async discardVerificationRecord(recordIdValue: unknown, requestedById: string) {
+    const recordId = safeString(recordIdValue, 100);
+    if (!recordId) return false;
+    const record = await this.record.findUnique({ where: { id: recordId } });
+    if (!record || record.requestedById !== requestedById) return false;
+    if (record.template) {
+      throw new AadhaarVerificationError('Aadhaar template records cannot be discarded by the verification-only flow.', 409, 'template_record_not_ephemeral');
+    }
+    if (this.record.delete) {
+      await this.record.delete({ where: { id: recordId } });
+      return true;
+    }
+    if (this.record.deleteMany) {
+      await this.record.deleteMany({ where: { id: recordId, requestedById } });
+      return true;
+    }
+    return false;
   }
 
   async listHistory(

@@ -16,6 +16,7 @@ import {
   uploadCustomerPrimeReceipt,
   uploadListingPaymentReceipt,
   uploadSecureDocument,
+  uploadSecurePassportPhoto,
 } from '../controllers/document.controller';
 import { requireAdmin, requireAuth, requirePortalOperator, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
@@ -36,7 +37,7 @@ const publicSiteFaviconUpload = getDocumentUploadMiddleware('public', 'site-favi
 const publicSiteManifestIconUpload = getDocumentUploadMiddleware('public', 'site-manifest-icon');
 
 router.post('/upload/secure', requireAuth, requirePortalOperator, secureUpload.single('file'), uploadSecureDocument);
-router.post('/upload/secure/passport-photo', requireAuth, requirePortalOperator, passportPhotoUpload.single('file'), uploadSecureDocument);
+router.post('/upload/secure/passport-photo', requireAuth, requirePortalOperator, passportPhotoUpload.single('file'), uploadSecurePassportPhoto);
 router.post('/upload/public', requireAuth, requirePortalOperator, publicUpload.single('file'), uploadPublicDocument);
 router.post('/upload/public/customer-prime-receipt', requireAuth, publicUpload.single('file'), uploadCustomerPrimeReceipt);
 router.post('/upload/public/listing-payment-receipt', requireAuth, publicUpload.single('file'), uploadListingPaymentReceipt);

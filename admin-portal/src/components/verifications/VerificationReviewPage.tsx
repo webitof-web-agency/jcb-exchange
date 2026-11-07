@@ -313,6 +313,9 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
 
   const partnerName = detail.profile.businessName || detail.profile.ownerName || detail.ownerName || detail.email || 'Partner';
   const kycStatus = detail.profile.kycStatus;
+  const latestChangesRequest = detail.reviewHistory.find(
+    (item) => item.action === 'SUPER_ADMIN_CHANGES_REQUESTED' && Boolean(item.comment?.trim()),
+  );
 
   return (
     <div className="space-y-4 pb-4">
@@ -347,6 +350,9 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
             <span>Phone: <strong className="font-mono font-bold text-slate-900">{detail.mobile}</strong></span>
           )}
           <span>Type: <strong className="font-bold text-amber-800">{formatPartnerTypeLabel(detail.profile.partnerType)}</strong></span>
+          {detail.partnerCode && (
+            <span>Partner ID: <strong className="font-mono font-bold text-slate-900">{detail.partnerCode}</strong></span>
+          )}
         </div>
 
         <div className="mt-3.5 flex items-center gap-1.5 border-t border-slate-100 pt-2.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
@@ -387,6 +393,19 @@ export default function VerificationReviewPage({ partnerId }: { partnerId: strin
           <button type="button" onClick={() => setActionError('')} className="text-rose-500 hover:text-rose-700" aria-label="Dismiss">
             <X className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {latestChangesRequest && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 shadow-2xs">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <div className="min-w-0 text-xs">
+              <p className="font-bold text-amber-950">Latest correction remark</p>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed text-amber-900">{latestChangesRequest.comment}</p>
+              <p className="mt-1 text-[10px] text-amber-700">Recorded on {formatDateTime(latestChangesRequest.createdAt)}</p>
+            </div>
+          </div>
         </div>
       )}
 

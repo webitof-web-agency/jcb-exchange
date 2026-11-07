@@ -7,6 +7,7 @@ import {
   createUploadPublicListingMedia,
   createUploadCustomerPrimeReceipt,
   createUploadSecureDocument,
+  createUploadSecurePassportPhoto,
 } from './document.controller';
 
 test('uploads Prime receipts privately and returns the authenticated Drive proxy URL', async () => {
@@ -312,4 +313,70 @@ test('uploads secure PDFs through the shared private year/month Drive uploader',
     fileUrl: '/api/documents/secure/drive-secure-drive-file-id',
     absoluteUrl: 'http://localhost:5002/api/documents/secure/drive-secure-drive-file-id',
   });
+});
+
+test('stores partner passport photos only as bounded WebP files', async () => {
+  const uploadedFile = {
+    buffer: Buffer.from('webp-bytes'),
+    mimetype: 'image/webp',
+    originalname: 'partner-photo.webp',
+    size: 12,
+  } as Express.Multer.File;
+  const uploadCalls: Array<{ mimeType: string; filename: string }> = [];
+  const uploadToDrive = async (_buffer: Buffer, mimeType: string, filename: string) => {
+    uploadCalls.push({ mimeType, filename });
+    return { fileId: 'passport-photo-drive-id', viewLink: 'https://drive.google.com/uc?id=passport-photo-drive-id' };
+  };
+  const responseState: { statusCode: number; body?: unknown } = { statusCode: 0 };
+  const response = {
+    status(code: number) {
+      responseState.statusCode = code;
+      return response;
+    },
+    json(payload: unknown) {
+      responseState.body = payload;
+      return response;
+    },
+  } as unknown as Response;
+
+  await createUploadSecurePassportPhoto(uploadToDrive)(
+    {
+      file: uploadedFile,
+      protocol: 'https',
+      get: () => 'api.example.com',
+    } as unknown as Request,
+    response,
+    () => { throw new Error('Passport photo upload should not fail.'); },
+  );
+
+  assert.equal(responseState.statusCode, 201);
+  assert.deepEqual(uploadCalls, [{ mimeType: 'image/webp', filename: 'partner-photo.webp' }]);
+});
+
+test('rejects a non-WebP passport photo before Drive storage', async () => {
+  const uploadedFile = {
+    buffer: Buffer.from('png-bytes'),
+    mimetype: 'image/png',
+    originalname: 'partner-photo.png',
+    size: 12,
+  } as Express.Multer.File;
+  let uploadCalled = false;
+  const response = {} as Response;
+  let forwardedError: unknown;
+
+  await createUploadSecurePassportPhoto(async () => {
+    uploadCalled = true;
+    return { fileId: 'should-not-be-used', viewLink: 'https://drive.google.com/uc?id=should-not-be-used' };
+  })(
+    {
+      file: uploadedFile,
+      protocol: 'https',
+      get: () => 'api.example.com',
+    } as unknown as Request,
+    response,
+    (error: unknown) => { forwardedError = error; },
+  );
+
+  assert.equal(uploadCalled, false);
+  assert.match(String((forwardedError as Error)?.message), /WebP/);
 });

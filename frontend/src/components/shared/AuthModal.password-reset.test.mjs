@@ -12,7 +12,8 @@ test('clears login credentials and password visibility when the auth flow resets
   assert.match(resetFunction, /setShowPassword\(false\);/);
 });
 
-test('uses the browser-safe autocomplete hints for login credentials', () => {
-  assert.match(source, /autoComplete=\{isLogin \? 'username' : 'email'\}/);
-  assert.match(source, /autoComplete=\{isLogin \? 'current-password' : 'new-password'\}/);
+test('prevents browsers from restoring saved login credentials in the modal', () => {
+  assert.match(source, /<form[\s\S]*?autoComplete="off"/);
+  assert.match(source, /name=\{isLogin \? 'jcb-login-email' : 'email'\}[\s\S]*?autoComplete=\{isLogin \? 'new-password' : 'email'\}/);
+  assert.match(source, /name=\{isLogin \? 'jcb-login-password' : 'password'\}[\s\S]*?autoComplete="new-password"/);
 });

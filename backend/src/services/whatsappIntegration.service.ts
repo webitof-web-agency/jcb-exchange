@@ -28,6 +28,7 @@ import { resolveNotificationPreference } from './notificationRecipient.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
 import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
+import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
 
 const SETTINGS_ID = 'default';
 
@@ -80,6 +81,7 @@ const getWhatsAppAutomationConfiguration = async (
   eventCodes: readonly WhatsAppAutomationEvent[],
   allowedTemplatePurposes: readonly WhatsAppTemplatePurpose[],
 ) => {
+  await provisionAutomationRules(prisma.whatsAppAutomationRule, eventCodes);
   const [templates, existingRules] = await Promise.all([
     prisma.whatsAppMetaTemplate.findMany({
       orderBy: [{ status: 'asc' }, { name: 'asc' }],

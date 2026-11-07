@@ -13,6 +13,7 @@ import {
   checkSetup,
   getPartnerOnboarding,
   savePartnerOnboarding,
+  updatePartnerAuthIdentity,
   submitPartnerOnboarding,
   getCustomerPrimeAccess,
   getCustomerPrimeHistory,
@@ -34,15 +35,21 @@ import { requireAuth } from '../middlewares/auth.middleware';
 import { loginRateLimit, otpRateLimit, partnerKycVerificationRateLimit, passwordResetRateLimit, registerRateLimit } from '../middlewares/rateLimit.middleware';
 import {
   cancelPartnerAadhaar,
+  cancelPartnerAuthAadhaar,
   completePartnerAadhaar,
+  completePartnerAuthAadhaar,
   getPartnerAadhaarStatus,
+  getPartnerAuthAadhaarStatus,
+  getPartnerGstVerification,
   getPartnerKycTemplate,
   initializePartnerAadhaar,
+  initializePartnerAuthAadhaar,
   uploadPartnerKycTemplate,
   verifyPartnerGstin,
   verifyPartnerPan,
 } from '../controllers/partnerKycVerification.controller';
 import { getAvatarUploadMiddleware, getDocumentUploadMiddleware } from '../utils/documentUpload';
+import { verifyPartnerSignupGstin } from '../controllers/partnerSignupGstVerification.controller';
 
 const router = Router();
 
@@ -51,6 +58,7 @@ router.get('/google-config', getGoogleClientConfig);
 router.get('/mobile-otp/config', getMobileOtpConfig);
 router.get('/email-otp/config', getEmailOtpConfig);
 router.post('/register', registerRateLimit, register);
+router.post('/partner/signup/verify-gstin', registerRateLimit, verifyPartnerSignupGstin);
 router.post('/login', loginRateLimit, login);
 router.post('/login/mobile-otp/send', otpRateLimit, sendLoginOtp);
 router.post('/login/mobile-otp/verify', otpRateLimit, verifyLoginOtp);
@@ -73,13 +81,19 @@ router.get('/customer-prime/history', requireAuth, getCustomerPrimeHistory);
 router.post('/customer-prime/subscribe', requireAuth, submitCustomerPrimeSubscription);
 router.get('/partner/onboarding', requireAuth, getPartnerOnboarding);
 router.put('/partner/onboarding', requireAuth, savePartnerOnboarding);
+router.patch('/partner/auth-identity', requireAuth, updatePartnerAuthIdentity);
 router.post('/partner/onboarding/submit', requireAuth, submitPartnerOnboarding);
 router.post('/partner/kyc/verify-pan', requireAuth, partnerKycVerificationRateLimit, verifyPartnerPan);
 router.post('/partner/kyc/verify-gstin', requireAuth, partnerKycVerificationRateLimit, verifyPartnerGstin);
+router.get('/partner/gst-verification', requireAuth, getPartnerGstVerification);
 router.post('/partner/kyc/verify-aadhaar/initialize', requireAuth, partnerKycVerificationRateLimit, initializePartnerAadhaar);
 router.post('/partner/kyc/verify-aadhaar/complete', requireAuth, partnerKycVerificationRateLimit, completePartnerAadhaar);
 router.post('/partner/kyc/verify-aadhaar/cancel', requireAuth, cancelPartnerAadhaar);
 router.get('/partner/kyc/verify-aadhaar/status/:id', requireAuth, getPartnerAadhaarStatus);
+router.post('/partner/auth/verify-aadhaar/initialize', requireAuth, partnerKycVerificationRateLimit, initializePartnerAuthAadhaar);
+router.post('/partner/auth/verify-aadhaar/complete', requireAuth, partnerKycVerificationRateLimit, completePartnerAuthAadhaar);
+router.post('/partner/auth/verify-aadhaar/cancel', requireAuth, cancelPartnerAuthAadhaar);
+router.get('/partner/auth/verify-aadhaar/status/:id', requireAuth, getPartnerAuthAadhaarStatus);
 router.post('/partner/kyc/:documentType/:id/template', requireAuth, getDocumentUploadMiddleware('secure').single('template'), uploadPartnerKycTemplate);
 router.get('/partner/kyc/:documentType/:id/template', requireAuth, getPartnerKycTemplate);
 router.post('/partner/kyc', requireAuth, submitKyc);

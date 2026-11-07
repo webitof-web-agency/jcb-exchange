@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
-  AlertCircle, KeyRound, Pencil, Search, Trash2, X, ChevronDown, Plus,
+  AlertCircle, Archive, KeyRound, Pencil, Search, X, ChevronDown, Plus,
   MoreVertical, Building2, Phone, Mail, MapPin, CheckCircle2, Clock,
   ShieldCheck, ShieldAlert, Award, MessageSquare, Copy, Check, Users,
   Package, RefreshCw, Printer, ExternalLink, ArrowUpDown, LayoutGrid,
-  Table as TableIcon, Filter, AlertTriangle, UserCheck
+  Table as TableIcon, Filter, AlertTriangle, UserCheck, RotateCcw
 } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
-import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
+import PartnerArchiveDialog from '@/components/portal/PartnerArchiveDialog';
 import BrandLoader from '@/components/ui/BrandLoader';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { usePathname, useRouter } from 'next/navigation';
@@ -18,6 +18,32 @@ import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
 import { generateAdminPartnerDetailPath, generateAdminPartnerEditPath } from '@/lib/routePaths';
 import { getPartnerInventoryDisplay } from '@/lib/partnerInventoryDisplay.mjs';
+import PartnerDirectoryFilters, {
+  type PartnerDirectoryFilterOption,
+} from '@/components/portal/PartnerDirectoryFilters';
+
+interface LocationOption {
+  id: number;
+  name: string;
+  iso2?: string | null;
+  stateCode?: string | null;
+}
+
+interface PartnerDirectorySummary {
+  total: number;
+  active: number;
+  pending: number;
+  inactive: number;
+  totalListings: number;
+  districtsCount: number;
+}
+
+interface PartnerDirectoryPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
 
 interface ManagedUser {
   id: string;
@@ -27,6 +53,12 @@ interface ManagedUser {
   mobile: string | null;
   role: string;
   status: string;
+  archivedAt: string | null;
+  archiveReason: string | null;
+  archivedById: string | null;
+  archivedFromStatus: string | null;
+  restoredAt: string | null;
+  restoredById: string | null;
   adminTitle: string | null;
   isRootAdmin: boolean;
   permissions: string[];
@@ -34,10 +66,16 @@ interface ManagedUser {
   kycStatus: string | null;
   onboardingStatus: string | null;
   accountStatus: string | null;
+  gstVerificationStatus: string | null;
+  gstVerifiedAt: string | null;
   listingLimit: number | null;
   listingCount: number;
+  city: string | null;
+  state: string | null;
+  partnerCode: string | null;
   createdAt: string;
   partnerProfile?: {
+    partnerCode?: string | null;
     ownerName?: string | null;
     alternateMobile?: string | null;
     businessAddress?: string | null;
@@ -55,6 +93,12 @@ interface ManagedUser {
     referralCode?: string | null;
     websiteUrl?: string | null;
     businessDescription?: string | null;
+    countryId?: number | null;
+    country?: { id: number; name: string; iso2?: string | null } | null;
+    stateId?: number | null;
+    cityId?: number | null;
+    state?: { id: number; name: string; stateCode?: string | null } | null;
+    city?: { id: number; name: string } | null;
   };
 }
 
@@ -69,6 +113,7 @@ const statusClassNames: Record<string, string> = {
   SUSPENDED: 'bg-amber-50 text-amber-800 border-amber-300',
   BLOCKED: 'bg-rose-50 text-rose-800 border-rose-300',
   INACTIVE: 'bg-slate-100 text-slate-700 border-slate-300',
+  CLOSED: 'bg-slate-100 text-slate-700 border-slate-300',
   REJECTED: 'bg-rose-50 text-rose-800 border-rose-300',
 };
 
@@ -91,6 +136,10 @@ const formatLabel = (value?: string | null) =>
     : 'Not set';
 
 const getPartnerStatus = (partner: ManagedUser) => {
+  if (partner.status === 'CLOSED' || partner.archivedAt) {
+    return 'Archived';
+  }
+
   if (partner.status === 'INACTIVE') {
     return 'Inactive';
   }
@@ -179,10 +228,37 @@ export default function SuperAdminPartnersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [gstStatusFilter, setGstStatusFilter] = useState('');
+  const [kycStatusFilter, setKycStatusFilter] = useState('');
+  const [accountStatusFilter, setAccountStatusFilter] = useState('');
+  const [joinedFrom, setJoinedFrom] = useState('');
+  const [joinedTo, setJoinedTo] = useState('');
+  const [archivedFilter, setArchivedFilter] = useState('false');
+  const [countries, setCountries] = useState<LocationOption[]>([]);
+  const [states, setStates] = useState<LocationOption[]>([]);
+  const [cities, setCities] = useState<LocationOption[]>([]);
+  const [locationError, setLocationError] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'listings' | 'name'>('newest');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
+  const [pagination, setPagination] = useState<PartnerDirectoryPagination>({
+    page: 1,
+    pageSize,
+    total: 0,
+    totalPages: 0,
+  });
+  const [summary, setSummary] = useState<PartnerDirectorySummary>({
+    total: 0,
+    active: 0,
+    pending: 0,
+    inactive: 0,
+    totalListings: 0,
+    districtsCount: 0,
+  });
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -199,7 +275,7 @@ export default function SuperAdminPartnersPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<ManagedUser | null>(null);
-  const [partnerToDelete, setPartnerToDelete] = useState<ManagedUser | null>(null);
+  const [partnerToArchive, setPartnerToArchive] = useState<ManagedUser | null>(null);
   const [passwordPartner, setPasswordPartner] = useState<ManagedUser | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     password: '',
@@ -232,7 +308,7 @@ export default function SuperAdminPartnersPage() {
     };
   }, []);
 
-  const fetchPartners = useCallback(async (isRefresh = false) => {
+  const fetchPartners = useCallback(async (pageToLoad: number, isRefresh = false) => {
     if (!canViewPartners) {
       setError('You do not have permission to view partners.');
       setLoading(false);
@@ -241,8 +317,38 @@ export default function SuperAdminPartnersPage() {
 
     try {
       if (isRefresh) setRefreshing(true);
-      const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners?compact=true');
-      setPartners(response.data.partners.filter(isPartnerRecord));
+      const response = await api.get<{
+        partners: ManagedUser[];
+        pagination?: PartnerDirectoryPagination;
+        summary?: PartnerDirectorySummary;
+      }>('/superadmin/partners', {
+        params: {
+          compact: 'true',
+          page: pageToLoad,
+          pageSize,
+          search: search.trim() || undefined,
+          status: statusFilter || undefined,
+          partnerType: typeFilter || undefined,
+          countryId: countryFilter || undefined,
+          stateId: stateFilter || undefined,
+          cityId: cityFilter || undefined,
+          gstStatus: gstStatusFilter || undefined,
+          kycStatus: kycStatusFilter || undefined,
+          accountStatus: accountStatusFilter || undefined,
+          joinedFrom: joinedFrom || undefined,
+          joinedTo: joinedTo || undefined,
+          archived: archivedFilter,
+          sort: sortBy,
+        },
+      });
+      setPartners((response.data.partners || []).filter(isPartnerRecord));
+      setPagination(response.data.pagination || {
+        page: pageToLoad,
+        pageSize,
+        total: 0,
+        totalPages: 0,
+      });
+      if (response.data.summary) setSummary(response.data.summary);
       setError('');
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -254,95 +360,195 @@ export default function SuperAdminPartnersPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canViewPartners]);
+  }, [
+    accountStatusFilter,
+    archivedFilter,
+    canViewPartners,
+    cityFilter,
+    countryFilter,
+    gstStatusFilter,
+    joinedFrom,
+    joinedTo,
+    kycStatusFilter,
+    pageSize,
+    search,
+    sortBy,
+    stateFilter,
+    statusFilter,
+    typeFilter,
+  ]);
 
   useEffect(() => {
-    // The fetch callback owns loading/error state for this client-side directory.
+    const timer = window.setTimeout(() => {
+      // Filter changes always restart from the first server page.
+      setCurrentPage(1);
+      void fetchPartners(1);
+    }, search.trim() ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchPartners, search]);
+
+  useEffect(() => {
+    if (currentPage === 1) return;
+    // The callback synchronizes this page with the remote directory state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchPartners();
-  }, [fetchPartners]);
+    void fetchPartners(currentPage);
+  }, [currentPage, fetchPartners]);
 
-  // Executive KPI summary calculations
-  const kpiMetrics = useMemo(() => {
-    const total = partners.length;
-    let active = 0;
-    let pending = 0;
-    let totalListings = 0;
-    const districts = new Set<string>();
+  useEffect(() => {
+    let cancelled = false;
 
-    for (const p of partners) {
-      const st = getPartnerStatus(p);
-      if (st === 'Active') active++;
-      else if (st === 'Pending' || st === 'Changes Requested') pending++;
-      totalListings += p.listingCount || 0;
-      if (p.partnerProfile?.district) districts.add(p.partnerProfile.district);
-    }
-
-    return {
-      total,
-      active,
-      pending,
-      totalListings,
-      districtsCount: districts.size,
+    const loadCountries = async () => {
+      try {
+        const response = await api.get<LocationOption[]>('/locations/countries');
+        if (!cancelled) {
+          setCountries(response.data || []);
+          setLocationError('');
+        }
+      } catch {
+        if (!cancelled) {
+          setCountries([]);
+          setLocationError('Country and location filters are temporarily unavailable.');
+        }
+      }
     };
-  }, [partners]);
 
-  // Filtered & Sorted Partners list
-  const filteredPartners = useMemo(() => {
-    let result = partners;
-
-    if (statusFilter) {
-      result = result.filter((partner) => getPartnerStatus(partner) === statusFilter);
-    }
-
-    if (typeFilter) {
-      result = result.filter((partner) => partner.partnerType === typeFilter);
-    }
-
-    const query = search.trim().toLowerCase();
-    if (query) {
-      result = result.filter((partner) =>
-        partner.name.toLowerCase().includes(query) ||
-        (partner.partnerProfile?.ownerName || '').toLowerCase().includes(query) ||
-        (partner.email || '').toLowerCase().includes(query) ||
-        (partner.mobile || '').toLowerCase().includes(query) ||
-        (partner.partnerProfile?.district || '').toLowerCase().includes(query) ||
-        (partner.partnerProfile?.gstNumber || '').toLowerCase().includes(query) ||
-        (partner.partnerType || '').toLowerCase().includes(query) ||
-        (partner.status || '').toLowerCase().includes(query)
-      );
-    }
-
-    return [...result].sort((a, b) => {
-      if (sortBy === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      if (sortBy === 'oldest') return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      if (sortBy === 'listings') return (b.listingCount || 0) - (a.listingCount || 0);
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
-      return 0;
-    });
-  }, [partners, search, statusFilter, typeFilter, sortBy]);
-
-  // Pagination slice
-  const paginatedPartners = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredPartners.slice(start, start + pageSize);
-  }, [filteredPartners, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(filteredPartners.length / pageSize) || 1;
+    void loadCountries();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    // Reset pagination when filters change so the next result set starts on page one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCurrentPage(1);
-  }, [search, statusFilter, typeFilter, sortBy]);
+    let cancelled = false;
 
-  const availableStatuses = useMemo(() => {
-    return Array.from(new Set(partners.map((p) => getPartnerStatus(p)))).sort();
-  }, [partners]);
+    if (!countryFilter) {
+      // Clear dependent options when the parent location is cleared.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStates([]);
+      setCities([]);
+      return () => { cancelled = true; };
+    }
 
-  const availableTypes = useMemo(() => {
-    return Array.from(new Set(partners.map((p) => p.partnerType).filter(Boolean))).sort() as string[];
-  }, [partners]);
+    const loadStates = async () => {
+      try {
+        const response = await api.get<LocationOption[]>(`/locations/states/${countryFilter}`);
+        if (!cancelled) setStates(response.data || []);
+      } catch {
+        if (!cancelled) {
+          setStates([]);
+          setLocationError('States for the selected country could not be loaded.');
+        }
+      }
+    };
+
+    void loadStates();
+    return () => {
+      cancelled = true;
+    };
+  }, [countryFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!stateFilter) {
+      // Clear dependent options when the parent location is cleared.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCities([]);
+      return () => { cancelled = true; };
+    }
+
+    const loadCities = async () => {
+      try {
+        const response = await api.get<LocationOption[]>(`/locations/cities/${stateFilter}`);
+        if (!cancelled) setCities(response.data || []);
+      } catch {
+        if (!cancelled) {
+          setCities([]);
+          setLocationError('Cities for the selected state could not be loaded.');
+        }
+      }
+    };
+
+    void loadCities();
+    return () => {
+      cancelled = true;
+    };
+  }, [stateFilter]);
+
+  const kpiMetrics = summary;
+  const filteredPartners = partners;
+  const paginatedPartners = partners;
+  const totalPages = pagination.totalPages || 1;
+  const hasDirectoryFilters = Boolean(
+    search ||
+      statusFilter ||
+      typeFilter ||
+      countryFilter ||
+      stateFilter ||
+      cityFilter ||
+      gstStatusFilter ||
+      kycStatusFilter ||
+      accountStatusFilter ||
+      joinedFrom ||
+      joinedTo ||
+      archivedFilter !== 'false',
+  );
+
+  const typeOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All Partner Types' },
+    { value: 'SHOWROOM', label: formatPartnerTypeLabel('SHOWROOM') },
+    { value: 'BROKER', label: formatPartnerTypeLabel('BROKER') },
+  ];
+  const availableTypes = ['SHOWROOM', 'BROKER'];
+  const countryOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All Countries' },
+    ...countries.map((country) => ({ value: String(country.id), label: country.name })),
+  ];
+  const stateOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: countryFilter ? 'All States' : 'Select Country First' },
+    ...states.map((state) => ({ value: String(state.id), label: state.name })),
+  ];
+  const cityOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All Cities' },
+    ...cities.map((city) => ({ value: String(city.id), label: city.name })),
+  ];
+  const gstStatusOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All GST Status' },
+    { value: 'VERIFIED', label: 'GST Verified' },
+    { value: 'UNVERIFIED', label: 'GST Unverified' },
+    { value: 'PENDING', label: 'GST Pending' },
+    { value: 'FAILED', label: 'GST Failed' },
+  ];
+  const kycStatusOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All KYC Status' },
+    { value: 'NOT_STARTED', label: 'Not Started' },
+    { value: 'INCOMPLETE', label: 'Incomplete' },
+    { value: 'SUBMITTED', label: 'Submitted' },
+    { value: 'UNDER_REVIEW', label: 'Under Review' },
+    { value: 'CHANGES_REQUESTED', label: 'Changes Requested' },
+    { value: 'APPROVED', label: 'Approved' },
+    { value: 'REJECTED', label: 'Rejected' },
+    { value: 'EXPIRED', label: 'Expired' },
+  ];
+  const accountStatusOptions: PartnerDirectoryFilterOption[] = [
+    { value: '', label: 'All Account Status' },
+    { value: 'PENDING', label: 'Pending' },
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'SUSPENDED', label: 'Suspended' },
+    { value: 'BLOCKED', label: 'Blocked' },
+    { value: 'CLOSED', label: 'Closed' },
+  ];
+  const archivedOptions: PartnerDirectoryFilterOption[] = [
+    { value: 'false', label: 'Current Partners' },
+    { value: 'true', label: 'Archived Partners' },
+    { value: 'all', label: 'All Records' },
+  ];
+  const sortOptions: PartnerDirectoryFilterOption[] = [
+    { value: 'newest', label: 'Newest Registered' },
+    { value: 'oldest', label: 'Oldest First' },
+    { value: 'listings', label: 'Most Machines' },
+    { value: 'name', label: 'Name (A-Z)' },
+  ];
 
   const syncPartnerState = (updatedPartner: ManagedUser) => {
     setPartners((current) => current.map((item) => (item.id === updatedPartner.id ? updatedPartner : item)));
@@ -362,8 +568,8 @@ export default function SuperAdminPartnersPage() {
       await api.post('/superadmin/partners', {
         ...createForm,
       });
-      const response = await api.get<{ partners: ManagedUser[] }>('/superadmin/partners?compact=true');
-      setPartners(response.data.partners.filter(isPartnerRecord));
+      await fetchPartners(1, true);
+      setCurrentPage(1);
       setIsCreateModalOpen(false);
       setCreateForm({
         name: '',
@@ -477,12 +683,26 @@ export default function SuperAdminPartnersPage() {
     void handleStatusUpdate(partner, partner.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE');
   };
 
-  // Safer option chosen in the delete dialog (deactivate / suspend / block / close).
-  const handleDeleteAlternative = async (status: string, reason: string) => {
-    if (!partnerToDelete) return;
-    const response = await api.patch<{ user: ManagedUser }>(`/superadmin/users/${partnerToDelete.id}/status`, { status, reason });
-    syncPartnerState(response.data.user);
-    setPartnerToDelete(null);
+  const handleRestorePartner = async (partner: ManagedUser) => {
+    if (!canDeletePartners) {
+      setError('You do not have permission to restore partners.');
+      return;
+    }
+    if (!window.confirm(`Restore ${partner.name}? The partner will return to its previous account status.`)) return;
+
+    try {
+      setUpdatingId(partner.id);
+      await api.post(`/superadmin/partners/${partner.id}/restore`);
+      await fetchPartners(currentPage, true);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || 'Unable to restore partner.');
+      } else {
+        setError('Unable to restore partner.');
+      }
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   return (
@@ -511,7 +731,7 @@ export default function SuperAdminPartnersPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void fetchPartners(true)}
+            onClick={() => void fetchPartners(currentPage, true)}
             disabled={refreshing}
             className="inline-flex h-8 sm:h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 cursor-pointer disabled:opacity-60"
             title="Refresh directory"
@@ -616,6 +836,74 @@ export default function SuperAdminPartnersPage() {
         </div>
       </div>
 
+      <PartnerDirectoryFilters
+        search={search}
+        onSearchChange={setSearch}
+        typeFilter={typeFilter}
+        onTypeChange={setTypeFilter}
+        typeOptions={typeOptions}
+        countryFilter={countryFilter}
+        onCountryChange={(value) => {
+          setCountryFilter(value);
+          setStateFilter('');
+          setCityFilter('');
+          setStates([]);
+          setCities([]);
+          setLocationError('');
+        }}
+        countries={countryOptions}
+        stateFilter={stateFilter}
+        onStateChange={(value) => {
+          setStateFilter(value);
+          setCityFilter('');
+          setCities([]);
+          setLocationError('');
+        }}
+        states={stateOptions}
+        cityFilter={cityFilter}
+        onCityChange={setCityFilter}
+        cities={cityOptions}
+        gstStatusFilter={gstStatusFilter}
+        onGstStatusChange={setGstStatusFilter}
+        gstStatusOptions={gstStatusOptions}
+        kycStatusFilter={kycStatusFilter}
+        onKycStatusChange={setKycStatusFilter}
+        kycStatusOptions={kycStatusOptions}
+        accountStatusFilter={accountStatusFilter}
+        onAccountStatusChange={setAccountStatusFilter}
+        accountStatusOptions={accountStatusOptions}
+        archivedFilter={archivedFilter}
+        onArchivedChange={setArchivedFilter}
+        archivedOptions={archivedOptions}
+        sortBy={sortBy}
+        onSortChange={(value) => setSortBy(value as typeof sortBy)}
+        sortOptions={sortOptions}
+        joinedFrom={joinedFrom}
+        onJoinedFromChange={setJoinedFrom}
+         joinedTo={joinedTo}
+         onJoinedToChange={setJoinedTo}
+         viewMode={viewMode}
+         onViewModeChange={setViewMode}
+         hasFilters={hasDirectoryFilters}
+        onReset={() => {
+          setSearch('');
+          setStatusFilter('');
+          setTypeFilter('');
+          setCountryFilter('');
+          setStateFilter('');
+          setCityFilter('');
+          setGstStatusFilter('');
+          setKycStatusFilter('');
+          setAccountStatusFilter('');
+          setJoinedFrom('');
+          setJoinedTo('');
+          setArchivedFilter('false');
+        }}
+        locationError={locationError}
+      />
+
+      {/* Legacy filter markup retained temporarily for a zero-risk migration and hidden from the UI. */}
+      <div className="hidden">
       {/* Multi-Filter & Search Toolbar */}
       <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs space-y-2.5 profile-no-print">
         {/* Row 1: Search & Dropdowns */}
@@ -625,7 +913,7 @@ export default function SuperAdminPartnersPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by business, owner, phone, email, district, GST..."
+              placeholder="Search business, owner, partner ID, state, city, GST..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50/50 py-1.5 pl-9 pr-8 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#FFC107] focus:bg-white focus:ring-2 focus:ring-[#FFC107]/20 placeholder:text-slate-400"
@@ -654,6 +942,69 @@ export default function SuperAdminPartnersPage() {
                 {availableTypes.map((type) => (
                   <option key={type} value={type}>
                     {formatPartnerTypeLabel(type)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cascading Location Filters */}
+            <div className="relative">
+              <select
+                value={countryFilter}
+                onChange={(e) => {
+                  setCountryFilter(e.target.value);
+                  setStateFilter('');
+                  setCityFilter('');
+                  setStates([]);
+                  setCities([]);
+                  setLocationError('');
+                }}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#FFC107] cursor-pointer"
+                aria-label="Filter partners by country"
+              >
+                <option value="">All Countries</option>
+                {countries.map((country) => (
+                  <option key={country.id} value={country.id}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative">
+              <select
+                value={stateFilter}
+                onChange={(e) => {
+                  setStateFilter(e.target.value);
+                  setCityFilter('');
+                  setCities([]);
+                  setLocationError('');
+                }}
+                disabled={!countryFilter || states.length === 0}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#FFC107] cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                aria-label="Filter partners by state"
+              >
+                <option value="">{countryFilter ? 'All States' : 'Select Country First'}</option>
+                {states.map((state) => (
+                  <option key={state.id} value={state.id}>
+                    {state.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative">
+              <select
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                disabled={!stateFilter || cities.length === 0}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#FFC107] cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                aria-label="Filter partners by city"
+              >
+                <option value="">All Cities</option>
+                {cities.map((city) => (
+                  <option key={city.id} value={city.id}>
+                    {city.name}
                   </option>
                 ))}
               </select>
@@ -696,7 +1047,110 @@ export default function SuperAdminPartnersPage() {
           </div>
         </div>
 
-        {/* Row 2: Status Quick Filter Chips */}
+        {locationError ? (
+          <p className="text-[11px] font-medium text-amber-700" role="status">
+            {locationError}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+          <select
+            value={gstStatusFilter}
+            onChange={(e) => setGstStatusFilter(e.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#FFC107]"
+            aria-label="Filter partners by GST verification status"
+          >
+            <option value="">All GST Status</option>
+            <option value="VERIFIED">GST Verified</option>
+            <option value="UNVERIFIED">GST Unverified</option>
+            <option value="PENDING">GST Pending</option>
+            <option value="FAILED">GST Failed</option>
+          </select>
+          <select
+            value={kycStatusFilter}
+            onChange={(e) => setKycStatusFilter(e.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#FFC107]"
+            aria-label="Filter partners by KYC status"
+          >
+            <option value="">All KYC Status</option>
+            <option value="NOT_STARTED">Not Started</option>
+            <option value="INCOMPLETE">Incomplete</option>
+            <option value="SUBMITTED">Submitted</option>
+            <option value="UNDER_REVIEW">Under Review</option>
+            <option value="CHANGES_REQUESTED">Changes Requested</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="EXPIRED">Expired</option>
+          </select>
+          <select
+            value={accountStatusFilter}
+            onChange={(e) => setAccountStatusFilter(e.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#FFC107]"
+            aria-label="Filter partners by account status"
+          >
+            <option value="">All Account Status</option>
+            <option value="PENDING">Pending</option>
+            <option value="ACTIVE">Active</option>
+            <option value="SUSPENDED">Suspended</option>
+            <option value="BLOCKED">Blocked</option>
+            <option value="CLOSED">Closed</option>
+          </select>
+          <select
+            value={archivedFilter}
+            onChange={(e) => setArchivedFilter(e.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#FFC107]"
+            aria-label="Filter archived partners"
+          >
+            <option value="false">Current Partners</option>
+            <option value="true">Archived Partners</option>
+            <option value="all">All Records</option>
+          </select>
+          <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600">
+            Joined from
+            <input
+              type="date"
+              value={joinedFrom}
+              onChange={(e) => setJoinedFrom(e.target.value)}
+              className="bg-transparent text-xs text-slate-700 outline-none"
+              aria-label="Joined from date"
+            />
+          </label>
+          <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600">
+            Joined to
+            <input
+              type="date"
+              value={joinedTo}
+              onChange={(e) => setJoinedTo(e.target.value)}
+              className="bg-transparent text-xs text-slate-700 outline-none"
+              aria-label="Joined to date"
+            />
+          </label>
+          {(search || statusFilter || typeFilter || countryFilter || stateFilter || cityFilter || gstStatusFilter || kycStatusFilter || accountStatusFilter || joinedFrom || joinedTo || archivedFilter !== 'false') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('');
+                setTypeFilter('');
+                setCountryFilter('');
+                setStateFilter('');
+                setCityFilter('');
+                setGstStatusFilter('');
+                setKycStatusFilter('');
+                setAccountStatusFilter('');
+                setJoinedFrom('');
+                setJoinedTo('');
+                setArchivedFilter('false');
+              }}
+              className="h-8 rounded-lg px-2.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+            >
+              Reset filters
+            </button>
+          )}
+      </div>
+      </div>
+
+      {/* Row 2: Status Quick Filter Chips */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
             <Filter className="h-3 w-3" /> Status:
@@ -743,7 +1197,7 @@ export default function SuperAdminPartnersPage() {
                 : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
             }`}
           >
-            Inactive ({partners.filter((p) => getPartnerStatus(p) === 'Inactive').length})
+            Inactive ({kpiMetrics.inactive})
           </button>
         </div>
       </div>
@@ -768,17 +1222,26 @@ export default function SuperAdminPartnersPage() {
           <Building2 className="mx-auto h-12 w-12 text-slate-300" />
           <h3 className="mt-3 text-sm font-bold text-slate-900">No Partners Found</h3>
           <p className="mt-1 text-xs text-slate-500">
-            {search || statusFilter || typeFilter
+            {hasDirectoryFilters
               ? 'Try modifying your search or clearing your active filters.'
               : 'No partner dealerships are currently registered.'}
           </p>
-          {(search || statusFilter || typeFilter) && (
+          {hasDirectoryFilters && (
             <button
               type="button"
               onClick={() => {
                 setSearch('');
                 setStatusFilter('');
                 setTypeFilter('');
+                setCountryFilter('');
+                setStateFilter('');
+                setCityFilter('');
+                setGstStatusFilter('');
+                setKycStatusFilter('');
+                setAccountStatusFilter('');
+                setJoinedFrom('');
+                setJoinedTo('');
+                setArchivedFilter('false');
               }}
               className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition"
             >
@@ -835,6 +1298,11 @@ export default function SuperAdminPartnersPage() {
                                 Owner: <strong className="text-slate-700">{partner.partnerProfile.ownerName}</strong>
                               </span>
                             )}
+                            {(partner.partnerCode || partner.partnerProfile?.partnerCode) && (
+                              <span className="text-[10px] font-mono text-slate-400 block truncate">
+                                ID: {partner.partnerCode || partner.partnerProfile?.partnerCode}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -886,10 +1354,16 @@ export default function SuperAdminPartnersPage() {
                           <span className="font-semibold text-slate-800 block">
                             {formatPartnerTypeLabel(partner.partnerType, 'Not set')}
                           </span>
-                          {partner.partnerProfile?.district && (
+                          {(partner.partnerProfile?.city?.name || partner.city || partner.partnerProfile?.district || partner.partnerProfile?.state?.name || partner.state) && (
                             <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 font-medium">
                               <MapPin className="h-3 w-3 text-slate-400" />
-                              <span>{partner.partnerProfile.district}</span>
+                              <span>
+                                {[
+                                  partner.partnerProfile?.city?.name || partner.city,
+                                  partner.partnerProfile?.district,
+                                  partner.partnerProfile?.state?.name || partner.state,
+                                ].filter(Boolean).join(', ')}
+                              </span>
                             </span>
                           )}
                         </div>
@@ -971,7 +1445,7 @@ export default function SuperAdminPartnersPage() {
                               </button>
 
                               {/* Edit Onboarding */}
-                              {canEditOnboarding && (
+                              {canEditOnboarding && partner.status !== 'CLOSED' && !partner.archivedAt && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1022,7 +1496,7 @@ export default function SuperAdminPartnersPage() {
                               )}
 
                               {/* Toggle Status */}
-                              {canChangePartnerStatus && (
+                              {canChangePartnerStatus && partner.status !== 'CLOSED' && !partner.archivedAt && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1037,21 +1511,34 @@ export default function SuperAdminPartnersPage() {
                                 </button>
                               )}
 
-                              {/* Delete Partner */}
-                              {canDeletePartners && (
+                              {/* Archive / Restore Partner */}
+                              {canDeletePartners && (partner.status === 'CLOSED' || Boolean(partner.archivedAt)) ? (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setPartnerToDelete(partner);
+                                    void handleRestorePartner(partner);
                                     setOpenActionDropdownId(null);
                                   }}
                                   disabled={updatingId === partner.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 border-t border-slate-100 mt-1"
+                                  className="flex w-full items-center gap-2 rounded-lg border-t border-slate-100 mt-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
                                 >
-                                  <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                  <span>Delete Partner</span>
+                                  <RotateCcw className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span>Restore Partner</span>
                                 </button>
-                              )}
+                              ) : canDeletePartners ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPartnerToArchive(partner);
+                                    setOpenActionDropdownId(null);
+                                  }}
+                                  disabled={updatingId === partner.id}
+                                  className="flex w-full items-center gap-2 rounded-lg border-t border-slate-100 mt-1 px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
+                                >
+                                  <Archive className="h-3.5 w-3.5 text-amber-700" />
+                                  <span>Archive Partner</span>
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -1066,9 +1553,12 @@ export default function SuperAdminPartnersPage() {
           {/* Pagination Footer */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/70 px-4 py-2.5 text-xs text-slate-600">
             <div>
-              Showing <strong className="text-slate-900">{(currentPage - 1) * pageSize + 1}</strong> to{' '}
-              <strong className="text-slate-900">{Math.min(currentPage * pageSize, filteredPartners.length)}</strong> of{' '}
-              <strong className="text-slate-900">{filteredPartners.length}</strong> partners
+              Showing{' '}
+              <strong className="text-slate-900">
+                {pagination.total === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+              </strong>{' '}
+              to <strong className="text-slate-900">{Math.min(currentPage * pageSize, pagination.total)}</strong> of{' '}
+              <strong className="text-slate-900">{pagination.total}</strong> partners
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -1128,6 +1618,11 @@ export default function SuperAdminPartnersPage() {
                           <span className="text-[10px] font-semibold text-slate-500 block truncate">
                             {formatPartnerTypeLabel(partner.partnerType, 'Authorized')}
                           </span>
+                          {(partner.partnerCode || partner.partnerProfile?.partnerCode) && (
+                            <span className="text-[10px] font-mono text-slate-400 block truncate">
+                              {partner.partnerCode || partner.partnerProfile?.partnerCode}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <span className={`inline-flex rounded border px-1.5 py-0.25 text-[9px] font-black uppercase tracking-wider shrink-0 ${getPartnerStatusClassName(partner)}`}>
@@ -1143,10 +1638,16 @@ export default function SuperAdminPartnersPage() {
                           <span className="truncate">{partner.partnerProfile.ownerName}</span>
                         </div>
                       )}
-                      {partner.partnerProfile?.district && (
+                      {(partner.partnerProfile?.city?.name || partner.city || partner.partnerProfile?.district || partner.partnerProfile?.state?.name || partner.state) && (
                         <div className="flex items-center gap-1.5 text-slate-500">
                           <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                          <span className="truncate">{partner.partnerProfile.district}</span>
+                          <span className="truncate">
+                            {[
+                              partner.partnerProfile?.city?.name || partner.city,
+                              partner.partnerProfile?.district,
+                              partner.partnerProfile?.state?.name || partner.state,
+                            ].filter(Boolean).join(', ')}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1418,19 +1919,17 @@ export default function SuperAdminPartnersPage() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION (impact + safer options) */}
-      {partnerToDelete && (
-        <DeleteImpactDialog
+      {/* PARTNER ARCHIVE CONFIRMATION */}
+      {partnerToArchive && (
+        <PartnerArchiveDialog
           open
-          title="Delete partner"
-          impactPath={`/superadmin/partners/${partnerToDelete.id}/delete-impact`}
-          deletePath={`/superadmin/partners/${partnerToDelete.id}`}
-          onClose={() => setPartnerToDelete(null)}
-          onDeleted={() => {
-            setPartners((current) => current.filter((item) => item.id !== partnerToDelete.id));
-            setPartnerToDelete(null);
+          partnerId={partnerToArchive.id}
+          partnerName={partnerToArchive.name}
+          onClose={() => setPartnerToArchive(null)}
+          onArchived={async () => {
+            setPartnerToArchive(null);
+            await fetchPartners(currentPage, true);
           }}
-          onAlternative={canChangePartnerStatus ? handleDeleteAlternative : undefined}
         />
       )}
     </div>

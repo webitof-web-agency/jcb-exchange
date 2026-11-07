@@ -204,6 +204,10 @@ function LoginPageInner() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
+    if (tabParam === 'register') {
+      router.replace('/signup');
+      return undefined;
+    }
     const nextTab: AuthTab = tabParam === 'register' ? 'register' : 'login';
     if (nextTab === activeTab) return undefined;
 
@@ -917,6 +921,10 @@ function LoginPageInner() {
   };
 
   const handleTabSwitch = (newTab: AuthTab) => {
+    if (newTab === 'register') {
+      router.push('/signup');
+      return;
+    }
     setActiveTab(newTab);
     setLoginMethod('password');
     clearMobileOtpChallenge();
@@ -926,11 +934,7 @@ function LoginPageInner() {
     setError('');
     setSuccessMessage('');
     const url = new URL(window.location.href);
-    if (newTab === 'register') {
-      url.searchParams.set('tab', 'register');
-    } else {
-      url.searchParams.delete('tab');
-    }
+    url.searchParams.delete('tab');
     window.history.replaceState({}, '', url.toString());
   };
 

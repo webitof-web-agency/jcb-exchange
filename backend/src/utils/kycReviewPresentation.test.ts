@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildKycReviewDocument } from './kycReviewPresentation';
+import { buildKycReviewDocument, buildSignupGstReviewDocument } from './kycReviewPresentation';
 
 const baseDocument = {
   id: 'document-1',
@@ -76,4 +76,20 @@ test('review document does not persist a successful verification without a saved
   assert.equal(reviewDocument.verificationRecordId, '');
   assert.equal(reviewDocument.verificationResult, null);
   assert.equal(reviewDocument.verificationTemplate, null);
+});
+
+test('signup GST verification is represented as a template-backed review document', () => {
+  const reviewDocument = buildSignupGstReviewDocument({
+    id: 'signup-gst-profile-1',
+    gstNumber: '22AADCW3373Q1ZW',
+    verificationRecordId: 'gst-record-1',
+    hasTemplate: true,
+  });
+
+  assert.equal(reviewDocument.documentType, 'GST_CERTIFICATE');
+  assert.equal(reviewDocument.documentNumber, '22AADCW3373Q1ZW');
+  assert.equal(reviewDocument.verificationRecordId, 'gst-record-1');
+  assert.equal(reviewDocument.verificationStatus, 'VERIFIED');
+  assert.equal(reviewDocument.status, 'UPLOADED');
+  assert.equal(reviewDocument.fileUrl, null);
 });

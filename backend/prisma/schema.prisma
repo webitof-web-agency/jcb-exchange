@@ -461,6 +461,12 @@ model User {
   authProvider     String?    @default("LOCAL")
   role             Role       @default(CUSTOMER)
   status           UserStatus @default(ACTIVE)
+  archivedAt       DateTime?
+  archiveReason    String?    @db.Text
+  archivedById     String?
+  archivedFromStatus UserStatus?
+  restoredAt       DateTime?
+  restoredById     String?
   whatsappNumber   String?
   city             String?
   state            String?
@@ -529,6 +535,7 @@ model User {
   mobileToPanLookupRecords            MobileToPanLookupRecord[]            @relation("MobileToPanLookupRequester")
   gstVerificationRecords              GstVerificationRecord[]              @relation("GstVerificationRequester")
   gstVerificationTemplates            GstVerificationTemplate[]            @relation("GstVerificationTemplateRequester")
+  partnerSignupGstVerifications       PartnerSignupGstVerification[]        @relation("PartnerSignupGstVerificationConsumer")
   aadhaarVerificationRecords          AadhaarVerificationRecord[]          @relation("AadhaarVerificationRequester")
   aadhaarVerificationTemplates        AadhaarVerificationTemplate[]        @relation("AadhaarVerificationTemplateRequester")
   blogQuestions                       BlogQuestion[]                       @relation("BlogQuestionAuthor")
@@ -539,6 +546,8 @@ model User {
   crmFollowUpsAsContact               CrmFollowUp[]                        @relation("CrmFollowUpContact")
   crmFollowUpsOwned                   CrmFollowUp[]                        @relation("CrmFollowUpOwner")
   crmContactActivities                CrmContactActivity[]                 @relation("CrmContactActivityContact")
+
+  @@index([role, status, archivedAt, updatedAt])
 }
 
 model MobileOtpChallenge {
@@ -792,11 +801,15 @@ model GstVerificationRecord {
   safeMessage        String?               @db.Text
   encryptedResult    String?               @db.Text
   rawDataExpiresAt   DateTime?
+  supersededAt       DateTime?
+  supersededByRecordId String?
+  supersededReason   String?               @db.Text
   requestedById      String
   createdAt          DateTime              @default(now())
   completedAt        DateTime?
 
   template GstVerificationTemplate? @relation("GstVerificationRecordTemplate")
+  partnerProfile PartnerProfile? @relation("PartnerProfileGstVerification")
 
   requestedBy User @relation("GstVerificationRequester", fields: [requestedById], references: [id])
 
@@ -806,6 +819,46 @@ model GstVerificationRecord {
   @@index([gstinStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
   @@index([rawDataExpiresAt])
+  @@index([supersededAt])
+}
+
+model PartnerSignupGstVerification {
+  id                 String                @id @default(uuid())
+  status             GstVerificationStatus @default(PENDING)
+  gstin              String
+  maskedGstin        String
+  requestFingerprint String?               @db.VarChar(64)
+  claimHash          String                @unique @db.VarChar(64)
+  signupEmailHash    String?               @db.VarChar(64)
+  signupMobileHash   String?               @db.VarChar(64)
+  countryId          Int?
+  stateId            Int?
+  cityId             Int?
+  gstinStatus        String?
+  businessName       String?
+  legalName          String?
+  provider           String                @default("SUREPASS")
+  providerClientId   String?
+  messageCode        String?
+  safeMessage        String?               @db.Text
+  encryptedResult    String?               @db.Text
+  rawDataExpiresAt   DateTime?
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  consumedByUserId   String?
+  createdAt          DateTime              @default(now())
+  completedAt        DateTime?
+
+  country    Country? @relation("PartnerSignupGstCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  state      State?   @relation("PartnerSignupGstState", fields: [stateId], references: [id], onDelete: SetNull)
+  city       City?    @relation("PartnerSignupGstCity", fields: [cityId], references: [id], onDelete: SetNull)
+  consumedBy User?    @relation("PartnerSignupGstVerificationConsumer", fields: [consumedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([gstin, createdAt])
+  @@index([requestFingerprint, status, completedAt])
+  @@index([expiresAt])
+  @@index([countryId, stateId, cityId])
 }
 
 model GstVerificationTemplate {
@@ -1137,6 +1190,7 @@ model ApiBillingWebhookEvent {
 model PartnerProfile {
   id                         String                  @id @default(uuid())
   userId                     String                  @unique
+  partnerCode                String?                 @unique
   ownerName                  String?
   businessName               String?
   partnerType                PartnerType?
@@ -1158,6 +1212,15 @@ model PartnerProfile {
   yearsInBusiness            Int?
   teamSize                   Int?
   gstNumber                  String?
+  gstVerificationRecordId    String?                 @unique
+  gstVerifiedAt              DateTime?
+  gstVerifiedMobile          String?
+  gstVerifiedEmail           String?
+  gstVerifiedAddress         String?                 @db.Text
+  aadhaarVerifiedAt          DateTime?
+  countryId                  Int?
+  stateId                    Int?
+  cityId                     Int?
   businessRegistrationNumber String?
   onboardingStatus           PartnerOnboardingStatus @default(ACCOUNT_CREATED)
   accountStatus              PartnerAccountStatus    @default(PENDING)
@@ -1171,6 +1234,10 @@ model PartnerProfile {
 
   user         User                @relation(fields: [userId], references: [id])
   approvedBy   User?               @relation("PartnerApprover", fields: [approvedById], references: [id])
+  gstVerificationRecord GstVerificationRecord? @relation("PartnerProfileGstVerification", fields: [gstVerificationRecordId], references: [id], onDelete: SetNull)
+  country      Country?            @relation("PartnerProfileCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  state        State?              @relation("PartnerProfileState", fields: [stateId], references: [id], onDelete: SetNull)
+  city         City?               @relation("PartnerProfileCity", fields: [cityId], references: [id], onDelete: SetNull)
   teamMembers  PartnerTeamMember[]
   categories   Category[]
   kycDocuments KycDocument[]
@@ -1181,6 +1248,7 @@ model PartnerProfile {
   @@index([onboardingStatus])
   @@index([accountStatus])
   @@index([kycStatus])
+  @@index([countryId, stateId, cityId])
 }
 
 model PartnerTeamMember {
@@ -2554,6 +2622,8 @@ model Country {
 
   states State[]
   cities City[]
+  partnerProfilesByCountry PartnerProfile[] @relation("PartnerProfileCountry")
+  signupGstVerifications   PartnerSignupGstVerification[] @relation("PartnerSignupGstCountry")
 }
 
 model State {
@@ -2567,6 +2637,8 @@ model State {
 
   country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
   cities  City[]
+  partnerProfilesByState PartnerProfile[] @relation("PartnerProfileState")
+  signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstState")
 
   @@index([countryId])
 }
@@ -2583,6 +2655,8 @@ model City {
 
   state   State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
   country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  partnerProfilesByCity PartnerProfile[] @relation("PartnerProfileCity")
+  signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstCity")
 
   @@index([stateId])
   @@index([countryId])

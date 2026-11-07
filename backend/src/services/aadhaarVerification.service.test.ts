@@ -188,6 +188,21 @@ test('allows direct DigiLocker initialization without upfront Aadhaar number', a
   assert.equal(initResult.record.id, 'aadhaar-record-2');
 });
 
+test('discards verification-only Aadhaar records without touching KYC templates', async () => {
+  let deletedId = '';
+  const service = new AadhaarVerificationService({
+    record: {
+      findUnique: async () => ({ id: 'auth-aadhaar-1', requestedById: 'user-1', template: null }),
+      update: async () => ({}),
+      delete: async ({ where }: { where: { id: string } }) => { deletedId = where.id; return {}; },
+    } as any,
+    dataSecret: 'test-secret',
+  });
+
+  assert.equal(await service.discardVerificationRecord('auth-aadhaar-1', 'user-1'), true);
+  assert.equal(deletedId, 'auth-aadhaar-1');
+});
+
 test('does not reuse an unsaved Aadhaar result on a later initialization', async () => {
   let providerCalls = 0;
   const pendingRecord: Record<string, unknown> = {
