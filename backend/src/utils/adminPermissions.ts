@@ -64,6 +64,8 @@ export const allowedAdminPermissions = new Set([
   'blog.update',
   'blog.delete',
   'dashboard.view',
+  'ai.use',
+  'ai.manage',
   'analytics.read',
   'finance.read',
   'finance.manage',

@@ -22,6 +22,7 @@ type PublicCategory = {
 };
 
 import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
+import { formatCategoryDisplayName } from '@/lib/categoryFormatters';
 
 function CategoryIconBadge({ icon, name }: { icon?: PublicCategory['icon']; name: string }) {
   return (
@@ -206,7 +207,7 @@ export default function CategoriesPageClient() {
                         <CategoryIconRenderer svgData={category.icon?.svgData} name={category.name} className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-extrabold text-gray-900 text-[13px] sm:text-sm md:text-[15px] truncate">{category.name}</h4>
+                        <h4 className="font-extrabold text-gray-900 text-[13px] sm:text-sm md:text-[15px] truncate">{formatCategoryDisplayName(category.name)}</h4>
                         <p className="mt-0.5 text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 truncate">
                           {category.count} live machines
                         </p>

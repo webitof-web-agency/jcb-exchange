@@ -30,6 +30,7 @@ import { generateMachineSlugPath, parseMachineRouteParam, slugify } from '@/lib/
 import { useTranslation } from '@/hooks/useTranslation';
 import { formatListingLocation } from '@/lib/listingLocation';
 import { trackPublicAnalyticsEvent } from '@/lib/analytics';
+import { formatCategoryDisplayName } from '@/lib/categoryFormatters';
 
 interface MachineListing {
   id: string;
@@ -119,13 +120,13 @@ const getAvailabilityBadge = (
 ) => {
   const upperStatus = (status || '').toUpperCase();
   if (upperStatus === 'SOLD') {
-    return <span className="bg-red-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm">{labels.sold}</span>;
+    return <span className="bg-red-600 text-white px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider rounded shadow-xs">{labels.sold}</span>;
   }
   if (upperStatus === 'RESERVED') {
-    return <span className="bg-amber-500 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm">{labels.reserved}</span>;
+    return <span className="bg-amber-500 text-white px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider rounded shadow-xs">{labels.reserved}</span>;
   }
   return (
-    <span className="bg-emerald-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm flex items-center gap-1">
+    <span className="bg-emerald-600 text-white px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider rounded shadow-xs flex items-center gap-1">
       <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
       {labels.available}
     </span>
@@ -577,7 +578,7 @@ function MachinesPageContent({
                   onChange={() => toggleFilter(selectedCategories, setSelectedCategories, cat.id)}
                   className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400 focus:ring-offset-0 accent-[#FFC107] cursor-pointer shrink-0"
                 />
-                <span className="text-xs truncate flex-1 font-medium">{cat.name}</span>
+                <span className="text-xs truncate flex-1 font-medium">{formatCategoryDisplayName(cat.name)}</span>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                     isChecked ? 'bg-amber-200 text-amber-950' : 'bg-gray-100 text-gray-500'
@@ -690,7 +691,7 @@ function MachinesPageContent({
             <h1 className="mb-1 break-words text-2xl font-bold leading-tight tracking-tight text-gray-900 capitalize lg:text-3xl">
               {selectedCategories.length === 1
                 ? t('machines.browseCategory', {
-                    category: categories.find((c) => c.id === selectedCategories[0])?.name || t('home.equipmentFallback'),
+                    category: formatCategoryDisplayName(categories.find((c) => c.id === selectedCategories[0])?.name || t('home.equipmentFallback')),
                   })
                 : t('machines.browseEquipment')}
             </h1>
@@ -807,8 +808,8 @@ function MachinesPageContent({
             </div>
           </div>
 
-          <aside className="hidden lg:block w-full lg:w-72 xl:w-80 flex-shrink-0">
-            <div className="bg-white p-5 shadow-sm rounded-2xl border border-gray-200/90 sticky top-4">
+          <aside className="hidden lg:block w-full lg:w-60 xl:w-64 flex-shrink-0">
+            <div className="bg-white p-3.5 sm:p-4 shadow-2xs rounded-xl border border-gray-200/90 sticky top-4">
               <div className="flex items-center justify-between mb-5 border-b border-gray-100 pb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800">
@@ -840,8 +841,8 @@ function MachinesPageContent({
 
           <div className="flex-1 min-w-0">
             {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
-                {Array.from({ length: 6 }).map((_, index) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-3.5 lg:gap-3.5 xl:gap-4">
+                {Array.from({ length: 8 }).map((_, index) => (
                   <div key={index} className="h-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xs">
                     <div className="aspect-[16/9.5] w-full animate-pulse bg-gray-100" />
                     <div className="space-y-2 p-3 sm:p-3.5 lg:p-4">
@@ -867,7 +868,7 @@ function MachinesPageContent({
               </div>
             ) : (
               <>
-                <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+                <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-3.5 lg:gap-3.5 xl:gap-4">
                   {paginatedMachines.map((machine) => {
                     const imageUrl = getMediaUrl(machine.featuredImage);
                     const locationLabel = formatListingLocation(machine, {
@@ -880,10 +881,10 @@ function MachinesPageContent({
                       <Link
                         key={machine.id}
                         href={generateMachineSlugPath(machine)}
-                        className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-lg"
+                        className="group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-2xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-md"
                       >
                         {/* 1. Image Container with Badges */}
-                        <div className="relative aspect-[16/9.5] w-full shrink-0 overflow-hidden bg-gray-100">
+                        <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-gray-100">
                           {/* Availability badge */}
                           <div className="absolute top-2 right-2 z-10">
                             {getAvailabilityBadge(machine.status, availabilityLabels)}
@@ -891,21 +892,21 @@ function MachinesPageContent({
 
                           {/* Category pill */}
                           {machine.category?.name && (
-                            <div className="absolute top-2 left-2 z-10 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/10 shadow-xs">
-                              {machine.category.name}
+                            <div className="absolute top-2 left-2 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md border border-white/10 shadow-xs max-w-[55%] truncate">
+                              {formatCategoryDisplayName(machine.category.name)}
                             </div>
                           )}
 
                           {/* Year model badge */}
                           {machine.manufacturingYear ? (
-                            <div className="absolute bottom-2 right-2 z-10 rounded-md bg-gray-950/85 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-bold text-amber-400 backdrop-blur-md border border-amber-500/25 shadow-xs">
+                            <div className="absolute bottom-2 right-2 z-10 rounded bg-gray-950/85 px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-bold text-amber-400 backdrop-blur-md border border-amber-500/25 shadow-xs">
                               {machine.manufacturingYear} Model
                             </div>
                           ) : null}
 
                           {/* Photos count */}
                           {machine.mediaCount > 1 && (
-                            <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded-md bg-black/65 px-2 py-0.5 text-[9.5px] sm:text-[10px] font-medium text-white backdrop-blur-md border border-white/10 shadow-xs">
+                            <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[8.5px] sm:text-[9px] font-medium text-white backdrop-blur-md border border-white/10 shadow-xs">
                               <Camera size={10} className="text-amber-400" />
                               <span>{machine.mediaCount} Photos</span>
                             </div>
@@ -928,9 +929,9 @@ function MachinesPageContent({
                         </div>
 
                         {/* 2. Card Content Body */}
-                        <div className="flex flex-1 flex-col p-3 sm:p-3.5 lg:p-4">
+                        <div className="flex flex-1 flex-col p-2.5 sm:p-3 justify-between">
                           {/* Brand & Model subtitle */}
-                          <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] font-semibold text-gray-500 mb-1 min-w-0">
+                          <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold text-gray-500 mb-0.5 min-w-0">
                             <span className="text-amber-700 font-bold uppercase tracking-wider truncate max-w-[60%] shrink-0">
                               {brandDisplay.main !== 'Unknown' ? brandDisplay.main : 'Heavy Equipment'}
                             </span>
@@ -944,7 +945,7 @@ function MachinesPageContent({
 
                           {/* Machine Title */}
                           <h3
-                            className="line-clamp-1 sm:line-clamp-2 text-sm sm:text-[14.5px] font-bold text-gray-900 leading-snug transition-colors group-hover:text-amber-600"
+                            className="line-clamp-2 text-xs sm:text-[13px] font-bold text-gray-900 leading-snug transition-colors group-hover:text-amber-600 min-h-[32px]"
                             title={machine.title}
                           >
                             {machine.title}
@@ -952,7 +953,7 @@ function MachinesPageContent({
 
                           {/* Price & Negotiable Badge */}
                           <div className="mt-1.5 sm:mt-2 flex items-baseline justify-between gap-2 flex-wrap">
-                            <div className="text-base sm:text-lg lg:text-xl font-black text-gray-950 tracking-tight">
+                            <div className="text-sm sm:text-base font-black text-gray-950 tracking-tight">
                               {formatPrice(machine.price)}
                             </div>
                             {machine.isNegotiable && (
@@ -963,7 +964,7 @@ function MachinesPageContent({
                           </div>
 
                           {/* 3. Dynamic Key Specifications Grid */}
-                          <div className="mt-2.5 sm:mt-3 grid grid-cols-3 gap-1 rounded-xl border border-gray-100/90 bg-gray-50/70 p-1.5 sm:p-2">
+                          <div className="mt-2 grid grid-cols-3 gap-0.5 rounded-lg border border-gray-100 bg-gray-50/70 p-1 sm:p-1.5">
                             {/* Manufacturing Year */}
                             <div className="flex flex-col items-center justify-center text-center px-0.5 min-w-0">
                               <div className="flex items-center gap-1 text-[9.5px] sm:text-[10px] font-semibold uppercase text-gray-400">
@@ -999,7 +1000,7 @@ function MachinesPageContent({
                           </div>
 
                           {/* 4. Footer: Location & View Action CTA */}
-                          <div className="mt-2.5 sm:mt-3 pt-2 sm:pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] sm:text-xs text-gray-500">
+                          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-1 text-[10px] sm:text-[11px] text-gray-500">
                             <div className="flex items-center gap-1.5 min-w-0 truncate">
                               <MapPin className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                               <span className="truncate font-medium">{locationLabel}</span>

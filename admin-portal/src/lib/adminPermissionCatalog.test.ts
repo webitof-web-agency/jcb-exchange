@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { FINANCE_WORKSPACE_PERMISSION_IDS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from './adminPermissionCatalog';
+import {
+  AI_PERMISSION_DEFINITIONS,
+  FINANCE_WORKSPACE_PERMISSION_IDS,
+  KYC_PERMISSION_DEFINITIONS,
+  LISTING_PERMISSION_DEFINITIONS,
+} from './adminPermissionCatalog';
 
 test('exposes vehicle verification bypass in the Listings role permissions', () => {
   assert.deepEqual(
@@ -21,6 +26,13 @@ test('exposes KYC edit override in the Verifications role permissions', () => {
       label: 'KYC Edit Override',
     },
   );
+});
+
+test('exposes separate AI use and shared-provider management permissions', () => {
+  assert.deepEqual(AI_PERMISSION_DEFINITIONS, [
+    { id: 'ai.use', label: 'Use JCB Intelligence Hub' },
+    { id: 'ai.manage', label: 'Manage Shared AI Provider Settings' },
+  ]);
 });
 
 test('finance workspace permissions are unique fh.* keys and never reuse the legacy finance keys', () => {

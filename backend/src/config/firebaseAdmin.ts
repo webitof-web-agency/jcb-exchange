@@ -17,8 +17,24 @@ let isFirebaseAdminInitialized = false;
 
 try {
   // Load Firebase only when the dependency actually exists on disk.
-  const firebaseAdminModule = require('firebase-admin') as FirebaseAdminModule;
-  firebaseAdmin = firebaseAdminModule;
+  const firebaseAdminModule = require('firebase-admin') as FirebaseAdminModule & {
+    default?: FirebaseAdminModule;
+    getApps?: () => Array<unknown>;
+    cert?: (serviceAccount: unknown) => unknown;
+  };
+  const legacyFirebaseAdmin = firebaseAdminModule.default?.apps ? firebaseAdminModule.default : firebaseAdminModule;
+  if (Array.isArray(legacyFirebaseAdmin.apps)) {
+    firebaseAdmin = legacyFirebaseAdmin;
+  } else if (typeof firebaseAdminModule.getApps === 'function' && typeof firebaseAdminModule.cert === 'function') {
+    firebaseAdmin = {
+      apps: firebaseAdminModule.getApps(),
+      credential: { cert: firebaseAdminModule.cert },
+      initializeApp: firebaseAdminModule.initializeApp,
+      messaging: firebaseAdminModule.messaging,
+    };
+  } else {
+    throw new Error('Firebase Admin SDK export is invalid.');
+  }
 
   if (firebaseAdmin.apps.length === 0) {
     let serviceAccount: unknown = null;

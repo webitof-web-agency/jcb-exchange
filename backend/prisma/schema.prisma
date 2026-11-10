@@ -190,6 +190,59 @@ enum AuditEntityType {
   RC_MOBILE_NUMBER_CHECK
   MOBILE_TO_PAN_LOOKUP
   LISTING_VERIFICATION
+  AI_ACTION_PROPOSAL
+}
+
+enum AiRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AiConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AiConversationMessageRole {
+  USER
+  ASSISTANT
+}
+
+enum AiToolCallStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum AiActionProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  EXECUTING
+  EXECUTION_FAILED
+  EXECUTED
+}
+
+enum AiApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum AiBriefingStatus {
+  GENERATING
+  READY
+  FAILED
+  STALE
+}
+
+enum AiBriefingNotificationStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
 }
 
 enum CustomerPrimeSubscriptionStatus {
@@ -452,32 +505,32 @@ enum BlogQuestionStatus {
 }
 
 model User {
-  id               String     @id @default(uuid())
-  mobile           String?    @unique
-  email            String?    @unique
-  password         String?
-  name             String?
-  avatarUrl        String?
-  authProvider     String?    @default("LOCAL")
-  role             Role       @default(CUSTOMER)
-  status           UserStatus @default(ACTIVE)
-  archivedAt       DateTime?
-  archiveReason    String?    @db.Text
-  archivedById     String?
+  id                 String      @id @default(uuid())
+  mobile             String?     @unique
+  email              String?     @unique
+  password           String?
+  name               String?
+  avatarUrl          String?
+  authProvider       String?     @default("LOCAL")
+  role               Role        @default(CUSTOMER)
+  status             UserStatus  @default(ACTIVE)
+  archivedAt         DateTime?
+  archiveReason      String?     @db.Text
+  archivedById       String?
   archivedFromStatus UserStatus?
-  restoredAt       DateTime?
-  restoredById     String?
-  whatsappNumber   String?
-  city             String?
-  state            String?
-  isMobileVerified Boolean    @default(false)
-  authVersion      Int        @default(0)
-  createdById      String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  customRoleId     String?
-  fcmToken         String?
-  pushSubscription Json?
+  restoredAt         DateTime?
+  restoredById       String?
+  whatsappNumber     String?
+  city               String?
+  state              String?
+  isMobileVerified   Boolean     @default(false)
+  authVersion        Int         @default(0)
+  createdById        String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  customRoleId       String?
+  fcmToken           String?
+  pushSubscription   Json?
 
   createdBy                           User?                                @relation("UserCreation", fields: [createdById], references: [id])
   createdUsers                        User[]                               @relation("UserCreation")
@@ -502,6 +555,8 @@ model User {
   reviewedListingPaymentSubmissions   ListingPaymentSubmission[]           @relation("ListingPaymentReviewer")
   createdListingBills                 ListingBill[]                        @relation("ListingBillCreator")
   auditLogs                           AuditLog[]                           @relation("AuditActor")
+  approvedAiActionProposals           AiActionProposal[]                   @relation("AiActionProposalApprover")
+  rejectedAiActionProposals           AiActionProposal[]                   @relation("AiActionProposalRejector")
   drivingLicenseVerificationRecords   DrivingLicenseVerificationRecord[]   @relation("DrivingLicenseVerificationRequester")
   drivingLicenseVerificationTemplates DrivingLicenseVerificationTemplate[] @relation("DrivingLicenseVerificationTemplateRequester")
   rcOwnerHistoryRecords               RcOwnerHistoryRecord[]               @relation("RcOwnerHistoryRequester")
@@ -513,6 +568,7 @@ model User {
   rcMobileNumberCheckRecords          RcMobileNumberCheckRecord[]          @relation("RcMobileNumberCheckRequester")
   leadActivities                      LeadActivity[]                       @relation("LeadActivityActor")
   notifications                       Notification[]
+  aiBriefingNotifications             AiBriefingNotification[]
   notificationPreferences             NotificationPreference[]             @relation("NotificationPreferenceOwner")
   notificationPreferenceChanges       NotificationPreference[]             @relation("NotificationPreferenceLastChangedBy")
   createdJobs                         Job[]                                @relation("JobCreator")
@@ -535,7 +591,7 @@ model User {
   mobileToPanLookupRecords            MobileToPanLookupRecord[]            @relation("MobileToPanLookupRequester")
   gstVerificationRecords              GstVerificationRecord[]              @relation("GstVerificationRequester")
   gstVerificationTemplates            GstVerificationTemplate[]            @relation("GstVerificationTemplateRequester")
-  partnerSignupGstVerifications       PartnerSignupGstVerification[]        @relation("PartnerSignupGstVerificationConsumer")
+  partnerSignupGstVerifications       PartnerSignupGstVerification[]       @relation("PartnerSignupGstVerificationConsumer")
   aadhaarVerificationRecords          AadhaarVerificationRecord[]          @relation("AadhaarVerificationRequester")
   aadhaarVerificationTemplates        AadhaarVerificationTemplate[]        @relation("AadhaarVerificationTemplateRequester")
   blogQuestions                       BlogQuestion[]                       @relation("BlogQuestionAuthor")
@@ -546,6 +602,12 @@ model User {
   crmFollowUpsAsContact               CrmFollowUp[]                        @relation("CrmFollowUpContact")
   crmFollowUpsOwned                   CrmFollowUp[]                        @relation("CrmFollowUpOwner")
   crmContactActivities                CrmContactActivity[]                 @relation("CrmContactActivityContact")
+  aiRuns                              AiRun[]                              @relation("AiRunActor")
+  aiConversations                     AiConversation[]                     @relation("AiConversationActor")
+  aiFeedback                          AiFeedback[]                         @relation("AiFeedbackActor")
+  aiActionProposals                   AiActionProposal[]                   @relation("AiActionProposalRequester")
+  aiApprovals                         AiApproval[]                         @relation("AiApprovalApprover")
+  aiBudgetUsage                       AiBudgetUsage[]                      @relation("AiBudgetUsageActor")
 
   @@index([role, status, archivedAt, updatedAt])
 }
@@ -568,6 +630,7 @@ model MobileOtpChallenge {
 
   @@index([mobile, purpose, status, createdAt])
   @@index([userId, status, createdAt])
+  @@index([mobile, status, createdAt], map: "MobileOtpChallenge_mobile_status_createdAt_idx")
 }
 
 model PasswordResetToken {
@@ -678,7 +741,8 @@ model PanVerificationRecord {
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
   @@index([maskedPan, createdAt])
-  @@index([operation, requestFingerprint, status, completedAt])
+  @@index([operation, requestFingerprint, status, completedAt], map: "PanVerificationRecord_operation_requestFingerprint_status_compl")
+  @@index([rawDataExpiresAt], map: "PanVerificationRecord_rawDataExpiresAt_idx")
 }
 
 model PanVerificationTemplate {
@@ -699,7 +763,7 @@ model PanVerificationTemplate {
 }
 
 model PanVerificationSettings {
-  id                            String              @id @default("default")
+  id                            String              @id
   enabled                       Boolean             @default(false)
   activeEnvironment             SurepassEnvironment @default(SANDBOX)
   baseUrl                       String?
@@ -741,7 +805,7 @@ model AadhaarVerificationRecord {
   @@index([side, status, createdAt])
   @@index([requestedById, createdAt])
   @@index([maskedAadhaar, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "AadhaarVerificationRecord_requestFingerprint_status_completedAt")
   @@index([rawDataExpiresAt])
   @@index([ephemeralExpiresAt])
 }
@@ -784,32 +848,32 @@ model MobileToPanLookupRecord {
   @@index([requestedById, createdAt])
   @@index([maskedName, createdAt])
   @@index([maskedMobileNumber, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "MobileToPanLookupRecord_requestFingerprint_status_completedAt_i")
 }
 
 model GstVerificationRecord {
-  id                 String                @id @default(uuid())
-  status             GstVerificationStatus @default(PENDING)
-  maskedGstin        String
-  requestFingerprint String?               @db.VarChar(64)
-  gstinStatus        String?
-  businessName       String?
-  legalName          String?
-  provider           String                @default("SUREPASS")
-  providerClientId   String?
-  messageCode        String?
-  safeMessage        String?               @db.Text
-  encryptedResult    String?               @db.Text
-  rawDataExpiresAt   DateTime?
-  supersededAt       DateTime?
+  id                   String                @id @default(uuid())
+  status               GstVerificationStatus @default(PENDING)
+  maskedGstin          String
+  requestFingerprint   String?               @db.VarChar(64)
+  gstinStatus          String?
+  businessName         String?
+  legalName            String?
+  provider             String                @default("SUREPASS")
+  providerClientId     String?
+  messageCode          String?
+  safeMessage          String?               @db.Text
+  encryptedResult      String?               @db.Text
+  rawDataExpiresAt     DateTime?
+  supersededAt         DateTime?
   supersededByRecordId String?
-  supersededReason   String?               @db.Text
-  requestedById      String
-  createdAt          DateTime              @default(now())
-  completedAt        DateTime?
+  supersededReason     String?               @db.Text
+  requestedById        String
+  createdAt            DateTime              @default(now())
+  completedAt          DateTime?
 
-  template GstVerificationTemplate? @relation("GstVerificationRecordTemplate")
-  partnerProfile PartnerProfile? @relation("PartnerProfileGstVerification")
+  template       GstVerificationTemplate? @relation("GstVerificationRecordTemplate")
+  partnerProfile PartnerProfile?          @relation("PartnerProfileGstVerification")
 
   requestedBy User @relation("GstVerificationRequester", fields: [requestedById], references: [id])
 
@@ -856,7 +920,7 @@ model PartnerSignupGstVerification {
 
   @@index([status, createdAt])
   @@index([gstin, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "PartnerSignupGstVerification_requestFingerprint_status_complete")
   @@index([expiresAt])
   @@index([countryId, stateId, cityId])
 }
@@ -901,9 +965,9 @@ model DrivingLicenseVerificationRecord {
 
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
-  @@index([maskedLicenseNumber, createdAt])
+  @@index([maskedLicenseNumber, createdAt], map: "DrivingLicenseVerificationRecord_maskedLicenseNumber_createdAt_")
   @@index([currentStatus, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "DrivingLicenseVerificationRecord_requestFingerprint_status_comp")
   @@index([rawDataExpiresAt])
 }
 
@@ -954,7 +1018,7 @@ model RcOwnerHistoryRecord {
   @@index([rcStatus, createdAt])
   @@index([requestFingerprint, status, completedAt])
   @@index([serviceKey, status, createdAt])
-  @@index([serviceKey, requestFingerprint, status, completedAt])
+  @@index([serviceKey, requestFingerprint, status, completedAt], map: "RcOwnerHistoryRecord_serviceKey_requestFingerprint_status_compl")
   @@index([rawDataExpiresAt])
   @@index([ephemeralExpiresAt])
 }
@@ -1002,9 +1066,9 @@ model RcChallanVerificationRecord {
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
   @@index([maskedRcNumber, createdAt])
-  @@index([requestedById, requestFingerprint, createdAt])
-  @@index([requestFingerprint, status, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestedById, requestFingerprint, createdAt], map: "RcChallanVerificationRecord_requestedById_requestFingerprint_cr")
+  @@index([requestFingerprint, status, createdAt], map: "RcChallanVerificationRecord_requestFingerprint_status_createdAt")
+  @@index([requestFingerprint, status, completedAt], map: "RcChallanVerificationRecord_requestFingerprint_status_completed")
 }
 
 model ChassisToRcVerificationRecord {
@@ -1032,7 +1096,7 @@ model ChassisToRcVerificationRecord {
   @@index([requestedById, createdAt])
   @@index([maskedChassisNumber, createdAt])
   @@index([rcNumber, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "ChassisToRcVerificationRecord_requestFingerprint_status_complet")
 }
 
 model RcToMobileVerificationRecord {
@@ -1055,7 +1119,7 @@ model RcToMobileVerificationRecord {
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
   @@index([maskedRcNumber, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "RcToMobileVerificationRecord_requestFingerprint_status_complete")
 }
 
 model MobileToRcLookupRecord {
@@ -1078,7 +1142,7 @@ model MobileToRcLookupRecord {
   @@index([status, createdAt])
   @@index([requestedById, createdAt])
   @@index([maskedMobileNumber, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "MobileToRcLookupRecord_requestFingerprint_status_completedAt_id")
 }
 
 model RcMobileNumberCheckRecord {
@@ -1103,7 +1167,7 @@ model RcMobileNumberCheckRecord {
   @@index([requestedById, createdAt])
   @@index([maskedRcNumber, createdAt])
   @@index([maskedMobileNumber, createdAt])
-  @@index([requestFingerprint, status, completedAt])
+  @@index([requestFingerprint, status, completedAt], map: "RcMobileNumberCheckRecord_requestFingerprint_status_completedAt")
 }
 
 model ApiWallet {
@@ -1232,18 +1296,18 @@ model PartnerProfile {
   createdAt                  DateTime                @default(now())
   updatedAt                  DateTime                @updatedAt
 
-  user         User                @relation(fields: [userId], references: [id])
-  approvedBy   User?               @relation("PartnerApprover", fields: [approvedById], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id])
+  approvedBy            User?                  @relation("PartnerApprover", fields: [approvedById], references: [id])
   gstVerificationRecord GstVerificationRecord? @relation("PartnerProfileGstVerification", fields: [gstVerificationRecordId], references: [id], onDelete: SetNull)
-  country      Country?            @relation("PartnerProfileCountry", fields: [countryId], references: [id], onDelete: SetNull)
-  state        State?              @relation("PartnerProfileState", fields: [stateId], references: [id], onDelete: SetNull)
-  city         City?               @relation("PartnerProfileCity", fields: [cityId], references: [id], onDelete: SetNull)
-  teamMembers  PartnerTeamMember[]
-  categories   Category[]
-  kycDocuments KycDocument[]
-  kycReviews   KycReviewLog[]
-  deposits     PartnerDeposit[]
-  agreements   PartnerAgreement[]
+  country               Country?               @relation("PartnerProfileCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  state                 State?                 @relation("PartnerProfileState", fields: [stateId], references: [id], onDelete: SetNull)
+  city                  City?                  @relation("PartnerProfileCity", fields: [cityId], references: [id], onDelete: SetNull)
+  teamMembers           PartnerTeamMember[]
+  categories            Category[]
+  kycDocuments          KycDocument[]
+  kycReviews            KycReviewLog[]
+  deposits              PartnerDeposit[]
+  agreements            PartnerAgreement[]
 
   @@index([onboardingStatus])
   @@index([accountStatus])
@@ -1391,7 +1455,7 @@ model ListingVehicleVerification {
   lastVerifiedAt             DateTime?
   lastModifiedAt             DateTime?
   createdAt                  DateTime                   @default(now())
-  updatedAt                  DateTime                   @updatedAt
+  updatedAt                  DateTime                   @default(now()) @updatedAt
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
@@ -2178,6 +2242,254 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
+model AiRun {
+  id           String      @id @default(uuid())
+  requestId    String      @unique
+  actorUserId  String
+  feature      String      @db.VarChar(80)
+  status       AiRunStatus @default(RUNNING)
+  provider     String      @db.VarChar(40)
+  modelAlias   String      @db.VarChar(120)
+  promptHash   String      @db.VarChar(128)
+  promptHmac   String?     @db.VarChar(128)
+  responseHash String?     @db.VarChar(128)
+  responseHmac String?     @db.VarChar(128)
+  inputChars   Int         @default(0)
+  outputChars  Int         @default(0)
+  inputTokens  Int?
+  outputTokens Int?
+  outputWords  Int         @default(0)
+  latencyMs    Int?
+  costMicros   BigInt?
+  errorCode    String?     @db.VarChar(100)
+  startedAt    DateTime    @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  actor           User               @relation("AiRunActor", fields: [actorUserId], references: [id])
+  toolCalls       AiToolCall[]
+  feedback        AiFeedback[]
+  actionProposals AiActionProposal[]
+
+  @@index([actorUserId, createdAt])
+  @@index([feature, status, createdAt])
+  @@index([createdAt])
+}
+
+model AiConversation {
+  id            String                @id @default(uuid())
+  actorUserId   String
+  title         String                @db.VarChar(160)
+  status        AiConversationStatus  @default(ACTIVE)
+  lastMessageAt DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  actor    User                   @relation("AiConversationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  messages AiConversationMessage[]
+
+  @@index([actorUserId, updatedAt])
+  @@index([actorUserId, status, updatedAt])
+}
+
+model AiConversationMessage {
+  id             String                       @id @default(uuid())
+  conversationId String
+  role           AiConversationMessageRole
+  contentRedacted String                      @db.Text
+  contentHash    String                       @db.VarChar(128)
+  contentHmac    String?                      @db.VarChar(128)
+  requestId      String?                      @unique
+  provider       String?                      @db.VarChar(40)
+  modelAlias     String?                      @db.VarChar(120)
+  toolName       String?                      @db.VarChar(100)
+  createdAt      DateTime                     @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, role, createdAt])
+}
+
+model AiToolCall {
+  id               String           @id @default(uuid())
+  runId            String
+  toolName         String           @db.VarChar(100)
+  permission       String           @db.VarChar(120)
+  status           AiToolCallStatus
+  argumentsHash    String?          @db.VarChar(128)
+  argumentsHmac    String?          @db.VarChar(128)
+  resultHash       String?          @db.VarChar(128)
+  resultHmac       String?          @db.VarChar(128)
+  targetType       String?          @db.VarChar(80)
+  targetRefHash    String?          @db.VarChar(128)
+  inputItemCount   Int?
+  outputItemCount  Int?
+  redactionApplied Boolean          @default(true)
+  durationMs       Int?
+  errorCode        String?          @db.VarChar(100)
+  startedAt        DateTime         @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+
+  run AiRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+  @@index([toolName, createdAt])
+}
+
+model AiFeedback {
+  id              String   @id @default(uuid())
+  runId           String
+  actorUserId     String
+  rating          Int
+  commentRedacted String?  @db.VarChar(2000)
+  commentHash     String?  @db.VarChar(128)
+  commentHmac     String?  @db.VarChar(128)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  run   AiRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  actor User  @relation("AiFeedbackActor", fields: [actorUserId], references: [id])
+
+  @@unique([runId, actorUserId])
+  @@index([actorUserId, createdAt])
+}
+
+model AiActionProposal {
+  id                 String                 @id @default(uuid())
+  runId              String
+  requestedById      String
+  actionType         String                 @db.VarChar(100)
+  targetType         String                 @db.VarChar(80)
+  targetRef          String                 @db.VarChar(160)
+  payloadHash        String                 @db.VarChar(128)
+  payloadHmac       String?                @db.VarChar(128)
+  payloadRedacted    String?                @db.Text
+  idempotencyKey     String?                @unique @db.VarChar(180)
+  status             AiActionProposalStatus @default(PENDING)
+  expiresAt          DateTime
+  approvedAt         DateTime?
+  approvedById       String?
+  rejectedAt         DateTime?
+  rejectedById       String?
+  executedAt         DateTime?
+  executionErrorCode String?                @db.VarChar(100)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  run         AiRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  requestedBy User         @relation("AiActionProposalRequester", fields: [requestedById], references: [id])
+  approvedBy  User?        @relation("AiActionProposalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy  User?        @relation("AiActionProposalRejector", fields: [rejectedById], references: [id], onDelete: SetNull)
+  approvals   AiApproval[]
+
+  @@index([requestedById, status, createdAt])
+  @@index([status, expiresAt])
+  @@index([targetType, targetRef])
+  @@index([status, updatedAt])
+}
+
+model AiApproval {
+  id             String             @id @default(uuid())
+  proposalId     String
+  approverUserId String
+  decision       AiApprovalDecision
+  reasonRedacted String?            @db.VarChar(2000)
+  reasonHash     String?            @db.VarChar(128)
+  createdAt      DateTime           @default(now())
+
+  proposal AiActionProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approver User             @relation("AiApprovalApprover", fields: [approverUserId], references: [id])
+
+  @@unique([proposalId, approverUserId])
+  @@index([approverUserId, createdAt])
+}
+
+model AiDailyBriefing {
+  id                 String           @id @default(uuid())
+  scopeKey           String           @db.VarChar(120)
+  briefingDate       DateTime         @db.Date
+  status             AiBriefingStatus @default(GENERATING)
+  modelAlias         String           @db.VarChar(120)
+  provider           String?          @db.VarChar(40)
+  timezone           String           @default("Asia/Kolkata") @db.VarChar(64)
+  attemptCount       Int              @default(0)
+  nextAttemptAt      DateTime?
+  lockToken          String?          @db.VarChar(64)
+  lockedUntil        DateTime?
+  sourceSnapshotHash String?          @db.VarChar(128)
+  resultRedacted     String?          @db.Text
+  resultHash         String?          @db.VarChar(128)
+  errorCode          String?          @db.VarChar(100)
+  lastErrorRedacted  String?          @db.VarChar(2000)
+  generatedAt        DateTime?
+  expiresAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  notifications AiBriefingNotification[]
+
+  @@unique([scopeKey, briefingDate])
+  @@index([status, nextAttemptAt])
+  @@index([lockedUntil])
+  @@index([briefingDate])
+}
+
+model AiBriefingNotification {
+  id              String                       @id @default(uuid())
+  briefingId      String
+  recipientUserId String
+  status          AiBriefingNotificationStatus @default(PENDING)
+  attempts        Int                          @default(0)
+  nextAttemptAt   DateTime?
+  lockToken       String?                      @db.VarChar(64)
+  lockedUntil     DateTime?
+  lastErrorCode   String?                      @db.VarChar(100)
+  deliveredAt     DateTime?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  briefing  AiDailyBriefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+  recipient User            @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([briefingId, recipientUserId])
+  @@index([status, nextAttemptAt])
+  @@index([lockedUntil])
+}
+
+model AiRateLimitBucket {
+  id              String   @id @default(uuid())
+  bucketKey       String   @unique @db.VarChar(180)
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  requestCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+model AiBudgetUsage {
+  id           String   @id @default(uuid())
+  actorUserId  String
+  usageDate    DateTime @db.Date
+  feature      String   @db.VarChar(80)
+  requestCount Int      @default(0)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costMicros   BigInt   @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  actor User @relation("AiBudgetUsageActor", fields: [actorUserId], references: [id])
+
+  @@unique([actorUserId, usageDate, feature])
+  @@index([usageDate, feature])
+  @@index([actorUserId, usageDate])
+}
+
 model Notification {
   id        String   @id @default(uuid())
   userId    String
@@ -2186,6 +2498,7 @@ model Notification {
   type      String?
   isRead    Boolean  @default(false)
   link      String?
+  dedupeKey String?  @unique
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2215,7 +2528,7 @@ model NotificationPreference {
 
   @@unique([phone, channel, category])
   @@index([userId, channel, category, status])
-  @@index([candidateId, channel, category, status])
+  @@index([candidateId, channel, category, status], map: "notification_preferences_candidateId_channel_category_status_id")
   @@index([phone, channel, category, status])
   @@map("notification_preferences")
 }
@@ -2469,7 +2782,7 @@ model FinanceTransaction {
 }
 
 model SmsIntegrationSettings {
-  id                 String   @id @default("default")
+  id                 String   @id
   enabled            Boolean  @default(false)
   baseUrl            String   @default("https://sms.flowitof.com/dev")
   senderId           String?
@@ -2620,9 +2933,9 @@ model Country {
   emoji          String?
   emojiU         String?
 
-  states State[]
-  cities City[]
-  partnerProfilesByCountry PartnerProfile[] @relation("PartnerProfileCountry")
+  states                   State[]
+  cities                   City[]
+  partnerProfilesByCountry PartnerProfile[]               @relation("PartnerProfileCountry")
   signupGstVerifications   PartnerSignupGstVerification[] @relation("PartnerSignupGstCountry")
 }
 
@@ -2635,9 +2948,9 @@ model State {
   latitude    String?
   longitude   String?
 
-  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  cities  City[]
-  partnerProfilesByState PartnerProfile[] @relation("PartnerProfileState")
+  country                Country                        @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities                 City[]
+  partnerProfilesByState PartnerProfile[]               @relation("PartnerProfileState")
   signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstState")
 
   @@index([countryId])
@@ -2653,9 +2966,9 @@ model City {
   latitude    String?
   longitude   String?
 
-  state   State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
-  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  partnerProfilesByCity PartnerProfile[] @relation("PartnerProfileCity")
+  state                  State                          @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  country                Country                        @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  partnerProfilesByCity  PartnerProfile[]               @relation("PartnerProfileCity")
   signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstCity")
 
   @@index([stateId])
@@ -4736,4 +5049,550 @@ model CrmImportBatch {
   createdAt      DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// Legacy accounting tables are retained in the live database for historical
+// data safety. They are intentionally ignored by Prisma Client and are not
+// used by the current application, but declaring them here prevents future
+// migration diffs from proposing to drop them.
+model JtAccount {
+  id              String            @id
+  companyId       String
+  code            String            @db.VarChar(32)
+  name            String            @db.VarChar(160)
+  type            JtAccountType
+  purpose         JtAccountPurpose?
+  parentId        String?
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  JtCompany       JtCompany         @relation(fields: [companyId], references: [id])
+  JtAccount       JtAccount?        @relation("JtAccountToJtAccount", fields: [parentId], references: [id], onDelete: Restrict)
+  other_JtAccount JtAccount[]       @relation("JtAccountToJtAccount")
+  JtBill          JtBill[]
+  JtBillItem      JtBillItem[]
+  JtBudget        JtBudget[]
+  JtVoucherLine   JtVoucherLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, type, active])
+  @@ignore
+}
+
+model JtAuditEvent {
+  id        String    @id
+  companyId String
+  actorId   String
+  action    String    @db.VarChar(80)
+  entity    String    @db.VarChar(80)
+  entityId  String
+  details   Json?
+  createdAt DateTime  @default(now())
+  JtCompany JtCompany @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([entity, entityId])
+  @@ignore
+}
+
+model JtBill {
+  id                  String             @id
+  companyId           String
+  branchId            String?
+  fiscalYearId        String
+  kind                JtBillKind
+  number              String             @db.VarChar(64)
+  billDate            DateTime           @db.Date
+  dueDate             DateTime           @db.Date
+  partyName           String             @db.VarChar(200)
+  partyReference      String?            @db.VarChar(160)
+  settlementAccountId String
+  amount              Decimal            @db.Decimal(18, 2)
+  issueVoucherId      String             @unique
+  createdById         String
+  createdAt           DateTime           @default(now())
+  JtBranch            JtBranch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  JtCompany           JtCompany          @relation(fields: [companyId], references: [id])
+  JtFiscalYear        JtFiscalYear       @relation(fields: [fiscalYearId], references: [id])
+  JtVoucher           JtVoucher          @relation(fields: [issueVoucherId], references: [id])
+  JtAccount           JtAccount          @relation(fields: [settlementAccountId], references: [id])
+  JtBillAllocation    JtBillAllocation[]
+  JtBillItem          JtBillItem[]
+
+  @@unique([companyId, fiscalYearId, kind, number])
+  @@index([companyId, kind, billDate])
+  @@ignore
+}
+
+model JtBillAllocation {
+  id               String    @id
+  billId           String
+  paymentVoucherId String    @unique
+  amount           Decimal   @db.Decimal(18, 2)
+  createdAt        DateTime  @default(now())
+  JtBill           JtBill    @relation(fields: [billId], references: [id])
+  JtVoucher        JtVoucher @relation(fields: [paymentVoucherId], references: [id])
+
+  @@index([billId])
+  @@ignore
+}
+
+model JtBillItem {
+  id          String    @id
+  billId      String
+  accountId   String
+  lineNumber  Int
+  description String    @db.VarChar(500)
+  quantity    Int
+  unitPrice   Decimal   @db.Decimal(18, 2)
+  amount      Decimal   @db.Decimal(18, 2)
+  JtAccount   JtAccount @relation(fields: [accountId], references: [id])
+  JtBill      JtBill    @relation(fields: [billId], references: [id])
+
+  @@unique([billId, lineNumber])
+  @@ignore
+}
+
+model JtBranch {
+  id              String            @id
+  companyId       String
+  code            String            @db.VarChar(32)
+  name            String            @db.VarChar(160)
+  gstin           String?           @db.VarChar(15)
+  createdAt       DateTime          @default(now())
+  JtBill          JtBill[]
+  JtCompany       JtCompany         @relation(fields: [companyId], references: [id])
+  JtStockMovement JtStockMovement[]
+  JtVehicle       JtVehicle[]
+  JtVoucher       JtVoucher[]
+
+  @@unique([companyId, code])
+  @@ignore
+}
+
+model JtBudget {
+  id              String       @id
+  companyId       String
+  fiscalYearId    String
+  accountId       String
+  allocatedAmount Decimal      @default(0) @db.Decimal(18, 2)
+  utilizedAmount  Decimal      @default(0) @db.Decimal(18, 2)
+  createdAt       DateTime     @default(now())
+  JtAccount       JtAccount    @relation(fields: [accountId], references: [id])
+  JtCompany       JtCompany    @relation(fields: [companyId], references: [id])
+  JtFiscalYear    JtFiscalYear @relation(fields: [fiscalYearId], references: [id])
+
+  @@unique([companyId, fiscalYearId, accountId])
+  @@ignore
+}
+
+model JtCompany {
+  id                  String                @id
+  code                String                @unique @db.VarChar(32)
+  name                String                @db.VarChar(160)
+  legalName           String                @db.VarChar(200)
+  gstin               String?               @db.VarChar(15)
+  currency            String                @default("INR") @db.VarChar(3)
+  booksStartDate      DateTime              @db.Date
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  JtAccount           JtAccount[]
+  JtAuditEvent        JtAuditEvent[]
+  JtBill              JtBill[]
+  JtBranch            JtBranch[]
+  JtBudget            JtBudget[]
+  JtCompanyAccess     JtCompanyAccess[]
+  JtCostCentre        JtCostCentre[]
+  JtFiscalYear        JtFiscalYear[]
+  JtIntegrationBatch  JtIntegrationBatch[]
+  JtPartnerAccount    JtPartnerAccount[]
+  JtPartnerSettlement JtPartnerSettlement[]
+  JtPayrollRecord     JtPayrollRecord[]
+  JtStockItem         JtStockItem[]
+  JtStockMovement     JtStockMovement[]
+  JtTaxRate           JtTaxRate[]
+  JtVehicle           JtVehicle[]
+  JtVoucher           JtVoucher[]
+  @@ignore
+}
+
+model JtCompanyAccess {
+  id        String    @id
+  companyId String
+  userId    String
+  branchIds String[]
+  createdAt DateTime  @default(now())
+  JtCompany JtCompany @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, userId])
+  @@index([userId])
+  @@ignore
+}
+
+model JtCostCentre {
+  id            String               @id
+  companyId     String
+  code          String               @db.VarChar(32)
+  name          String               @db.VarChar(160)
+  category      JtCostCentreCategory @default(OTHER)
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  JtCompany     JtCompany            @relation(fields: [companyId], references: [id])
+  JtVehicle     JtVehicle[]
+  JtVoucherLine JtVoucherLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, category, active])
+  @@ignore
+}
+
+model JtFiscalYear {
+  id        String      @id
+  companyId String
+  label     String      @db.VarChar(32)
+  startsOn  DateTime    @db.Date
+  endsOn    DateTime    @db.Date
+  lockedAt  DateTime?
+  createdAt DateTime    @default(now())
+  JtBill    JtBill[]
+  JtBudget  JtBudget[]
+  JtCompany JtCompany   @relation(fields: [companyId], references: [id])
+  JtVoucher JtVoucher[]
+
+  @@unique([companyId, label])
+  @@index([companyId, startsOn, endsOn])
+  @@ignore
+}
+
+model JtIntegrationBatch {
+  id             String              @id
+  companyId      String
+  sourceType     JtIntegrationSource
+  batchNumber    String              @db.VarChar(64)
+  status         JtIntegrationStatus @default(PREVIEW)
+  totalRecords   Int                 @default(0)
+  matchedRecords Int                 @default(0)
+  errorCount     Int                 @default(0)
+  summaryJson    Json?
+  createdById    String
+  approvedById   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime
+  JtCompany      JtCompany           @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, batchNumber])
+  @@index([companyId, sourceType, status])
+  @@ignore
+}
+
+model JtPartnerAccount {
+  id                   String                @id
+  companyId            String
+  partnerProfileId     String?               @db.VarChar(64)
+  partnerName          String                @db.VarChar(160)
+  contactNumber        String?               @db.VarChar(32)
+  depositBalance       Decimal               @default(0) @db.Decimal(18, 2)
+  commissionReceivable Decimal               @default(0) @db.Decimal(18, 2)
+  commissionPayable    Decimal               @default(0) @db.Decimal(18, 2)
+  active               Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime
+  JtCompany            JtCompany             @relation(fields: [companyId], references: [id])
+  JtPartnerSettlement  JtPartnerSettlement[]
+
+  @@unique([companyId, partnerName])
+  @@index([companyId, active])
+  @@ignore
+}
+
+model JtPartnerSettlement {
+  id               String           @id
+  companyId        String
+  partnerAccountId String
+  settlementDate   DateTime         @db.Date
+  amount           Decimal          @db.Decimal(18, 2)
+  type             String           @db.VarChar(32)
+  voucherId        String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  JtCompany        JtCompany        @relation(fields: [companyId], references: [id])
+  JtPartnerAccount JtPartnerAccount @relation(fields: [partnerAccountId], references: [id])
+  JtVoucher        JtVoucher?       @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, partnerAccountId])
+  @@ignore
+}
+
+model JtPayrollRecord {
+  id               String          @id
+  companyId        String
+  employeeId       String?         @db.VarChar(64)
+  employeeName     String          @db.VarChar(160)
+  designation      String?         @db.VarChar(80)
+  monthYear        String          @db.VarChar(16)
+  basicSalary      Decimal         @default(0) @db.Decimal(18, 2)
+  allowances       Decimal         @default(0) @db.Decimal(18, 2)
+  deductions       Decimal         @default(0) @db.Decimal(18, 2)
+  netSalary        Decimal         @default(0) @db.Decimal(18, 2)
+  status           JtPayrollStatus @default(DRAFT)
+  paymentVoucherId String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime
+  JtCompany        JtCompany       @relation(fields: [companyId], references: [id])
+  JtVoucher        JtVoucher?      @relation(fields: [paymentVoucherId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, employeeName, monthYear])
+  @@index([companyId, monthYear, status])
+  @@ignore
+}
+
+model JtStockItem {
+  id              String            @id
+  companyId       String
+  code            String            @db.VarChar(32)
+  name            String            @db.VarChar(160)
+  group           JtStockGroup      @default(MACHINERY)
+  unit            String            @default("NOS") @db.VarChar(16)
+  hsnCode         String?           @db.VarChar(16)
+  currentQty      Int               @default(0)
+  avgCost         Decimal           @default(0) @db.Decimal(18, 2)
+  totalValue      Decimal           @default(0) @db.Decimal(18, 2)
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  JtCompany       JtCompany         @relation(fields: [companyId], references: [id])
+  JtStockMovement JtStockMovement[]
+
+  @@unique([companyId, code])
+  @@index([companyId, group, active])
+  @@ignore
+}
+
+model JtStockMovement {
+  id           String              @id
+  companyId    String
+  branchId     String?
+  stockItemId  String
+  movementDate DateTime            @db.Date
+  type         JtStockMovementType
+  quantity     Int
+  unitCost     Decimal             @db.Decimal(18, 2)
+  totalCost    Decimal             @db.Decimal(18, 2)
+  reference    String?             @db.VarChar(160)
+  voucherId    String?
+  createdAt    DateTime            @default(now())
+  JtBranch     JtBranch?           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  JtCompany    JtCompany           @relation(fields: [companyId], references: [id])
+  JtStockItem  JtStockItem         @relation(fields: [stockItemId], references: [id])
+  JtVoucher    JtVoucher?          @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, stockItemId, movementDate])
+  @@ignore
+}
+
+model JtTaxRate {
+  id         String    @id
+  companyId  String
+  code       String    @db.VarChar(32)
+  name       String    @db.VarChar(160)
+  hsnSacCode String?   @db.VarChar(16)
+  cgstRate   Decimal   @default(0) @db.Decimal(5, 2)
+  sgstRate   Decimal   @default(0) @db.Decimal(5, 2)
+  igstRate   Decimal   @default(0) @db.Decimal(5, 2)
+  cessRate   Decimal   @default(0) @db.Decimal(5, 2)
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  JtCompany  JtCompany @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, code])
+  @@index([companyId, active])
+  @@ignore
+}
+
+model JtVehicle {
+  id                 String             @id
+  companyId          String
+  branchId           String?
+  costCentreId       String?
+  registrationNumber String             @db.VarChar(32)
+  chassisNumber      String?            @db.VarChar(64)
+  engineNumber       String?            @db.VarChar(64)
+  makeModel          String             @db.VarChar(160)
+  ownershipType      JtVehicleOwnership @default(COMPANY_OWNED)
+  status             JtVehicleStatus    @default(IN_STOCK)
+  purchaseDate       DateTime?          @db.Date
+  purchaseAmount     Decimal            @default(0) @db.Decimal(18, 2)
+  purchaseBillId     String?
+  saleDate           DateTime?          @db.Date
+  saleAmount         Decimal            @default(0) @db.Decimal(18, 2)
+  saleBillId         String?
+  brokerageFee       Decimal            @default(0) @db.Decimal(18, 2)
+  expensesAllocated  Decimal            @default(0) @db.Decimal(18, 2)
+  realizedProfit     Decimal            @default(0) @db.Decimal(18, 2)
+  listingId          String?            @db.VarChar(64)
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime
+  JtBranch           JtBranch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  JtCompany          JtCompany          @relation(fields: [companyId], references: [id])
+  JtCostCentre       JtCostCentre?      @relation(fields: [costCentreId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, registrationNumber])
+  @@index([chassisNumber])
+  @@index([companyId, status, ownershipType])
+  @@ignore
+}
+
+model JtVoucher {
+  id                  String                @id
+  companyId           String
+  branchId            String?
+  fiscalYearId        String
+  number              String                @db.VarChar(64)
+  type                JtVoucherType
+  status              JtVoucherStatus       @default(DRAFT)
+  voucherDate         DateTime              @db.Date
+  narration           String
+  sourceType          String?               @db.VarChar(80)
+  sourceId            String?               @db.VarChar(160)
+  reversalOfId        String?               @unique
+  createdById          String
+  approvedById        String?
+  postedById          String?
+  approvedAt          DateTime?
+  postedAt            DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  JtBill              JtBill?
+  JtBillAllocation    JtBillAllocation?
+  JtPartnerSettlement JtPartnerSettlement[]
+  JtPayrollRecord     JtPayrollRecord[]
+  JtStockMovement     JtStockMovement[]
+  JtBranch            JtBranch?             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  JtCompany           JtCompany             @relation(fields: [companyId], references: [id])
+  JtFiscalYear        JtFiscalYear          @relation(fields: [fiscalYearId], references: [id])
+  JtVoucher           JtVoucher?            @relation("JtVoucherToJtVoucher", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  other_JtVoucher     JtVoucher?            @relation("JtVoucherToJtVoucher")
+  JtVoucherLine       JtVoucherLine[]
+
+  @@unique([companyId, fiscalYearId, number])
+  @@unique([companyId, sourceType, sourceId])
+  @@index([branchId, voucherDate])
+  @@index([companyId, status, voucherDate])
+  @@ignore
+}
+
+model JtVoucherLine {
+  id           String        @id
+  voucherId    String
+  accountId    String
+  lineNumber   Int
+  debit        Decimal       @default(0) @db.Decimal(18, 2)
+  credit       Decimal       @default(0) @db.Decimal(18, 2)
+  description  String?
+  costCentreId String?
+  JtAccount    JtAccount     @relation(fields: [accountId], references: [id])
+  JtCostCentre JtCostCentre? @relation(fields: [costCentreId], references: [id], onDelete: Restrict)
+  JtVoucher    JtVoucher     @relation(fields: [voucherId], references: [id])
+
+  @@unique([voucherId, lineNumber])
+  @@index([accountId, voucherId])
+  @@index([costCentreId])
+  @@ignore
+}
+
+enum JtAccountPurpose {
+  CASH
+  BANK
+  RECEIVABLE
+  PAYABLE
+  INVENTORY
+}
+
+enum JtAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum JtBillKind {
+  SALES
+  PURCHASE
+}
+
+enum JtCostCentreCategory {
+  VEHICLE
+  BRANCH
+  PROJECT
+  DEPARTMENT
+  OTHER
+}
+
+enum JtIntegrationSource {
+  SELL_ACCOUNTS_LOCALSTORAGE
+  FINANCE_TRANSACTION_LEGACY
+  BANK_STATEMENT_CSV
+  TALLY_XML
+}
+
+enum JtIntegrationStatus {
+  PREVIEW
+  APPROVED
+  POSTED
+  REJECTED
+}
+
+enum JtPayrollStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum JtStockGroup {
+  MACHINERY
+  ATTACHMENT
+  SPARE_PART
+  CONSUMABLE
+}
+
+enum JtStockMovementType {
+  RECEIPT
+  ISSUE
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum JtVehicleOwnership {
+  COMPANY_OWNED
+  BROKERAGE
+  CONSIGNMENT
+  EXCHANGE
+}
+
+enum JtVehicleStatus {
+  IN_STOCK
+  SOLD
+  RETURNED
+  CANCELLED
+}
+
+enum JtVoucherStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  POSTED
+}
+
+enum JtVoucherType {
+  PAYMENT
+  RECEIPT
+  CONTRA
+  JOURNAL
+  SALES
+  PURCHASE
+  DEBIT_NOTE
+  CREDIT_NOTE
+  OPENING
+  REVERSAL
 }

@@ -16,3 +16,15 @@ export const purifySvg = (svg: string | null | undefined) => {
   if (typeof window === 'undefined') return value;
   return DOMPurify.sanitize(value, { USE_PROFILES: { svg: true }, FORBID_TAGS: ['use', 'image', 'foreignObject', 'a'] });
 };
+
+/** Strict output policy for the internal AI response surface. */
+export const purifyAiHtml = (html: string | null | undefined) => {
+  const value = (html ?? '').replace(/\r\n?/g, '\n').replace(/\n/g, '<br />');
+  if (typeof window === 'undefined') {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  return DOMPurify.sanitize(value, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3', 'blockquote'],
+    ALLOWED_ATTR: [],
+  });
+};

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NextFunction, Request, Response } from 'express';
-import { createRateLimiter } from './rateLimit.middleware';
+import { createDatabaseRateLimiter, createRateLimiter } from './rateLimit.middleware';
 
 const fakeResponse = () => {
   const response = { statusCode: 200, headers: {} as Record<string, string>, body: undefined as unknown };
@@ -17,6 +17,13 @@ const call = (limiter: ReturnType<typeof createRateLimiter>, ip: string) => {
   const { res, response } = fakeResponse();
   let passed = false;
   limiter({ ip } as Request, res, (() => { passed = true; }) as NextFunction);
+  return { passed, response };
+};
+
+const callDatabaseLimiter = async (limiter: ReturnType<typeof createDatabaseRateLimiter>, ip: string) => {
+  const { res, response } = fakeResponse();
+  let passed = false;
+  await limiter({ ip } as Request, res, (() => { passed = true; }) as NextFunction);
   return { passed, response };
 };
 
@@ -45,4 +52,22 @@ test('the window resets', async () => {
   assert.equal(call(limiter, '4.4.4.4').passed, false);
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.ok(call(limiter, '4.4.4.4').passed);
+});
+
+test('the database-backed limiter returns 429 after the shared counter reaches its limit', async () => {
+  let requestCount = 0;
+  const limiter = createDatabaseRateLimiter({
+    namespace: 'phase-9-test',
+    windowMs: 60_000,
+    max: 2,
+    store: async ({ expiresAt }) => ({ requestCount: ++requestCount, expiresAt }),
+  });
+
+  assert.equal((await callDatabaseLimiter(limiter, '5.5.5.5')).passed, true);
+  assert.equal((await callDatabaseLimiter(limiter, '5.5.5.5')).passed, true);
+  const blocked = await callDatabaseLimiter(limiter, '5.5.5.5');
+  assert.equal(blocked.passed, false);
+  assert.equal(blocked.response.statusCode, 429);
+  assert.deepEqual(blocked.response.body, { error: 'Too many requests. Please try again later.' });
+  assert.ok(Number(blocked.response.headers['Retry-After']) > 0);
 });

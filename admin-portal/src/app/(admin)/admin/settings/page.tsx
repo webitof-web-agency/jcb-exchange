@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Building2, CheckCircle2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, MessagesSquare, Phone, Save, ScanLine, ShieldCheck, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, CreditCard, Eye, EyeOff, FileText, HardDrive, ImagePlus, KeyRound, Loader2, Mail, MessagesSquare, Phone, Save, ScanLine, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import HomepageContentSettings from '@/components/admin/HomepageContentSettings';
+import AiSettingsPanel from '@/components/admin/AiSettingsPanel';
 import CrmSettingsPanel from '@/components/crm/CrmSettingsPanel';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { useAuthStore } from '@/store/authStore';
@@ -346,11 +347,20 @@ export default function SuperAdminSettingsPage() {
   const searchParams = useSearchParams();
   const authUser = useAuthStore((state) => state.user);
   const isEmployeeUser = authUser?.role === 'EMPLOYEE';
+  const canManageGeneralSettings = !isEmployeeUser || hasAnyPermission(authUser?.permissions, ['settings.manage']);
+  const canAiSettings = authUser?.role === 'SUPER_ADMIN'
+    || (isEmployeeUser && hasAnyPermission(authUser?.permissions, ['ai.manage']));
   const canCrmSettings = !isEmployeeUser || hasAnyPermission(authUser?.permissions, ['crm.settings']);
-  // Employees with crm.settings but not settings.manage only see CRM Settings.
-  const crmSettingsOnly = isEmployeeUser && !hasAnyPermission(authUser?.permissions, ['settings.manage']);
-  const [activeTab, setActiveTab] = useState<'security' | 'panVerification' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive' | 'crm'>(
-    () => (crmSettingsOnly || (searchParams.get('tab') === 'crm' && canCrmSettings) ? 'crm' : 'security'),
+  // Employees can be deliberately limited to CRM and/or the shared AI provider controls.
+  const hasRestrictedEmployeeSettings = isEmployeeUser && !canManageGeneralSettings;
+  const [activeTab, setActiveTab] = useState<'security' | 'panVerification' | 'leadRouting' | 'homepage' | 'payments' | 'invoice' | 'mobileApp' | 'googleDrive' | 'crm' | 'ai'>(
+    () => {
+      if (searchParams.get('tab') === 'ai' && canAiSettings) return 'ai';
+      if (searchParams.get('tab') === 'crm' && canCrmSettings) return 'crm';
+      if (hasRestrictedEmployeeSettings && canAiSettings) return 'ai';
+      if (hasRestrictedEmployeeSettings && canCrmSettings) return 'crm';
+      return 'security';
+    },
   );
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false);
@@ -697,7 +707,7 @@ export default function SuperAdminSettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (crmSettingsOnly) return undefined;
+    if (hasRestrictedEmployeeSettings) return undefined;
     const timer = window.setTimeout(() => {
       void loadSettings();
     }, 0);
@@ -705,7 +715,7 @@ export default function SuperAdminSettingsPage() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [crmSettingsOnly, loadSettings]);
+  }, [hasRestrictedEmployeeSettings, loadSettings]);
 
   const handleGoogleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1319,7 +1329,20 @@ export default function SuperAdminSettingsPage() {
       <div className="flex flex-col items-start gap-6 lg:gap-8 md:flex-row min-w-0 w-full">
         <aside className="w-full flex-shrink-0 md:w-52 lg:w-60 md:sticky md:top-2 self-start">
           <nav className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
-            {!crmSettingsOnly ? (
+            {canAiSettings ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('ai')}
+                className={`flex items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm font-semibold transition-colors ${activeTab === 'ai'
+                    ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                    : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <Sparkles className="h-4 w-4" />
+                AI Gateway
+              </button>
+            ) : null}
+            {canManageGeneralSettings ? (
               <>
               <button
                 type="button"
@@ -1862,6 +1885,8 @@ export default function SuperAdminSettingsPage() {
               </section>
             </>
           ) : null}
+
+          {activeTab === 'ai' && canAiSettings ? <AiSettingsPanel /> : null}
 
           {activeTab === 'panVerification' ? (
             <>

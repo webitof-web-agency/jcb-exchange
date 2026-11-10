@@ -17,6 +17,11 @@ export const KYC_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
   { id: 'kyc.edit.override', label: 'KYC Edit Override' },
 ];
 
+export const AI_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
+  { id: 'ai.use', label: 'Use JCB Intelligence Hub' },
+  { id: 'ai.manage', label: 'Manage Shared AI Provider Settings' },
+];
+
 export type AdminPermissionGroupDefinition = {
   groupName: string;
   permissions: AdminPermissionDefinition[];

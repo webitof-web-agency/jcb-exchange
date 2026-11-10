@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useCallback, useId } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useId, useRef } from 'react';
 import axios from 'axios';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -105,6 +105,19 @@ function SignupPageInner() {
   const [loading, setLoading] = useState(false);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
+
+  // Per-field inline errors (register form)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Refs for scroll-to-error (register form)
+  const nameRef = useRef<HTMLInputElement>(null);
+  const locationRef = useRef<HTMLDivElement>(null);
+  const gstinInputRef = useRef<HTMLInputElement>(null);
+  const mobileRef = useRef<HTMLInputElement>(null);
+  const whatsappRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
   const loginEmailId = useId();
   const loginPasswordId = useId();
@@ -356,6 +369,7 @@ function SignupPageInner() {
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
     const cleanName = sanitizeName(registerData.name);
     const cleanEmail = sanitizeEmail(registerData.email);
@@ -363,18 +377,25 @@ function SignupPageInner() {
     const cleanPassword = sanitizePassword(registerData.password);
     const cleanConfirmPassword = sanitizePassword(registerData.confirmPassword);
 
+    // Helper: set field error, scroll to ref, optionally focus
+    function scrollToError(ref: React.RefObject<any>, field: string, message: string) {
+      setFieldErrors((prev) => ({ ...prev, [field]: message }));
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => ref.current?.focus?.(), 350);
+    }
+
     if (!cleanName) {
-      setError('Please enter the dealer name.');
+      scrollToError(nameRef, 'name', 'Please enter the dealer name.');
       return;
     }
 
     if (!cleanMobile || cleanMobile.length !== 10) {
-      setError(t('authPortal.validMobile'));
+      scrollToError(mobileRef, 'mobile', t('authPortal.validMobile'));
       return;
     }
 
     if (!isValidIndianMobile(cleanMobile)) {
-      setError('Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      scrollToError(mobileRef, 'mobile', 'Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
       return;
     }
 
@@ -382,33 +403,33 @@ function SignupPageInner() {
       ? cleanMobile
       : sanitizeMobile(whatsappNumber);
 
-    if (!cleanWhatsappNumber || cleanWhatsappNumber.length !== 10) {
-      setError('Please enter a valid 10-digit WhatsApp number.');
+    if (!whatsappSameAsMobile && (!cleanWhatsappNumber || cleanWhatsappNumber.length !== 10)) {
+      scrollToError(whatsappRef, 'whatsapp', 'Please enter a valid 10-digit WhatsApp number.');
       return;
     }
 
     if (!isValidPartnerBusinessEmail(cleanEmail)) {
-      setError('Please enter a valid business/contact email address.');
+      scrollToError(emailRef, 'email', 'Please enter a valid business/contact email address. Gmail, Yahoo, Outlook are not accepted.');
       return;
     }
 
     if (!selectedCountryId || !selectedStateId || !selectedCityId) {
-      setError('Please select country, state and city.');
+      scrollToError(locationRef, 'location', 'Please select country, state and city.');
       return;
     }
 
     if (gstVerification.status !== 'verified' || !gstVerification.claimToken) {
-      setError('Please verify the dealer GSTIN before registering.');
+      scrollToError(gstinInputRef, 'gstin', 'Please verify the dealer GSTIN before registering.');
       return;
     }
 
     if (cleanPassword.length < 8) {
-      setError('Password must be at least 8 characters long.');
+      scrollToError(passwordRef, 'password', 'Password must be at least 8 characters long.');
       return;
     }
 
     if (cleanPassword !== cleanConfirmPassword) {
-      setError('Passwords do not match. Please re-enter.');
+      scrollToError(confirmPasswordRef, 'confirmPassword', 'Passwords do not match. Please re-enter.');
       return;
     }
 
@@ -549,12 +570,14 @@ function SignupPageInner() {
                           <User className="h-4 w-4" />
                         </div>
                         <input
+                          ref={nameRef}
                           type="text"
                           required
                           value={registerData.name}
                           onChange={(e) => {
                             setRegisterData({ ...registerData, name: e.target.value });
                             if (error) setError('');
+                            if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: '' }));
                           }}
                           onBlur={(e) => {
                             setRegisterData({ ...registerData, name: sanitizeName(e.target.value) });
@@ -566,7 +589,7 @@ function SignupPageInner() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div ref={locationRef} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div>
                         <label className="block text-xs font-semibold text-zinc-700 mb-1" htmlFor="partner-country">
                           Country
@@ -639,6 +662,12 @@ function SignupPageInner() {
                         />
                       </div>
                     </div>
+                    {fieldErrors.location && (
+                      <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {fieldErrors.location}
+                      </p>
+                    )}
 
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
@@ -653,6 +682,7 @@ function SignupPageInner() {
                       </div>
                       <div className="flex gap-2">
                         <input
+                          ref={gstinInputRef}
                           id="partner-gstin"
                           type="text"
                           required
@@ -690,6 +720,12 @@ function SignupPageInner() {
                           <span className="text-zinc-400">Verify GSTIN before registering the dealer.</span>
                         )}
                       </div>
+                      {fieldErrors.gstin && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.gstin}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -705,6 +741,7 @@ function SignupPageInner() {
                             <Phone className="h-4 w-4" />
                           </div>
                           <input
+                            ref={mobileRef}
                             type="tel"
                             inputMode="numeric"
                             maxLength={10}
@@ -715,6 +752,7 @@ function SignupPageInner() {
                               setRegisterData({ ...registerData, mobile: onlyNums });
                               setGstVerification({ status: 'idle' });
                               if (error) setError('');
+                              if (fieldErrors.mobile) setFieldErrors((prev) => ({ ...prev, mobile: '' }));
                             }}
                             className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
                             placeholder="Enter 10-digit mobile number"
@@ -722,6 +760,12 @@ function SignupPageInner() {
                           />
                         </div>
                       </div>
+                      {fieldErrors.mobile && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.mobile}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5 pt-0.5">
@@ -745,6 +789,7 @@ function SignupPageInner() {
                               <MessageCircle className="h-4 w-4" />
                             </div>
                             <input
+                              ref={whatsappRef}
                               type="tel"
                               inputMode="numeric"
                               maxLength={10}
@@ -757,6 +802,12 @@ function SignupPageInner() {
                           </div>
                         </div>
                       )}
+                      {fieldErrors.whatsapp && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.whatsapp}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -768,6 +819,7 @@ function SignupPageInner() {
                           <Mail className="h-4 w-4" />
                         </div>
                         <input
+                          ref={emailRef}
                           type="email"
                           required
                           value={registerData.email}
@@ -775,6 +827,7 @@ function SignupPageInner() {
                             setRegisterData({ ...registerData, email: e.target.value });
                             setGstVerification({ status: 'idle' });
                             if (error) setError('');
+                            if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
                           }}
                           onBlur={(e) => {
                             setRegisterData({ ...registerData, email: sanitizeEmail(e.target.value) });
@@ -785,6 +838,12 @@ function SignupPageInner() {
                         />
                       </div>
                       <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Use your dealership/company email. Gmail, Yahoo, Outlook and other personal email providers are not accepted.</p>
+                      {fieldErrors.email && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.email}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -796,12 +855,14 @@ function SignupPageInner() {
                           <Lock className="h-4 w-4" />
                         </div>
                         <input
+                          ref={passwordRef}
                           type={showRegisterPassword ? 'text' : 'password'}
                           required
                           value={registerData.password}
                           onChange={(e) => {
                             setRegisterData({ ...registerData, password: e.target.value });
                             if (error) setError('');
+                            if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
                           }}
                           className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
                           placeholder="Create password (min 8 characters)"
@@ -815,6 +876,12 @@ function SignupPageInner() {
                           {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
+                      {fieldErrors.password && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.password}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -826,12 +893,14 @@ function SignupPageInner() {
                           <Lock className="h-4 w-4" />
                         </div>
                         <input
+                          ref={confirmPasswordRef}
                           type={showConfirmPassword ? 'text' : 'password'}
                           required
                           value={registerData.confirmPassword}
                           onChange={(e) => {
                             setRegisterData({ ...registerData, confirmPassword: e.target.value });
                             if (error) setError('');
+                            if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }));
                           }}
                           className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
                           placeholder="Re-enter password to confirm"
@@ -845,6 +914,12 @@ function SignupPageInner() {
                           {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
+                      {fieldErrors.confirmPassword && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-red-600 font-medium">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {fieldErrors.confirmPassword}
+                        </p>
+                      )}
                     </div>
 
                     <button

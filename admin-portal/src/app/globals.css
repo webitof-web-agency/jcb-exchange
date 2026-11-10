@@ -290,3 +290,30 @@ body {
 .custom-scrollbar-dark::-webkit-scrollbar-thumb:active {
   background-color: rgba(255, 255, 255, 0.55);
 }
+
+/* Smooth gentle floating animation for AI Hub button */
+@keyframes floatUpDown {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float-slow {
+  animation: floatUpDown 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-float-slow:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow {
+    animation: none;
+  }
+}
+
+

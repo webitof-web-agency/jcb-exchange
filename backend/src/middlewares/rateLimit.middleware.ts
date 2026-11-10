@@ -1,4 +1,8 @@
+import { createHash, randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
+import prisma from '../lib/prisma';
+import { getAiRuntimeConfig } from '../services/ai/aiSettings.service';
 
 // In-memory fixed-window limiter for public and login endpoints. Counts reset when the server restarts,
 // which is acceptable for a single API server. Each limiter keeps its own buckets, so one route's traffic
@@ -41,6 +45,72 @@ export const createRateLimiter = ({ windowMs, max, message = 'Too many requests.
   };
 };
 
+type DatabaseRateLimitOptions = Omit<RateLimitOptions, 'key'> & {
+  namespace: string;
+  key?: (req: Request) => string | Promise<string>;
+  store?: DatabaseRateLimitStore;
+};
+
+type DatabaseRateLimitBucketInput = {
+  bucketKey: string;
+  windowStartedAt: Date;
+  expiresAt: Date;
+};
+
+type DatabaseRateLimitBucket = {
+  requestCount: number;
+  expiresAt: Date;
+};
+
+type DatabaseRateLimitStore = (
+  input: DatabaseRateLimitBucketInput,
+) => Promise<DatabaseRateLimitBucket | undefined>;
+
+const incrementDatabaseRateLimitBucket: DatabaseRateLimitStore = async ({ bucketKey, windowStartedAt, expiresAt }) => {
+  const [bucket] = await prisma.$queryRaw<DatabaseRateLimitBucket[]>(Prisma.sql`
+    INSERT INTO "AiRateLimitBucket" ("id", "bucketKey", "windowStartedAt", "expiresAt", "requestCount", "createdAt", "updatedAt")
+    VALUES (${randomUUID()}, ${bucketKey}, ${windowStartedAt}, ${expiresAt}, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT ("bucketKey") DO UPDATE SET
+      "windowStartedAt" = CASE WHEN "AiRateLimitBucket"."expiresAt" <= CURRENT_TIMESTAMP THEN EXCLUDED."windowStartedAt" ELSE "AiRateLimitBucket"."windowStartedAt" END,
+      "expiresAt" = CASE WHEN "AiRateLimitBucket"."expiresAt" <= CURRENT_TIMESTAMP THEN EXCLUDED."expiresAt" ELSE "AiRateLimitBucket"."expiresAt" END,
+      "requestCount" = CASE WHEN "AiRateLimitBucket"."expiresAt" <= CURRENT_TIMESTAMP THEN 1 ELSE "AiRateLimitBucket"."requestCount" + 1 END,
+      "updatedAt" = CURRENT_TIMESTAMP
+    RETURNING "requestCount", "expiresAt"
+  `);
+  return bucket;
+};
+
+/**
+ * Shared limiter for production-critical AI traffic. The counter is an atomic
+ * Prisma upsert, so separate API instances and restarts share one window.
+ * The database migration must be deployed before enabling this route.
+ */
+export const createDatabaseRateLimiter = ({ namespace, windowMs, max, message = 'Too many requests. Please try again later.', key = clientIp, store = incrementDatabaseRateLimitBucket }: DatabaseRateLimitOptions) => (
+  async (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const windowStartMs = Math.floor(now / windowMs) * windowMs;
+
+    try {
+      const sourceKey = await key(req);
+      const bucketKey = createHash('sha256')
+        .update(`${namespace}:${sourceKey}`, 'utf8')
+        .digest('hex');
+      const windowStartedAt = new Date(windowStartMs);
+      const expiresAt = new Date(windowStartMs + windowMs);
+      const bucket = await store({ bucketKey, windowStartedAt, expiresAt });
+      if (!bucket) throw new Error('The database rate-limit bucket was not returned.');
+      if (bucket.requestCount > max) {
+        res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.expiresAt.getTime() - now) / 1000))));
+        return res.status(429).json({ error: message });
+      }
+      return next();
+    } catch (error) {
+      console.error('[rate-limit] database limiter unavailable:', error instanceof Error ? error.message : error);
+      return res.status(503).json({ error: 'Request protection is temporarily unavailable. Please try again shortly.', code: 'RATE_LIMIT_UNAVAILABLE' });
+    }
+  }
+);
+
 const MINUTE = 60 * 1000;
 
 export const loginRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 30, message: 'Too many login attempts from this network. Please try again in a few minutes.' });
@@ -50,6 +120,20 @@ export const passwordResetRateLimit = createRateLimiter({ windowMs: 15 * MINUTE,
 export const publicLeadRateLimit = createRateLimiter({ windowMs: 10 * MINUTE, max: 10, message: 'Too many enquiries. Please try again in a few minutes.' });
 export const jobApplicationRateLimit = createRateLimiter({ windowMs: 60 * MINUTE, max: 5, message: 'Too many applications from this network. Please try again later.' });
 export const analyticsEventRateLimit = createRateLimiter({ windowMs: MINUTE, max: 120 });
+export const aiChatRateLimit = createDatabaseRateLimiter({
+  namespace: 'ai-chat',
+  windowMs: 60 * MINUTE,
+  max: 50,
+  message: 'AI request limit reached. Please try again later.',
+  // The provider is part of the bucket identity without ever including the
+  // provider API key. This keeps budgets fair when OpenAI and Anthropic are
+  // rotated or used by the same operator.
+  key: async (req) => {
+    const userId = (req as Request & { user?: { id?: string } }).user?.id || clientIp(req);
+    const config = await getAiRuntimeConfig();
+    return `${userId}:${config.provider}`;
+  },
+});
 export const listingViewRateLimit = createRateLimiter({ windowMs: 10 * MINUTE, max: 60 });
 // The listing forms call this as the seller types, so it is counted per account rather than per network.
 export const vehicleIdentityCheckRateLimit = createRateLimiter({

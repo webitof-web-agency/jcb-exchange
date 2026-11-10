@@ -64,6 +64,7 @@ import {
   saveTranslationCatalog,
 } from '../controllers/translationAdmin.controller';
 import { requireAuth, requireSuperAdmin, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
+import { requireAiSettingsManagement } from '../middlewares/aiAccess.middleware';
 
 import { createRole, deleteRole, getRoles, updateRole } from '../controllers/role.controller';
 import {
@@ -80,6 +81,12 @@ import {
   updatePanVerificationSettingsController,
 } from '../controllers/panVerificationSettings.controller';
 import { reverifyPartnerGstin } from '../controllers/partnerGstReverification.controller';
+import {
+  getAiSettingsController,
+  removeAiSettingsKeyController,
+  testAiSettingsConnectionController,
+  updateAiSettingsController,
+} from '../controllers/aiSettings.controller';
 
 const router = Router();
 
@@ -159,6 +166,11 @@ router.get('/surepass-settings/reveal/:environment/:field', canManageSettings, r
 router.get('/settings', canManageSettings, getPlatformSettings);
 router.get('/settings/secrets/:key', requireSuperAdmin, revealPlatformSecret);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
+// Shared AI provider credentials require the dedicated ai.manage capability.
+router.get('/ai-settings', requireAiSettingsManagement, getAiSettingsController);
+router.put('/ai-settings', requireAiSettingsManagement, updateAiSettingsController);
+router.post('/ai-settings/test', requireAiSettingsManagement, testAiSettingsConnectionController);
+router.delete('/ai-settings/key', requireAiSettingsManagement, removeAiSettingsKeyController);
 router.get('/translations/catalog', canManageTranslations, getTranslationCatalog);
 router.put('/translations/catalog', canManageTranslations, saveTranslationCatalog);
 router.get('/customer-prime-payments', canManageRecurrence, getCustomerPrimePayments);

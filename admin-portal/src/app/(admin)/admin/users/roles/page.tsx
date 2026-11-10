@@ -8,7 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { CRM_PERMISSION_GROUPS, FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
+import { AI_PERMISSION_DEFINITIONS, CRM_PERMISSION_GROUPS, FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
 import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface EmployeeRole {
@@ -65,6 +65,12 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
         { id: 'sms.read', label: 'View SMS Notifications' },
         { id: 'sms.manage', label: 'Manage SMS Settings & Automations' },
       ],
+    },
+  ],
+  'Artificial Intelligence': [
+    {
+      groupName: 'JCB Intelligence Hub & Provider',
+      permissions: AI_PERMISSION_DEFINITIONS,
     },
   ],
   'Listings': [

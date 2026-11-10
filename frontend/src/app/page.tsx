@@ -11,6 +11,7 @@ import { generateMachineSlugPath } from '@/lib/seoUtils';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateCategoryMachinesPath } from '@/lib/seoUtils';
 import CategoryIconRenderer from '@/components/shared/CategoryIconRenderer';
+import { formatCategoryDisplayName } from '@/lib/categoryFormatters';
 
 
 type FeaturedJobItem = {
@@ -567,7 +568,7 @@ export default function Home() {
                                 name={category.name}
                               />
                             </div>
-                            <span className="text-xs sm:text-[13px] font-semibold sm:font-bold text-gray-900 text-center tracking-tight capitalize">{category.name}</span>
+                            <span className="text-xs sm:text-[13px] font-semibold sm:font-bold text-gray-900 text-center tracking-tight capitalize max-w-[140px] truncate">{formatCategoryDisplayName(category.name)}</span>
                           </Link>
                         ))}
                       </div>
@@ -593,7 +594,7 @@ export default function Home() {
                                 name={category.name}
                               />
                             </div>
-                            <span className="text-[10px] font-bold text-gray-900 text-center tracking-tight capitalize leading-tight">{category.name}</span>
+                            <span className="text-[10px] font-bold text-gray-900 text-center tracking-tight capitalize leading-tight max-w-[90px] truncate">{formatCategoryDisplayName(category.name)}</span>
                           </Link>
                         ))}
                       </div>
@@ -667,32 +668,37 @@ export default function Home() {
       <div className="flex flex-col w-full">
         <div className="w-full">
           {/* 3. LATEST VEHICLES */}
-          <section className="pt-2 pb-4 md:py-16 px-3 md:px-6 bg-[#2d2d2d] w-full">
+          <section className="pt-4 pb-6 md:py-14 px-3 md:px-6 bg-[#FAF9F5] w-full border-t border-stone-200/60">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-2 md:mb-8 flex flex-row items-center justify-between md:border-b border-[#444] pb-1 md:pb-4">
-            <h2 className="text-xl md:text-3xl font-extrabold text-jcb-yellow tracking-wider uppercase">{t('home.newSection')}</h2>
+          <div className="mb-3 md:mb-7 flex flex-row items-center justify-between pb-2 md:pb-4 border-b border-stone-200/70">
+            <div className="flex items-center gap-2 md:gap-3">
+              <span className="w-1.5 md:w-2 h-5 md:h-7 rounded-full bg-amber-400 shrink-0" />
+              <h2 className="text-lg md:text-2xl lg:text-3xl font-black text-zinc-900 tracking-tight uppercase">
+                {t('home.newSection')}
+              </h2>
+            </div>
             <Link
               href="/machines"
-              className="inline-flex items-center gap-1 md:gap-2 text-[12px] md:text-sm font-bold text-white hover:text-jcb-yellow"
+              className="inline-flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold text-zinc-700 hover:text-amber-600 transition-colors group px-2.5 py-1 rounded-lg hover:bg-amber-50/70"
             >
-              View all machines
-              <ArrowRight size={14} className="md:h-4 md:w-4" />
+              <span>View all machines</span>
+              <ArrowRight size={14} className="md:h-4 md:w-4 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
 
           <div
-            className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:gap-4 pb-2 md:pb-4 hide-scrollbar md:grid md:grid-cols-2 lg:grid-cols-4 md:pb-0 md:overflow-visible"
+            className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:gap-5 pb-2 md:pb-4 hide-scrollbar md:grid md:grid-cols-2 lg:grid-cols-4 md:pb-0 md:overflow-visible"
             onScroll={handleNewSectionScroll}
           >
             {recentListingsLoading ? (
-              <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[300px] flex flex-col items-center justify-center text-gray-400 bg-[#333] rounded-lg border border-[#444] border-dashed">
-                <Package className="w-12 h-12 mb-4 opacity-30" />
-                <p className="text-base font-medium">{t('home.loadingLatestMachines')}</p>
+              <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[260px] flex flex-col items-center justify-center text-zinc-400 bg-white rounded-2xl border border-stone-200 border-dashed shadow-sm">
+                <Package className="w-10 h-10 mb-3 text-zinc-300 animate-pulse" />
+                <p className="text-sm font-semibold text-zinc-600">{t('home.loadingLatestMachines')}</p>
               </div>
             ) : recentListings.length === 0 ? (
-              <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[220px] flex flex-col items-center justify-center text-gray-400 bg-[#333] rounded-lg border border-[#444] border-dashed px-6 text-center">
-                <Package className="w-12 h-12 mb-4 opacity-30" />
-                <p className="text-base font-medium">
+              <div className="col-span-1 md:col-span-2 lg:col-span-4 min-h-[220px] flex flex-col items-center justify-center text-zinc-400 bg-white rounded-2xl border border-stone-200 border-dashed px-6 text-center shadow-sm">
+                <Package className="w-10 h-10 mb-3 text-zinc-300" />
+                <p className="text-sm font-semibold text-zinc-600">
                   {t('home.noLatestMachines', 'No machines available yet.')}
                 </p>
               </div>
@@ -700,43 +706,59 @@ export default function Home() {
               recentListings.slice(0, 4).map((listing) => {
                 const img = getMediaUrl(listing.featuredImage);
                 return (
-                  <Link href={generateMachineSlugPath(listing)} key={listing.id} className="w-[85vw] md:w-auto snap-center shrink-0 md:min-w-0 md:shrink bg-[#383838] border border-[#444] flex flex-row md:flex-col rounded-md overflow-hidden group hover:border-jcb-yellow transition-colors h-[120px] md:h-auto">
-                    <div className="relative h-full w-[40%] md:w-full md:h-48 bg-black flex shrink-0 items-center justify-center">
+                  <Link
+                    href={generateMachineSlugPath(listing)}
+                    key={listing.id}
+                    className="w-[85vw] sm:w-[320px] md:w-auto snap-center shrink-0 md:min-w-0 md:shrink bg-white border border-stone-200/80 hover:border-amber-400 rounded-xl md:rounded-2xl overflow-hidden group shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_28px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 flex flex-row md:flex-col h-[130px] md:h-auto hover:-translate-y-0.5"
+                  >
+                    <div className="relative h-full w-[38%] md:w-full md:h-48 bg-zinc-100 flex shrink-0 items-center justify-center overflow-hidden">
                       {img ? (
                         <Image
                           src={img}
                           alt={`${listing.title} available in ${listing.locationCity || 'India'}`}
                           fill
                           sizes="(max-width: 768px) 40vw, (max-width: 1200px) 50vw, 25vw"
-                          className="object-cover opacity-90 transition-opacity group-hover:opacity-100"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <Package className="w-8 h-8 md:w-12 md:h-12 text-[#555]" />
+                        <Package className="w-8 h-8 md:w-12 md:h-12 text-zinc-300" />
                       )}
-                      <div className="absolute top-2 left-2 md:top-3 md:left-3 bg-jcb-yellow text-black px-1.5 py-0.5 md:px-2 md:py-1 rounded text-[8px] md:text-[10px] font-bold uppercase tracking-wider shadow-sm">
-                        {t('home.justAdded')}
+                      <div className="absolute top-2 left-2 md:top-3 md:left-3 bg-amber-400 text-zinc-950 px-2 py-0.5 rounded-md text-[9px] md:text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 animate-pulse" />
+                        <span>{t('home.justAdded')}</span>
                       </div>
                       <div
-                        className={`absolute bottom-2 right-2 md:bottom-auto md:top-3 md:right-3 rounded px-1.5 py-0.5 md:px-2 md:py-1 text-[8px] md:text-[10px] font-bold uppercase tracking-wider shadow-sm ${getListingStatusBadge(
+                        className={`absolute bottom-2 right-2 md:bottom-auto md:top-3 md:right-3 rounded-md px-2 py-0.5 text-[8px] md:text-[10px] font-bold uppercase tracking-wider shadow-sm ${getListingStatusBadge(
                           listing.status
                         )}`}
                       >
                         {getListingStatusLabel(listing.status, listingStatusLabels)}
                       </div>
                     </div>
-                    <div className="p-3 md:p-4 flex flex-col flex-grow min-w-0">
-                      <p className="text-gray-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest mb-1 truncate">
-                        {listing.categoryName || t('home.equipmentFallback')} • {listing.brandName || t('home.brandFallback')}
-                      </p>
-                      <h3 className="text-white font-bold text-sm md:text-base mb-1.5 md:mb-3 line-clamp-2 leading-tight md:leading-normal">{listing.title}</h3>
-                      <div className="mt-auto flex justify-between items-end">
+                    <div className="p-3 md:p-4 flex flex-col flex-grow min-w-0 justify-between">
+                      <div>
+                        <p className="text-zinc-500 text-[9px] md:text-[11px] font-bold uppercase tracking-wider mb-1 truncate">
+                          <span className="text-amber-700 font-extrabold">{listing.categoryName ? formatCategoryDisplayName(listing.categoryName) : t('home.equipmentFallback')}</span>
+                          {listing.brandName ? ` • ${listing.brandName}` : ''}
+                        </p>
+                        <h3 className="text-zinc-900 font-bold text-xs sm:text-sm md:text-base mb-1 md:mb-3 line-clamp-2 leading-tight md:leading-snug group-hover:text-amber-600 transition-colors">
+                          {listing.title}
+                        </h3>
+                      </div>
+
+                      <div className="pt-2 border-t border-zinc-100 flex justify-between items-end gap-2">
                         <div>
-                          <p className="text-[#888] text-[9px] md:text-[10px] font-bold uppercase tracking-widest mb-0.5 md:mb-1">{t('home.priceLabel')}</p>
-                          <p className="text-jcb-yellow text-base md:text-lg font-bold leading-none md:leading-normal">₹{(listing.price / 100000).toFixed(2)} Lakh</p>
+                          <p className="text-zinc-400 text-[8px] md:text-[10px] font-bold uppercase tracking-wider mb-0.5">
+                            {t('home.priceLabel')}
+                          </p>
+                          <p className="text-zinc-950 text-sm md:text-lg font-black leading-tight tracking-tight">
+                            ₹{(listing.price / 100000).toFixed(2)}{' '}
+                            <span className="text-[11px] md:text-xs font-bold text-amber-600">Lakh</span>
+                          </p>
                         </div>
-                        <div className="text-gray-400 text-[10px] md:text-xs font-medium flex items-center gap-1">
-                          <MapPin size={10} className="md:hidden shrink-0" />
-                          <span className="truncate max-w-[50px] md:max-w-none">{listing.locationCity}</span>
+                        <div className="text-zinc-500 text-[10px] md:text-xs font-medium flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md border border-zinc-200/60 shrink-0">
+                          <MapPin size={11} className="text-zinc-400 shrink-0" />
+                          <span className="truncate max-w-[60px] md:max-w-[100px]">{listing.locationCity || 'India'}</span>
                         </div>
                       </div>
                     </div>
@@ -748,11 +770,11 @@ export default function Home() {
 
           {/* Active Indicators for Mobile */}
           {recentListings.length > 0 && (
-            <div className="flex md:hidden justify-center items-center gap-1.5 mt-2">
+            <div className="flex md:hidden justify-center items-center gap-1.5 mt-3">
               {recentListings.slice(0, 4).map((_, i) => (
                 <div
                   key={`dot-${i}`}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${activeNewIndex === i ? 'bg-jcb-yellow w-4' : 'bg-gray-500 w-1.5'}`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${activeNewIndex === i ? 'bg-amber-500 w-5' : 'bg-stone-300 w-1.5'}`}
                 />
               ))}
             </div>
@@ -763,7 +785,7 @@ export default function Home() {
 
         <div className="w-full">
           {/* 4. OUR FINANCE SUPPORT */}
-          <section className="relative pt-4 pb-1 md:py-12 px-0 bg-[#FAF9F6] w-full border-y-0 md:border-y border-gray-200 border-dashed overflow-hidden">
+          <section className="relative pt-4 pb-1 md:py-12 px-0 bg-white w-full border-y border-gray-200 overflow-hidden">
         <div className="w-full px-4 md:px-6 mb-3 md:mb-8">
           <h2 className="text-left md:text-center text-sm md:text-2xl font-extrabold md:font-bold text-gray-900 uppercase tracking-widest md:tracking-normal md:normal-case">{t('home.financeSupportTitle')}</h2>
         </div>

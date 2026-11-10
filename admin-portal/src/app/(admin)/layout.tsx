@@ -20,8 +20,9 @@ import { isFinanceTransactionDetailPath } from '@/lib/adminPageTitles';
 import { FINANCE_WORKSPACE_VIEW_PERMISSIONS, financeLegacyLinks, financeWorkspaceGroups, getVisibleFinanceWorkspaceGroups, matchFinanceModulePath } from '@/lib/financeWorkspace';
 import FinanceSidebarNav from '@/components/layout/FinanceSidebarNav';
 import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandPalette';
+import AiFloatingChat from '@/components/ai/AiFloatingChat';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
-import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, UserCheck, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo } from 'lucide-react';
+import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, UserCheck, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo, Sparkles } from 'lucide-react';
 import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
@@ -52,6 +53,7 @@ import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 
 const navItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
+  { href: '/admin/ai', labelKey: 'admin.aiCommandCenter', defaultLabel: 'JCB Intelligence Hub', icon: Sparkles },
   { href: '/admin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
   { href: '/admin/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront },
@@ -78,6 +80,7 @@ const navItems = [
 
 const employeeModuleNavItems = [
   { href: '/employee/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard, permissions: ['dashboard.view'] },
+  { href: '/employee/ai', labelKey: 'admin.aiCommandCenter', defaultLabel: 'JCB Intelligence Hub', icon: Sparkles, permissions: ['ai.use'] },
   { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage', 'kyc.edit.override'] },
   { href: '/employee/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
   { href: '/employee/vehicle-transport', labelKey: 'admin.vehicleTransport', icon: CarFront, permissions: VEHICLE_TRANSPORT_VIEW_PERMISSIONS },
@@ -100,7 +103,7 @@ const employeeModuleNavItems = [
   { href: '/employee/partner-agreements', labelKey: 'admin.partnerAgreements', icon: FileText, permissions: employeePartnerAgreementPermissions },
   { href: '/employee/blogs', labelKey: 'admin.blog', icon: BookOpen, permissions: employeeBlogPermissions },
   { href: '/employee/translations', labelKey: 'admin.translationManager', icon: Languages, permissions: ['translations.manage'] },
-  { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage', 'crm.settings'] },
+  { href: '/employee/settings', labelKey: 'common.settings', icon: Settings, permissions: ['settings.manage', 'crm.settings', 'ai.manage'] },
 ];
 
 const recruitmentNavItems = [
@@ -275,9 +278,9 @@ export default function AdminLayout({
   const employeeNavItems = useMemo(
     () =>
       employeeModuleNavItems.filter(
-        (item) => hasAnyPermission(userPermissions, item.permissions)
+        (item) => (item.href === '/employee/ai' && user?.role === 'ADMIN') || hasAnyPermission(userPermissions, item.permissions)
       ),
-    [userPermissions]
+    [user?.role, userPermissions]
   );
   const employeeCanSeeUsers = hasAnyPermission(userPermissions, employeeUsersPermissions);
   const employeeCanSeeRoles = hasAnyPermission(userPermissions, employeeRolesPermissions);
@@ -381,6 +384,7 @@ export default function AdminLayout({
       }
 
       const requiredPermissions = getRequiredPermissionsForPath(pathname);
+      const adminAiRoute = pathname === '/employee/ai' && user?.role === 'ADMIN';
 
       if (pathname === '/employee/dashboard' && !hasAnyPermission(userPermissions, ['dashboard.view'])) {
         if (!employeeHasAnyVisibleRoute) {
@@ -393,7 +397,7 @@ export default function AdminLayout({
         return;
       }
 
-      if (requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
+      if (!adminAiRoute && requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
         if (!employeeHasAnyVisibleRoute) {
           logout();
           router.replace('/login');
@@ -604,6 +608,7 @@ export default function AdminLayout({
           : formatPortalLabel(user?.role) || t('common.notAvailable');
   const pageTitleMap: Record<string, string> = {
     '/admin/dashboard': t('admin.superAdminDashboard'),
+    '/admin/ai': t('admin.aiCommandCenter', 'JCB Intelligence Hub'),
     '/admin/analytics': t('admin.analytics'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
@@ -656,6 +661,7 @@ export default function AdminLayout({
     '/admin/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
     '/admin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
     '/employee/dashboard': t('admin.employeeDashboard'),
+    '/employee/ai': t('admin.aiCommandCenter', 'JCB Intelligence Hub'),
     '/employee/analytics': t('admin.analytics'),
     '/employee/enquiries': t('admin.enquiryManagement'),
     '/employee/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
@@ -736,6 +742,7 @@ export default function AdminLayout({
   const routePrefix = isEmployee ? '/employee' : '/admin';
   const getVisibleNavItem = (suffix: string) => visibleNavItems.find((item) => item.href.endsWith(suffix));
   const dashboardNavItem = getVisibleNavItem('/dashboard');
+  const aiNavItem = getVisibleNavItem('/ai');
   const partnersNavItem = getVisibleNavItem('/partners');
   const partnerAgreementsNavItem = getVisibleNavItem('/partner-agreements');
   const canShowPartnersMenu = Boolean(partnersNavItem || partnerAgreementsNavItem);
@@ -1009,6 +1016,7 @@ export default function AdminLayout({
 
         <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto custom-scrollbar-dark">
           {renderStandardNavItem(dashboardNavItem)}
+          {renderStandardNavItem(aiNavItem)}
 
           {hasDailyOperationsNav ? (
             <section className="space-y-1">
@@ -1641,6 +1649,7 @@ export default function AdminLayout({
           </div>
         </header>
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain p-3 sm:p-4 lg:p-4.5 pb-8">{children}</div>
+        <AiFloatingChat />
         {hasFinanceNav ? (
           <FinanceCommandPalette
             prefix={routePrefix}

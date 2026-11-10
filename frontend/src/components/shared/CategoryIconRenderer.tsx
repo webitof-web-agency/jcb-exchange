@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { purifySvg } from '@/lib/safeHtml';
+import { getCategoryFallbackSvg } from '@/lib/categoryFormatters';
 
 type CategoryIconRendererProps = {
   svgData?: string | null;
@@ -48,7 +49,10 @@ export default function CategoryIconRenderer({
   className = 'h-12 w-12 sm:h-16 sm:w-16 text-gray-700 group-hover:text-black transition-colors',
   fallbackClassName = 'h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 font-bold group-hover:bg-[#fca311]/20 group-hover:text-[#fca311] transition-colors',
 }: CategoryIconRendererProps) {
-  const normalizedSvg = normalizeCategorySvg(svgData);
+  // 1. Superadmin assigned SVG has top priority
+  // 2. If null (API imported category), use smart auto-matcher fallback SVG
+  const effectiveSvg = svgData || (name ? getCategoryFallbackSvg(name) : null);
+  const normalizedSvg = normalizeCategorySvg(effectiveSvg);
 
   if (!normalizedSvg) {
     return (
