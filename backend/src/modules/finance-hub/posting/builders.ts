@@ -755,7 +755,8 @@ export const buildExpenseEntryVouchers = (
   const date = istDay(entry.transactionDate);
   if (!withinBooks(date, context.booksBegin)) return [];
   if (!context.categoryAccountId) throw new PostingError(`Map the expense category "${entry.category}" to a ledger in Finance Settings → Account & Ledger Masters.`);
-  if (!context.cashBankAccountId) throw new PostingError(`Link the account "${entry.name}" entries' bank/cash account: add it as a statement alias of a bank account, or use "Cash".`);
+  // Matching uses the entry's account name (e.g. "HDFC BANK"), not the payee, so name that in the message.
+  if (!context.cashBankAccountId) throw new PostingError(`No bank/cash ledger for account "${(entry as { accountName?: string }).accountName || '-'}" (entry: ${entry.name}). Add "${(entry as { accountName?: string }).accountName || ''}" as a statement alias of a bank account in Finance → Bank accounts, or use "Cash".`);
   const out = entry.type === 'DEBIT';
   const narration = `${entry.name}: ${entry.narration}`.slice(0, 1000);
   return [{

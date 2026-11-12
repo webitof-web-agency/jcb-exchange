@@ -185,6 +185,13 @@ export const syncWhatsAppTemplates = async (_req: Request, res: Response, next: 
   try {
     res.json({ message: 'Meta WhatsApp templates synced.', ...(await syncWhatsAppMetaTemplates()) });
   } catch (error) {
+    // Missing credentials is a setup step; a Meta refusal (expired token, wrong WABA id) is an upstream error.
+    if (error instanceof Error && /^Save Business Account ID/.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error instanceof Error && !(error as { code?: string }).code) {
+      return res.status(502).json({ error: `Meta did not accept the template sync: ${error.message}` });
+    }
     next(error);
   }
 };

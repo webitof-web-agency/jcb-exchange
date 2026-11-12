@@ -142,6 +142,7 @@ import {
   buildPartnerAgreementContentHash,
 } from '../services/partnerAgreement.service';
 import { resolveJwtSecret } from '../utils/jwtSecret';
+import { partnerDisplayName } from '../utils/messageDisplayValues';
 
 const JWT_SECRET = resolveJwtSecret();
 const prismaAny = prisma as any;
@@ -3165,7 +3166,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
       try {
         const partnerProfile = await prisma.partnerProfile.findUnique({
           where: { userId: req.user!.id },
-          select: { partnerCode: true, businessName: true, ownerName: true },
+          select: { partnerCode: true, businessName: true, ownerName: true, user: { select: { name: true } } },
         });
 
         const partnerIdentifier =
@@ -3173,6 +3174,11 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
           partnerProfile?.businessName ||
           (req.user as any).name ||
           req.user!.id;
+        // Shown in the message as "Business name (Owner name)".
+        const partnerName = partnerDisplayName({
+          businessName: partnerProfile?.businessName,
+          ownerName: partnerProfile?.ownerName || partnerProfile?.user?.name,
+        });
 
         const superAdmins = await prisma.user.findMany({
           where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
@@ -3188,6 +3194,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
             payloadSnapshot: {
               partnerId: partnerIdentifier,
               partnerCode: partnerProfile?.partnerCode ?? undefined,
+              partnerDisplayName: partnerName || undefined,
               userId: partnerIdentifier,
             },
           });

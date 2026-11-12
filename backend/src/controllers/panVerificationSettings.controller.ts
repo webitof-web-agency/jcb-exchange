@@ -41,6 +41,10 @@ export const updatePanVerificationSettingsController = async (
       settings,
     });
   } catch (error) {
+    // Validation of the submitted settings (HTTPS base URL, required token, lengths) is the admin's input.
+    if (error instanceof Error && /^Surepass\b/.test(error.message) && !/decrypt/i.test(error.message)) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };

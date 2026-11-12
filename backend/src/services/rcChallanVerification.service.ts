@@ -21,6 +21,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 const RC_CHALLAN_STATUS = {
@@ -460,8 +461,10 @@ export class RcChallanVerificationService {
       providerEnvironment: runtime.environment,
     });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'RC_CHALLAN',
             verificationRecordId: pending.id,
@@ -504,6 +507,7 @@ export class RcChallanVerificationService {
         : error instanceof RcChallanVerificationError
           ? error
           : new RcChallanVerificationError('RC Challan verification could not be completed.', 502, 'verification_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalizedError as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'RC_CHALLAN_VERIFICATION_FAILED', pending.id, {
         maskedRcNumber,

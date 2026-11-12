@@ -560,3 +560,24 @@ export class ApiWalletBillingService implements ApiBillingGateway {
 }
 
 export const apiWalletBillingService = new ApiWalletBillingService();
+
+/**
+ * Gives the wallet charge back when a paid verification fails on the provider side (outage, timeout,
+ * rejected credentials, rate limit, unreadable response). An "invalid ID" answer (422 / INVALID_REQUEST) is a
+ * completed check that the provider bills, so that charge stays. Never throws.
+ */
+export const refundFailedProviderCall = async (
+  gateway: ApiBillingGateway | undefined,
+  billing: ApiWalletChargeResult | undefined,
+  error: unknown,
+  reason: string,
+) => {
+  if (!gateway?.reverseProviderCharge || !billing?.charged || !billing.usageId) return undefined;
+  if ((error as { kind?: unknown } | null)?.kind === 'INVALID_REQUEST') return undefined;
+  try {
+    return await gateway.reverseProviderCharge({ usageId: billing.usageId, reason: reason.slice(0, 120) || 'provider_request_failed' });
+  } catch (reversalError) {
+    console.error('[api-billing] could not reverse a failed provider charge', reversalError);
+    return undefined;
+  }
+};

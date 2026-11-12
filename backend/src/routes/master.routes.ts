@@ -23,6 +23,7 @@ import {
   getPublicCategories,
   getPublicSearchFilters,
   getPublicListingById,
+  resolvePublicListingShortId,
   incrementListingView,
   getDealerById,
   getDealerListings,
@@ -94,6 +95,7 @@ router.get('/mobile-app', getMobileAppSettings);
 router.get('/translations', getTranslationOverrides);
 router.post('/translations/register-missing', translationRegisterRateLimit, registerMissingTranslationKeys);
 router.get('/public-listings', getPublicListings);
+router.get('/public-listings/resolve/:shortId', resolvePublicListingShortId);
 router.get('/public-listings/:id', getPublicListingById);
 router.post('/public-listings/:id/view', listingViewRateLimit, incrementListingView);
 router.get('/public-categories', getPublicCategories);

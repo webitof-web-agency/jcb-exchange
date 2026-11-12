@@ -34,7 +34,7 @@ export const saveWhatsAppConsent = async ({ phone, category, optedIn, actorUserI
 
 const getOptedInRecipients = async (category: CampaignCategory): Promise<CampaignRecipientInput[]> => {
   const consents = await prisma.whatsAppConsent.findMany({ where: { category, optedIn: true }, select: { phone: true } });
-  const optedInPhones = new Set(consents.map((consent) => consent.phone));
+  const optedInPhones = new Set(consents.map((consent) => normalizePhone(consent.phone)).filter((phone): phone is string => Boolean(phone)));
   if (category === 'MARKETING') {
     const users = await prisma.user.findMany({ where: { role: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true } });
     return users.flatMap((user) => {
@@ -106,7 +106,7 @@ export const createWhatsAppCampaignForUsers = async ({ name, templateId, actorUs
   if (!template || template.status !== 'APPROVED' || !template.metaTemplateId) throw new Error('Select an approved Meta template.');
   if (!isWhatsAppTemplatePurposeAllowed(template.category, ['MARKETING'])) throw new Error('Selected template is not a marketing template.');
   const consents = await prisma.whatsAppConsent.findMany({ where: { category: 'MARKETING', optedIn: true }, select: { phone: true } });
-  const optedIn = new Set(consents.map((consent) => consent.phone));
+  const optedIn = new Set(consents.map((consent) => normalizePhone(consent.phone)).filter((phone): phone is string => Boolean(phone)));
   const users = await prisma.user.findMany({ where: { id: { in: userIds }, status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true } });
   const seen = new Set<string>();
   const recipients = users.flatMap((user) => {

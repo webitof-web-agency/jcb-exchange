@@ -13,6 +13,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 const CHASSIS_STATUS = {
@@ -253,8 +254,10 @@ export class ChassisToRcVerificationService {
     }
     await this.writeAudit(requestedById, 'CHASSIS_TO_RC_REQUESTED', pending.id, { maskedChassisNumber, status: CHASSIS_STATUS.PENDING });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'CHASSIS_TO_RC',
             verificationRecordId: pending.id,
@@ -307,6 +310,7 @@ export class ChassisToRcVerificationService {
         : error instanceof ChassisToRcVerificationError
           ? error
           : new ChassisToRcVerificationError('Vehicle verification could not be completed.', 502, 'verification_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalizedError as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'CHASSIS_TO_RC_FAILED', pending.id, {
         maskedChassisNumber,

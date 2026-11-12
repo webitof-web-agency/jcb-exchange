@@ -222,3 +222,18 @@ whatsappfront/
 /admin-portal/public/templates/aadhaar/*.png
 /admin-portal/public/templates/aadhaar/*.pdf
 !/admin-portal/public/templates/aadhaar/aadhaar-blank-template.png
+
+# ==========================================
+# Local-only files — never deploy to the server
+# ==========================================
+# Pre-production test suite (mocks, live-provider scripts, load tests, security findings report)
+/e2e/
+# Playwright test results / traces written at the repo root
+/.runtime/
+# Client proposal and report PDFs
+/output/
+# Local source archives of the apps
+/*.zip
+/backend/*.zip
+/frontend/*.zip
+/admin-portal/*.zip

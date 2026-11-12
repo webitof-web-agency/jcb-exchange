@@ -2478,6 +2478,14 @@ export const getAdminInterviews = async (req: Request, res: Response, next: Next
   }
 };
 
+// Interviews must be scheduled for a real future time (5 minutes of clock skew allowed).
+const interviewTimeError = (value: unknown): string | null => {
+  const at = new Date(String(value));
+  if (Number.isNaN(at.getTime())) return 'Enter a valid interview date and time.';
+  if (at.getTime() < Date.now() - 5 * 60 * 1000) return 'Interview date and time must be in the future.';
+  return null;
+};
+
 export const scheduleInterview = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { applicationId, scheduledAt, durationMinutes, type, interviewerId, meetingUrl, location, notes } = req.body;
@@ -2485,6 +2493,10 @@ export const scheduleInterview = async (req: Request, res: Response, next: NextF
 
     if (!applicationId || !scheduledAt) {
       return res.status(400).json({ success: false, error: 'Application and scheduled date/time are required.' });
+    }
+    const scheduleError = interviewTimeError(scheduledAt);
+    if (scheduleError) {
+      return res.status(400).json({ success: false, error: scheduleError });
     }
 
     const application = await prisma.jobApplication.findUnique({
@@ -2596,6 +2608,14 @@ export const updateInterview = async (req: Request, res: Response, next: NextFun
 
     if (!interview) {
       return res.status(404).json({ success: false, error: 'Interview not found.' });
+    }
+
+    // Only a changed time must be in the future: completing a past interview resends its original time.
+    if (scheduledAt && new Date(String(scheduledAt)).getTime() !== interview.scheduledAt.getTime()) {
+      const scheduleError = interviewTimeError(scheduledAt);
+      if (scheduleError) {
+        return res.status(400).json({ success: false, error: scheduleError });
+      }
     }
 
     if (status !== undefined && (typeof status !== 'string' || !validStatuses.includes(status as (typeof validStatuses)[number]))) {

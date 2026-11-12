@@ -18,6 +18,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 const MOBILE_TO_PAN_STATUS = {
@@ -287,8 +288,10 @@ export class MobileToPanLookupService {
       status: MOBILE_TO_PAN_STATUS.PENDING,
     });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'MOBILE_TO_PAN',
             verificationRecordId: pending.id,
@@ -324,6 +327,7 @@ export class MobileToPanLookupService {
         : error instanceof MobileToPanLookupError
           ? error
           : new MobileToPanLookupError('Mobile To PAN lookup could not be completed.', 502, 'lookup_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalizedError as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'MOBILE_TO_PAN_LOOKUP_FAILED', pending.id, {
         maskedName,

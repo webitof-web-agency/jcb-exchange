@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluateWhatsAppAutomation, isWhatsAppDeliveryAllowed } from './automationPolicy';
+import { evaluateWhatsAppAutomation, isWhatsAppDeliveryAllowed, normalizeWhatsAppRecipientPhone } from './automationPolicy';
 
 test('blocks all WhatsApp delivery while the global integration toggle is off', () => {
   assert.equal(isWhatsAppDeliveryAllowed({ integrationEnabled: false, credentialsConfigured: true }), false);
@@ -43,4 +43,15 @@ test('does not queue automation when integration or event rule is disabled', () 
     recipientPhone: '919876543210',
     rule: { enabled: false, templateId: 'template-1', templateStatus: 'APPROVED', metaTemplateId: 'meta-template' },
   }), { shouldQueue: false, reason: 'AUTOMATION_DISABLED' });
+});
+
+test('Indian 10-digit mobiles get the 91 country code Meta requires', () => {
+  assert.equal(normalizeWhatsAppRecipientPhone('9174786123'), '919174786123');
+  assert.equal(normalizeWhatsAppRecipientPhone('09174786123'), '919174786123');
+  assert.equal(normalizeWhatsAppRecipientPhone('+91 91747 86123'), '919174786123');
+  assert.equal(normalizeWhatsAppRecipientPhone('919174786123'), '919174786123');
+  assert.equal(normalizeWhatsAppRecipientPhone('14155550123'), '14155550123');
+  assert.equal(normalizeWhatsAppRecipientPhone('12345'), null);
+  assert.equal(normalizeWhatsAppRecipientPhone('1234567890'), null);
+  assert.equal(normalizeWhatsAppRecipientPhone(null), null);
 });

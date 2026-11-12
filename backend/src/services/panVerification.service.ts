@@ -33,6 +33,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 type PanRecordRepository = {
@@ -525,8 +526,10 @@ export class PanVerificationService {
           },
         });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'PAN_VERIFICATION',
             verificationRecordId: pending.id,
@@ -560,6 +563,7 @@ export class PanVerificationService {
         : error instanceof PanVerificationError
           ? error
           : new PanVerificationError('PAN verification could not be completed.', 502, 'verification_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalized as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(
         pending.id,
         normalized,

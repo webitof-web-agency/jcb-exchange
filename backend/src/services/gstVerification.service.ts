@@ -17,6 +17,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 import { buildGstVerificationTemplatePdf } from '../utils/gstVerificationTemplatePdf';
 
@@ -494,8 +495,10 @@ export class GstVerificationService {
       : await this.record.create({ data: { status: GST_STATUS.PENDING, maskedGstin, requestFingerprint, requestedById } });
     await this.writeAudit(requestedById, 'GST_VERIFICATION_REQUESTED', pending.id, { maskedGstin, status: GST_STATUS.PENDING });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'GST_VERIFICATION',
             verificationRecordId: pending.id,
@@ -541,6 +544,7 @@ export class GstVerificationService {
         : error instanceof GstVerificationError
           ? error
           : new GstVerificationError('GST verification could not be completed.', 502, 'verification_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalized as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalized, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'GST_VERIFICATION_FAILED', pending.id, {
         maskedGstin,

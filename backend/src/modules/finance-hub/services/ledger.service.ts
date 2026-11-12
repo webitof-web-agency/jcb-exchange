@@ -19,7 +19,7 @@ import {
   type VoucherLineInput,
 } from './ledgerRules';
 import { defaultSeriesPrefix, formatVoucherNumber } from './periods.service';
-import { FIN_SETTINGS_ID, readApprovalPolicy } from './settings.service';
+import { DEFAULT_CASH_LIMIT_PER_VOUCHER, DEFAULT_CASH_RECEIPT_LIMIT, FIN_SETTINGS_ID, readApprovalPolicy } from './settings.service';
 
 export type LedgerAccess = {
   actor: ActorContext;
@@ -319,7 +319,44 @@ const revalidateForPosting = async (tx: Tx, voucher: LockedVoucher, access: Ledg
   const lines = toLineInputs(voucher.lines);
   const refs = await loadReferences(tx, { lines, partyId: voucher.partyId, costCentreId: voucher.costCentreId, sellAccountId: voucher.sellAccountId });
   const total = validateVoucher({ ...voucher, lines }, refs, { manual: !voucher.sourceType });
+  await assertCashLimits(tx, voucher, lines, (accountId) => refs.accounts.get(accountId)?.kind);
   return { period, total, kinds: lines.map((line) => refs.accounts.get(line.accountId)!.kind) };
+};
+
+const CASH_LEDGER_KINDS = new Set<string>(['CASH', 'PETTY_CASH']);
+const rupees = (value: Prisma.Decimal) => `₹${value.toNumber().toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Enforces the cash limits from Finance Settings on manual vouchers (contra moves between cash and bank are
+ * not payments, and system vouchers mirror money that already moved):
+ *   - cash paid out in one voucher above `cashLimitPerVoucher` (Income-tax Sec 40A(3), default Rs 10,000)
+ *   - cash received in one voucher at or above `cashReceiptLimit` (Sec 269ST, default Rs 2,00,000)
+ * A limit set to null in settings means "no limit".
+ */
+const assertCashLimits = async (
+  tx: Tx,
+  voucher: { type: FinVoucherType; sourceType: string | null },
+  lines: VoucherLineInput[],
+  kindOf: (accountId: string) => string | undefined,
+) => {
+  if (voucher.sourceType || voucher.type === 'CONTRA') return;
+  let cashOut = new Prisma.Decimal(0);
+  let cashIn = new Prisma.Decimal(0);
+  for (const line of lines) {
+    if (!CASH_LEDGER_KINDS.has(String(kindOf(line.accountId)))) continue;
+    cashOut = cashOut.plus(line.credit);
+    cashIn = cashIn.plus(line.debit);
+  }
+  if (cashOut.isZero() && cashIn.isZero()) return;
+  const settings = await tx.finSettings.findUnique({ where: { id: FIN_SETTINGS_ID }, select: { cashLimitPerVoucher: true, cashReceiptLimit: true } });
+  const payLimit = settings ? settings.cashLimitPerVoucher : new Prisma.Decimal(DEFAULT_CASH_LIMIT_PER_VOUCHER);
+  const receiptLimit = settings ? settings.cashReceiptLimit : new Prisma.Decimal(DEFAULT_CASH_RECEIPT_LIMIT);
+  if (payLimit && cashOut.greaterThan(payLimit)) {
+    throw badRequest(`Cash payment of ${rupees(cashOut)} is above the ${rupees(payLimit)} per-voucher cash limit (Income-tax Sec 40A(3)). Pay by bank transfer or cheque, or change the limit in Finance Settings.`);
+  }
+  if (receiptLimit && cashIn.greaterThanOrEqualTo(receiptLimit)) {
+    throw badRequest(`Cash receipt of ${rupees(cashIn)} reaches the ${rupees(receiptLimit)} cash receipt limit (Sec 269ST). Take it by bank transfer or cheque, or change the limit in Finance Settings.`);
+  }
 };
 
 export const postVoucher = async (id: string, access: LedgerAccess) =>

@@ -16,9 +16,16 @@ export type WhatsAppAutomationDecision =
       | 'APPROVED_TEMPLATE_REQUIRED';
   };
 
+/**
+ * Meta's Cloud API needs the full international number (country code, no "+").
+ * Accounts store Indian mobiles as 10 digits, so those (and 0-prefixed 11-digit forms) get the 91 prefix;
+ * anything already international is kept as is.
+ */
 export const normalizeWhatsAppRecipientPhone = (value?: string | null) => {
-  const digits = String(value || '').replace(/\D/g, '');
-  return digits.length >= 8 && digits.length <= 15 ? digits : null;
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10 && /^[6-9]/.test(digits)) digits = `91${digits}`;
+  return digits.length >= 11 && digits.length <= 15 ? digits : null;
 };
 
 export const isWhatsAppDeliveryAllowed = ({

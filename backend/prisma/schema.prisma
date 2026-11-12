@@ -1427,6 +1427,8 @@ model Listing {
   @@index([status, soldAt])
   @@index([registrationNumberKey])
   @@index([chassisNumberKey])
+  @@index([partnerId])
+  @@index([status, createdAt])
 }
 
 enum ListingVerificationStatus {
@@ -2020,6 +2022,8 @@ model Media {
   createdAt     DateTime  @default(now())
 
   listing Listing @relation(fields: [listingId], references: [id])
+
+  @@index([listingId])
 }
 
 model Lead {
@@ -2502,6 +2506,8 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 // Unified per-recipient channel preferences. Existing WhatsApp/SMS automation
