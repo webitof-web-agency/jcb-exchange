@@ -1,0 +1,75 @@
+name: Deploy
+
+# Manual deploy to production or staging over SSH. CI must pass first; the server then runs
+# deploy/deploy.sh (build → DB backup → migrations → pm2 reload → health check).
+#
+# Set these per GitHub Environment ("production", "staging") under Settings → Environments, and add
+# required reviewers on "production" so every production deploy needs an approval click:
+#   DEPLOY_HOST      server IP / hostname
+#   DEPLOY_USER      SSH user that owns the checkout and pm2
+#   DEPLOY_SSH_KEY   private key for that user (deploy-only key)
+#   DEPLOY_PATH      absolute path of the repository checkout on the server
+#   DEPLOY_PORT      SSH port (optional, default 22)
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Where to deploy'
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+      ref:
+        description: 'Git ref to deploy (branch, tag or commit)'
+        required: true
+        default: main
+        type: string
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_PATH; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is not set for environment '${{ inputs.environment }}'."; exit 1; fi
+          done
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_REF: ${{ inputs.ref }}
+        run: |
+          if ! printf '%s' "$DEPLOY_REF" | grep -Eq '^[A-Za-z0-9._/-]+$'; then
+            echo "::error::Invalid ref: $DEPLOY_REF"; exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # A branch name resolves to origin/<branch>; a tag or commit is used as given.
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- "$DEPLOY_PATH" "$DEPLOY_REF" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          git fetch --prune --tags origin
+          if git rev-parse --verify --quiet "origin/$2^{commit}" >/dev/null; then ref="origin/$2"; else ref="$2"; fi
+          bash deploy/deploy.sh "$ref"
+          REMOTE

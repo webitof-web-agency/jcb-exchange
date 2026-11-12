@@ -40,6 +40,7 @@ import {
   Eye,
 } from 'lucide-react';
 import type { MachineListingDetail } from './data';
+import PriceInsightCard from './PriceInsightCard';
 import { getAbsoluteMediaUrl } from './data';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { generateDealerSlugPath, generateMachineSlugPath } from '@/lib/seoUtils';
@@ -1571,6 +1572,10 @@ function PriceAndActionCard({
           </div>
         )}
       </div>
+
+      {listing.status !== 'SOLD' && Number(listing.price || 0) > 0 && (
+        <PriceInsightCard listingId={listing.id} price={Number(listing.price)} t={t} />
+      )}
 
       {/* CTA Buttons */}
       <div className="px-4 sm:px-5 pb-5 space-y-2.5">

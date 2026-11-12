@@ -25,6 +25,7 @@ import {
   getWhatsappSupportUrl,
 } from '../config/appConfig';
 import { buildFcmSyncScript } from '../lib/fcmBridge';
+import { buildTrustedHosts, isTrustedAppUrl, shouldLoadInWebView } from '../lib/trustedOrigins';
 import {
   shouldHideWebViewLoading,
   shouldShowWebViewLoading,
@@ -63,6 +64,11 @@ function HybridWebView({ onWebSettled }: Props) {
       ? 'API_BASE_URL is not configured for the mobile shell.'
       : null;
   const [currentUrl, setCurrentUrl] = useState(webAppUrl || 'about:blank');
+  // Plain http:// is only for development builds talking to a LAN dev server.
+  const allowInsecure = __DEV__;
+  const trustedHosts = React.useMemo(() => buildTrustedHosts([webAppUrl, apiBaseUrl]), [webAppUrl, apiBaseUrl]);
+  // The page currently shown; the FCM bridge (device push token) is injected only into our own pages.
+  const loadedUrlRef = useRef(currentUrl);
 
   const clearLoadingTimeout = useCallback(() => {
     if (loadingTimeoutRef.current !== null) {
@@ -119,6 +125,9 @@ function HybridWebView({ onWebSettled }: Props) {
       if (!token || !webReady || !webViewRef.current) {
         return;
       }
+      if (!isTrustedAppUrl(loadedUrlRef.current, trustedHosts, allowInsecure)) {
+        return;
+      }
 
       webViewRef.current.injectJavaScript(
         buildFcmSyncScript({
@@ -127,7 +136,7 @@ function HybridWebView({ onWebSettled }: Props) {
         }),
       );
     },
-    [apiBaseUrl, webReady],
+    [allowInsecure, apiBaseUrl, trustedHosts, webReady],
   );
 
   const retry = useCallback(() => {
@@ -214,13 +223,18 @@ function HybridWebView({ onWebSettled }: Props) {
     if (!rawPath) return;
 
     if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
-      setCurrentUrl(rawPath);
+      // A push payload may only open our own pages inside the app; anything else opens in the browser.
+      if (isTrustedAppUrl(rawPath, trustedHosts, allowInsecure)) {
+        setCurrentUrl(rawPath);
+      } else {
+        Linking.openURL(rawPath).catch(() => undefined);
+      }
     } else {
       const cleanPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
       const cleanWebUrl = webAppUrl.replace(/\/$/, '');
       setCurrentUrl(`${cleanWebUrl}${cleanPath}`);
     }
-  }, [webAppUrl]);
+  }, [allowInsecure, trustedHosts, webAppUrl]);
 
   useEffect(() => {
     // 1. App in Background: User taps notification
@@ -391,12 +405,12 @@ function HybridWebView({ onWebSettled }: Props) {
         source={{ uri: currentUrl }}
         userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36 ReactNativeWebView"
         applicationNameForUserAgent="ReactNativeWebView"
-        originWhitelist={['http://*', 'https://*']}
+        originWhitelist={allowInsecure ? ['http://*', 'https://*'] : ['https://*']}
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
-        mixedContentMode="always"
+        mixedContentMode={allowInsecure ? 'compatibility' : 'never'}
         setSupportMultipleWindows={false}
         scalesPageToFit={false}
         setBuiltInZoomControls={false}
@@ -425,6 +439,9 @@ function HybridWebView({ onWebSettled }: Props) {
         }}
         onNavigationStateChange={(navState) => {
           setCanGoBack(navState.canGoBack);
+          if (navState.url) {
+            loadedUrlRef.current = navState.url;
+          }
           if (!navState.loading) {
             completeWebViewLoading();
           }
@@ -442,11 +459,7 @@ function HybridWebView({ onWebSettled }: Props) {
             return false;
           }
 
-          if (
-            nextUrl.startsWith('http://') ||
-            nextUrl.startsWith('https://') ||
-            nextUrl === 'about:blank'
-          ) {
+          if (shouldLoadInWebView(nextUrl, allowInsecure)) {
             return true;
           }
 

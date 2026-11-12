@@ -13,6 +13,8 @@ import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl }
 import { getListingFinalPrice, getPublicListingPricing, type ListingPricingSource } from '../utils/listingPricing';
 import { sanitizeLegalHtml, sanitizeSvg } from '../utils/htmlSanitizer';
 import { getCachedPublicFeed } from '../utils/publicListingsCache';
+import { parsePublicListingSearch, searchPublicListings } from '../utils/publicListingSearch';
+import { buildPriceInsight } from '../utils/listingPriceInsight';
 
 const prismaAny = prisma as any;
 
@@ -1010,83 +1012,118 @@ export const getFooterSettings = async (req: Request, res: Response, next: NextF
   }
 };
 
+// The public marketplace feed (card fields of every published listing), cached for a few seconds and
+// shared by the full-feed endpoint and the paged search endpoint below.
+const loadPublicFeed = (status?: string) => {
+  const whereCondition =
+    typeof status === 'string'
+      ? buildPublicMarketplaceFeedWhere({ status })
+      : buildPublicMarketplaceFeedWhere({});
+  const feedKey = typeof status === 'string' ? `status:${status.trim().toUpperCase()}` : 'default';
+  return getCachedPublicFeed(feedKey, async () => {
+    // Card fields only: the detail page loads the full listing. Description, sale record and Prime
+    // subscriptions were fetched here before but never shown, and made the feed several MB.
+    const listings = await prismaAny.listing.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        isNegotiable: true,
+        manufacturingYear: true,
+        operatingHours: true,
+        locationCity: true,
+        locationState: true,
+        condition: true,
+        status: true,
+        adminMarginAmount: true,
+        adminExpenseAmount: true,
+        adminExpenseBreakdown: true,
+        createdAt: true,
+        updatedAt: true,
+        saleRecord: { select: { soldPrice: true } },
+        media: {
+          select: { id: true, url: true, type: true, slot: true, isFeatured: true, toBeDeletedAt: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        category: { select: { id: true, name: true } },
+        brand: { select: { id: true, name: true } },
+        model: { select: { id: true, name: true } },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            partnerProfile: { select: { id: true, businessName: true, partnerType: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+
+    return listings.map((listing: any) => ({
+      id: listing.id,
+      title: listing.title,
+      price: getPublicListingPrice(listing),
+      isNegotiable: Boolean(listing.isNegotiable),
+      manufacturingYear: listing.manufacturingYear,
+      operatingHours: listing.operatingHours,
+      locationCity: listing.locationCity,
+      locationState: listing.locationState,
+      condition: listing.condition,
+      status: listing.status,
+      category: listing.category,
+      brand: listing.brand,
+      model: listing.model,
+      partner: {
+        id: listing.partner?.partnerProfile?.id || listing.partner?.id,
+        name:
+          listing.partner?.partnerProfile?.businessName ||
+          listing.partner?.name ||
+          'Verified Partner',
+        type: listing.partner?.partnerProfile?.partnerType || 'Partner',
+      },
+      featuredImage: getFirstRemoteImageUrl(listing.media),
+      mediaCount: getRemotePublicMedia(listing.media).length,
+      createdAt: listing.createdAt,
+      updatedAt: listing.updatedAt,
+    }));
+  });
+};
+
+// Machines page: one page of results plus filter counts, computed on the cached feed (no extra DB work).
+// ?q=&categories=&brands=&locations=&conditions=&minPrice=&maxPrice=&sort=newest|price-low|price-high&page=&limit=
+export const searchPublicListingsHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const feed = await loadPublicFeed();
+    const result = searchPublicListings(feed.items as any[], parsePublicListingSearch(req.query as Record<string, unknown>));
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Machine detail page: fair price range from comparable machines (sold + on sale), or null when there are
+// too few comparables. Only listings in the public feeds are answered, so hidden listings stay hidden.
+export const getPublicListingPriceInsight = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const listingId = String(req.params.id || '').trim();
+    const [available, sold] = await Promise.all([loadPublicFeed(), loadPublicFeed('SOLD')]);
+    const target = (available.items as any[]).find((item) => item.id === listingId)
+      || (sold.items as any[]).find((item) => item.id === listingId);
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Listing not found.' });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.status(200).json({ success: true, data: buildPriceInsight(target, available.items as any[], sold.items as any[]) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.query;
-    const whereCondition =
-      typeof status === 'string'
-        ? buildPublicMarketplaceFeedWhere({ status })
-        : buildPublicMarketplaceFeedWhere({});
-
-    const feedKey = typeof status === 'string' ? `status:${status.trim().toUpperCase()}` : 'default';
-    const feed = await getCachedPublicFeed(feedKey, async () => {
-      // Card fields only: the detail page loads the full listing. Description, sale record and Prime
-      // subscriptions were fetched here before but never shown, and made the feed several MB.
-      const listings = await prismaAny.listing.findMany({
-        where: whereCondition,
-        select: {
-          id: true,
-          title: true,
-          price: true,
-          isNegotiable: true,
-          manufacturingYear: true,
-          operatingHours: true,
-          locationCity: true,
-          locationState: true,
-          condition: true,
-          status: true,
-          adminMarginAmount: true,
-          adminExpenseAmount: true,
-          adminExpenseBreakdown: true,
-          createdAt: true,
-          updatedAt: true,
-          saleRecord: { select: { soldPrice: true } },
-          media: {
-            select: { id: true, url: true, type: true, slot: true, isFeatured: true, toBeDeletedAt: true, createdAt: true },
-            orderBy: { createdAt: 'asc' },
-          },
-          category: { select: { id: true, name: true } },
-          brand: { select: { id: true, name: true } },
-          model: { select: { id: true, name: true } },
-          partner: {
-            select: {
-              id: true,
-              name: true,
-              partnerProfile: { select: { id: true, businessName: true, partnerType: true } },
-            },
-          },
-        },
-        orderBy: [{ createdAt: 'desc' }],
-      });
-
-      return listings.map((listing: any) => ({
-        id: listing.id,
-        title: listing.title,
-        price: getPublicListingPrice(listing),
-        isNegotiable: Boolean(listing.isNegotiable),
-        manufacturingYear: listing.manufacturingYear,
-        operatingHours: listing.operatingHours,
-        locationCity: listing.locationCity,
-        locationState: listing.locationState,
-        condition: listing.condition,
-        status: listing.status,
-        category: listing.category,
-        brand: listing.brand,
-        model: listing.model,
-        partner: {
-          id: listing.partner?.partnerProfile?.id || listing.partner?.id,
-          name:
-            listing.partner?.partnerProfile?.businessName ||
-            listing.partner?.name ||
-            'Verified Partner',
-          type: listing.partner?.partnerProfile?.partnerType || 'Partner',
-        },
-        featuredImage: getFirstRemoteImageUrl(listing.media),
-        mediaCount: getRemotePublicMedia(listing.media).length,
-        createdAt: listing.createdAt,
-        updatedAt: listing.updatedAt,
-      }));
-    });
+    const feed = await loadPublicFeed(typeof status === 'string' ? status : undefined);
 
     // Optional paging (?page=&limit=, limit up to 100). Without it the full feed is returned as before.
     const rawLimit = Number.parseInt(String(req.query.limit ?? ''), 10);

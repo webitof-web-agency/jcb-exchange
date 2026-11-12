@@ -237,3 +237,22 @@ whatsappfront/
 /backend/*.zip
 /frontend/*.zip
 /admin-portal/*.zip
+
+# Server-side deploy settings and state (deploy/deploy.sh)
+deploy/.deploy.env
+deploy/.last-deploy
+
+# Scratch / one-off scripts and agent temp output (keep them out of the repository)
+/.codex-tmp/
+/patch-*.js
+/fix-*.js
+/temp_*.tsx
+/*_remote.tsx
+/origin_page.tsx
+backend/check*.js
+backend/patch*
+backend/scratch*
+backend/test-*.js
+backend/*.zip
+frontend/*.zip
+admin-portal/*.zip

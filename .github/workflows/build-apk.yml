@@ -137,6 +137,31 @@ jobs:
             echo "- ⚠️ **Version Override Applied via Manual Input**" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # 6b. Release signing key. The keystore and its passwords are repository secrets, never files in git:
+      #   ANDROID_KEYSTORE_BASE64        base64 of the .keystore file (base64 -w0 jcbexchange.keystore)
+      #   ANDROID_KEYSTORE_PASSWORD      store password
+      #   ANDROID_KEY_ALIAS              key alias
+      #   ANDROID_KEY_PASSWORD           key password
+      - name: Restore release signing key
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::error::Release signing secrets are missing (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD)."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release-upload.keystore
+          {
+            echo "MYAPP_UPLOAD_STORE_FILE=release-upload.keystore"
+            echo "MYAPP_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "MYAPP_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "MYAPP_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       # 7. Gradle permissions
       - name: Make gradlew executable
         run: chmod +x android/gradlew

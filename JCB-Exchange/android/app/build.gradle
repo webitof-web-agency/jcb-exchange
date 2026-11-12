@@ -98,11 +98,24 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
-                storeFile file(MYAPP_UPLOAD_STORE_FILE)
-                storePassword MYAPP_UPLOAD_STORE_PASSWORD
-                keyAlias MYAPP_UPLOAD_KEY_ALIAS
-                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            // The upload key is never committed. It comes from (first match wins):
+            //   1. android/keystore.properties (git-ignored, local machines)
+            //   2. environment variables MYAPP_UPLOAD_* (CI, see .github/workflows/build-apk.yml)
+            //   3. -P / ~/.gradle/gradle.properties
+            def keystoreProps = new Properties()
+            def keystorePropsFile = rootProject.file('keystore.properties')
+            if (keystorePropsFile.exists()) {
+                keystorePropsFile.withInputStream { keystoreProps.load(it) }
+            }
+            def signingValue = { String name ->
+                keystoreProps.getProperty(name) ?: System.getenv(name) ?: (project.hasProperty(name) ? project.property(name) : null)
+            }
+            def uploadStoreFile = signingValue('MYAPP_UPLOAD_STORE_FILE')
+            if (uploadStoreFile) {
+                storeFile file(uploadStoreFile)
+                storePassword signingValue('MYAPP_UPLOAD_STORE_PASSWORD')
+                keyAlias signingValue('MYAPP_UPLOAD_KEY_ALIAS')
+                keyPassword signingValue('MYAPP_UPLOAD_KEY_PASSWORD')
             }
         }
     }

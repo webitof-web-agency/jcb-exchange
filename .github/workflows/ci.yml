@@ -1,0 +1,93 @@
+name: CI
+
+# Type-check and unit-test the API, admin portal and website on every push and pull request.
+# Unit tests never touch a database: backend tests run with DATABASE_URL pointed at a closed port.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'JCB-Exchange/**'
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'JCB-Exchange/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: API (backend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:1/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm test
+
+  admin-portal:
+    name: Admin portal
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: admin-portal/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  frontend:
+    name: Website (frontend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  secrets-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse committed keystores, env files and private keys
+        run: |
+          bad=$(git ls-files | grep -E '\.(jks|p12|pem|key)$|(^|/)\.env$|(^|/)\.env\.(local|production)$|(^|/)keystore\.properties$|\.keystore$' | grep -v 'android/app/debug.keystore' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Secret-bearing files are tracked by git:"; echo "$bad"; exit 1
+          fi
+          if git grep -nE 'MYAPP_UPLOAD_(STORE|KEY)_PASSWORD=.+|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- . ':!*.md' ':!.github/workflows/*'; then
+            echo "::error::A password or private key is committed (see above)."; exit 1
+          fi

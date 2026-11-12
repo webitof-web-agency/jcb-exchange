@@ -12,6 +12,8 @@ import { FieldValidationError } from './utils/fieldValidation';
 import { VehicleAlreadyListedError, vehicleAlreadyListedResponse } from './services/listingVehicleIdentity';
 import { DeletionBlockedError } from './services/deletionImpact';
 import { FILE_CONTENT_MISMATCH_MESSAGE } from './utils/fileSignature';
+import prisma from './lib/prisma';
+import { reportError } from './instrument';
 
 dotenv.config();
 
@@ -61,6 +63,20 @@ app.use('/api', apiRoutes);
 // Basic Health Check Route
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', message: 'JCB Exchange API is running' });
+});
+
+// Readiness: the process is up AND the database answers. Used by deploy/deploy.sh and uptime monitors.
+app.get('/health/ready', async (req: Request, res: Response) => {
+  const started = Date.now();
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database check timed out')), 3000)),
+    ]);
+    res.status(200).json({ status: 'ok', database: 'ok', uptimeSeconds: Math.round(process.uptime()), dbLatencyMs: Date.now() - started });
+  } catch {
+    res.status(503).json({ status: 'error', database: 'unreachable' });
+  }
 });
 
 // Default Error Handler
@@ -150,6 +166,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     return res.status(503).json({ success: false, error: 'File storage is not available right now. Please try again later.' });
   }
 
+  reportError(err, { method: req.method, path: req.path });
   res.status(500).json({ success: false, message: 'Internal Server Error' });
 });
 

@@ -457,3 +457,14 @@ body {
   scrollbar-color: #cbd5e1 #f3f4f6;
 }
 
+
+
+/* iOS Safari zooms the page when a form field under 16px gets focus. Pinch-zoom is allowed (see the viewport
+   in layout.tsx), so keep fields at 16px on touch screens. Unlayered on purpose: it must win over text-* utilities. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
