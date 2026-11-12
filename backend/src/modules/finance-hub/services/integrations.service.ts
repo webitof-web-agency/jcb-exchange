@@ -10,7 +10,7 @@ import type { ActorContext } from './context';
 import { generateDueRecurring } from './expenses.service';
 import { CASH_BANK_KINDS } from './ledgerRules';
 import { createVoucher, postVoucher, type LedgerAccess } from './ledger.service';
-import { FIN_SETTINGS_ID } from './settings.service';
+import { DEFAULT_CASH_LIMIT_PER_VOUCHER, DEFAULT_CASH_RECEIPT_LIMIT, FIN_SETTINGS_ID } from './settings.service';
 import { getAlerts } from './statements.service';
 
 // Connectors (off by default, behind credentials), daily automation jobs and tax settings.
@@ -23,7 +23,8 @@ const section = <T extends Record<string, unknown>>(config: Record<string, unkno
 const writeConfig = async (key: string, value: unknown) => {
   const json = JSON.stringify(value);
   await prisma.$executeRaw`
-    INSERT INTO "FinSettings" ("id", "config", "updatedAt") VALUES (${FIN_SETTINGS_ID}, jsonb_build_object(${key}::text, ${json}::jsonb), NOW())
+    INSERT INTO "FinSettings" ("id", "cashLimitPerVoucher", "cashReceiptLimit", "config", "updatedAt")
+    VALUES (${FIN_SETTINGS_ID}, ${DEFAULT_CASH_LIMIT_PER_VOUCHER}, ${DEFAULT_CASH_RECEIPT_LIMIT}, jsonb_build_object(${key}::text, ${json}::jsonb), NOW())
     ON CONFLICT ("id") DO UPDATE SET "config" = jsonb_set(COALESCE("FinSettings"."config", '{}'::jsonb), ARRAY[${key}::text], ${json}::jsonb, true), "updatedAt" = NOW()`;
 };
 const readConfig = async () => configOf((await prisma.finSettings.findUnique({ where: { id: FIN_SETTINGS_ID }, select: { config: true } }))?.config);

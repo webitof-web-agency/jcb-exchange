@@ -212,7 +212,8 @@ export const readPostingState = (config: Prisma.JsonValue | null | undefined): P
 export const writePostingState = async (state: PostingState) => {
   const value = JSON.stringify(state);
   await prisma.$executeRaw`
-    INSERT INTO "FinSettings" ("id", "config", "updatedAt") VALUES (${FIN_SETTINGS_ID}, jsonb_build_object('postingState', ${value}::jsonb), NOW())
+    INSERT INTO "FinSettings" ("id", "cashLimitPerVoucher", "cashReceiptLimit", "config", "updatedAt")
+    VALUES (${FIN_SETTINGS_ID}, ${DEFAULT_CASH_LIMIT_PER_VOUCHER}, ${DEFAULT_CASH_RECEIPT_LIMIT}, jsonb_build_object('postingState', ${value}::jsonb), NOW())
     ON CONFLICT ("id") DO UPDATE SET "config" = jsonb_set(COALESCE("FinSettings"."config", '{}'::jsonb), '{postingState}', ${value}::jsonb, true)`;
 };
 
