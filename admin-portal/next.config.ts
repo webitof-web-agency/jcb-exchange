@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import withPWAInit from "@ducanh2912/next-pwa";
 import path from "node:path";
+import { permissionsPolicy } from "./src/lib/securityHeaders";
 
 const withPWA = withPWAInit({
   dest: "public",
@@ -47,7 +48,7 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()' },
+  { key: 'Permissions-Policy', value: permissionsPolicy },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
   ...(process.env.NODE_ENV === 'production'
     ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' }]

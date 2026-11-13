@@ -3,6 +3,7 @@ import { redactSensitiveData } from './aiRedaction';
 import { auditHmacHex, sha256Hex } from './aiSecurity.service';
 
 export type AiConversationMessageRole = 'USER' | 'ASSISTANT';
+export type AiConversationToolSource = string;
 
 export type AiConversationRecord = {
   id: string;
@@ -22,6 +23,8 @@ export type AiConversationMessageRecord = {
   provider: string | null;
   modelAlias: string | null;
   toolName: string | null;
+  toolSource: AiConversationToolSource | null;
+  toolFetchedAt: Date | null;
   createdAt: Date;
 };
 
@@ -37,6 +40,8 @@ export type AiConversationRepository = {
   listMessages: (conversationId: string) => Promise<AiConversationMessageRecord[]>;
   renameConversation: (input: { id: string; title: string }) => Promise<{ id: string }>;
   archiveConversation: (input: { id: string }) => Promise<{ id: string }>;
+  deleteConversation: (input: { id: string }) => Promise<{ id: string }>;
+  deleteAllConversations: (actorUserId: string) => Promise<{ count: number }>;
   appendMessage: (input: {
     conversationId: string;
     role: AiConversationMessageRole;
@@ -47,6 +52,8 @@ export type AiConversationRepository = {
     provider?: string;
     modelAlias?: string;
     toolName?: string;
+    toolSource?: AiConversationToolSource;
+    toolFetchedAt?: Date;
   }) => Promise<{ id: string }>;
 };
 
@@ -140,6 +147,8 @@ const createPrismaRepository = (): AiConversationRepository => ({
         provider: true,
         modelAlias: true,
         toolName: true,
+        toolSource: true,
+        toolFetchedAt: true,
         createdAt: true,
       },
     });
@@ -166,6 +175,19 @@ const createPrismaRepository = (): AiConversationRepository => ({
     });
   },
 
+  async deleteConversation(input) {
+    return prisma.aiConversation.delete({
+      where: { id: input.id },
+      select: { id: true },
+    });
+  },
+
+  async deleteAllConversations(actorUserId) {
+    return prisma.aiConversation.deleteMany({
+      where: { actorUserId },
+    });
+  },
+
   async appendMessage(input) {
     return prisma.$transaction(async (transaction) => {
       const message = await transaction.aiConversationMessage.create({
@@ -179,6 +201,8 @@ const createPrismaRepository = (): AiConversationRepository => ({
           ...(input.provider ? { provider: input.provider } : {}),
           ...(input.modelAlias ? { modelAlias: input.modelAlias } : {}),
           ...(input.toolName ? { toolName: input.toolName } : {}),
+          ...(input.toolSource ? { toolSource: input.toolSource } : {}),
+          ...(input.toolFetchedAt ? { toolFetchedAt: input.toolFetchedAt } : {}),
         },
         select: { id: true, createdAt: true },
       });
@@ -222,6 +246,16 @@ export class AiConversationService {
     return this.repository.archiveConversation({ id: conversationId });
   }
 
+  async deleteConversation(actorUserId: string, conversationId: string) {
+    await this.ensureOwnership(actorUserId, conversationId);
+    return this.repository.deleteConversation({ id: conversationId });
+  }
+
+  async deleteAllConversations(actorUserId: string) {
+    validateActorId(actorUserId);
+    return this.repository.deleteAllConversations(actorUserId);
+  }
+
   async appendMessage(actorUserId: string, conversationId: string, input: {
     role: string;
     content: string;
@@ -229,6 +263,8 @@ export class AiConversationService {
     provider?: string;
     modelAlias?: string;
     toolName?: string;
+    toolSource?: AiConversationToolSource;
+    toolFetchedAt?: Date;
   }) {
     await this.ensureOwnership(actorUserId, conversationId);
     const role = ensureMessageRole(input.role);
@@ -243,6 +279,8 @@ export class AiConversationService {
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.modelAlias ? { modelAlias: input.modelAlias } : {}),
       ...(input.toolName ? { toolName: input.toolName } : {}),
+      ...(input.toolSource ? { toolSource: input.toolSource } : {}),
+      ...(input.toolFetchedAt ? { toolFetchedAt: input.toolFetchedAt } : {}),
     });
   }
 

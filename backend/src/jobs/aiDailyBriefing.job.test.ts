@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { runDailyBriefingForRecipient, type DailyBriefingWorkerDependencies } from './aiDailyBriefing.job';
+import { createAiDataContract } from '../services/ai/aiDataContract.service';
 
 const recipient = {
   userId: 'employee-1',
@@ -15,7 +16,19 @@ const dependencyFactory = (overrides: Partial<DailyBriefingWorkerDependencies> =
     lockToken: () => 'lock-1',
     ensureBriefing: async () => ({ id: 'briefing-1', status: 'GENERATING', attemptCount: 0 }),
     claimBriefing: async () => true,
-    collectSnapshot: async () => ({ sections: [{ toolName: 'dashboard.summary', label: 'Dashboard summary', data: { pendingKyc: 2 } }] }),
+    collectSnapshot: async () => ({
+      sections: [{
+        toolName: 'dashboard.summary',
+        label: 'Dashboard summary',
+        data: { pendingKyc: 2 },
+        contract: createAiDataContract({
+          status: 'success',
+          source: 'database',
+          data: { pendingKyc: 2 },
+          permission: 'allowed',
+        }),
+      }],
+    }),
     generate: async () => {
       calls.generate += 1;
       return { answer: 'Review two pending KYC cases first.', provider: 'openai', model: 'test-model' };

@@ -14,6 +14,7 @@ import {
   requireAdminOrEmployeePermissions,
   requireAuth,
 } from '../middlewares/auth.middleware';
+import { surepassVerificationRateLimit } from '../middlewares/rateLimit.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -22,12 +23,12 @@ const canVerifyForKycEdit = requireAdminOrEmployeePermissions(['pan.verification
 const panTemplateUpload = getDocumentUploadMiddleware('secure');
 
 router.use(requireAuth, requireAdmin);
-router.post('/verify', canView, verifyPan);
-router.post('/to-aadhaar', canView, panToAadhaar);
-router.post('/contact', canView, panToContact);
-router.post('/comprehensive', canVerifyForKycEdit, panComprehensiveV2);
+router.post('/verify', canView, surepassVerificationRateLimit, verifyPan);
+router.post('/to-aadhaar', canView, surepassVerificationRateLimit, panToAadhaar);
+router.post('/contact', canView, surepassVerificationRateLimit, panToContact);
+router.post('/comprehensive', canVerifyForKycEdit, surepassVerificationRateLimit, panComprehensiveV2);
 // Keep the old path for already deployed clients and bookmarked integrations.
-router.post('/comprehensive-v2', canVerifyForKycEdit, panComprehensiveV2);
+router.post('/comprehensive-v2', canVerifyForKycEdit, surepassVerificationRateLimit, panComprehensiveV2);
 router.post('/:id/template', canView, panTemplateUpload.single('template'), uploadPanTemplate);
 router.get('/:id/template', canView, getPanTemplate);
 router.get('/history', canView, getPanVerificationHistory);

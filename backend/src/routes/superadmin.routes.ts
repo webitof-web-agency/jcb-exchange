@@ -82,7 +82,10 @@ import {
 } from '../controllers/panVerificationSettings.controller';
 import { reverifyPartnerGstin } from '../controllers/partnerGstReverification.controller';
 import {
+  getAiModelsController,
+  postAiModelsController,
   getAiSettingsController,
+  revealAiSettingsKeyController,
   removeAiSettingsKeyController,
   testAiSettingsConnectionController,
   updateAiSettingsController,
@@ -168,6 +171,9 @@ router.get('/settings/secrets/:key', requireSuperAdmin, revealPlatformSecret);
 router.patch('/settings', canManageSettings, updatePlatformSettings);
 // Shared AI provider credentials require the dedicated ai.manage capability.
 router.get('/ai-settings', requireAiSettingsManagement, getAiSettingsController);
+router.get('/ai-settings/models', requireAiSettingsManagement, getAiModelsController);
+router.post('/ai-settings/models', requireAiSettingsManagement, postAiModelsController);
+router.get('/ai-settings/key/reveal', requireAiSettingsManagement, revealAiSettingsKeyController);
 router.put('/ai-settings', requireAiSettingsManagement, updateAiSettingsController);
 router.post('/ai-settings/test', requireAiSettingsManagement, testAiSettingsConnectionController);
 router.delete('/ai-settings/key', requireAiSettingsManagement, removeAiSettingsKeyController);

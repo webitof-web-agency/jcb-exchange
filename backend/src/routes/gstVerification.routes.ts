@@ -11,6 +11,7 @@ import {
   requireAdminOrEmployeePermissions,
   requireAuth,
 } from '../middlewares/auth.middleware';
+import { surepassVerificationRateLimit } from '../middlewares/rateLimit.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -19,7 +20,7 @@ const canVerifyForKycEdit = requireAdminOrEmployeePermissions(['gst.verification
 const gstTemplateUpload = getDocumentUploadMiddleware('secure');
 
 router.use(requireAuth, requireAdmin);
-router.post('/verify', canVerifyForKycEdit, verifyGstin);
+router.post('/verify', canVerifyForKycEdit, surepassVerificationRateLimit, verifyGstin);
 router.post('/:id/template', canView, gstTemplateUpload.single('template'), uploadGstTemplate);
 router.get('/:id/template', canView, getGstTemplate);
 router.get('/history', canView, getGstVerificationHistory);

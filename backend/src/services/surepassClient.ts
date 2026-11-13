@@ -13,6 +13,14 @@ type SurepassFetch = (
   init?: RequestInit,
 ) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
 
+export type SurepassRequestTelemetry = {
+  operation: string;
+  status: 'SUCCEEDED' | 'FAILED';
+  latencyMs: number;
+  providerFailure: boolean;
+  errorCode?: string;
+};
+
 export type SurepassErrorKind =
   | 'INVALID_REQUEST'
   | 'AUTHENTICATION'
@@ -40,6 +48,7 @@ type SurepassClientOptions = {
   customerId?: string;
   timeoutMs?: number;
   fetchImpl?: SurepassFetch;
+  onRequestComplete?: (event: SurepassRequestTelemetry) => void | Promise<void>;
 };
 
 const safeString = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -63,12 +72,20 @@ const asResponseBody = (value: unknown): SurepassResponse | null => {
   return value as SurepassResponse;
 };
 
+const safeOperationFor = (path: string) => {
+  const normalized = path.split('?')[0] || '/unknown';
+  return normalized.includes('/digilocker/download-aadhaar/')
+    ? '/api/v1/digilocker/download-aadhaar'
+    : normalized;
+};
+
 export class SurepassClient {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly customerId: string | undefined;
   private readonly timeoutMs: number;
   private readonly fetchImpl: SurepassFetch;
+  private readonly onRequestComplete: SurepassClientOptions['onRequestComplete'];
 
   constructor(options: SurepassClientOptions) {
     const parsedBaseUrl = new URL(options.baseUrl);
@@ -85,11 +102,15 @@ export class SurepassClient {
     this.customerId = options.customerId?.trim() || undefined;
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.fetchImpl = options.fetchImpl ?? (globalThis.fetch as SurepassFetch);
+    this.onRequestComplete = options.onRequestComplete;
   }
 
   private async request(method: 'GET' | 'POST', path: string, payload?: SurepassPayload) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const startedAt = Date.now();
+    let telemetryStatus: SurepassRequestTelemetry['status'] = 'FAILED';
+    let telemetryErrorCode: string | undefined;
 
     try {
       const headers: Record<string, string> = {
@@ -127,6 +148,7 @@ export class SurepassClient {
 
       if (!response.ok || body.success !== true) {
         const classification = classifyError(providerStatus || response.status || 502);
+        telemetryErrorCode = safeString(body.message_code) || classification.kind;
         throw new SurepassProviderError(
           providerMessage(body, 'Surepass could not complete this request.'),
           providerStatus || response.status || 502,
@@ -136,11 +158,16 @@ export class SurepassClient {
         );
       }
 
+      telemetryStatus = 'SUCCEEDED';
       return body;
     } catch (error) {
-      if (error instanceof SurepassProviderError) throw error;
+      if (error instanceof SurepassProviderError) {
+        telemetryErrorCode = error.messageCode || error.kind;
+        throw error;
+      }
 
       if (error instanceof DOMException && error.name === 'AbortError') {
+        telemetryErrorCode = 'provider_timeout';
         throw new SurepassProviderError(
           'Surepass is taking too long to respond.',
           504,
@@ -150,6 +177,7 @@ export class SurepassClient {
         );
       }
 
+      telemetryErrorCode = 'provider_unavailable';
       throw new SurepassProviderError(
         'Surepass is temporarily unavailable.',
         503,
@@ -159,6 +187,19 @@ export class SurepassClient {
       );
     } finally {
       clearTimeout(timeout);
+      if (this.onRequestComplete) {
+        try {
+          await this.onRequestComplete({
+            operation: safeOperationFor(path),
+            status: telemetryStatus,
+            latencyMs: Math.max(0, Date.now() - startedAt),
+            providerFailure: telemetryStatus === 'FAILED',
+            ...(telemetryErrorCode ? { errorCode: telemetryErrorCode } : {}),
+          });
+        } catch {
+          // Telemetry must never change the provider result or error contract.
+        }
+      }
     }
   }
 
@@ -266,10 +307,24 @@ export class SurepassClient {
 }
 
 export const createSurepassClient = (configured?: { baseUrl: string; token: string; customerId?: string }) => {
+  // Importing here keeps the low-level client testable without a database and
+  // records only operation/latency metadata for production-created clients.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { aiReliabilityObservabilityService } = require('./ai/aiReliabilityObservability.service') as typeof import('./ai/aiReliabilityObservability.service');
   const customerId = configured?.customerId?.trim() || process.env.SUREPASS_CUSTOMER_ID?.trim() || undefined;
   return new SurepassClient({
     baseUrl: configured?.baseUrl?.trim() || process.env.SUREPASS_BASE_URL?.trim() || '',
     token: configured?.token?.trim() || process.env.SUREPASS_TOKEN?.trim() || '',
     ...(customerId ? { customerId } : {}),
+    onRequestComplete: (event) => aiReliabilityObservabilityService.record({
+      eventType: 'SUREPASS',
+      module: 'surepass',
+      toolName: event.operation,
+      status: event.status,
+      latencyMs: event.latencyMs,
+      surepassLatencyMs: event.latencyMs,
+      providerFailure: event.providerFailure,
+      ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+    }),
   });
 };

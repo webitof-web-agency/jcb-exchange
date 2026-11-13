@@ -3,6 +3,7 @@ export const AI_MESSAGE_MAX_LENGTH = 4_000;
 export type AiRuntimeStatus = {
   enabled: boolean;
   provider: string;
+  model: string;
   modelConfigured: boolean;
   keyConfigured: boolean;
   configurationError?: string | null;
@@ -28,13 +29,34 @@ const DAY_RANGE_TOOLS = new Set([
   'dashboard.summary',
   'lead.statistics',
   'listing.statistics',
+  'sold.vehicles',
+  'inventory.trend',
   'revenue.summary',
+  'partner.performance',
+  'finance.trend',
+  'forecast.operations',
   'whatsapp.activity.summary',
+  'whatsapp.status',
+  'verification.summary',
+  'sms.activity.summary',
+  'notifications.summary',
+  'rto.documents.summary',
 ]);
 
 export const getAiToolArguments = (tool: AiReadOnlyTool | null, query: string, days = 30): Record<string, unknown> => {
   if (!tool) return {};
   if (tool.name === 'listing.search') return { query: query.trim().slice(0, 100).trim(), limit: 10 };
+  if (tool.name === 'listing.detail') return { query: query.trim().slice(0, 100).trim() };
+  if (tool.name === 'vehicle.identity') return { query: query.trim().slice(0, 100).trim() };
+  if (tool.name === 'forecast.operations') {
+    const normalizedMetric = query.trim().toLowerCase();
+    const metric = normalizedMetric.includes('finance')
+      ? 'finance'
+      : normalizedMetric.includes('inventory')
+        ? 'inventory'
+        : 'sales';
+    return { metric, days: Math.min(90, Math.max(7, Math.round(days))) };
+  }
   if (DAY_RANGE_TOOLS.has(tool.name)) return { days: Math.min(90, Math.max(1, Math.round(days))) };
   return {};
 };

@@ -92,7 +92,7 @@ export const findOrCreateContact = async (db: Db, input: ContactInput, actorId: 
 const contactUniverse: Prisma.UserWhereInput = { OR: [{ role: 'CUSTOMER' }, { crmProfile: { isNot: null } }] };
 
 /** Who can see a contact: everyone with "all"; others via a lead in their scope or profile ownership. */
-const contactScopeWhere = (access: CrmAccess): Prisma.UserWhereInput => {
+export const contactScopeWhere = (access: CrmAccess): Prisma.UserWhereInput => {
   if (access.canSeeAll) return {};
   const leadScope = leadScopeWhere(access);
   if (access.isPartner) return { leads: { some: leadScope } };

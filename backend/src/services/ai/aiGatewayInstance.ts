@@ -1,5 +1,6 @@
 import prisma from '../../lib/prisma';
 import { AiGatewayService, type AiAuditEntry } from './aiGateway.service';
+import { aiReliabilityObservabilityService } from './aiReliabilityObservability.service';
 
 const writeAiAudit = async (entry: AiAuditEntry): Promise<void> => {
   const afterJson = {
@@ -30,4 +31,7 @@ const writeAiAudit = async (entry: AiAuditEntry): Promise<void> => {
   });
 };
 
-export const aiGatewayService = new AiGatewayService({ auditWriter: writeAiAudit });
+export const aiGatewayService = new AiGatewayService({
+  auditWriter: writeAiAudit,
+  reliabilityWriter: (event) => aiReliabilityObservabilityService.record(event),
+});

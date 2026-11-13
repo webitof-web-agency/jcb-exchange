@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { getAiRuntimeConfig } from '../services/ai/aiSettings.service';
+import { aiSecurityAuditService } from '../services/ai/aiSecurityAudit.service';
 
 // In-memory fixed-window limiter for public and login endpoints. Counts reset when the server restarts,
 // which is acceptable for a single API server. Each limiter keeps its own buckets, so one route's traffic
@@ -49,6 +50,7 @@ type DatabaseRateLimitOptions = Omit<RateLimitOptions, 'key'> & {
   namespace: string;
   key?: (req: Request) => string | Promise<string>;
   store?: DatabaseRateLimitStore;
+  onLimit?: (req: Request) => void | Promise<void>;
 };
 
 type DatabaseRateLimitBucketInput = {
@@ -85,7 +87,7 @@ const incrementDatabaseRateLimitBucket: DatabaseRateLimitStore = async ({ bucket
  * Prisma upsert, so separate API instances and restarts share one window.
  * The database migration must be deployed before enabling this route.
  */
-export const createDatabaseRateLimiter = ({ namespace, windowMs, max, message = 'Too many requests. Please try again later.', key = clientIp, store = incrementDatabaseRateLimitBucket }: DatabaseRateLimitOptions) => (
+export const createDatabaseRateLimiter = ({ namespace, windowMs, max, message = 'Too many requests. Please try again later.', key = clientIp, store = incrementDatabaseRateLimitBucket, onLimit }: DatabaseRateLimitOptions) => (
   async (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
     const windowStartMs = Math.floor(now / windowMs) * windowMs;
@@ -100,6 +102,13 @@ export const createDatabaseRateLimiter = ({ namespace, windowMs, max, message = 
       const bucket = await store({ bucketKey, windowStartedAt, expiresAt });
       if (!bucket) throw new Error('The database rate-limit bucket was not returned.');
       if (bucket.requestCount > max) {
+        if (onLimit) {
+          try {
+            await onLimit(req);
+          } catch {
+            // Rate limiting remains effective even when audit storage is unavailable.
+          }
+        }
         res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.expiresAt.getTime() - now) / 1000))));
         return res.status(429).json({ error: message });
       }
@@ -112,6 +121,33 @@ export const createDatabaseRateLimiter = ({ namespace, windowMs, max, message = 
 );
 
 const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
+
+export const surepassRateLimitKey = (req: Request): string => {
+  const userId = (req as Request & { user?: { id?: string } }).user?.id || clientIp(req);
+  const operation = `${req.baseUrl || ''}${req.path || req.originalUrl || 'unknown'}`.split('?')[0] || 'unknown';
+  return `${userId}:${operation}`;
+};
+
+/** Shared, database-backed guard for paid Surepass operations across all instances. */
+export const surepassVerificationRateLimit = createDatabaseRateLimiter({
+  namespace: 'surepass-verification',
+  windowMs: DAY,
+  max: 30,
+  message: 'Surepass verification limit reached for this operation today. Please try again later.',
+  key: surepassRateLimitKey,
+  onLimit: async (req) => {
+    const user = (req as Request & { user?: { id?: string; role?: string } }).user;
+    if (!user?.id) return;
+    await aiSecurityAuditService.record({
+      actorUserId: user.id,
+      action: 'SUREPASS_RATE_LIMITED',
+      ...(user.role ? { role: user.role } : {}),
+      route: req.path,
+      reason: 'Shared database rate limit reached',
+    });
+  },
+});
 
 export const loginRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 30, message: 'Too many login attempts from this network. Please try again in a few minutes.' });
 export const registerRateLimit = createRateLimiter({ windowMs: 60 * MINUTE, max: 10, message: 'Too many sign-ups from this network. Please try again later.' });

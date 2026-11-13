@@ -22,14 +22,11 @@ test('vehicle transport overview does not render removed service cards', () => {
   assert.equal(source.includes('mobile-to-rc'), false, 'Mobile to RC should not remain an active vehicle transport route');
 });
 
-// Mobile To PAN came back as a live service (route, permission, history); its overview card must stay
-// behind the Mobile To PAN view permission.
-test('identity hub overview shows the Mobile To PAN card only with its permission', () => {
+test('identity hub overview does not render the removed Mobile To PAN service', () => {
   const source = readSource('../components/identityHub/IdentityHubPage.tsx');
   const overviewStart = source.indexOf("if (activeTab === 'overview') {");
   const cardStart = source.indexOf("onClick={() => setActiveTab('mobileToPan')}", overviewStart);
-  assert.ok(cardStart > overviewStart, 'Mobile To PAN card should be in the overview');
-  assert.match(source.slice(Math.max(overviewStart, cardStart - 300), cardStart), /\{canMobileToPanView && \(/);
+  assert.equal(cardStart, -1, 'Mobile To PAN card should be removed from the overview');
 });
 
 test('unconfigured API prices are not rendered as placeholder text', () => {

@@ -11,11 +11,10 @@ import {
   AADHAAR_DIGILOCKER_VIEW_PERMISSIONS,
   canViewFeature,
   GST_VIEW_PERMISSIONS,
-  MOBILE_TO_PAN_VIEW_PERMISSIONS,
   PAN_VIEW_PERMISSIONS,
 } from '@/lib/featurePermissions';
 
-/** Every identity verification (PAN, GST, Aadhaar, Mobile to PAN), paginated. */
+/** Every identity verification (PAN, GST, Aadhaar), paginated. */
 export default function IdentityHistoryPage() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -25,7 +24,6 @@ export default function IdentityHistoryPage() {
   const canView = [
     PAN_VIEW_PERMISSIONS,
     GST_VIEW_PERMISSIONS,
-    MOBILE_TO_PAN_VIEW_PERMISSIONS,
     AADHAAR_DIGILOCKER_VIEW_PERMISSIONS,
   ].some((permissions) => canViewFeature(user?.role, user?.permissions, permissions));
 

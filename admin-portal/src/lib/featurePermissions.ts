@@ -3,13 +3,11 @@ import { hasAnyPermission } from './permissionUtils';
 export const IDENTITY_HUB_VIEW_PERMISSIONS = [
   'pan.verification.read',
   'gst.verification.read',
-  'pan.mobile-to-pan.read',
   'aadhaar.digilocker.read',
 ];
 
 export const PAN_VIEW_PERMISSIONS = ['pan.verification.read'];
 export const GST_VIEW_PERMISSIONS = ['gst.verification.read'];
-export const MOBILE_TO_PAN_VIEW_PERMISSIONS = ['pan.mobile-to-pan.read'];
 export const AADHAAR_DIGILOCKER_VIEW_PERMISSIONS = ['aadhaar.digilocker.read'];
 
 export const VEHICLE_TRANSPORT_VIEW_PERMISSIONS = [

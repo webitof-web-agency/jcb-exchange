@@ -28,7 +28,7 @@ const partners = ['partners.read', 'partners.create', 'partners.update', 'partne
 const visitors = ['visitors.read', 'visitors.update', 'visitors.change_status', 'visitors.delete'];
 const categories = ['categories.read', 'categories.create', 'categories.update', 'categories.delete'];
 const brands = ['brands.read', 'brands.create', 'brands.update', 'brands.delete'];
-const identityHub = ['pan.verification.read', 'gst.verification.read', 'pan.mobile-to-pan.read', 'aadhaar.digilocker.read'];
+const identityHub = ['pan.verification.read', 'gst.verification.read', 'aadhaar.digilocker.read'];
 const vehicleTransport = [
   'driving-license.verification.read',
   'rc.owner-history.read',

@@ -332,9 +332,8 @@ export const uploadFileToDrive = async (
  *         September/      ← month folder (IST), auto-created if not present
  *           db_dump_2026-09-25_000000.dump
  *
- * After upload, enforces a rolling retention of maxBackups (default 30).
- * If total backup files inside backup-db exceed the limit, oldest files
- * are deleted one-by-one until the count is within the limit.
+ * If maxBackups is explicitly provided, enforces that rolling retention.
+ * The default is unlimited retention so daily backups are not silently lost.
  *
  * Backup files are always private (no public Drive permission).
  */
@@ -343,9 +342,9 @@ export const uploadDatabaseBackupToDrive = async (
   mimeType: string,
   filename: string,
   rootFolderId?: string,
-  maxBackups: number = 30,
+  maxBackups: number | null = null,
   uploadDate: Date = new Date(),
-): Promise<{ fileId: string; viewLink: string; deletedCount: number }> => {
+): Promise<{ fileId: string; viewLink: string; deletedCount: number; sizeBytes: number }> => {
   const drive = await getDriveClient();
   const settings = await getAppSettings();
   const targetFolderId = rootFolderId?.trim() || settings.googleDrive.backupFolderId?.trim();
@@ -396,6 +395,19 @@ export const uploadDatabaseBackupToDrive = async (
     throw new Error('Google Drive did not return a file id for the database backup.');
   }
 
+  // Verify the stored object size before marking the backup successful. A
+  // successful HTTP response alone does not prove that the complete archive
+  // reached Drive.
+  const uploadedFile = await drive.files.get({
+    fileId,
+    fields: 'id,size,mimeType,trashed',
+    supportsAllDrives: true,
+  });
+  const uploadedSize = Number(uploadedFile.data.size);
+  if (uploadedFile.data.trashed || !Number.isSafeInteger(uploadedSize) || uploadedSize !== buffer.length) {
+    throw new Error(`Google Drive backup verification failed for ${filename}: expected ${buffer.length} bytes, received ${uploadedFile.data.size || 'unknown'}.`);
+  }
+
   console.log(`[backup] Uploaded DB dump: ${filename} → Drive fileId=${fileId}`);
 
   // Step 5: Rolling 30-backup retention inside 'backup-db' folder tree
@@ -403,7 +415,7 @@ export const uploadDatabaseBackupToDrive = async (
   let deletedCount = 0;
   try {
     const allBackupFiles = await listBackupFilesRecursively(drive, backupDbFolderId);
-    const excessCount = allBackupFiles.length - maxBackups;
+    const excessCount = maxBackups && maxBackups > 0 ? allBackupFiles.length - maxBackups : 0;
 
     if (excessCount > 0) {
       // Delete the oldest files to bring total back to maxBackups
@@ -436,6 +448,7 @@ export const uploadDatabaseBackupToDrive = async (
     fileId,
     viewLink: `https://drive.google.com/file/d/${fileId}/view`,
     deletedCount,
+    sizeBytes: buffer.length,
   };
 };
 

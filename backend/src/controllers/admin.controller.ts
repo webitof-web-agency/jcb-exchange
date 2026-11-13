@@ -3917,7 +3917,11 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
 export const getGoogleDriveSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const settings = await getAppSettings();
-    res.status(200).json({ success: true, googleDrive: settings.googleDrive });
+    res.status(200).json({
+      success: true,
+      googleDrive: settings.googleDrive,
+      databaseBackup: settings.databaseBackup,
+    });
   } catch (error) {
     next(error);
   }

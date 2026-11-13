@@ -1,6 +1,87 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAiProvider, AiProviderError } from './aiProvider.service';
+import { createAiProvider, AiProviderError, listAiModels } from './aiProvider.service';
+
+test('marks Responses-only OpenAI pro models with the Responses transport', async () => {
+  const result = await listAiModels('openai', 'test-secret', async () => new Response(JSON.stringify({
+    data: [
+      { id: 'gpt-4.1' },
+      { id: 'gpt-5.2-pro' },
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+  assert.deepEqual(result.map((model) => ({ id: model.id, transport: model.transport })), [
+    { id: 'gpt-4.1', transport: 'chat_completions' },
+    { id: 'gpt-5.2-pro', transport: 'responses' },
+  ]);
+});
+
+test('lists only chat-capable OpenAI models returned by the provider', async () => {
+  let capturedUrl = '';
+  let capturedInit: RequestInit | undefined;
+
+  const result = await listAiModels('openai', 'test-secret', async (url, init) => {
+    capturedUrl = url.toString();
+    capturedInit = init;
+    return new Response(JSON.stringify({
+      data: [
+        { id: 'gpt-4o-mini', owned_by: 'openai' },
+        { id: 'text-embedding-3-small', owned_by: 'openai' },
+        { id: 'o3-mini', owned_by: 'openai' },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  assert.equal(capturedUrl, 'https://api.openai.com/v1/models');
+  assert.equal((capturedInit?.headers as Record<string, string>).Authorization, 'Bearer test-secret');
+  assert.deepEqual(result.map((model) => model.id), ['gpt-4o-mini', 'o3-mini']);
+  assert.ok(result.every((model) => model.capabilities.includes('chat')));
+});
+
+test('excludes OpenAI image, audio, embedding, and moderation models from the chat catalog', async () => {
+  const result = await listAiModels('openai', 'test-secret', async () => new Response(JSON.stringify({
+    data: [
+      { id: 'gpt-4.1' },
+      { id: 'chatgpt-image-latest' },
+      { id: 'gpt-4o-mini-tts' },
+      { id: 'gpt-4o-mini-transcribe' },
+      { id: 'text-embedding-3-small' },
+      { id: 'omni-moderation-latest' },
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+  assert.deepEqual(result.map((model) => model.id), ['gpt-4.1']);
+});
+
+test('lists Anthropic Claude models with provider capabilities', async () => {
+  const result = await listAiModels('anthropic', 'test-secret', async (_url, init) => {
+    assert.equal((init?.headers as Record<string, string>)['x-api-key'], 'test-secret');
+    return new Response(JSON.stringify({
+      data: [
+        { id: 'claude-3-5-haiku-20241022', display_name: 'Claude 3.5 Haiku' },
+        { id: 'other-model', display_name: 'Other' },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  assert.deepEqual(result, [{
+    id: 'claude-3-5-haiku-20241022',
+    name: 'Claude 3.5 Haiku',
+    capabilities: ['chat', 'vision', 'tools'],
+    transport: 'chat_completions',
+  }]);
+});
+
+test('does not expose non-model Anthropic catalog records as chat models', async () => {
+  const result = await listAiModels('anthropic', 'test-secret', async () => new Response(JSON.stringify({
+    data: [
+      { type: 'model', id: 'claude-haiku-4-5-20251001', display_name: 'Claude Haiku 4.5' },
+      { type: 'not-a-model', id: 'claude-internal-preview', display_name: 'Internal preview' },
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+  assert.deepEqual(result.map((model) => model.id), ['claude-haiku-4-5-20251001']);
+});
 
 test('OpenAI adapter sends the controlled request shape and parses usage', async () => {
   let capturedUrl = '';
@@ -36,6 +117,43 @@ test('OpenAI adapter sends the controlled request shape and parses usage', async
     { role: 'user', content: 'redacted operator message' },
   ]);
   assert.equal(body.max_tokens, 321);
+});
+
+test('OpenAI adapter uses Responses API for Responses-only pro models', async () => {
+  let capturedUrl = '';
+  let capturedInit: RequestInit | undefined;
+
+  const provider = createAiProvider('openai', 'test-secret', async (url, init) => {
+    capturedUrl = url.toString();
+    capturedInit = init;
+    return new Response(JSON.stringify({
+      output_text: 'Safe Responses answer',
+      usage: { input_tokens: 15, output_tokens: 9 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  const result = await provider.complete({
+    model: 'gpt-5.2-pro',
+    systemPrompt: 'controlled system prompt',
+    userMessage: 'redacted operator message',
+    timeoutMs: 1000,
+    maxOutputTokens: 321,
+  });
+
+  assert.equal(result.text, 'Safe Responses answer');
+  assert.equal(result.inputTokens, 15);
+  assert.equal(result.outputTokens, 9);
+  assert.equal(capturedUrl, 'https://api.openai.com/v1/responses');
+  assert.equal((capturedInit?.headers as Record<string, string>).Authorization, 'Bearer test-secret');
+
+  const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+  assert.equal(body.model, 'gpt-5.2-pro');
+  assert.equal(body.max_output_tokens, 321);
+  assert.equal('temperature' in body, false);
+  assert.deepEqual(body.input, [
+    { role: 'system', content: [{ type: 'input_text', text: 'controlled system prompt' }] },
+    { role: 'user', content: [{ type: 'input_text', text: 'redacted operator message' }] },
+  ]);
 });
 
 test('provider retries temporary HTTP failures and succeeds without retrying auth failures', async () => {

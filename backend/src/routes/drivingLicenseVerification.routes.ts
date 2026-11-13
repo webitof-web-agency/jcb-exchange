@@ -7,6 +7,7 @@ import {
   verifyDrivingLicense,
 } from '../controllers/drivingLicenseVerification.controller';
 import { requireAdmin, requireAdminOrEmployeePermissions, requireAuth } from '../middlewares/auth.middleware';
+import { surepassVerificationRateLimit } from '../middlewares/rateLimit.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -14,7 +15,7 @@ const canView = requireAdminOrEmployeePermissions(['driving-license.verification
 const drivingLicenseTemplateUpload = getDocumentUploadMiddleware('secure');
 
 router.use(requireAuth, requireAdmin);
-router.post('/verify', canView, verifyDrivingLicense);
+router.post('/verify', canView, surepassVerificationRateLimit, verifyDrivingLicense);
 router.post('/:id/template', canView, drivingLicenseTemplateUpload.single('template'), uploadDrivingLicenseTemplate);
 router.get('/:id/template', canView, getDrivingLicenseTemplate);
 router.get('/history', canView, getDrivingLicenseVerificationHistory);

@@ -40,3 +40,18 @@ test('redacts quoted financial fields from JSON tool context', () => {
   assert.equal(redacted.includes('UTR-987654321'), false);
   assert.equal(redacted.includes('pay_123456789'), false);
 });
+
+test('redacts document URLs and signed access values before provider access', () => {
+  const redacted = redactSensitiveData(JSON.stringify({
+    documentUrl: 'https://files.example.com/documents/invoice.pdf?token=download-secret&signature=abc123',
+    publicVerificationUrl: 'https://portal.example.com/rc/record-123?access_token=secret-token',
+    token: 'provider-token',
+  }));
+
+  assert.equal(redacted.includes('https://files.example.com'), false);
+  assert.equal(redacted.includes('https://portal.example.com'), false);
+  assert.equal(redacted.includes('download-secret'), false);
+  assert.equal(redacted.includes('secret-token'), false);
+  assert.match(redacted, /\[REDACTED_DOCUMENT_URL\]/);
+  assert.match(redacted, /\[REDACTED_SECRET\]/);
+});

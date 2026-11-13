@@ -37,7 +37,7 @@ import {
 import api from '@/lib/api';
 import HistoryPagination from '@/components/ui/HistoryPagination';
 import { hasAnyPermission } from '@/lib/permissionUtils';
-import { canViewFeature, AADHAAR_DIGILOCKER_VIEW_PERMISSIONS, GST_VIEW_PERMISSIONS, MOBILE_TO_PAN_VIEW_PERMISSIONS, PAN_VIEW_PERMISSIONS } from '@/lib/featurePermissions';
+import { canViewFeature, AADHAAR_DIGILOCKER_VIEW_PERMISSIONS, GST_VIEW_PERMISSIONS, PAN_VIEW_PERMISSIONS } from '@/lib/featurePermissions';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
@@ -1303,7 +1303,6 @@ export function UnifiedHistoryPanel({
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canPanHistory = isSuperAdmin || hasAnyPermission(permissions, ['pan.verification.read']);
   const canGstHistory = isSuperAdmin || hasAnyPermission(permissions, ['gst.verification.read']);
-  const canMobileToPanHistory = isSuperAdmin || hasAnyPermission(permissions, ['pan.mobile-to-pan.read']);
   const canAadhaarHistory = isSuperAdmin || hasAnyPermission(permissions, ['aadhaar.digilocker.read']);
 
   const [records, setRecords] = useState<UnifiedRecord[]>([]);
@@ -1422,9 +1421,9 @@ export function UnifiedHistoryPanel({
           : variant === 'full' ? 'Identity Verification History' : 'Recent Identity Verifications';
 
   const panelSubtitle = variant === 'full'
-    ? 'Every PAN, GSTIN, Aadhaar e-KYC & Mobile lookup, newest first'
+    ? 'Every PAN, GSTIN and Aadhaar e-KYC verification, newest first'
     : activeTab === 'overview'
-      ? 'Real-time unified audit log across PAN, GSTIN, Aadhaar e-KYC & Mobile lookups'
+      ? 'Real-time unified audit log across PAN, GSTIN and Aadhaar e-KYC'
       : 'Recent verification records for this service';
 
   return (
@@ -1526,19 +1525,6 @@ export function UnifiedHistoryPanel({
               }`}
             >
               Aadhaar ({counts.aadhaar})
-            </button>
-          )}
-          {canMobileToPanHistory && (
-            <button
-              type="button"
-              onClick={() => setFilterType('MOBILE_TO_PAN')}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                filterType === 'MOBILE_TO_PAN'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              Mobile to PAN ({counts.mobileToPan})
             </button>
           )}
         </div>
@@ -1771,11 +1757,11 @@ export default function IdentityHubPage() {
   
   const canPanView = canViewFeature(user?.role, permissions, PAN_VIEW_PERMISSIONS);
   const canGstView = canViewFeature(user?.role, permissions, GST_VIEW_PERMISSIONS);
-  const canMobileToPanView = canViewFeature(user?.role, permissions, MOBILE_TO_PAN_VIEW_PERMISSIONS);
+  const canMobileToPanView = false;
   const canAadhaarView = canViewFeature(user?.role, permissions, AADHAAR_DIGILOCKER_VIEW_PERMISSIONS);
   const canPanVerify = isSuperAdmin || hasAnyPermission(permissions, ['pan.verification.read']);
   const canGstVerify = isSuperAdmin || hasAnyPermission(permissions, ['gst.verification.read']);
-  const canMobileToPanLookup = isSuperAdmin || hasAnyPermission(permissions, ['pan.mobile-to-pan.read']);
+  const canMobileToPanLookup = false;
 
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [refreshHistory, setRefreshHistory] = useState(0);
@@ -2022,7 +2008,7 @@ export default function IdentityHubPage() {
                 Identity &amp; Business Intelligence Hub
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Unified verification portal for PAN Comprehensive, GSTIN Taxpayer, Aadhaar DigiLocker e-KYC &amp; Mobile-to-PAN lookups.
+                Unified verification portal for PAN Comprehensive, GSTIN Taxpayer and Aadhaar DigiLocker e-KYC.
               </p>
             </div>
 
@@ -2185,37 +2171,6 @@ export default function IdentityHubPage() {
             </div>
           )}
 
-          {canMobileToPanView && (
-            <div
-              onClick={() => setActiveTab('mobileToPan')}
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-500 hover:shadow-md flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                    <Phone className="h-4 w-4" />
-                  </div>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200/60 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-800 truncate">
-                    <CheckCircle2 className="h-2.5 w-2.5 shrink-0" /> Mobile Match
-                  </span>
-                </div>
-
-                <div className="mt-3">
-                  <h2 className="text-xs sm:text-sm font-bold text-slate-950 group-hover:text-blue-600 transition-colors leading-snug">
-                    Mobile To PAN
-                  </h2>
-                  <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">
-                    Match citizen name and phone number to find linked masked PAN.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
-                <ApiServicePrice summary={billing.summary} serviceKey="MOBILE_TO_PAN" />
-                <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-transform group-hover:translate-x-1 shrink-0" />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Live Unified Verification History Activity Table */}
@@ -2231,7 +2186,7 @@ export default function IdentityHubPage() {
     );
   }
 
-  // --- SUB-SERVICE TABS (PAN, GST, AADHAAR, MOBILE-TO-PAN) ---
+  // --- SUB-SERVICE TABS (PAN, GST, AADHAAR) ---
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       {/* Sub-Navigation Bar */}
@@ -2291,23 +2246,6 @@ export default function IdentityHubPage() {
               }`}
             >
               Aadhaar DigiLocker
-            </button>
-          )}
-          {canMobileToPanView && (
-            <button
-              type="button"
-              onClick={() => {
-                setMobileToPanResponse(null);
-                setMobileToPanError('');
-                setActiveTab('mobileToPan');
-              }}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                activeTab === 'mobileToPan'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              Mobile To PAN
             </button>
           )}
         </div>

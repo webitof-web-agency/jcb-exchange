@@ -32,6 +32,8 @@ test('exposes separate AI use and shared-provider management permissions', () =>
   assert.deepEqual(AI_PERMISSION_DEFINITIONS, [
     { id: 'ai.use', label: 'Use JCB Intelligence Hub' },
     { id: 'ai.manage', label: 'Manage Shared AI Provider Settings' },
+    { id: 'ai.sensitive.read', label: 'View AI-sensitive fields (still masked to providers)' },
+    { id: 'identity.sensitive.read', label: 'View identity-sensitive fields (still masked to providers)' },
   ]);
 });
 

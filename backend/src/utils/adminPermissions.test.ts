@@ -83,12 +83,8 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
   assert.equal(allowedAdminPermissions.has('rc.mobile-number-check.read'), false);
 });
 
-test('allowedAdminPermissions exposes only the Mobile To PAN view permission', () => {
-  ['pan.mobile-to-pan.read'].forEach((permission) => {
-    assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
-  });
-
-  ['pan.mobile-to-pan.lookup', 'pan.mobile-to-pan.history'].forEach((permission) => {
+test('allowedAdminPermissions does not expose the removed Mobile To PAN permission', () => {
+  ['pan.mobile-to-pan.read', 'pan.mobile-to-pan.lookup', 'pan.mobile-to-pan.history'].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), false, `${permission} should not be exposed`);
   });
 });

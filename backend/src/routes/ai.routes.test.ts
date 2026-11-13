@@ -26,13 +26,21 @@ test('protects every AI endpoint with authentication and internal AI access midd
 
   assert.deepEqual(endpoints, [
     'get:/status',
+    'get:/models',
     'get:/tools',
+    'get:/observability',
+    'get:/sync',
     'get:/briefing',
     'get:/history',
     'post:/history',
+    'delete:/history',
     'get:/history/:conversationId/messages',
     'patch:/history/:conversationId',
+    'delete:/history/:conversationId',
     'post:/chat',
+    'post:/feedback',
+    'get:/memory',
+    'delete:/memory/:id',
     'get:/actions/catalog',
     'get:/actions/proposals',
     'post:/actions/proposals',
@@ -52,6 +60,9 @@ test('keeps AI provider settings behind the dedicated AI settings permission han
 
   assert.deepEqual(aiSettingsRoutes, [
     { path: '/ai-settings', methods: ['get'], handlers: ['requireAiSettingsManagement', 'getAiSettingsController'] },
+    { path: '/ai-settings/models', methods: ['get'], handlers: ['requireAiSettingsManagement', 'getAiModelsController'] },
+    { path: '/ai-settings/models', methods: ['post'], handlers: ['requireAiSettingsManagement', 'postAiModelsController'] },
+    { path: '/ai-settings/key/reveal', methods: ['get'], handlers: ['requireAiSettingsManagement', 'revealAiSettingsKeyController'] },
     { path: '/ai-settings', methods: ['put'], handlers: ['requireAiSettingsManagement', 'updateAiSettingsController'] },
     { path: '/ai-settings/test', methods: ['post'], handlers: ['requireAiSettingsManagement', 'testAiSettingsConnectionController'] },
     { path: '/ai-settings/key', methods: ['delete'], handlers: ['requireAiSettingsManagement', 'removeAiSettingsKeyController'] },

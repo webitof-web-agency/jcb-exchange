@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NextFunction, Request, Response } from 'express';
-import { createDatabaseRateLimiter, createRateLimiter } from './rateLimit.middleware';
+import { createDatabaseRateLimiter, createRateLimiter, surepassRateLimitKey } from './rateLimit.middleware';
 
 const fakeResponse = () => {
   const response = { statusCode: 200, headers: {} as Record<string, string>, body: undefined as unknown };
@@ -70,4 +70,37 @@ test('the database-backed limiter returns 429 after the shared counter reaches i
   assert.equal(blocked.response.statusCode, 429);
   assert.deepEqual(blocked.response.body, { error: 'Too many requests. Please try again later.' });
   assert.ok(Number(blocked.response.headers['Retry-After']) > 0);
+});
+
+test('Surepass rate-limit identity is scoped to the authenticated operator and operation', () => {
+  const first = surepassRateLimitKey({
+    baseUrl: '/pan-verification',
+    path: '/verify',
+    user: { id: 'operator-1' },
+    ip: '1.1.1.1',
+  } as unknown as Request);
+  const second = surepassRateLimitKey({
+    baseUrl: '/pan-verification',
+    path: '/verify',
+    user: { id: 'operator-1' },
+    ip: '9.9.9.9',
+  } as unknown as Request);
+  const otherOperation = surepassRateLimitKey({
+    baseUrl: '/gst-verification',
+    path: '/verify',
+    user: { id: 'operator-1' },
+    ip: '1.1.1.1',
+  } as unknown as Request);
+
+  const mountedPanOperation = surepassRateLimitKey({
+    baseUrl: '/pan-verification',
+    path: '/verify',
+    user: { id: 'operator-1' },
+    ip: '1.1.1.1',
+  } as unknown as Request);
+
+  assert.equal(first, second);
+  assert.notEqual(first, otherOperation);
+  assert.equal(first, mountedPanOperation);
+  assert.match(first, /^operator-1:/);
 });

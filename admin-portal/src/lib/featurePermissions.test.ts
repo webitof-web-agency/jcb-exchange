@@ -10,6 +10,7 @@ import {
 assert.equal(canViewFeature('SUPER_ADMIN', [], IDENTITY_HUB_VIEW_PERMISSIONS), true);
 assert.equal(canViewFeature('ADMIN', ['pan.verification.read'], IDENTITY_HUB_VIEW_PERMISSIONS), true);
 assert.equal(canViewFeature('ADMIN', ['pan.verification.verify'], IDENTITY_HUB_VIEW_PERMISSIONS), false);
+assert.equal(IDENTITY_HUB_VIEW_PERMISSIONS.includes('pan.mobile-to-pan.read'), false);
 assert.equal(canViewFeature('EMPLOYEE', ['rc.challan.verification.read'], VEHICLE_TRANSPORT_VIEW_PERMISSIONS), true);
 assert.equal(canViewFeature('EMPLOYEE', ['rc.challan.verification.verify'], VEHICLE_TRANSPORT_VIEW_PERMISSIONS), false);
 assert.equal(canViewFeature('ADMIN', ['ALL_ACCESS'], VEHICLE_TRANSPORT_VIEW_PERMISSIONS), true);

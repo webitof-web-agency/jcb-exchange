@@ -4,27 +4,33 @@ import Link from 'next/link';
 import { isAxiosError } from 'axios';
 import {
   AlertCircle,
+  Archive,
   CheckCircle2,
   ChevronDown,
   Clipboard,
   Copy,
+  History,
   Loader2,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
   RefreshCw,
+  Search,
   Send,
   Settings2,
   ShieldCheck,
   Sparkles,
-  TerminalSquare,
-  Wrench,
+  Trash2,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
+import { formatAiTimestamp, normalizeAiDisplayText } from './aiDisplay';
 import {
   getAiRuntimePresentation,
   getAiToolArguments,
@@ -43,15 +49,38 @@ type AiChatResponse = {
   provider: string;
   model: string;
   answer: string;
-  tool?: { name: string; label: string };
+  tool?: {
+    name: string;
+    label: string;
+    source?: string;
+    fetchedAt?: string;
+    automatic?: boolean;
+    confidenceScore?: number;
+    confidenceLabel?: string;
+  };
 };
 
 type AiConversationMessage = {
+  id: string;
+  conversationId: string;
   role: 'USER' | 'ASSISTANT';
   content: string;
   requestId?: string | null;
   provider?: string | null;
   modelAlias?: string | null;
+  toolName?: string | null;
+  toolSource?: string | null;
+  toolFetchedAt?: string | null;
+  createdAt: string;
+};
+
+type AiConversation = {
+  id: string;
+  title: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type AiToolsResponse = {
@@ -91,6 +120,7 @@ const errorMessage = (error: unknown, fallback: string) => {
 const defaultStatus: AiRuntimeStatus = {
   enabled: false,
   provider: 'openai',
+  model: 'not configured',
   modelConfigured: false,
   keyConfigured: false,
 };
@@ -107,7 +137,6 @@ export default function AiCommandCenter() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [answer, setAnswer] = useState<AiChatResponse | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [tools, setTools] = useState<AiReadOnlyTool[]>([]);
@@ -118,16 +147,43 @@ export default function AiCommandCenter() {
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<AiConversation[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<AiConversationMessage[]>([]);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
-  const [isResponseOpen, setIsResponseOpen] = useState(true);
   const [isInspectorExpanded, setIsInspectorExpanded] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'tools' | 'prompts' | 'status'>('tools');
+  const conversationLoadRef = useRef(0);
 
   const isSuperadmin = user?.role === 'SUPER_ADMIN';
   const presentation = useMemo(() => getAiRuntimePresentation(status), [status]);
   const normalizedMessage = normalizeAiMessage(message);
   const selectedTool = tools.find((tool) => tool.name === selectedToolName) || null;
-  const canSubmit = Boolean(status.enabled && normalizedMessage && (!selectedTool || selectedTool.name !== 'listing.search' || toolQuery.trim()) && !chatLoading);
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
+  const filteredConversations = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase();
+    return conversations.filter((conversation) => !query
+      || `${conversation.title} ${conversation.status}`.toLowerCase().includes(query));
+  }, [conversations, historyQuery]);
+  const requiresToolQuery = selectedTool?.name === 'listing.search'
+    || selectedTool?.name === 'listing.detail'
+    || selectedTool?.name === 'vehicle.identity';
+  const hasToolQueryInput = requiresToolQuery || selectedTool?.name === 'forecast.operations';
+  const canSubmit = Boolean(
+    status.enabled
+    && normalizedMessage
+    && activeConversation?.status !== 'ARCHIVED'
+    && (!requiresToolQuery || toolQuery.trim())
+    && !chatLoading,
+  );
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -137,6 +193,7 @@ export default function AiCommandCenter() {
       setStatus({
         enabled: Boolean(response.data.enabled),
         provider: response.data.provider || 'configured provider',
+        model: response.data.model || 'not configured',
         modelConfigured: Boolean(response.data.modelConfigured),
         keyConfigured: Boolean(response.data.keyConfigured),
         configurationError: response.data.configurationError || null,
@@ -171,36 +228,44 @@ export default function AiCommandCenter() {
     }
   }, []);
 
-  const loadLatestConversation = useCallback(async (requestedConversationId?: string) => {
+  const loadConversationState = useCallback(async (requestedConversationId?: string) => {
+    const loadId = conversationLoadRef.current + 1;
+    conversationLoadRef.current = loadId;
+    setHistoryLoading(true);
+    setMessagesLoading(true);
+    setHistoryError(null);
     try {
-      const historyResponse = await api.get<{ success: boolean; conversations: Array<{ id: string; status: 'ACTIVE' | 'ARCHIVED' }> }>('/ai/history');
+      const historyResponse = await api.get<{ success: boolean; conversations: AiConversation[] }>('/ai/history');
+      const nextConversations = historyResponse.data.conversations || [];
       const conversation = (requestedConversationId
-        ? historyResponse.data.conversations.find((item) => item.id === requestedConversationId && item.status === 'ACTIVE')
+        ? nextConversations.find((item) => item.id === requestedConversationId)
         : null)
-        || historyResponse.data.conversations.find((item) => item.status === 'ACTIVE')
+        || nextConversations.find((item) => item.status === 'ACTIVE')
+        || nextConversations[0]
         || null;
+
+      if (loadId !== conversationLoadRef.current) return;
+      setConversations(nextConversations);
       if (!conversation) {
         setActiveConversationId(null);
-        setAnswer(null);
+        setConversationMessages([]);
         return;
       }
-      const messagesResponse = await api.get<{ success: boolean; messages: AiConversationMessage[] }>(`/ai/history/${conversation.id}/messages`);
-      const latestAssistant = [...messagesResponse.data.messages].reverse().find((item) => item.role === 'ASSISTANT');
+
       setActiveConversationId(conversation.id);
-      if (latestAssistant) {
-        setAnswer({
-          success: true,
-          conversationId: conversation.id,
-          requestId: latestAssistant.requestId || 'saved-history',
-          provider: latestAssistant.provider || 'saved history',
-          model: latestAssistant.modelAlias || 'saved history',
-          answer: latestAssistant.content,
-        });
-      } else {
-        setAnswer(null);
+      const messagesResponse = await api.get<{ success: boolean; messages: AiConversationMessage[] }>(`/ai/history/${conversation.id}/messages`);
+      if (loadId !== conversationLoadRef.current) return;
+      const nextMessages = messagesResponse.data.messages || [];
+      setConversationMessages(nextMessages);
+    } catch (error) {
+      if (loadId === conversationLoadRef.current) {
+        setHistoryError(errorMessage(error, 'Conversation history could not be loaded.'));
       }
-    } catch {
-      // History is an enhancement to the operational prompt; provider status and prompt remain usable.
+    } finally {
+      if (loadId === conversationLoadRef.current) {
+        setHistoryLoading(false);
+        setMessagesLoading(false);
+      }
     }
   }, []);
 
@@ -225,22 +290,106 @@ export default function AiCommandCenter() {
     return () => window.clearTimeout(timer);
   }, [loadBriefing]);
 
-  useEffect(() => subscribeToAiConversationUpdates(({ conversationId }) => {
-    void loadLatestConversation(conversationId);
-  }), [loadLatestConversation]);
+  useEffect(() => subscribeToAiConversationUpdates(({ conversationId, action }) => {
+    void loadConversationState(action === 'deleted' || action === 'cleared' ? undefined : conversationId);
+  }), [loadConversationState]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadLatestConversation();
+      void loadConversationState();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadLatestConversation]);
+  }, [loadConversationState]);
+
+  const handleNewConversation = () => {
+    setActiveConversationId(null);
+    setConversationMessages([]);
+    setMessage('');
+    setSelectedToolName(null);
+    setToolQuery('');
+    setChatError(null);
+  };
+
+  const loadConversationMessages = async (conversationId: string) => {
+    setMessagesLoading(true);
+    setHistoryError(null);
+    setActiveConversationId(conversationId);
+    try {
+      const response = await api.get<{ success: boolean; messages: AiConversationMessage[] }>(`/ai/history/${conversationId}/messages`);
+      const nextMessages = response.data.messages || [];
+      setConversationMessages(nextMessages);
+      notifyAiConversationUpdated({ conversationId });
+    } catch (error) {
+      const nextError = errorMessage(error, 'Conversation history could not be loaded.');
+      setHistoryError(nextError);
+      toast.error(nextError);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const handleArchiveConversation = async (conversationId: string) => {
+    try {
+      await api.patch(`/ai/history/${conversationId}`, { archived: true });
+      setConversations((items) => items.map((item) => item.id === conversationId ? { ...item, status: 'ARCHIVED' } : item));
+      if (activeConversationId === conversationId) handleNewConversation();
+      notifyAiConversationUpdated({ conversationId, action: 'updated' });
+      toast.success('Conversation archived.');
+    } catch (error) {
+      toast.error(errorMessage(error, 'Conversation could not be archived.'));
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: string) => {
+    if (deletingId) return;
+    setDeletingId(conversationId);
+    try {
+      await api.delete(`/ai/history/${conversationId}`);
+      setConversations((items) => items.filter((item) => item.id !== conversationId));
+      setConfirmDeleteId(null);
+      if (activeConversationId === conversationId) handleNewConversation();
+      notifyAiConversationUpdated({ conversationId, action: 'deleted' });
+      toast.success('Conversation deleted.');
+    } catch (error) {
+      toast.error(errorMessage(error, 'Conversation could not be deleted.'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (clearingHistory) return;
+    setClearingHistory(true);
+    try {
+      await api.delete('/ai/history');
+      setConversations([]);
+      setActiveConversationId(null);
+      setConversationMessages([]);
+      setConfirmDeleteId(null);
+      setConfirmClearHistory(false);
+      notifyAiConversationUpdated({ action: 'cleared' });
+      toast.success('All chat history deleted.');
+    } catch (error) {
+      toast.error(errorMessage(error, 'Chat history could not be cleared.'));
+    } finally {
+      setClearingHistory(false);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextMessage = normalizeAiMessage(message);
-    if (!nextMessage || !status.enabled) return;
+    if (!nextMessage || !status.enabled || activeConversation?.status === 'ARCHIVED' || (requiresToolQuery && !toolQuery.trim())) return;
 
+    const optimisticMessageId = `pending-${Date.now()}`;
+    const optimisticMessage: AiConversationMessage = {
+      id: optimisticMessageId,
+      conversationId: activeConversationId || 'pending',
+      role: 'USER',
+      content: nextMessage,
+      createdAt: new Date().toISOString(),
+    };
+    setConversationMessages((items) => [...items, optimisticMessage]);
     setChatLoading(true);
     setChatError(null);
     try {
@@ -253,14 +402,15 @@ export default function AiCommandCenter() {
         };
       }
       const response = await api.post<AiChatResponse>('/ai/chat', request);
-      setAnswer(response.data);
       if (response.data.conversationId) {
         setActiveConversationId(response.data.conversationId);
         notifyAiConversationUpdated({ conversationId: response.data.conversationId });
+        await loadConversationState(response.data.conversationId);
       }
       setMessage('');
     } catch (error) {
       const nextError = errorMessage(error, 'The AI request could not be completed.');
+      setConversationMessages((items) => items.filter((item) => item.id !== optimisticMessageId));
       setChatError(nextError);
       toast.error(nextError);
     } finally {
@@ -268,10 +418,9 @@ export default function AiCommandCenter() {
     }
   };
 
-  const handleCopy = async () => {
-    if (!answer?.answer) return;
+  const handleCopyMessage = async (content: string) => {
     try {
-      await navigator.clipboard.writeText(answer.answer);
+      await navigator.clipboard.writeText(content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || content);
       toast.success('AI response copied.');
     } catch {
       toast.error('Response could not be copied.');
@@ -420,6 +569,140 @@ export default function AiCommandCenter() {
           
           {/* Left Column: Interactive Chat & Response Flow */}
           <div className="lg:col-span-8 space-y-3.5 min-w-0">
+
+            {/* Shared persisted conversation workspace. The floating assistant and this module
+                both read/write the same /ai/history contract and broadcast selection changes. */}
+            <section className="flex h-[min(720px,calc(100dvh-10rem))] min-h-[420px] flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs" aria-label="AI conversation history">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <History className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <h2 className="truncate text-xs font-bold text-slate-900">Conversation history</h2>
+                    <p className="hidden text-[10px] text-slate-500 sm:block">Saved per operator and shared with the floating assistant.</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleNewConversation}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 transition hover:border-[#C28B00] hover:text-slate-900"
+                    aria-label="Start new conversation"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">New</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryCollapsed((collapsed) => !collapsed)}
+                    className="hidden h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#C28B00] hover:text-slate-900 md:inline-flex"
+                    aria-label={historyCollapsed ? 'Expand conversation history' : 'Collapse conversation history'}
+                    title={historyCollapsed ? 'Expand history' : 'Collapse history'}
+                  >
+                    {historyCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden="true" /> : <PanelLeftClose className="h-3.5 w-3.5" aria-hidden="true" />}
+                  </button>
+                </div>
+              </div>
+
+              {historyError ? (
+                <div className="border-b border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-800" role="alert">{historyError}</div>
+              ) : null}
+
+              <div className={`grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1 ${historyCollapsed ? 'md:grid-cols-[56px_minmax(0,1fr)]' : 'md:grid-cols-[minmax(190px,230px)_minmax(0,1fr)]'}`}>
+                <aside className={`border-b border-slate-200 bg-[#F8FAFC] md:border-b-0 md:border-r ${historyCollapsed ? 'md:w-14' : ''}`}>
+                  {historyCollapsed ? (
+                    <div className="hidden h-full flex-col items-center gap-2 p-2 md:flex">
+                      <button type="button" onClick={() => setHistoryCollapsed(false)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-900" aria-label="Expand history"><PanelLeftOpen className="h-4 w-4" /></button>
+                      <button type="button" onClick={handleNewConversation} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-900" aria-label="New conversation"><Plus className="h-4 w-4" /></button>
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[180px] flex-col p-2.5">
+                      <label className="relative block">
+                        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                        <span className="sr-only">Search conversations</span>
+                        <input
+                          value={historyQuery}
+                          onChange={(event) => setHistoryQuery(event.target.value)}
+                          placeholder="Search conversations..."
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2 text-xs text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#C28B00] focus:ring-2 focus:ring-[#FFC107]/20"
+                        />
+                      </label>
+                      <div className="mt-2 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+                        {historyLoading ? <div className="flex justify-center py-5 text-slate-400"><Loader2 className="h-4 w-4 animate-spin" aria-label="Loading history" /></div> : null}
+                        {!historyLoading && filteredConversations.length === 0 ? <p className="px-1 py-5 text-[11px] leading-4 text-slate-500">No saved conversations yet.</p> : null}
+                        {!historyLoading ? filteredConversations.map((conversation) => {
+                          const isActive = conversation.id === activeConversationId;
+                          const isConfirming = confirmDeleteId === conversation.id;
+                          const isDeleting = deletingId === conversation.id;
+                          return (
+                            <div key={conversation.id} className={`rounded-lg border px-2 py-1.5 transition ${isConfirming ? 'border-red-200 bg-red-50' : isActive ? 'border-[#FFC107]/70 bg-[#FFF8E1]' : 'border-transparent hover:border-slate-200 hover:bg-white'}`}>
+                              {isConfirming ? (
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="truncate text-[10px] font-semibold text-red-700">Delete chat?</span>
+                                  <div className="flex shrink-0 gap-1">
+                                    <button type="button" disabled={isDeleting} onClick={() => void handleDeleteConversation(conversation.id)} className="rounded bg-red-600 px-1.5 py-1 text-[10px] font-bold text-white disabled:opacity-60">{isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Delete'}</button>
+                                    <button type="button" disabled={isDeleting} onClick={() => setConfirmDeleteId(null)} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-slate-600">Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start gap-1">
+                                  <button type="button" onClick={() => void loadConversationMessages(conversation.id)} className="min-w-0 flex-1 text-left">
+                                    <span className="block truncate text-[11px] font-semibold text-slate-800">{conversation.title.length > 28 ? `${conversation.title.slice(0, 28).trim()}…` : conversation.title}</span>
+                                    <span className="mt-0.5 block text-[10px] text-slate-400">{conversation.status === 'ARCHIVED' ? 'Archived' : new Date(conversation.lastMessageAt || conversation.updatedAt).toLocaleDateString()}</span>
+                                  </button>
+                                  <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+                                    {conversation.status === 'ACTIVE' ? <button type="button" onClick={() => void handleArchiveConversation(conversation.id)} className="rounded p-1 text-slate-400 hover:bg-amber-50 hover:text-amber-700" aria-label="Archive conversation" title="Archive"><Archive className="h-3 w-3" /></button> : null}
+                                    <button type="button" onClick={() => setConfirmDeleteId(conversation.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-700" aria-label="Delete conversation" title="Delete"><Trash2 className="h-3 w-3" /></button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }) : null}
+                      </div>
+                      {conversations.length > 0 ? (
+                        confirmClearHistory ? (
+                          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
+                            <p className="text-[10px] font-semibold leading-4 text-red-800">Delete all saved conversations for this operator?</p>
+                            <div className="mt-1.5 flex gap-1.5">
+                              <button type="button" onClick={() => void handleClearHistory()} disabled={clearingHistory} className="inline-flex h-6 flex-1 items-center justify-center gap-1 rounded bg-red-600 px-2 text-[10px] font-bold text-white disabled:opacity-60">{clearingHistory ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Confirm</button>
+                              <button type="button" onClick={() => setConfirmClearHistory(false)} disabled={clearingHistory} className="h-6 rounded border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-600 disabled:opacity-60">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setConfirmClearHistory(true)} disabled={clearingHistory} className="mt-2 inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[10px] font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"><Trash2 className="h-3 w-3" /> Clear history</button>
+                        )
+                      ) : null}
+                    </div>
+                  )}
+                </aside>
+
+                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-50/70">
+                  <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3.5 py-3.5" aria-live="polite">
+                    {messagesLoading ? <div className="flex min-h-[260px] items-center justify-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading messages" /></div> : null}
+                    {!messagesLoading && conversationMessages.length === 0 ? (
+                      <div className="flex min-h-[260px] flex-col items-center justify-center px-3 text-center">
+                        <MessageSquareText className="h-7 w-7 text-slate-300" aria-hidden="true" />
+                        <p className="mt-2 text-xs font-semibold text-slate-700">{activeConversation ? 'No messages in this conversation' : 'Start a new conversation'}</p>
+                        <p className="mt-1 max-w-sm text-[11px] leading-5 text-slate-400">Your user questions and verified AI replies will stay together here and in the floating assistant.</p>
+                      </div>
+                    ) : null}
+                    {!messagesLoading ? conversationMessages.map((conversationMessage) => (
+                      <div key={conversationMessage.id} className={`flex ${conversationMessage.role === 'USER' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`min-w-0 max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-2xs ${conversationMessage.role === 'USER' ? 'rounded-br-md bg-[#061532] text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'}`}>
+                          {conversationMessage.role === 'ASSISTANT'
+                            ? <div className="prose prose-sm max-w-none break-words text-inherit [&_a]:text-[#0B5FFF] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-slate-100 [&_table]:block [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: purifyAiHtml(normalizeAiDisplayText(conversationMessage.content)) }} />
+                            : <p className="whitespace-pre-wrap break-words">{conversationMessage.content}</p>}
+                          <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${conversationMessage.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
+                            <span className="truncate">{conversationMessage.role === 'ASSISTANT' && (conversationMessage.provider || conversationMessage.modelAlias) ? `${conversationMessage.provider || status.provider} · ${conversationMessage.modelAlias || status.model} · ` : null}{conversationMessage.role === 'ASSISTANT' && conversationMessage.toolName ? `Database · ${conversationMessage.toolName} · ` : null}{formatAiTimestamp(conversationMessage.createdAt)}</span>
+                            {conversationMessage.role === 'ASSISTANT' ? <button type="button" onClick={() => void handleCopyMessage(conversationMessage.content)} className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Copy response" title="Copy response"><Copy className="h-3 w-3" /> Copy</button> : null}
+                          </div>
+                        </div>
+                      </div>
+                    )) : null}
+                    {chatLoading ? <div className="flex justify-start"><div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium text-slate-500 shadow-2xs"><Loader2 className="h-4 w-4 animate-spin text-[#C28B00]" /> Thinking…</div></div> : null}
+                  </div>
+                </div>
+              </div>
+            </section>
             
             {/* Prompt Card */}
             <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
@@ -431,7 +714,7 @@ export default function AiCommandCenter() {
                   <button
                     key={idx}
                     type="button"
-                    disabled={!status.enabled || chatLoading}
+                    disabled={!status.enabled || chatLoading || activeConversation?.status === 'ARCHIVED'}
                     onClick={() => setMessage(quickPrompt)}
                     className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-200 transition disabled:opacity-50"
                   >
@@ -458,17 +741,25 @@ export default function AiCommandCenter() {
               )}
 
               {/* Tool search query input if listing.search selected */}
-              {selectedTool?.name === 'listing.search' && (
+              {hasToolQueryInput && (
                 <div className="mb-2.5">
                   <label htmlFor="ai-tool-query" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Listing Search Term
+                    {selectedTool.name === 'listing.detail'
+                      ? 'Listing Detail Term'
+                      : selectedTool.name === 'listing.search'
+                        ? 'Listing Search Term'
+                        : selectedTool.name === 'vehicle.identity'
+                          ? 'Vehicle Number or Listing Term'
+                          : 'Forecast Metric (sales, inventory, or finance)'}
                   </label>
                   <input
                     id="ai-tool-query"
                     value={toolQuery}
                     onChange={(event) => setToolQuery(event.target.value.slice(0, 100))}
                     maxLength={100}
-                    placeholder="e.g. JCB 3DX Raipur"
+                    placeholder={selectedTool.name === 'forecast.operations'
+                      ? 'e.g. inventory'
+                      : selectedTool.name === 'vehicle.identity' ? 'e.g. CG04NF0268' : 'e.g. JCB 3DX Raipur'}
                     className="h-9 w-full rounded-lg border border-slate-300 px-3 text-xs text-slate-900 outline-none focus:border-[#C28B00] focus:ring-2 focus:ring-[#FFC107]/20"
                     disabled={!status.enabled || chatLoading}
                   />
@@ -483,9 +774,9 @@ export default function AiCommandCenter() {
                   onChange={(event) => setMessage(event.target.value.slice(0, 4_000))}
                   maxLength={4_000}
                   rows={3}
-                  placeholder="Ask internal operational guidance (e.g. Summarize pending partner reviews and tell me what to check first)..."
+                  placeholder={activeConversation?.status === 'ARCHIVED' ? 'Start a new conversation to continue…' : 'Ask internal operational guidance (e.g. Summarize pending partner reviews and tell me what to check first)...'}
                   className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs sm:text-sm leading-relaxed text-slate-900 placeholder:text-slate-400 outline-none transition focus:bg-white focus:border-[#C28B00] focus:ring-2 focus:ring-[#FFC107]/20 disabled:bg-slate-100"
-                  disabled={!status.enabled || chatLoading}
+                  disabled={!status.enabled || chatLoading || activeConversation?.status === 'ARCHIVED'}
                 />
 
                 <div className="flex items-center justify-between">
@@ -539,58 +830,6 @@ export default function AiCommandCenter() {
                 <span>{chatError}</span>
               </div>
             )}
-
-            {/* Inline Assistant Response Box */}
-            <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs" aria-live="polite">
-              <div className="min-h-10 bg-slate-50/80 px-4 flex items-center justify-between gap-2 border-b border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsResponseOpen((previous) => !previous)}
-                  className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C28B00]"
-                  aria-expanded={isResponseOpen}
-                  aria-controls="verified-ai-response-content"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-900 text-[#FFC107]">
-                    <Sparkles className="h-3 w-3" aria-hidden="true" />
-                  </span>
-                  <span className="truncate text-xs font-bold text-slate-800">Verified AI Response</span>
-                  <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${isResponseOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-                </button>
-                {answer && (
-                  <button
-                    type="button"
-                    onClick={() => void handleCopy()}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-900 transition"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Copy
-                  </button>
-                )}
-              </div>
-              {isResponseOpen && <div id="verified-ai-response-content" className="max-h-[520px] overflow-y-auto overscroll-contain p-4 custom-scrollbar sm:p-5 lg:max-h-[calc(100vh-360px)]">
-                {answer ? (
-                  <>
-                    <div
-                      className="prose prose-sm max-w-none text-xs sm:text-sm leading-relaxed text-slate-800"
-                      dangerouslySetInnerHTML={{ __html: purifyAiHtml(answer.answer) }}
-                    />
-                    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-[10px] text-slate-400">
-                      <span>Request ID: {answer.requestId}</span>
-                      <span>Provider: {answer.provider}</span>
-                      <span>Model: {answer.model}</span>
-                      {answer.tool ? <span>Tool: {answer.tool.label}</span> : null}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex min-h-20 flex-col items-center justify-center text-center py-2">
-                    <MessageSquareText className="h-6 w-6 text-slate-300" aria-hidden="true" />
-                    <p className="mt-2 text-xs font-semibold text-slate-700">No request yet</p>
-                    <p className="text-[11px] text-slate-400 max-w-sm">
-                      Your verified internal AI response will appear here after submitting a prompt.
-                    </p>
-                  </div>
-                )}
-              </div>}
-            </div>
 
           </div>
 
@@ -673,9 +912,10 @@ export default function AiCommandCenter() {
                       disabled={!status.enabled || chatLoading}
                       onClick={() => {
                         setSelectedToolName(tool.name);
-                        if (tool.name === 'listing.search' && !message) {
+                        if ((tool.name === 'listing.search' || tool.name === 'listing.detail' || tool.name === 'vehicle.identity') && !message) {
                           setMessage('Summarize the matching listings and their current availability.');
                         }
+                        if (tool.name === 'forecast.operations' && !toolQuery) setToolQuery('sales');
                       }}
                       className={`w-full rounded-lg border p-2.5 text-left transition ${
                         selectedToolName === tool.name
@@ -732,7 +972,7 @@ export default function AiCommandCenter() {
                   </div>
                   <div className="flex justify-between px-3 py-2">
                     <span className="text-slate-500">Model</span>
-                    <span className="font-bold text-slate-800">{status.modelConfigured ? 'Configured' : 'Not configured'}</span>
+                    <span className="max-w-[11rem] truncate font-bold text-slate-800">{status.modelConfigured ? status.model : 'Not configured'}</span>
                   </div>
                   <div className="flex justify-between px-3 py-2">
                     <span className="text-slate-500">Access Scope</span>

@@ -245,6 +245,16 @@ enum AiBriefingNotificationStatus {
   FAILED
 }
 
+enum AiMemorySource {
+  EXPLICIT_OPERATOR
+  APPROVED_FEEDBACK
+}
+
+enum AiSyncStatus {
+  READY
+  FAILED
+}
+
 enum CustomerPrimeSubscriptionStatus {
   PENDING
   ACTIVE
@@ -608,6 +618,8 @@ model User {
   aiActionProposals                   AiActionProposal[]                   @relation("AiActionProposalRequester")
   aiApprovals                         AiApproval[]                         @relation("AiApprovalApprover")
   aiBudgetUsage                       AiBudgetUsage[]                      @relation("AiBudgetUsageActor")
+  aiReliabilityEvents                 AiReliabilityEvent[]                 @relation("AiReliabilityActor")
+  aiMemories                          AiMemory[]                            @relation("AiMemoryActor")
 
   @@index([role, status, archivedAt, updatedAt])
 }
@@ -2304,6 +2316,8 @@ model AiConversationMessage {
   provider       String?                      @db.VarChar(40)
   modelAlias     String?                      @db.VarChar(120)
   toolName       String?                      @db.VarChar(100)
+  toolSource     String?                      @db.VarChar(40)
+  toolFetchedAt  DateTime?
   createdAt      DateTime                     @default(now())
 
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -2328,6 +2342,7 @@ model AiToolCall {
   outputItemCount  Int?
   redactionApplied Boolean          @default(true)
   durationMs       Int?
+  dataAvailability String?          @db.VarChar(20)
   errorCode        String?          @db.VarChar(100)
   startedAt        DateTime         @default(now())
   completedAt      DateTime?
@@ -2355,6 +2370,24 @@ model AiFeedback {
 
   @@unique([runId, actorUserId])
   @@index([actorUserId, createdAt])
+}
+
+model AiMemory {
+  id              String         @id @default(uuid())
+  actorUserId     String
+  source          AiMemorySource
+  contentRedacted String         @db.VarChar(1000)
+  contentHash     String         @db.VarChar(128)
+  contentHmac     String?        @db.VarChar(128)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  expiresAt       DateTime?
+
+  actor User @relation("AiMemoryActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([actorUserId, contentHash])
+  @@index([actorUserId, updatedAt])
+  @@index([expiresAt])
 }
 
 model AiActionProposal {
@@ -2471,6 +2504,33 @@ model AiRateLimitBucket {
   @@index([expiresAt])
 }
 
+model AiReliabilityEvent {
+  id                    String   @id @default(uuid())
+  actorUserId           String?
+  eventType             String   @db.VarChar(30)
+  module                String?  @db.VarChar(80)
+  toolName              String?  @db.VarChar(100)
+  provider              String?  @db.VarChar(40)
+  status                String   @db.VarChar(20)
+  latencyMs             Int?
+  databaseLatencyMs     Int?
+  surepassLatencyMs     Int?
+  permissionDenied      Boolean  @default(false)
+  clarification         Boolean  @default(false)
+  emptyData             Boolean  @default(false)
+  providerFailure       Boolean  @default(false)
+  forecastConfidence    Int?
+  errorCode             String?  @db.VarChar(100)
+  createdAt             DateTime @default(now())
+
+  actor User? @relation("AiReliabilityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([eventType, createdAt])
+  @@index([module, toolName, createdAt])
+  @@index([status, createdAt])
+}
+
 model AiBudgetUsage {
   id           String   @id @default(uuid())
   actorUserId  String
@@ -2488,6 +2548,21 @@ model AiBudgetUsage {
   @@unique([actorUserId, usageDate, feature])
   @@index([usageDate, feature])
   @@index([actorUserId, usageDate])
+}
+
+model AiSyncCheckpoint {
+  id              String       @id @default(uuid())
+  module          String       @unique @db.VarChar(80)
+  status          AiSyncStatus @default(READY)
+  recordsObserved Int          @default(0)
+  lastObservedAt  DateTime?
+  lastSyncedAt    DateTime?
+  errorCode       String?      @db.VarChar(100)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([lastSyncedAt])
 }
 
 model Notification {

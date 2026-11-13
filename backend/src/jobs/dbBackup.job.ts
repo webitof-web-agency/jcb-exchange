@@ -5,10 +5,13 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { uploadDatabaseBackupToDrive } from '../services/googleDrive.service';
-import { getAppSettings } from '../utils/appSettings';
+import {
+  getAppSettings,
+  recordDatabaseBackupFailure,
+  recordDatabaseBackupSuccess,
+} from '../utils/appSettings';
 
 const execFileAsync = promisify(execFile);
-const DB_BACKUP_MAX_RETENTION = 30;
 const PG_DUMP_TIMEOUT_MS = 30 * 60 * 1000;
 
 export class DatabaseBackupInProgressError extends Error {
@@ -42,6 +45,16 @@ const getISTTimestamp = (date: Date = new Date()): string => {
   return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}${parts.second}`;
 };
 
+export const getISTDateKey = (date: Date = new Date()): string => getISTTimestamp(date).slice(0, 10);
+
+/** Backups stay forever unless an explicit positive limit is configured. */
+export const getDatabaseBackupRetention = (env: NodeJS.ProcessEnv = process.env): number | null => {
+  const raw = env.DB_BACKUP_MAX_RETENTION?.trim();
+  if (!raw) return null;
+  const value = Number.parseInt(raw, 10);
+  return Number.isInteger(value) && value > 0 ? value : null;
+};
+
 export const redactDatabaseUrl = (message: string, dbUrl: string): string => {
   try {
     const parsed = new URL(dbUrl);
@@ -57,6 +70,7 @@ export const getPgDumpCommand = (env: NodeJS.ProcessEnv = process.env): string =
 
 export const buildPgDumpArgs = (dbUrl: string, outputPath: string): string[] => [
   '--format=custom',
+  '--blobs',
   '--no-owner',
   '--no-acl',
   `--file=${outputPath}`,
@@ -126,13 +140,16 @@ type DatabaseBackupResult = {
   fileId: string;
   viewLink: string;
   deletedCount: number;
+  sizeBytes: number;
   method: 'pg_dump';
 };
 
 let activeBackupPromise: Promise<DatabaseBackupResult> | null = null;
 
 const performDatabaseBackupCycle = async (): Promise<DatabaseBackupResult> => {
-  const settings = await getAppSettings();
+  const backupDate = new Date();
+  try {
+    const settings = await getAppSettings();
   const backupFolderId = settings.googleDrive.backupFolderId?.trim() || undefined;
   const dbUrl = process.env.DATABASE_URL?.trim();
 
@@ -146,20 +163,32 @@ const performDatabaseBackupCycle = async (): Promise<DatabaseBackupResult> => {
     throw new Error('[backup] DATABASE_URL is not configured; a complete database backup cannot run.');
   }
 
-  const backupDate = new Date();
   const { buffer, filename, mimeType } = await createPgDump(dbUrl, backupDate);
   console.log(`[backup] Complete pg_dump ready — file=${filename}, size=${(buffer.length / 1024).toFixed(1)} KB`);
 
-  const { fileId, viewLink, deletedCount } = await uploadDatabaseBackupToDrive(
+  const { fileId, viewLink, deletedCount, sizeBytes } = await uploadDatabaseBackupToDrive(
     buffer,
     mimeType,
     filename,
     backupFolderId,
-    DB_BACKUP_MAX_RETENTION,
+    getDatabaseBackupRetention(),
     backupDate,
   );
 
-  return { filename, fileId, viewLink, deletedCount, method: 'pg_dump' };
+  await recordDatabaseBackupSuccess({ attemptedAt: backupDate, filename, fileId, sizeBytes });
+  return { filename, fileId, viewLink, deletedCount, sizeBytes, method: 'pg_dump' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Database backup failed.';
+    try {
+      await recordDatabaseBackupFailure({
+        attemptedAt: backupDate,
+        message: redactDatabaseUrl(message, process.env.DATABASE_URL?.trim() || ''),
+      });
+    } catch (stateError) {
+      console.error('[backup] Could not persist backup failure status:', stateError instanceof Error ? stateError.message : stateError);
+    }
+    throw error;
+  }
 };
 
 /**
@@ -179,6 +208,22 @@ export const performDatabaseBackup = (): Promise<DatabaseBackupResult> => {
   });
   activeBackupPromise = trackedPromise;
   return trackedPromise;
+};
+
+const runStartupCatchUpIfNeeded = async (): Promise<void> => {
+  const settings = await getAppSettings();
+  const lastSuccessAt = settings.databaseBackup.lastSuccessAt;
+  if (lastSuccessAt && getISTDateKey(new Date(lastSuccessAt)) === getISTDateKey()) {
+    console.log(`[backup] Startup check: today's backup already completed at ${lastSuccessAt}.`);
+    return;
+  }
+
+  console.log('[backup] Startup check found no successful backup for today; running catch-up backup.');
+  try {
+    await performDatabaseBackup();
+  } catch (error) {
+    console.error('[backup] Startup catch-up backup failed:', error instanceof Error ? error.message : error);
+  }
 };
 
 /**
@@ -205,6 +250,14 @@ export const startDatabaseBackupJob = (): void => {
     },
     { timezone: 'Asia/Kolkata' },
   );
+
+  // A deploy/restart or a sleeping instance can miss the exact midnight tick.
+  // The durable success timestamp makes the next healthy startup catch up once.
+  setTimeout(() => {
+    void runStartupCatchUpIfNeeded().catch((error) => {
+      console.error('[backup] Startup backup check failed:', error instanceof Error ? error.message : error);
+    });
+  }, 10_000);
 
   console.log('[cron] 📅 Daily complete DB backup job registered — runs at 00:00 IST every day.');
 };

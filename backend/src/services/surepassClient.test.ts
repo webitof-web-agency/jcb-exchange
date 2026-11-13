@@ -288,6 +288,26 @@ test('normalizes provider failures without treating them as successful responses
   );
 });
 
+test('emits only safe Surepass latency metadata', async () => {
+  const events: Array<Record<string, unknown>> = [];
+  const client = new SurepassClient({
+    baseUrl: 'https://sandbox.surepass.app',
+    token: 'server-only-token',
+    onRequestComplete: async (event) => { events.push(event as Record<string, unknown>); },
+    fetchImpl: async () => response({ success: true, status_code: 200, data: { owner_name: 'private' } }),
+  });
+
+  await client.verifyPan({ id_number: 'ABCPD1234E', full_name: 'Private User', dob: '2000-01-01' });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.operation, '/api/v1/pan/pan-verify');
+  assert.equal(events[0]?.status, 'SUCCEEDED');
+  assert.equal(typeof events[0]?.latencyMs, 'number');
+  assert.equal('token' in events[0]!, false);
+  assert.equal('payload' in events[0]!, false);
+  assert.equal('id_number' in events[0]!, false);
+});
+
 test('initializes the DigiLocker SDK with the server bearer token and nested data payload', async () => {
   let request: { url: string; init: RequestInit } | null = null;
   const client = new SurepassClient({

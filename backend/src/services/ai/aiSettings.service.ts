@@ -7,11 +7,14 @@ import {
   decryptAiApiKey,
   encryptAiApiKey,
 } from './aiSettings.crypto';
-import { AiProviderError, createAiProvider, type AiProvider, type AiProviderName } from './aiProvider.service';
+import { AiProviderError, createAiProvider, isSupportedAiChatModel, listAiModels, type AiProvider, type AiProviderName } from './aiProvider.service';
 
 export const AI_SETTINGS_KEY = 'ai';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
-const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022';
+// Keep the fallback on an active Anthropic API model. The provider catalog is
+// authoritative when a key is available, but a provider switch must not start
+// with a retired Claude model.
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_MODEL_LENGTH = 100;
 const MAX_API_KEY_LENGTH = 4096;
 
@@ -107,8 +110,7 @@ const normalizeModel = (value: unknown, provider: AiProviderName, fallback?: str
   if (!model || model.length > MAX_MODEL_LENGTH || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(model)) {
     throw new AiSettingsError('AI model contains invalid characters or is too long.', 400, 'AI_MODEL_INVALID');
   }
-  const providerModelPattern = provider === 'openai' ? /^(?:gpt-|o\d|chatgpt-)/i : /^claude-/i;
-  if (!providerModelPattern.test(model)) {
+  if (!isSupportedAiChatModel(provider, model)) {
     throw new AiSettingsError(`The selected model is not valid for ${provider === 'openai' ? 'OpenAI' : 'Anthropic'}.`, 400, 'AI_MODEL_INVALID');
   }
   return model;
@@ -389,14 +391,53 @@ export const saveAiSettings = async (
   return summarizeAiSettingsPayload(payload);
 };
 
+/**
+ * Reveals a database-backed key only after the caller has passed the settings
+ * management route guard. The key is never included in settings summaries.
+ */
+export const revealAiApiKey = async (
+  actorUserId: string,
+  store: AiSettingsStore = defaultStore,
+) => {
+  const current = await currentPayload(store);
+  if (!current?.encryptedApiKey) return null;
+  if (!aiSettingsEncryptionConfigured()) {
+    throw new AiSettingsError('Server-side AI settings encryption is not configured.', 503, 'AI_ENCRYPTION_NOT_CONFIGURED');
+  }
+
+  let value: string;
+  try {
+    value = decryptAiApiKey(current.encryptedApiKey, process.env.AI_SETTINGS_ENCRYPTION_KEY?.trim() || '');
+  } catch {
+    throw new AiSettingsError('The saved AI provider key could not be decrypted.', 503, 'AI_KEY_DECRYPT_FAILED');
+  }
+
+  try {
+    await store.audit({
+      actorUserId,
+      action: 'AI_SETTINGS_KEY_REVEALED',
+      after: { provider: current.provider, model: current.model, status: 'REVEALED' },
+    });
+  } catch {
+    throw new AiSettingsError('AI settings audit logging is unavailable.', 503, 'AI_AUDIT_UNAVAILABLE');
+  }
+
+  return value;
+};
+
 export const testAiConnection = async (
   actorUserId: string,
   store: AiSettingsStore = defaultStore,
   providerFactory: (provider: AiProviderName, apiKey: string) => AiProvider = (provider, apiKey) => createAiProvider(provider, apiKey),
+  selected?: { provider?: unknown; model?: unknown; apiKey?: unknown },
 ) => {
   const config = await getAiRuntimeConfig(store);
   if (config.configurationError) throw new AiSettingsError('AI provider configuration is invalid.', 503, 'AI_CONFIGURATION_INVALID');
-  if (!config.apiKey) throw new AiSettingsError('Configure an API key before testing the connection.', 400, 'AI_KEY_REQUIRED');
+  const provider = normalizeProvider(selected?.provider, config.provider);
+  const model = normalizeModel(selected?.model, provider, config.model);
+  const draftApiKey = normalizeApiKey(selected?.apiKey);
+  const apiKey = draftApiKey || (provider === config.provider ? config.apiKey : undefined);
+  if (!apiKey) throw new AiSettingsError('Configure an API key before testing the connection.', 400, 'AI_KEY_REQUIRED');
 
   const writeTestAudit = async (after: Record<string, boolean | number | string | null>) => {
     try {
@@ -407,18 +448,43 @@ export const testAiConnection = async (
   };
 
   try {
-    await providerFactory(config.provider, config.apiKey).complete({
-      model: config.model,
+    await providerFactory(provider, apiKey).complete({
+      model,
       systemPrompt: 'You are performing an internal provider connection check. Do not disclose secrets.',
       userMessage: 'Reply with exactly: connection-ok',
       timeoutMs: 10_000,
     });
   } catch (error) {
     const errorCode = error instanceof AiProviderError ? error.code : 'AI_PROVIDER_UNAVAILABLE';
-    await writeTestAudit({ provider: config.provider, model: config.model, status: 'FAILED', errorCode });
+    await writeTestAudit({ provider, model, status: 'FAILED', errorCode });
     throw new AiSettingsError('AI provider connection failed.', 502, errorCode);
   }
 
-  await writeTestAudit({ provider: config.provider, model: config.model, status: 'SUCCEEDED' });
-  return { provider: config.provider, model: config.model };
+  await writeTestAudit({ provider, model, status: 'SUCCEEDED' });
+  return { provider, model };
+};
+
+export const getAvailableAiModels = async (
+  provider: AiProviderName,
+  store: AiSettingsStore = defaultStore,
+  draftApiKey?: unknown,
+) => {
+  const config = await getAiRuntimeConfig(store);
+  const normalizedDraftApiKey = normalizeApiKey(draftApiKey);
+  const apiKey = normalizedDraftApiKey || (config.provider === provider ? config.apiKey : undefined);
+  if (!apiKey) {
+    throw new AiSettingsError(
+      'Enter and save a provider API key before loading that provider\'s models.',
+      400,
+      'AI_PROVIDER_KEY_REQUIRED',
+    );
+  }
+  if (config.configurationError) throw new AiSettingsError('AI provider configuration is invalid.', 503, 'AI_CONFIGURATION_INVALID');
+
+  try {
+    return await listAiModels(provider, apiKey);
+  } catch (error) {
+    const errorCode = error instanceof AiProviderError ? error.code : 'AI_PROVIDER_UNAVAILABLE';
+    throw new AiSettingsError('AI provider models could not be loaded.', 502, errorCode);
+  }
 };

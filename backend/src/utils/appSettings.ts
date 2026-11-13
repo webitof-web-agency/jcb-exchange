@@ -234,6 +234,30 @@ export type GoogleDriveSettings = {
   updatedByUserId: string | null;
 };
 
+export type DatabaseBackupSettings = {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastSuccessFilename: string | null;
+  lastSuccessFileId: string | null;
+  lastSuccessSizeBytes: number | null;
+  lastFailureAt: string | null;
+  lastFailureMessage: string | null;
+};
+
+export const normalizeDatabaseBackupSettings = (
+  settings?: Partial<DatabaseBackupSettings> | null,
+): DatabaseBackupSettings => ({
+  lastAttemptAt: settings?.lastAttemptAt || null,
+  lastSuccessAt: settings?.lastSuccessAt || null,
+  lastSuccessFilename: settings?.lastSuccessFilename || null,
+  lastSuccessFileId: settings?.lastSuccessFileId || null,
+  lastSuccessSizeBytes: typeof settings?.lastSuccessSizeBytes === 'number' && Number.isFinite(settings.lastSuccessSizeBytes)
+    ? settings.lastSuccessSizeBytes
+    : null,
+  lastFailureAt: settings?.lastFailureAt || null,
+  lastFailureMessage: settings?.lastFailureMessage || null,
+});
+
 export const normalizeGoogleDriveSettings = (
   settings?: Partial<GoogleDriveSettings> | null,
 ): GoogleDriveSettings => ({
@@ -270,6 +294,7 @@ type AppSettings = {
   listingPayment: ListingPaymentSettings;
   companyInvoice: CompanyInvoiceSettings;
   googleDrive: GoogleDriveSettings;
+  databaseBackup: DatabaseBackupSettings;
   mobileApp: MobileAppSettings;
   financeSupport: {
     items: FinanceSupportItem[];
@@ -390,6 +415,7 @@ const defaultSettings: AppSettings = {
     },
   },
   googleDrive: normalizeGoogleDriveSettings(),
+  databaseBackup: normalizeDatabaseBackupSettings(),
   mobileApp: normalizeMobileAppSettings(),
   companyInvoice: {
     companyName: 'JCB Exchange',
@@ -429,6 +455,7 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
   listingPayment: normalizeListingPaymentSettings(parsed?.listingPayment),
   companyInvoice: normalizeCompanyInvoiceSettings(parsed?.companyInvoice),
   googleDrive: normalizeGoogleDriveSettings(parsed?.googleDrive),
+  databaseBackup: normalizeDatabaseBackupSettings(parsed?.databaseBackup),
   mobileApp: normalizeMobileAppSettings(parsed?.mobileApp),
   financeSupport: {
     items: normalizeFinanceSupportItems(parsed?.financeSupport?.items),
@@ -647,6 +674,57 @@ export const getAppSettings = async (): Promise<AppSettings> => {
   } catch {
     return defaultSettings;
   }
+};
+
+// Backup status writes must not fall back to defaults when the database is
+// temporarily unreachable; doing that could overwrite unrelated settings.
+const readSettingsForWrite = async (): Promise<AppSettings> => {
+  const record = await prismaAny.platformRuntimeSettings.findUnique({
+    where: { key: platformRuntimeSettingsKey },
+    select: { payload: true },
+  });
+  return normalizeAppSettingsSnapshot(record?.payload as Partial<AppSettings> | undefined);
+};
+
+export const recordDatabaseBackupSuccess = async (input: {
+  attemptedAt: Date;
+  filename: string;
+  fileId: string;
+  sizeBytes: number;
+}) => {
+  const currentSettings = await readSettingsForWrite();
+  const attemptedAt = input.attemptedAt.toISOString();
+  const nextSettings: AppSettings = {
+    ...currentSettings,
+    databaseBackup: {
+      ...currentSettings.databaseBackup,
+      lastAttemptAt: attemptedAt,
+      lastSuccessAt: attemptedAt,
+      lastSuccessFilename: input.filename,
+      lastSuccessFileId: input.fileId,
+      lastSuccessSizeBytes: input.sizeBytes,
+      lastFailureAt: null,
+      lastFailureMessage: null,
+    },
+  };
+
+  await persistDatabaseSettings(nextSettings);
+};
+
+export const recordDatabaseBackupFailure = async (input: { attemptedAt: Date; message: string }) => {
+  const currentSettings = await readSettingsForWrite();
+  const attemptedAt = input.attemptedAt.toISOString();
+  const nextSettings: AppSettings = {
+    ...currentSettings,
+    databaseBackup: {
+      ...currentSettings.databaseBackup,
+      lastAttemptAt: attemptedAt,
+      lastFailureAt: attemptedAt,
+      lastFailureMessage: input.message.slice(0, 1000),
+    },
+  };
+
+  await persistDatabaseSettings(nextSettings);
 };
 
 export const updateGoogleAuthSettings = async ({

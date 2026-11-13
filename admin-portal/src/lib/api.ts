@@ -22,7 +22,6 @@ const DIRECT_PROVIDER_REQUEST_PATHS = [
   '/pan-verification/contact',
   '/pan-verification/comprehensive',
   '/gst-verification/verify',
-  '/mobile-to-pan/lookup',
   '/aadhaar-verification/initialize',
   '/driving-license-verification/verify',
   '/rc-owner-history/verify',

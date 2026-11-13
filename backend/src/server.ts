@@ -16,6 +16,7 @@ import { marketplaceWhatsAppEvents, recruitmentWhatsAppEvents } from './services
 import { marketplaceSmsEvents, recruitmentSmsEvents } from './services/smsIntegration.service';
 import prisma from './lib/prisma';
 import { startAiDailyBriefingJob } from './jobs/aiDailyBriefing.job';
+import { startAiDataSyncJob } from './jobs/aiDataSync.job';
 
 const PORT = process.env.PORT || 5000;
 
@@ -34,6 +35,7 @@ startCrmWorker();
 startNotificationOutboxJob();
 // Daily briefing execution is database-coordinated; this timer only wakes the worker.
 startAiDailyBriefingJob();
+startAiDataSyncJob();
 void Promise.all([
   provisionAutomationRules(prisma.whatsAppAutomationRule, [...marketplaceWhatsAppEvents, ...recruitmentWhatsAppEvents]),
   provisionAutomationRules(prisma.smsAutomationRule, [...marketplaceSmsEvents, ...recruitmentSmsEvents]),

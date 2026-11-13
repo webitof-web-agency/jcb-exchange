@@ -253,7 +253,6 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       permissions: [
         { id: 'pan.verification.read', label: 'View PAN Verification' },
         { id: 'gst.verification.read', label: 'View GST Verification' },
-        { id: 'pan.mobile-to-pan.read', label: 'View Mobile To PAN' },
         { id: 'aadhaar.digilocker.read', label: 'View Aadhaar DigiLocker Verification' },
       ],
     },

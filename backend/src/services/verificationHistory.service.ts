@@ -1,7 +1,6 @@
 import prisma from '../lib/prisma';
 import { panVerificationService } from './panVerification.service';
 import { gstVerificationService } from './gstVerification.service';
-import { mobileToPanLookupService } from './mobileToPanLookup.service';
 import { aadhaarVerificationService } from './aadhaarVerification.service';
 import { drivingLicenseVerificationService } from './drivingLicenseVerification.service';
 import { rcOwnerHistoryService } from './rcOwnerHistory.service';
@@ -31,7 +30,6 @@ const SOURCES: Record<VerificationHistoryGroup, Source[]> = {
   identity: [
     { type: 'PAN', permissions: ['pan.verification.read'], list: (filters, viewer) => panVerificationService.listHistory(filters, viewer.id, viewer.role) as Promise<ListResult> },
     { type: 'GST', permissions: ['gst.verification.read'], list: (filters, viewer) => gstVerificationService.listHistory(filters, viewer.id, viewer.role) as Promise<ListResult> },
-    { type: 'MOBILE_TO_PAN', permissions: ['pan.mobile-to-pan.read'], list: (filters) => mobileToPanLookupService.listHistory(filters) as Promise<ListResult> },
     {
       type: 'AADHAAR',
       permissions: ['accounts.sell.crud', 'accounts.sell.update', 'aadhaar.digilocker.read'],

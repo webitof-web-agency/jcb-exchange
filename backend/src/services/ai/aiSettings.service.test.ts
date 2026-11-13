@@ -4,6 +4,7 @@ import { decryptAiApiKey } from './aiSettings.crypto';
 import {
   buildAiSettingsPayload,
   getAiRuntimeConfig,
+  revealAiApiKey,
   saveAiSettings,
   summarizeAiSettingsPayload,
   testAiConnection,
@@ -63,6 +64,18 @@ test('rejects invalid provider keys before any encrypted payload is created', ()
   );
 });
 
+test('rejects OpenAI models that are not compatible with the text chat gateway', () => {
+  assert.throws(
+    () => buildAiSettingsPayload(null, {
+      provider: 'openai',
+      model: 'chatgpt-image-latest',
+      apiKey: 'provider-secret-value',
+      enabled: true,
+    }, secret),
+    /selected model is not valid for OpenAI/i,
+  );
+});
+
 test('tests the saved provider key without exposing it in the request or audit metadata', async () => {
   const payload = buildAiSettingsPayload(null, {
     provider: 'openai',
@@ -93,6 +106,65 @@ test('tests the saved provider key without exposing it in the request or audit m
 
     assert.deepEqual(result, { provider: 'openai', model: 'gpt-4o-mini' });
     assert.deepEqual(auditEntries, [{ provider: 'openai', model: 'gpt-4o-mini', status: 'SUCCEEDED' }]);
+    assert.equal(JSON.stringify(auditEntries).includes('provider-secret-value'), false);
+  } finally {
+    if (previousSecret === undefined) delete process.env.AI_SETTINGS_ENCRYPTION_KEY;
+    else process.env.AI_SETTINGS_ENCRYPTION_KEY = previousSecret;
+  }
+});
+
+test('tests the selected model instead of silently testing the previously saved model', async () => {
+  const payload = buildAiSettingsPayload(null, {
+    provider: 'openai',
+    model: 'gpt-4.1',
+    apiKey: 'provider-secret-value',
+    enabled: true,
+  }, secret);
+  const auditEntries: Array<Record<string, unknown>> = [];
+  const store: AiSettingsStore = {
+    read: async () => ({ payload, updatedAt: new Date(payload.updatedAt) }),
+    write: async () => undefined,
+    audit: async (audit) => { auditEntries.push(audit.after); },
+  };
+  const previousSecret = process.env.AI_SETTINGS_ENCRYPTION_KEY;
+  process.env.AI_SETTINGS_ENCRYPTION_KEY = secret;
+
+  try {
+    const result = await testAiConnection('superadmin-1', store, (_provider, apiKey) => ({
+      complete: async (request) => {
+        assert.equal(apiKey, 'provider-secret-value');
+        assert.equal(request.model, 'gpt-5.2-pro');
+        return { text: 'connection-ok' };
+      },
+    }), { provider: 'openai', model: 'gpt-5.2-pro' });
+
+    assert.deepEqual(result, { provider: 'openai', model: 'gpt-5.2-pro' });
+    assert.deepEqual(auditEntries, [{ provider: 'openai', model: 'gpt-5.2-pro', status: 'SUCCEEDED' }]);
+  } finally {
+    if (previousSecret === undefined) delete process.env.AI_SETTINGS_ENCRYPTION_KEY;
+    else process.env.AI_SETTINGS_ENCRYPTION_KEY = previousSecret;
+  }
+});
+
+test('reveals the saved AI key only through the authorized server-side service and audits the reveal', async () => {
+  const payload = buildAiSettingsPayload(null, {
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    apiKey: 'provider-secret-value',
+    enabled: true,
+  }, secret);
+  const auditEntries: Array<Record<string, unknown>> = [];
+  const store: AiSettingsStore = {
+    read: async () => ({ payload, updatedAt: new Date(payload.updatedAt) }),
+    write: async () => undefined,
+    audit: async (audit) => { auditEntries.push(audit.after); },
+  };
+  const previousSecret = process.env.AI_SETTINGS_ENCRYPTION_KEY;
+  process.env.AI_SETTINGS_ENCRYPTION_KEY = secret;
+
+  try {
+    assert.equal(await revealAiApiKey('superadmin-1', store), 'provider-secret-value');
+    assert.deepEqual(auditEntries, [{ provider: 'openai', model: 'gpt-4o-mini', status: 'REVEALED' }]);
     assert.equal(JSON.stringify(auditEntries).includes('provider-secret-value'), false);
   } finally {
     if (previousSecret === undefined) delete process.env.AI_SETTINGS_ENCRYPTION_KEY;

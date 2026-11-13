@@ -9,6 +9,7 @@ test('only the JCB Exchange sites may call the API from a browser in production'
   assert.deepEqual([...allowed], DEFAULT_CORS_ORIGINS);
   assert.ok(isAllowedOrigin('https://jcbexchange.com', allowed, env));
   assert.ok(isAllowedOrigin('https://ADMIN.jcbexchange.com/', allowed, env));
+  assert.ok(isAllowedOrigin('https://portal.jcbexchange.com', allowed, env));
   assert.equal(isAllowedOrigin('https://evil.example', allowed, env), false);
   assert.equal(isAllowedOrigin('https://jcbexchange.com.evil.example', allowed, env), false);
   assert.equal(isAllowedOrigin('http://localhost:3001', allowed, env), false);

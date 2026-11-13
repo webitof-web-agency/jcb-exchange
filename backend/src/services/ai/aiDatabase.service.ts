@@ -56,6 +56,7 @@ export type AiToolCallRecord = {
   inputItemCount?: number;
   outputItemCount?: number;
   durationMs?: number;
+  dataAvailability?: 'AVAILABLE' | 'UNAVAILABLE';
   errorCode?: string;
 };
 
@@ -255,6 +256,7 @@ const defaultRepository: AiDatabaseRepository = {
       ...(record.inputItemCount !== undefined ? { inputItemCount: record.inputItemCount } : {}),
       ...(record.outputItemCount !== undefined ? { outputItemCount: record.outputItemCount } : {}),
       ...(record.durationMs !== undefined ? { durationMs: record.durationMs } : {}),
+      ...(record.dataAvailability ? { dataAvailability: record.dataAvailability } : {}),
       ...(record.errorCode ? { errorCode: record.errorCode } : {}),
       completedAt: new Date(),
     },
@@ -380,6 +382,7 @@ export class AiDatabaseService {
     inputItemCount?: number;
     outputItemCount?: number;
     durationMs?: number;
+    dataAvailability?: 'AVAILABLE' | 'UNAVAILABLE';
     errorCode?: string;
   }): Promise<RecordRef> {
     const argumentsData = redactedHash(input.argumentsText, 4000);
@@ -397,6 +400,7 @@ export class AiDatabaseService {
       ...(input.inputItemCount !== undefined ? { inputItemCount: nonNegativeInteger(input.inputItemCount, 'inputItemCount') } : {}),
       ...(input.outputItemCount !== undefined ? { outputItemCount: nonNegativeInteger(input.outputItemCount, 'outputItemCount') } : {}),
       ...(input.durationMs !== undefined ? { durationMs: nonNegativeInteger(input.durationMs, 'durationMs') } : {}),
+      ...(input.dataAvailability ? { dataAvailability: input.dataAvailability } : {}),
       ...(input.errorCode !== undefined ? { errorCode: requiredIdentifier(input.errorCode, 'errorCode') } : {}),
     });
   }

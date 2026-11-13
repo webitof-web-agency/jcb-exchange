@@ -20,6 +20,8 @@ export const KYC_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
 export const AI_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
   { id: 'ai.use', label: 'Use JCB Intelligence Hub' },
   { id: 'ai.manage', label: 'Manage Shared AI Provider Settings' },
+  { id: 'ai.sensitive.read', label: 'View AI-sensitive fields (still masked to providers)' },
+  { id: 'identity.sensitive.read', label: 'View identity-sensitive fields (still masked to providers)' },
 ];
 
 export type AdminPermissionGroupDefinition = {

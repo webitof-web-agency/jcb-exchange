@@ -5,6 +5,7 @@ export const DEFAULT_CORS_ORIGINS = [
   'https://jcbexchange.com',
   'https://www.jcbexchange.com',
   'https://admin.jcbexchange.com',
+  'https://portal.jcbexchange.com',
 ];
 
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;

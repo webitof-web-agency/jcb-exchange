@@ -14,6 +14,7 @@ import {
   requireAdminOrEmployeePermissions,
   requireAuth,
 } from '../middlewares/auth.middleware';
+import { surepassVerificationRateLimit } from '../middlewares/rateLimit.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -21,8 +22,8 @@ const canVerify = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'acco
 const aadhaarTemplateUpload = getDocumentUploadMiddleware('secure');
 
 router.use(requireAuth, requireAdmin);
-router.post('/initialize', canVerify, initializeAadhaarVerification);
-router.post('/complete', canVerify, completeAadhaarVerification);
+router.post('/initialize', canVerify, surepassVerificationRateLimit, initializeAadhaarVerification);
+router.post('/complete', canVerify, surepassVerificationRateLimit, completeAadhaarVerification);
 router.post('/cancel', canVerify, cancelAadhaarVerification);
 router.get('/status/:id', canVerify, getAadhaarVerificationStatus);
 router.post('/:id/template', canVerify, aadhaarTemplateUpload.single('template'), uploadAadhaarTemplate);

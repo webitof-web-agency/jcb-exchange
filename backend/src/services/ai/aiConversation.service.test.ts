@@ -22,6 +22,8 @@ const repositoryMock = (): AiConversationRepository & { calls: Record<string, un
     listMessages: track('listMessages', []),
     renameConversation: track('renameConversation', { id: 'conversation-1' }),
     archiveConversation: track('archiveConversation', { id: 'conversation-1' }),
+    deleteConversation: track('deleteConversation', { id: 'conversation-1' }),
+    deleteAllConversations: track('deleteAllConversations', { count: 2 }),
     appendMessage: track('appendMessage', { id: 'message-1' }),
   };
 };
@@ -44,6 +46,29 @@ test('creates and appends redacted conversation messages without storing raw PII
   assert.equal(created.contentRedacted.includes('9876543210'), false);
   assert.match(created.contentHash, /^[a-f0-9]{64}$/);
   assert.match(created.contentHmac, /^[a-f0-9]{64}$/);
+});
+
+test('persists database source and fetch time with an assistant tool result', async () => {
+  const repository = repositoryMock();
+  const service = new AiConversationService(repository);
+  const fetchedAt = new Date('2026-11-12T10:15:30.000Z');
+
+  await service.appendMessage('user-1', 'conversation-1', {
+    role: 'ASSISTANT',
+    content: 'There are 12 active listings.',
+    toolName: 'listing.statistics',
+    toolSource: 'database',
+    toolFetchedAt: fetchedAt,
+  });
+
+  const created = repository.calls.appendMessage?.[0] as {
+    toolName: string;
+    toolSource: string;
+    toolFetchedAt: Date;
+  };
+  assert.equal(created.toolName, 'listing.statistics');
+  assert.equal(created.toolSource, 'database');
+  assert.equal(created.toolFetchedAt.toISOString(), fetchedAt.toISOString());
 });
 
 test('rejects appending to a conversation owned by another operator', async () => {
@@ -70,4 +95,23 @@ test('validates conversation titles and message content', async () => {
     () => service.appendMessage('user-1', 'conversation-1', { role: 'SYSTEM', content: 'unsafe role' }),
     (error: unknown) => error instanceof AiConversationError && error.code === 'AI_CONVERSATION_ROLE_INVALID',
   );
+});
+
+test('deletes an owned conversation and rejects deleting another operator conversation', async () => {
+  const repository = repositoryMock();
+  const service = new AiConversationService(repository);
+
+  const deleted = await service.deleteConversation('user-1', 'conversation-1');
+  assert.equal(deleted.id, 'conversation-1');
+  assert.deepEqual(repository.calls.deleteConversation, [{ id: 'conversation-1' }]);
+
+  repository.findConversation = async () => ({ id: 'conversation-1', actorUserId: 'other-user' });
+  await assert.rejects(
+    () => service.deleteConversation('user-1', 'conversation-1'),
+    (error: unknown) => error instanceof AiConversationError && error.code === 'AI_CONVERSATION_FORBIDDEN',
+  );
+
+  const cleared = await service.deleteAllConversations('user-1');
+  assert.equal(cleared.count, 2);
+  assert.deepEqual(repository.calls.deleteAllConversations, ['user-1']);
 });

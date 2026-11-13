@@ -200,6 +200,16 @@ type GoogleDriveCheckState = {
   message: string;
 };
 
+type DatabaseBackupInfo = {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastSuccessFilename: string | null;
+  lastSuccessFileId: string | null;
+  lastSuccessSizeBytes: number | null;
+  lastFailureAt: string | null;
+  lastFailureMessage: string | null;
+};
+
 type LeadRoutingFormState = {
   useSellerContact: boolean;
   adminCallNumber: string;
@@ -382,6 +392,7 @@ export default function SuperAdminSettingsPage() {
   const [googleDriveCheck, setGoogleDriveCheck] = useState<GoogleDriveCheckState>({ status: 'idle', message: '' });
   const [databaseBackupRunning, setDatabaseBackupRunning] = useState(false);
   const [databaseBackupStatus, setDatabaseBackupStatus] = useState<GoogleDriveCheckState>({ status: 'idle', message: '' });
+  const [databaseBackupInfo, setDatabaseBackupInfo] = useState<DatabaseBackupInfo | null>(null);
   const [showGoogleClientId, setShowGoogleClientId] = useState(false);
   const [showGoogleDriveClientId, setShowGoogleDriveClientId] = useState(false);
   const [showGoogleDriveClientSecret, setShowGoogleDriveClientSecret] = useState(false);
@@ -649,6 +660,7 @@ export default function SuperAdminSettingsPage() {
       try {
         const driveRes = await api.get('/superadmin/google-drive');
         const driveSettings = driveRes.data.googleDrive || {};
+        setDatabaseBackupInfo(driveRes.data.databaseBackup || null);
         setGoogleDriveSettings({
           clientId: driveSettings.clientId || '',
           clientSecret: driveSettings.clientSecret || '',
@@ -1098,11 +1110,26 @@ export default function SuperAdminSettingsPage() {
         message: string;
         backup?: {
           filename: string;
+          fileId: string;
+          sizeBytes: number;
         };
       }>('/superadmin/google-drive/backup');
 
       const filename = response.data.backup?.filename;
       const message = filename ? `${response.data.message} File: ${filename}` : response.data.message;
+      if (response.data.backup) {
+        const completedAt = new Date().toISOString();
+        setDatabaseBackupInfo((current) => ({
+          ...current,
+          lastAttemptAt: completedAt,
+          lastSuccessAt: completedAt,
+          lastSuccessFilename: response.data.backup!.filename,
+          lastSuccessFileId: response.data.backup!.fileId,
+          lastSuccessSizeBytes: response.data.backup!.sizeBytes,
+          lastFailureAt: null,
+          lastFailureMessage: null,
+        }));
+      }
       setDatabaseBackupStatus({ status: 'success', message });
       toast.success(message);
     } catch (error: unknown) {
@@ -3066,7 +3093,7 @@ export default function SuperAdminSettingsPage() {
                       </div>
                     </div>
                     <label className="block md:col-span-2">
-                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Database Backup Folder ID (Optional)</span>
+                      <span className="mb-1.5 block text-sm font-semibold text-gray-700">Database Backup Folder ID (Required)</span>
                       <input
                         type="text"
                         value={googleDriveSettings.backupFolderId}
@@ -3075,7 +3102,7 @@ export default function SuperAdminSettingsPage() {
                         className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107]"
                       />
                       <p className="mt-1 text-xs text-gray-500">
-                        Leave blank to upload daily CSV backups to the root directory of your Google Drive.
+                        This folder is required. The system creates a private <code>backup-db</code> folder inside it and stores the complete PostgreSQL archive there.
                       </p>
                     </label>
                   </div>
@@ -3098,6 +3125,22 @@ export default function SuperAdminSettingsPage() {
                         <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
                       )}
                       <span>{googleDriveCheck.message}</span>
+                    </div>
+                  ) : null}
+                  {databaseBackupInfo ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
+                      <p className="font-bold text-slate-900">Last verified database backup</p>
+                      <p className="mt-1">
+                        {databaseBackupInfo.lastSuccessAt
+                          ? `${new Date(databaseBackupInfo.lastSuccessAt).toLocaleString('en-IN')} · ${databaseBackupInfo.lastSuccessFilename || 'archive'}`
+                          : 'No successful backup has been recorded yet.'}
+                      </p>
+                      {databaseBackupInfo.lastSuccessSizeBytes ? (
+                        <p className="mt-1 text-slate-500">Verified Drive size: {(databaseBackupInfo.lastSuccessSizeBytes / 1024 / 1024).toFixed(2)} MB</p>
+                      ) : null}
+                      {databaseBackupInfo.lastFailureAt ? (
+                        <p className="mt-1 font-semibold text-red-700">Last failure: {databaseBackupInfo.lastFailureMessage || 'Backup failed.'}</p>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="flex flex-col gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">

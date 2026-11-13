@@ -1,5 +1,6 @@
 export type AiConversationSyncDetail = {
-  conversationId: string;
+  conversationId?: string;
+  action?: 'updated' | 'deleted' | 'cleared';
   eventId?: string;
 };
 
@@ -27,7 +28,7 @@ export const subscribeToAiConversationUpdates = (listener: (detail: AiConversati
 
   const seenEventIds = new Set<string>();
   const deliver = (detail: AiConversationSyncDetail | undefined) => {
-    if (!detail?.conversationId) return;
+    if (!detail?.conversationId && detail?.action !== 'cleared') return;
     if (detail.eventId) {
       if (seenEventIds.has(detail.eventId)) return;
       seenEventIds.add(detail.eventId);
