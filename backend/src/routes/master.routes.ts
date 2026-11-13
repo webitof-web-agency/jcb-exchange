@@ -19,10 +19,13 @@ import {
   getSiteLogo,
   getMobileAppSettings,
   getPublicListings,
+  searchPublicListingsHandler,
+  getPublicListingPriceInsight,
   getRecentListings,
   getPublicCategories,
   getPublicSearchFilters,
   getPublicListingById,
+  resolvePublicListingShortId,
   incrementListingView,
   getDealerById,
   getDealerListings,
@@ -94,7 +97,10 @@ router.get('/mobile-app', getMobileAppSettings);
 router.get('/translations', getTranslationOverrides);
 router.post('/translations/register-missing', translationRegisterRateLimit, registerMissingTranslationKeys);
 router.get('/public-listings', getPublicListings);
+router.get('/public-listings/search', searchPublicListingsHandler);
+router.get('/public-listings/resolve/:shortId', resolvePublicListingShortId);
 router.get('/public-listings/:id', getPublicListingById);
+router.get('/public-listings/:id/price-insight', getPublicListingPriceInsight);
 router.post('/public-listings/:id/view', listingViewRateLimit, incrementListingView);
 router.get('/public-categories', getPublicCategories);
 router.get('/public-search-filters', getPublicSearchFilters);

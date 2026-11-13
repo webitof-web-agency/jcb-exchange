@@ -142,6 +142,7 @@ import {
   buildPartnerAgreementContentHash,
 } from '../services/partnerAgreement.service';
 import { resolveJwtSecret } from '../utils/jwtSecret';
+import { partnerDisplayName } from '../utils/messageDisplayValues';
 
 const JWT_SECRET = resolveJwtSecret();
 const prismaAny = prisma as any;
@@ -1466,9 +1467,16 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     const hashedPassword = await bcrypt.hash(sanitizedPassword, 10);
     const hasSuperAdmin = await ensureBootstrapSuperAdmin();
-    const accountRole = hasSuperAdmin
-      ? normalizedRegistrationType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER'
-      : 'SUPER_ADMIN';
+    if (!hasSuperAdmin) {
+      // Public sign-up never creates the root account: on an empty or restored database the first
+      // visitor would otherwise own the platform. The first super admin is made on the server with
+      // `npm run admin:create` (scripts/create-super-admin.ts).
+      return res.status(403).json({
+        error: 'Platform setup is not complete. The first super admin must be created on the server (npm run admin:create).',
+        code: 'SETUP_REQUIRED',
+      });
+    }
+    const accountRole = normalizedRegistrationType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER';
 
     const isVerifiedPartnerSignup = hasSuperAdmin
       && normalizedRegistrationType === 'PARTNER'
@@ -1503,38 +1511,19 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         signupLocation = { country, state, city };
       }
 
-      const createdUser = hasSuperAdmin
-        ? await tx.user.create({
-          data: {
-            email: normalizedEmail,
-            password: hashedPassword,
-            name: normalizedName,
-            mobile: normalizedMobile || undefined,
-            whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
-            ...(signupLocation ? { state: signupLocation.state.name, city: signupLocation.city.name } : {}),
-            authProvider: 'LOCAL',
-            role: accountRole,
-            status: 'ACTIVE' as any,
-          } as any,
-        })
-        : await tx.user.create({
-          data: {
-            email: normalizedEmail,
-            password: hashedPassword,
-            name: normalizedName,
-            mobile: normalizedMobile || undefined,
-            whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
-            authProvider: 'LOCAL',
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE' as any,
-            adminProfile: {
-              create: {
-                title: 'Platform Super Admin',
-                isRootAdmin: true,
-              },
-            },
-          } as any,
-        });
+      const createdUser = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          name: normalizedName,
+          mobile: normalizedMobile || undefined,
+          whatsappNumber: getPreferredWhatsAppNumber(normalizedWhatsapp, normalizedMobile) || undefined,
+          ...(signupLocation ? { state: signupLocation.state.name, city: signupLocation.city.name } : {}),
+          authProvider: 'LOCAL',
+          role: accountRole,
+          status: 'ACTIVE' as any,
+        } as any,
+      });
 
       await initializeUserNotificationPreferences(createdUser, tx);
 
@@ -1604,9 +1593,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const token = signAuthToken(authUser);
 
     res.json({
-      message: hasSuperAdmin
-        ? 'Registration successful.'
-        : 'Super admin registration successful',
+      message: 'Registration successful.',
       token,
       user: authUser,
     });
@@ -3165,7 +3152,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
       try {
         const partnerProfile = await prisma.partnerProfile.findUnique({
           where: { userId: req.user!.id },
-          select: { partnerCode: true, businessName: true, ownerName: true },
+          select: { partnerCode: true, businessName: true, ownerName: true, user: { select: { name: true } } },
         });
 
         const partnerIdentifier =
@@ -3173,6 +3160,11 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
           partnerProfile?.businessName ||
           (req.user as any).name ||
           req.user!.id;
+        // Shown in the message as "Business name (Owner name)".
+        const partnerName = partnerDisplayName({
+          businessName: partnerProfile?.businessName,
+          ownerName: partnerProfile?.ownerName || partnerProfile?.user?.name,
+        });
 
         const superAdmins = await prisma.user.findMany({
           where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
@@ -3188,6 +3180,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
             payloadSnapshot: {
               partnerId: partnerIdentifier,
               partnerCode: partnerProfile?.partnerCode ?? undefined,
+              partnerDisplayName: partnerName || undefined,
               userId: partnerIdentifier,
             },
           });

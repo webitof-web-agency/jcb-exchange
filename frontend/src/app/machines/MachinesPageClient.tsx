@@ -20,6 +20,7 @@ import {
   Gauge,
   Camera,
   ArrowRight,
+  BellRing,
   ShieldCheck,
   Tag,
   SlidersHorizontal,
@@ -67,6 +68,20 @@ interface MachineListing {
 }
 
 const PAGE_SIZE = 12;
+const DEFAULT_MAX_PRICE = 10000000;
+// Must match UNSPECIFIED_CONDITION in backend/src/utils/publicListingSearch.ts.
+const UNSPECIFIED_CONDITION = '__unspecified__';
+
+type FacetEntry = { value: string; label: string; count: number };
+
+interface SearchFacets {
+  categories: FacetEntry[];
+  brands: FacetEntry[];
+  locations: FacetEntry[];
+  conditions: FacetEntry[];
+  priceMax: number;
+  totalListings: number;
+}
 
 const formatPrice = (price: number) => {
   if (price >= 100000) {
@@ -84,9 +99,6 @@ const getMediaUrl = (url: string | null) => {
   if (/^https?:\/\//i.test(url)) return url;
   return `${API_ORIGIN}${url.startsWith('/') ? url : `/${url}`}`;
 };
-
-const getUniqueValues = (items: MachineListing[], selector: (item: MachineListing) => string) =>
-  Array.from(new Set(items.map(selector).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
 const formatBrandDisplay = (rawName: string): { main: string; subtitle?: string } => {
   if (!rawName) return { main: 'Unknown' };
@@ -163,8 +175,13 @@ function MachinesPageContent({
 }) {
   const { t } = useTranslation();
   const [machines, setMachines] = useState<MachineListing[]>([]);
+  const [facets, setFacets] = useState<SearchFacets | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [loading, setLoading] = useState(true);
   const hasAppliedInitialLocation = useRef(false);
+  const hasResolvedInitialCategory = useRef(false);
+  // The URL category as a real category id once resolved (the URL may carry a slug or a short id).
+  const resolvedInitialCategory = useRef(initialCategoryId);
 
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
@@ -175,14 +192,12 @@ function MachinesPageContent({
   const [locationQuery, setLocationQuery] = useState(initialLocation);
   const [brandQuery, setBrandQuery] = useState('');
 
-  const maxAvailablePrice = useMemo(() => {
-    if (machines.length === 0) return 10000000;
-    return Math.max(...machines.map((m) => m.price), 10000000);
-  }, [machines]);
+  const maxAvailablePrice = Math.max(facets?.priceMax || 0, DEFAULT_MAX_PRICE);
 
   const [parsedMinPrice, setParsedMinPrice] = useState<number>(0);
-  const [parsedMaxPrice, setParsedMaxPrice] = useState<number>(10000000);
+  const [parsedMaxPrice, setParsedMaxPrice] = useState<number>(DEFAULT_MAX_PRICE);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery.trim());
   const [sortBy, setSortBy] = useState('relevance');
   const [page, setPage] = useState(1);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
@@ -199,107 +214,101 @@ function MachinesPageContent({
     }),
     [t]
   );
+  const unspecifiedLabel = t('machines.unspecified');
+
+  // Typing in the search box waits for a short pause before asking the server.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Filtering, sorting and paging run on the server (/master/public-listings/search); the page only
+  // receives the cards it shows plus the filter counts.
+  const requestQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    const list = (values: string[]) => values.map((value) => encodeURIComponent(value)).join(',');
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    if (selectedCategories.length > 0) params.set('categories', list(selectedCategories));
+    if (selectedBrands.length > 0) params.set('brands', list(selectedBrands));
+    if (selectedLocations.length > 0) params.set('locations', list(selectedLocations));
+    if (selectedConditions.length > 0) {
+      params.set('conditions', list(selectedConditions.map((value) => (value === unspecifiedLabel ? UNSPECIFIED_CONDITION : value))));
+    }
+    if (parsedMinPrice > 0) params.set('minPrice', String(parsedMinPrice));
+    if (facets && parsedMaxPrice < maxAvailablePrice) params.set('maxPrice', String(parsedMaxPrice));
+    params.set('sort', sortBy === 'price-low' || sortBy === 'price-high' ? sortBy : 'newest');
+    params.set('page', String(page));
+    params.set('limit', String(PAGE_SIZE));
+    return params.toString();
+  }, [debouncedSearch, facets, maxAvailablePrice, page, parsedMaxPrice, parsedMinPrice, selectedBrands, selectedCategories, selectedConditions, selectedLocations, sortBy, unspecifiedLabel]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchMachines = async () => {
+      setLoading(true);
       try {
-        const response = await api.get('/master/public-listings');
-        if (response.data?.success) {
-          const nextMachines = response.data.data as MachineListing[];
-          const nextMaxPrice = nextMachines.length > 0
-            ? Math.max(...nextMachines.map((machine) => machine.price), 10000000)
-            : 10000000;
+        const response = await api.get(`/master/public-listings/search?${requestQuery}`);
+        if (cancelled || !response.data?.success) return;
+        const nextFacets = response.data.facets as SearchFacets;
 
-          setMachines(nextMachines);
-          setParsedMaxPrice(nextMaxPrice);
+        // The first answer gives the real price ceiling.
+        if (!facets) {
+          setParsedMaxPrice(Math.max(nextFacets.priceMax || 0, DEFAULT_MAX_PRICE));
+        }
+        setFacets(nextFacets);
 
-          if (initialCategoryId) {
-            const normalizedCategorySlug = slugify(initialCategoryId);
-            const matchedCategory = nextMachines.find((machine) => (
-              machine.category && (
-                machine.category.id === initialCategoryId ||
-                machine.category.id.startsWith(initialCategoryId) ||
-                slugify(machine.category.name) === normalizedCategorySlug
-              )
-            ))?.category;
-            if (matchedCategory) {
-              setSelectedCategories([matchedCategory.id]);
-            }
+        // A category slug or short id from the URL is turned into the real category id once.
+        if (initialCategoryId && !hasResolvedInitialCategory.current) {
+          hasResolvedInitialCategory.current = true;
+          const normalizedCategorySlug = slugify(initialCategoryId);
+          const matchedCategory = nextFacets.categories.find((category) => (
+            category.value === initialCategoryId ||
+            category.value.startsWith(initialCategoryId) ||
+            slugify(category.label) === normalizedCategorySlug
+          ));
+          if (matchedCategory && matchedCategory.value !== initialCategoryId) {
+            resolvedInitialCategory.current = matchedCategory.value;
+            setSelectedCategories([matchedCategory.value]);
+            return;
           }
         }
+
+        setMachines(response.data.data as MachineListing[]);
+        setPagination(response.data.pagination);
       } catch (error) {
-        console.error('Failed to fetch public listings:', error);
+        if (!cancelled) console.error('Failed to fetch public listings:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchMachines();
-  }, [initialCategoryId]);
+    return () => {
+      cancelled = true;
+    };
+    // `facets` is read only to detect the first answer; it must not trigger a refetch by itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCategoryId, requestQuery]);
 
-  const brands = useMemo(() => {
-    const all = getUniqueValues(machines, (item) => item.brand?.name || '');
-    return all
-      .map((brand) => {
-        const count = machines.filter((m) => {
-          if (m.brand?.name !== brand) return false;
-          const locLabel = [m.locationCity, m.locationState].filter(Boolean).join(', ');
-          if (selectedCategories.length > 0 && (!m.category || !selectedCategories.includes(m.category.id))) return false;
-          if (selectedLocations.length > 0 && !selectedLocations.includes(locLabel)) return false;
-          if (selectedConditions.length > 0 && !selectedConditions.includes(m.condition || t('machines.unspecified'))) return false;
-          if (parsedMinPrice > 0 && m.price < parsedMinPrice) return false;
-          if (parsedMaxPrice < maxAvailablePrice && m.price > parsedMaxPrice) return false;
-          return true;
-        }).length;
-        return { name: brand, count };
-      })
-      .filter((b) => b.count > 0);
-  }, [machines, parsedMaxPrice, parsedMinPrice, maxAvailablePrice, selectedCategories, selectedConditions, selectedLocations, t]);
+  const brands = useMemo(
+    () => (facets?.brands || []).map((entry) => ({ name: entry.value, count: entry.count })),
+    [facets]
+  );
 
-  const categories = useMemo(() => {
-    const categoryMap = new Map<string, { id: string; name: string; count: number }>();
+  const categories = useMemo(
+    () => (facets?.categories || []).map((entry) => ({ id: entry.value, name: entry.label, count: entry.count })),
+    [facets]
+  );
 
-    machines.forEach((m) => {
-      if (!m.category) return;
-      const locLabel = [m.locationCity, m.locationState].filter(Boolean).join(', ');
-
-      if (selectedBrands.length > 0 && (!m.brand || !selectedBrands.includes(m.brand.name))) return;
-      if (selectedLocations.length > 0 && !selectedLocations.includes(locLabel)) return;
-      if (selectedConditions.length > 0 && !selectedConditions.includes(m.condition || t('machines.unspecified'))) return;
-      if (parsedMinPrice > 0 && m.price < parsedMinPrice) return;
-      if (parsedMaxPrice < maxAvailablePrice && m.price > parsedMaxPrice) return;
-
-      const existing = categoryMap.get(m.category.id);
-      if (existing) existing.count += 1;
-      else categoryMap.set(m.category.id, { id: m.category.id, name: m.category.name, count: 1 });
-    });
-
-    return Array.from(categoryMap.values()).sort((left, right) => left.name.localeCompare(right.name));
-  }, [machines, parsedMaxPrice, parsedMinPrice, maxAvailablePrice, selectedBrands, selectedConditions, selectedLocations, t]);
-
-  const locations = useMemo(() => {
-    const all = getUniqueValues(machines, (item) => [item.locationCity, item.locationState].filter(Boolean).join(', '));
-    return all
-      .map((loc) => {
-        const count = machines.filter((m) => {
-          const locLabel = [m.locationCity, m.locationState].filter(Boolean).join(', ');
-          if (locLabel !== loc) return false;
-          if (selectedBrands.length > 0 && (!m.brand || !selectedBrands.includes(m.brand.name))) return false;
-          if (selectedCategories.length > 0 && (!m.category || !selectedCategories.includes(m.category.id))) return false;
-          if (selectedConditions.length > 0 && !selectedConditions.includes(m.condition || t('machines.unspecified'))) return false;
-          if (parsedMinPrice > 0 && m.price < parsedMinPrice) return false;
-          if (parsedMaxPrice < maxAvailablePrice && m.price > parsedMaxPrice) return false;
-          return true;
-        }).length;
-        return { name: loc, count };
-      })
-      .filter((l) => l.count > 0);
-  }, [machines, parsedMaxPrice, parsedMinPrice, maxAvailablePrice, selectedBrands, selectedCategories, selectedConditions, t]);
+  const locations = useMemo(
+    () => (facets?.locations || []).map((entry) => ({ name: entry.value, count: entry.count })),
+    [facets]
+  );
 
   useEffect(() => {
     if (hasAppliedInitialLocation.current) return;
     const normalizedInitialLocation = initialLocation.trim().toLowerCase();
-    if (!normalizedInitialLocation || loading || machines.length === 0) return;
+    if (!normalizedInitialLocation || !facets) return;
 
     const timer = window.setTimeout(() => {
       const exactLocation = locations.find((location) => location.name.toLowerCase() === normalizedInitialLocation);
@@ -316,26 +325,14 @@ function MachinesPageContent({
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [initialLocation, loading, locations, machines.length]);
+  }, [facets, initialLocation, locations]);
 
-  const conditions = useMemo(() => {
-    const all = getUniqueValues(machines, (item) => item.condition || t('machines.unspecified'));
-    return all
-      .map((condition) => {
-        const count = machines.filter((m) => {
-          const locLabel = [m.locationCity, m.locationState].filter(Boolean).join(', ');
-          if ((m.condition || t('machines.unspecified')) !== condition) return false;
-          if (selectedBrands.length > 0 && (!m.brand || !selectedBrands.includes(m.brand.name))) return false;
-          if (selectedCategories.length > 0 && (!m.category || !selectedCategories.includes(m.category.id))) return false;
-          if (selectedLocations.length > 0 && !selectedLocations.includes(locLabel)) return false;
-          if (parsedMinPrice > 0 && m.price < parsedMinPrice) return false;
-          if (parsedMaxPrice < maxAvailablePrice && m.price > parsedMaxPrice) return false;
-          return true;
-        }).length;
-        return { name: condition, count };
-      })
-      .filter((condition) => condition.count > 0);
-  }, [machines, parsedMaxPrice, parsedMinPrice, maxAvailablePrice, selectedBrands, selectedCategories, selectedLocations, t]);
+  const conditions = useMemo(
+    () => (facets?.conditions || [])
+      .map((entry) => ({ name: entry.value === UNSPECIFIED_CONDITION ? unspecifiedLabel : entry.value, count: entry.count }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    [facets, unspecifiedLabel]
+  );
 
   const visibleLocations = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -349,46 +346,10 @@ function MachinesPageContent({
     return brands.filter((brand) => brand.name.toLowerCase().includes(query));
   }, [brandQuery, brands]);
 
-  const filteredMachines = useMemo(() => {
-    const nextItems = machines.filter((machine) => {
-      const locationLabel = [machine.locationCity, machine.locationState].filter(Boolean).join(', ');
-      if (selectedBrands.length > 0 && (!machine.brand || !selectedBrands.includes(machine.brand.name))) return false;
-      if (selectedCategories.length > 0 && (!machine.category || !selectedCategories.includes(machine.category.id))) return false;
-      if (selectedLocations.length > 0 && !selectedLocations.includes(locationLabel)) return false;
-      if (selectedConditions.length > 0 && !selectedConditions.includes(machine.condition || t('machines.unspecified'))) return false;
-      if (parsedMinPrice > 0 && machine.price < parsedMinPrice) return false;
-      if (parsedMaxPrice < maxAvailablePrice && machine.price > parsedMaxPrice) return false;
-      if (searchQuery.trim() !== '') {
-        const query = searchQuery.toLowerCase();
-        if (
-          !machine.title.toLowerCase().includes(query) &&
-          !(machine.brand?.name || '').toLowerCase().includes(query) &&
-          !(machine.category?.name || '').toLowerCase().includes(query) &&
-          !(machine.model?.name || '').toLowerCase().includes(query) &&
-          !(machine.locationCity || '').toLowerCase().includes(query) &&
-          !(machine.locationState || '').toLowerCase().includes(query) &&
-          ![machine.locationCity, machine.locationState].filter(Boolean).join(', ').toLowerCase().includes(query) &&
-          !(machine.partner?.name || '').toLowerCase().includes(query)
-        ) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    nextItems.sort((a, b) => {
-      if (sortBy === 'price-low') return a.price - b.price;
-      if (sortBy === 'price-high') return b.price - a.price;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-    return nextItems;
-  }, [machines, parsedMaxPrice, parsedMinPrice, maxAvailablePrice, searchQuery, selectedBrands, selectedCategories, selectedConditions, selectedLocations, sortBy, t]);
-
   const lastTrackedSearch = useRef('');
 
   useEffect(() => {
-    if (machines.length === 0) return;
+    if (!facets || loading) return;
 
     const normalizedQuery = searchQuery.trim();
     const hasSearchIntent = normalizedQuery.length >= 2 || activeFilterCount > 0;
@@ -421,21 +382,29 @@ function MachinesPageContent({
           maxPrice: parsedMaxPrice,
           sortBy,
         },
-        resultCount: filteredMachines.length,
+        resultCount: pagination.total,
         source: 'machines_browser_filter',
       });
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [activeFilterCount, filteredMachines.length, machines.length, parsedMaxPrice, parsedMinPrice, searchQuery, selectedBrands, selectedCategories, selectedConditions, selectedLocations, sortBy]);
+  }, [activeFilterCount, facets, loading, pagination.total, parsedMaxPrice, parsedMinPrice, searchQuery, selectedBrands, selectedCategories, selectedConditions, selectedLocations, sortBy]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredMachines.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
+  // "Alert me" hands the current filters to the requirement form; matching machines listed later are
+  // sent to the buyer by the CRM match-alert automation (CRM_MATCHING_LISTING).
+  const alertHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedCategories[0]) params.set('category', selectedCategories[0]);
+    if (selectedBrands[0]) params.set('brand', selectedBrands[0]);
+    if (facets && parsedMaxPrice < maxAvailablePrice) params.set('budgetMax', String(parsedMaxPrice));
+    if (selectedLocations[0]) params.set('location', selectedLocations[0]);
+    const query = params.toString();
+    return query ? `/post-requirement?${query}` : '/post-requirement';
+  }, [facets, maxAvailablePrice, parsedMaxPrice, selectedBrands, selectedCategories, selectedLocations]);
 
-  const paginatedMachines = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredMachines.slice(start, start + PAGE_SIZE);
-  }, [currentPage, filteredMachines]);
+  const totalPages = Math.max(1, pagination.totalPages);
+  const currentPage = Math.min(pagination.page || page, totalPages);
+  const paginatedMachines = machines;
 
   const toggleFilter = (list: string[], setList: React.Dispatch<React.SetStateAction<string[]>>, item: string) => {
     setList((prev) => prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]);
@@ -444,7 +413,7 @@ function MachinesPageContent({
 
   const clearAllFilters = () => {
     setSelectedBrands([]);
-    setSelectedCategories(initialCategoryId ? [initialCategoryId] : []);
+    setSelectedCategories(resolvedInitialCategory.current ? [resolvedInitialCategory.current] : []);
     setSelectedLocations([]);
     setSelectedConditions([]);
     setLocationQuery('');
@@ -862,9 +831,15 @@ function MachinesPageContent({
                 <p className="mt-2 text-sm text-gray-500 max-w-sm">
                   {t('machines.adjustFilters')}
                 </p>
-                <button onClick={clearAllFilters} className="mt-6 bg-jcb-yellow text-black font-bold px-6 py-2.5 rounded-xl shadow-sm hover:bg-yellow-500 transition-colors">
-                  {t('machines.clearFilters')}
-                </button>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                  <button onClick={clearAllFilters} className="bg-jcb-yellow text-black font-bold px-6 py-2.5 rounded-xl shadow-sm hover:bg-yellow-500 transition-colors">
+                    {t('machines.clearFilters')}
+                  </button>
+                  <Link href={alertHref} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-2.5 text-sm font-bold text-gray-900 hover:bg-gray-50 transition-colors">
+                    <BellRing className="h-4 w-4" />
+                    {t('machines.alertMeWhenListed', 'Alert me when one is listed')}
+                  </Link>
+                </div>
               </div>
             ) : (
               <>
@@ -1014,6 +989,20 @@ function MachinesPageContent({
                       </Link>
                     );
                   })}
+                </div>
+
+                <div className="mt-6 flex flex-col items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <BellRing className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{t('machines.alertBannerTitle', 'Not the right machine yet?')}</p>
+                      <p className="text-xs text-gray-600">{t('machines.alertBannerText', 'Tell us what you need and we will let you know when a matching machine is listed.')}</p>
+                    </div>
+                  </div>
+                  <Link href={alertHref} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-xs font-bold text-white hover:bg-black transition-colors">
+                    {t('machines.alertBannerCta', 'Get alerts')}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
 
                 {totalPages > 1 && (

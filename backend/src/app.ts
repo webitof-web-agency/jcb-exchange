@@ -12,6 +12,8 @@ import { FieldValidationError } from './utils/fieldValidation';
 import { VehicleAlreadyListedError, vehicleAlreadyListedResponse } from './services/listingVehicleIdentity';
 import { DeletionBlockedError } from './services/deletionImpact';
 import { FILE_CONTENT_MISMATCH_MESSAGE } from './utils/fileSignature';
+import prisma from './lib/prisma';
+import { reportError } from './instrument';
 
 dotenv.config();
 
@@ -63,6 +65,20 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', message: 'JCB Exchange API is running' });
 });
 
+// Readiness: the process is up AND the database answers. Used by deploy/deploy.sh and uptime monitors.
+app.get('/health/ready', async (req: Request, res: Response) => {
+  const started = Date.now();
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database check timed out')), 3000)),
+    ]);
+    res.status(200).json({ status: 'ok', database: 'ok', uptimeSeconds: Math.round(process.uptime()), dbLatencyMs: Date.now() - started });
+  } catch {
+    res.status(503).json({ status: 'error', database: 'unreachable' });
+  }
+});
+
 // Default Error Handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);
@@ -91,11 +107,35 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     });
   }
 
+  // Update/delete of a record that does not exist (stale or wrong id): a 404, not a server error.
+  if ((err as { code?: string }).code === 'P2025') {
+    return res.status(404).json({ success: false, error: 'The record was not found. It may have been deleted already; refresh and try again.', code: 'RECORD_NOT_FOUND' });
+  }
+
+  // Unique constraint (double submit, two tabs saving the same thing).
+  if ((err as { code?: string }).code === 'P2002') {
+    return res.status(409).json({ success: false, error: 'This record already exists or was just saved by another request. Refresh and try again.', code: 'ALREADY_EXISTS' });
+  }
+
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({
       success: false,
       error: 'Invalid JSON payload.',
     });
+  }
+
+  // body-parser errors (e.g. 413 request too large) carry their own client status.
+  const bodyParserStatus = (err as { type?: string; status?: number }).type ? (err as { status?: number }).status : undefined;
+  if (bodyParserStatus && bodyParserStatus >= 400 && bodyParserStatus < 500) {
+    return res.status(bodyParserStatus).json({
+      success: false,
+      error: bodyParserStatus === 413 ? 'The request is too large.' : 'The request could not be read.',
+    });
+  }
+
+  // Upload filters (multer limits and file-type checks) are the user's input, not a server fault.
+  if (err.name === 'MulterError' || /^Only [A-Z0-9, ]+(and [A-Z0-9]+ )?files are allowed/.test(err.message)) {
+    return res.status(400).json({ success: false, error: err.message });
   }
 
   if (
@@ -126,6 +166,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     return res.status(503).json({ success: false, error: 'File storage is not available right now. Please try again later.' });
   }
 
+  reportError(err, { method: req.method, path: req.path });
   res.status(500).json({ success: false, message: 'Internal Server Error' });
 });
 

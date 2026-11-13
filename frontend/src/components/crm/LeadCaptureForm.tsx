@@ -20,15 +20,18 @@ const errorMessage = (error: unknown, fallback: string) =>
  * Website lead forms (backend: POST /crm/public/requirement and /crm/public/sell-machine).
  * Submissions become CRM leads; the team calls back.
  */
-export default function LeadCaptureForm({ mode }: { mode: Mode }) {
+/** Values carried over from the machines page filters ("Alert me" / "Get alerts"). */
+export type LeadCapturePrefill = { categoryId?: string; brandName?: string; budgetMax?: string; city?: string; state?: string };
+
+export default function LeadCaptureForm({ mode, prefill }: { mode: Mode; prefill?: LeadCapturePrefill }) {
   const { t } = useTranslation();
   const showToast = useToastStore((state) => state.showToast);
   const [categories, setCategories] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
   const [models, setModels] = useState<Option[]>([]);
   const [form, setForm] = useState({
-    name: '', mobile: '', city: '', state: '', categoryId: '', brandId: '', modelId: '',
-    yearFrom: '', yearTo: '', budgetMax: '', year: '', expectedPrice: '', operatingHours: '', registrationNumber: '', message: '', website: '',
+    name: '', mobile: '', city: prefill?.city || '', state: prefill?.state || '', categoryId: prefill?.categoryId || '', brandId: '', modelId: '',
+    yearFrom: '', yearTo: '', budgetMax: prefill?.budgetMax || '', year: '', expectedPrice: '', operatingHours: '', registrationNumber: '', message: '', website: '',
   });
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -36,10 +39,24 @@ export default function LeadCaptureForm({ mode }: { mode: Mode }) {
   useEffect(() => {
     let cancelled = false;
     api.get('/crm/public/catalog')
-      .then((r) => { if (!cancelled) { setCategories(r.data?.categories || []); setBrands(r.data?.brands || []); } })
+      .then((r) => {
+        if (cancelled) return;
+        const nextCategories: Option[] = r.data?.categories || [];
+        const nextBrands: Option[] = r.data?.brands || [];
+        setCategories(nextCategories);
+        setBrands(nextBrands);
+        // The machines page filters by brand name; the form needs the brand id.
+        const brandName = prefill?.brandName?.trim().toLowerCase();
+        const prefillBrand = brandName ? nextBrands.find((brand) => brand.name.trim().toLowerCase() === brandName) : undefined;
+        setForm((current) => ({
+          ...current,
+          ...(prefillBrand && !current.brandId ? { brandId: prefillBrand.id } : {}),
+          ...(current.categoryId && !nextCategories.some((category) => category.id === current.categoryId) ? { categoryId: '' } : {}),
+        }));
+      })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, []);
+  }, [prefill?.brandName]);
 
   useEffect(() => {
     let cancelled = false;

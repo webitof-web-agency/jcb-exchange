@@ -29,6 +29,7 @@ import {
   updateSiteLogoSettings,
 } from '../utils/appSettings';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { notifySellerOfListingStatus } from '../services/listingStatusNotification.service';
 import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
 import { getPreferredWhatsAppNumber } from '../utils/whatsappRecipient';
 import { buildCustomerPrimeWhatsAppDispatch } from '../utils/customerPrimeWhatsApp';
@@ -63,6 +64,7 @@ import { getProfileMobileCandidates, normalizeProfileMobile } from '../utils/pro
 import { normalizeProfileEmail } from '../utils/profileSecurity';
 import { validateField } from '../utils/fieldValidation';
 import { normalizePartnerInventory } from '../utils/partnerInventory';
+import { partnerDisplayName } from '../utils/messageDisplayValues';
 import { DatabaseBackupInProgressError, performDatabaseBackup } from '../jobs/dbBackup.job';
 import { assertListingStatusChangeAllowed, buildAdminVehicleIdentitySummaries } from '../services/listingVehicleIdentity';
 import { deleteAccountPermanently, getAccountDeletionImpact } from '../services/accountDeletion.service';
@@ -1694,7 +1696,7 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: payment.buyer?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: payment.listingId, listingTitle, status },
+          payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: payment.listingId, listingTitle, status },
         });
       }
 
@@ -1717,7 +1719,7 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           relatedEntityId: payment.id,
           recipientType: 'PARTNER',
           recipientPhone: payment.partner?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: payment.listingId, listingTitle, status, recipientRole: 'PARTNER' },
+          payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: payment.listingId, listingTitle, status, recipientRole: 'PARTNER' },
         });
       }
     } catch (notifErr) {
@@ -3170,7 +3172,12 @@ export const updateVerificationStatus = async (req: Request, res: Response, next
       relatedEntityId: profile.id,
       recipientType: 'PARTNER',
       recipientPhone: existingPartner.whatsappNumber || existingPartner.mobile,
-      payloadSnapshot: { partnerId: id, kycStatus: status, remark: normalizedComment || null },
+      payloadSnapshot: {
+        partnerId: id,
+        partnerDisplayName: partnerDisplayName({ businessName: existingProfile?.businessName, ownerName: existingProfile?.ownerName || existingPartner.name }) || undefined,
+        kycStatus: status,
+        remark: normalizedComment || null,
+      },
     });
 
     res.json({
@@ -3215,37 +3222,8 @@ export const updateAdminListingStatus = async (req: Request, res: Response, next
       }
     });
 
-    if (listing.partner?.id) {
-      await (prisma as any).notification.create({
-        data: {
-          userId: listing.partner.id,
-          title: 'Listing Status Updated',
-          message: `Your listing "${listing.title}" status is now ${status}.`,
-          type: 'LISTING_UPDATE',
-          link: '/partner/listings',
-        },
-      });
-
-      // Fire push notification asynchronously
-      PushNotificationService.sendToUser(listing.partner.id, {
-        title: 'Listing Status Updated',
-        body: `Your listing "${listing.title}" status is now ${status}.`,
-        icon: '/icon.png',
-        url: '/partner/listings',
-        path: '/partner/listings',
-        data: {
-          path: '/partner/listings',
-          url: '/partner/listings',
-        },
-      }).catch(e => console.error('Push notification failed:', e));
-      void dispatchMarketplaceWhatsApp({
-        eventCode: 'PARTNER_LISTING_STATUS_UPDATED',
-        relatedEntityType: 'LISTING',
-        relatedEntityId: listing.id,
-        recipientType: 'PARTNER',
-        recipientPhone: listing.partner.whatsappNumber || listing.partner.mobile,
-        payloadSnapshot: { listingId: listing.id, listingTitle: listing.title, listingStatus: status },
-      });
+    if (existingListing.status !== status) {
+      await notifySellerOfListingStatus({ listing, partner: listing.partner, status });
     }
 
     if (shouldDispatchSmsPublishedBroadcast({ previousStatus: existingListing.status, nextStatus: status })) {
@@ -4029,6 +4007,10 @@ export const triggerDatabaseBackup = async (req: Request, res: Response, next: N
   } catch (error) {
     if (error instanceof DatabaseBackupInProgressError) {
       return res.status(409).json({ success: false, error: error.message, code: error.code });
+    }
+    // Missing Drive folder / pg_dump setup is a configuration step the admin can fix, not a server crash.
+    if (error instanceof Error && /backupFolderId is not configured|Configure PG_DUMP_PATH|credentials are not fully configured/i.test(error.message)) {
+      return res.status(400).json({ success: false, error: error.message.replace(/^\[backup\]\s*/, ''), code: 'BACKUP_NOT_CONFIGURED' });
     }
 
     return next(error);

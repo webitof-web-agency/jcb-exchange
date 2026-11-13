@@ -1,3 +1,5 @@
+import { messageVariableValue } from '../../utils/messageDisplayValues';
+
 const SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
   PARTNER_KYC_STATUS_UPDATED: ['partnerId', 'kycStatus'],
   PARTNER_LISTING_STATUS_UPDATED: ['listingId', 'listingTitle', 'listingStatus'],
@@ -59,10 +61,10 @@ const serializeSmsVariable = (value: unknown) => {
 
 export const getMissingSmsTemplateVariables = (template: string | null | undefined, payload: Record<string, unknown>) => {
   if (!template?.trim()) return [];
-  return template.split('|').map((part) => part.trim()).filter(Boolean).filter((key) => !serializeSmsVariable(payload[key]));
+  return template.split('|').map((part) => part.trim()).filter(Boolean).filter((key) => !serializeSmsVariable(messageVariableValue(key, payload)));
 };
 
 export const renderSmsVariables = (template: string | null | undefined, payload: Record<string, unknown>) => {
   if (!template?.trim()) return '';
-  return template.split('|').map((part) => serializeSmsVariable(payload[part.trim()])).join('|');
+  return template.split('|').map((part) => serializeSmsVariable(messageVariableValue(part.trim(), payload))).join('|');
 };

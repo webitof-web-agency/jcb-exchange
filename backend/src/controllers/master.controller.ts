@@ -12,6 +12,9 @@ import { hashDedupeKey, recordAnalyticsEvent } from '../services/analytics.servi
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
 import { getListingFinalPrice, getPublicListingPricing, type ListingPricingSource } from '../utils/listingPricing';
 import { sanitizeLegalHtml, sanitizeSvg } from '../utils/htmlSanitizer';
+import { getCachedPublicFeed } from '../utils/publicListingsCache';
+import { parsePublicListingSearch, searchPublicListings } from '../utils/publicListingSearch';
+import { buildPriceInsight } from '../utils/listingPriceInsight';
 
 const prismaAny = prisma as any;
 
@@ -25,6 +28,14 @@ const getFirstRemoteImageUrl = (media: unknown) => {
 
   return getRenderableMediaUrl(image);
 };
+
+// Public responses expose seller numbers only through `publicContact`, which honours the lead-routing setting.
+// The raw fields used to leak the seller's own mobile even when calls are routed to JCB Exchange.
+const withoutRawSellerContact = <T extends { alternateMobile?: unknown; user?: { name?: unknown } | null }>(dealer: T) => ({
+  ...dealer,
+  alternateMobile: null,
+  user: dealer.user ? { name: dealer.user.name ?? null } : null,
+});
 
 const getRemotePublicMedia = (media: unknown) => {
   return normalizeListingMedia(media);
@@ -754,7 +765,7 @@ export const getApprovedDealers = async (req: Request, res: Response, next: Next
     ]);
 
     const data = dealers.map((dealer: any) => ({
-      ...dealer,
+      ...withoutRawSellerContact(dealer),
       businessLogoUrl: normalizeRemoteMediaUrl(dealer.businessLogoUrl),
       publicContact: resolvePublicLeadContact({
         useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -811,7 +822,7 @@ export const getDealerById = async (req: Request, res: Response, next: NextFunct
     }
 
     const data = {
-      ...dealer,
+      ...withoutRawSellerContact(dealer),
       businessLogoUrl: normalizeRemoteMediaUrl(dealer.businessLogoUrl),
       publicContact: resolvePublicLeadContact({
         useSellerContact: settings.publicLeadRouting.useSellerContact,
@@ -1001,95 +1012,165 @@ export const getFooterSettings = async (req: Request, res: Response, next: NextF
   }
 };
 
-export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { status } = req.query;
-    const whereCondition =
-      typeof status === 'string'
-        ? buildPublicMarketplaceFeedWhere({ status })
-        : buildPublicMarketplaceFeedWhere({});
-
+// The public marketplace feed (card fields of every published listing), cached for a few seconds and
+// shared by the full-feed endpoint and the paged search endpoint below.
+const loadPublicFeed = (status?: string) => {
+  const whereCondition =
+    typeof status === 'string'
+      ? buildPublicMarketplaceFeedWhere({ status })
+      : buildPublicMarketplaceFeedWhere({});
+  const feedKey = typeof status === 'string' ? `status:${status.trim().toUpperCase()}` : 'default';
+  return getCachedPublicFeed(feedKey, async () => {
+    // Card fields only: the detail page loads the full listing. Description, sale record and Prime
+    // subscriptions were fetched here before but never shown, and made the feed several MB.
     const listings = await prismaAny.listing.findMany({
       where: whereCondition,
-      include: {
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        isNegotiable: true,
+        manufacturingYear: true,
+        operatingHours: true,
+        locationCity: true,
+        locationState: true,
+        condition: true,
+        status: true,
+        adminMarginAmount: true,
+        adminExpenseAmount: true,
+        adminExpenseBreakdown: true,
+        createdAt: true,
+        updatedAt: true,
+        saleRecord: { select: { soldPrice: true } },
         media: {
-          orderBy: {
-            createdAt: 'asc',
-          },
+          select: { id: true, url: true, type: true, slot: true, isFeatured: true, toBeDeletedAt: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
         },
-        category: {
-          select: { id: true, name: true },
-        },
-        brand: {
-          select: { id: true, name: true },
-        },
-        model: {
-          select: { id: true, name: true },
-        },
+        category: { select: { id: true, name: true } },
+        brand: { select: { id: true, name: true } },
+        model: { select: { id: true, name: true } },
         partner: {
           select: {
             id: true,
             name: true,
-            customerPrimeSubscriptions: {
-              where: {
-                status: 'ACTIVE',
-                expiresAt: {
-                  gte: new Date(),
-                },
-              },
-              select: {
-                expiresAt: true,
-              },
-            },
-            partnerProfile: {
-              select: {
-                id: true,
-                businessName: true,
-                partnerType: true,
-              },
-            },
+            partnerProfile: { select: { id: true, businessName: true, partnerType: true } },
           },
         },
-        saleRecord: true,
       },
-      orderBy: [
-        {
-          createdAt: 'desc',
-        },
-      ],
+      orderBy: [{ createdAt: 'desc' }],
     });
 
-    res.status(200).json({
-      success: true,
-      data: listings.map((listing: any) => ({
-        id: listing.id,
-        title: listing.title,
-        price: getPublicListingPrice(listing),
-        isNegotiable: Boolean(listing.isNegotiable),
-        manufacturingYear: listing.manufacturingYear,
-        operatingHours: listing.operatingHours,
-        locationCity: listing.locationCity,
-        locationState: listing.locationState,
-        condition: listing.condition,
-        description: listing.description,
-        status: listing.status,
-        category: listing.category,
-        brand: listing.brand,
-        model: listing.model,
-        partner: {
-          id: listing.partner?.partnerProfile?.id || listing.partner?.id,
-          name:
-            listing.partner?.partnerProfile?.businessName ||
-            listing.partner?.name ||
-            'Verified Partner',
-          type: listing.partner?.partnerProfile?.partnerType || 'Partner',
-        },
-        featuredImage: getFirstRemoteImageUrl(listing.media),
-        mediaCount: getRemotePublicMedia(listing.media).length,
-        createdAt: listing.createdAt,
-        updatedAt: listing.updatedAt,
-      })),
+    return listings.map((listing: any) => ({
+      id: listing.id,
+      title: listing.title,
+      price: getPublicListingPrice(listing),
+      isNegotiable: Boolean(listing.isNegotiable),
+      manufacturingYear: listing.manufacturingYear,
+      operatingHours: listing.operatingHours,
+      locationCity: listing.locationCity,
+      locationState: listing.locationState,
+      condition: listing.condition,
+      status: listing.status,
+      category: listing.category,
+      brand: listing.brand,
+      model: listing.model,
+      partner: {
+        id: listing.partner?.partnerProfile?.id || listing.partner?.id,
+        name:
+          listing.partner?.partnerProfile?.businessName ||
+          listing.partner?.name ||
+          'Verified Partner',
+        type: listing.partner?.partnerProfile?.partnerType || 'Partner',
+      },
+      featuredImage: getFirstRemoteImageUrl(listing.media),
+      mediaCount: getRemotePublicMedia(listing.media).length,
+      createdAt: listing.createdAt,
+      updatedAt: listing.updatedAt,
+    }));
+  });
+};
+
+// Machines page: one page of results plus filter counts, computed on the cached feed (no extra DB work).
+// ?q=&categories=&brands=&locations=&conditions=&minPrice=&maxPrice=&sort=newest|price-low|price-high&page=&limit=
+export const searchPublicListingsHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const feed = await loadPublicFeed();
+    const result = searchPublicListings(feed.items as any[], parsePublicListingSearch(req.query as Record<string, unknown>));
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Machine detail page: fair price range from comparable machines (sold + on sale), or null when there are
+// too few comparables. Only listings in the public feeds are answered, so hidden listings stay hidden.
+export const getPublicListingPriceInsight = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const listingId = String(req.params.id || '').trim();
+    const [available, sold] = await Promise.all([loadPublicFeed(), loadPublicFeed('SOLD')]);
+    const target = (available.items as any[]).find((item) => item.id === listingId)
+      || (sold.items as any[]).find((item) => item.id === listingId);
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Listing not found.' });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.status(200).json({ success: true, data: buildPriceInsight(target, available.items as any[], sold.items as any[]) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPublicListings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { status } = req.query;
+    const feed = await loadPublicFeed(typeof status === 'string' ? status : undefined);
+
+    // Optional paging (?page=&limit=, limit up to 100). Without it the full feed is returned as before.
+    const rawLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    if (Number.isFinite(rawLimit) && rawLimit > 0) {
+      const limit = Math.min(rawLimit, 100);
+      const total = feed.items.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const rawPage = Number.parseInt(String(req.query.page ?? '1'), 10);
+      const page = Math.min(Math.max(Number.isFinite(rawPage) ? rawPage : 1, 1), totalPages);
+      return res.status(200).json({
+        success: true,
+        data: feed.items.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total, totalPages },
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Vary', 'Accept-Encoding');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.setHeader('Content-Encoding', 'gzip');
+      return res.status(200).end(feed.gzip);
+    }
+    return res.status(200).end(feed.json);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Resolves the short id at the end of a machine URL slug (e.g. "34d5397a-908a") to the full listing id.
+ * The website used to download the whole public feed (twice, incl. SOLD) on every detail-page request to do this.
+ */
+export const resolvePublicListingShortId = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const shortId = String(req.params.shortId || '').trim().toLowerCase();
+    if (!/^[0-9a-f-]{8,36}$/.test(shortId)) {
+      return res.status(400).json({ success: false, error: 'Invalid listing reference.' });
+    }
+    const matches = await prismaAny.listing.findMany({
+      where: { ...getPublicMarketplaceListingWhere(), id: { startsWith: shortId } },
+      select: { id: true },
+      take: 2,
     });
+    if (matches.length !== 1) {
+      return res.status(404).json({ success: false, error: 'Listing not found.' });
+    }
+    return res.json({ success: true, id: matches[0].id });
   } catch (error) {
     next(error);
   }
@@ -1545,9 +1626,10 @@ export const getPublicListingById = async (req: Request, res: Response, next: Ne
         customerCategory: sellerPresentation.partnerType === 'PRIME_CUSTOMER' ? 'PRIME_CUSTOMER' : 'STANDARD_CUSTOMER',
         district: listing.partner?.partnerProfile?.district,
         address: listing.partner?.partnerProfile?.businessAddress,
-        mobile: listing.partner?.mobile,
-        whatsapp: listing.partner?.whatsappNumber || listing.partner?.mobile,
-        alternateMobile: listing.partner?.partnerProfile?.alternateMobile,
+        // Seller numbers are only exposed through publicContact (honours lead routing).
+        mobile: null,
+        whatsapp: null,
+        alternateMobile: null,
         logo: normalizeRemoteMediaUrl(listing.partner?.partnerProfile?.businessLogoUrl),
         description: listing.partner?.partnerProfile?.businessDescription,
         workingHours: listing.partner?.partnerProfile?.workingHours,

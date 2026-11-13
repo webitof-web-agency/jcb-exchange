@@ -19,6 +19,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 const DL_STATUS = {
@@ -440,8 +441,10 @@ export class DrivingLicenseVerificationService {
       : await this.record.create({ data: { status: DL_STATUS.PENDING, maskedLicenseNumber, requestFingerprint, requestedById, rawDataExpiresAt: null } });
     await this.writeAudit(requestedById, 'DRIVING_LICENSE_VERIFICATION_REQUESTED', pending.id, { maskedLicenseNumber, status: DL_STATUS.PENDING });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'DRIVING_LICENSE_VERIFICATION',
             verificationRecordId: pending.id,
@@ -489,6 +492,7 @@ export class DrivingLicenseVerificationService {
         : error instanceof DrivingLicenseVerificationError
           ? error
           : new DrivingLicenseVerificationError('Driving license verification could not be completed.', 502, 'verification_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalizedError as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'DRIVING_LICENSE_VERIFICATION_FAILED', pending.id, {
         maskedLicenseNumber,

@@ -114,7 +114,11 @@
     "sortPriceHigh": "Price: High to Low",
     "previous": "Previous",
     "next": "Next",
-    "unspecified": "Unspecified"
+    "unspecified": "Unspecified",
+    "alertMeWhenListed": "Alert me when one is listed",
+    "alertBannerTitle": "Not the right machine yet?",
+    "alertBannerText": "Tell us what you need and we will let you know when a matching machine is listed.",
+    "alertBannerCta": "Get alerts"
   },
   "dealers": {
     "trustedPartners": "Our Trusted Partners",
@@ -222,7 +226,16 @@
     "districtLabel": "District",
     "addressLabel": "Address",
     "nearbyLandmarkLabel": "Nearby Landmark",
-    "ownerNameLabel": "RC Owner Name"
+    "ownerNameLabel": "RC Owner Name",
+    "priceInsightTitle": "Market price range",
+    "priceInsightMedian": "Typical {amount}",
+    "priceInsightBelow": "Priced below the usual range",
+    "priceInsightWithin": "Priced within the usual range",
+    "priceInsightAbove": "Priced above the usual range",
+    "priceInsightBasis": "Based on {count} {basis} machines on JCB Exchange{years}.",
+    "priceInsightBasisModel": "same model",
+    "priceInsightBasisBrand": "same brand and type",
+    "priceInsightBasisCategory": "same equipment type"
   },
   "primeModal": {
     "loadFailed": "Unable to load Prime payment details.",

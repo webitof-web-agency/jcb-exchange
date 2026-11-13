@@ -132,11 +132,13 @@ const serializeSettings = (settings: {
 });
 
 export const getSmsSettings = async () => {
-  const settings = await prisma.smsIntegrationSettings.upsert({
-    where: { id: SETTINGS_ID },
-    update: {},
-    create: { id: SETTINGS_ID },
-  });
+  // Two first-time requests can race to create the singleton row; the loser just reads it.
+  const settings = await prisma.smsIntegrationSettings
+    .upsert({ where: { id: SETTINGS_ID }, update: {}, create: { id: SETTINGS_ID } })
+    .catch(async (error: unknown) => {
+      if ((error as { code?: string })?.code !== 'P2002') throw error;
+      return prisma.smsIntegrationSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
+    });
   return serializeSettings(settings);
 };
 

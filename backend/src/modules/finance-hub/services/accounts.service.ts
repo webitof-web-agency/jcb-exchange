@@ -5,7 +5,7 @@ import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORY_MAP, DEFAULT_GROUPS } from '../seed/
 import { onlyProvided, readBoolean, readEnum, readInt, readMultiline, readRate, readString } from '../utils/input';
 import { writeFinAudit } from './audit.service';
 import { sequential, type ActorContext } from './context';
-import { FIN_SETTINGS_ID } from './settings.service';
+import { DEFAULT_CASH_LIMIT_PER_VOUCHER, DEFAULT_CASH_RECEIPT_LIMIT, FIN_SETTINGS_ID } from './settings.service';
 
 const CODE_PATTERN = /^[0-9A-Z][0-9A-Z-]{1,11}$/;
 
@@ -381,7 +381,14 @@ export const updatePaymentMethodMap = async (body: Record<string, unknown>, cont
     const config = { ...readConfig(settings?.config), paymentMethodAccounts: next } as Prisma.InputJsonValue;
     await tx.finSettings.upsert({
       where: { id: FIN_SETTINGS_ID },
-      create: { id: FIN_SETTINGS_ID, config, updatedById: context.actorUserId },
+      // A first save here creates the settings row, so it must carry the statutory cash limits like the other create paths.
+      create: {
+        id: FIN_SETTINGS_ID,
+        cashLimitPerVoucher: new Prisma.Decimal(DEFAULT_CASH_LIMIT_PER_VOUCHER),
+        cashReceiptLimit: new Prisma.Decimal(DEFAULT_CASH_RECEIPT_LIMIT),
+        config,
+        updatedById: context.actorUserId,
+      },
       update: { config, updatedById: context.actorUserId },
     });
     await writeFinAudit({ ...context, entityType: 'FinSettings', entityId: FIN_SETTINGS_ID, action: 'UPDATE_PAYMENT_METHOD_MAP', before: readConfig(settings?.config).paymentMethodAccounts ?? null, after: next }, tx);

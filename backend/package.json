@@ -18,10 +18,13 @@
     "seed:listings": "tsx scripts/seed-listings.ts",
     "seed:sold-vehicle-demo": "tsx scripts/seed-sold-vehicle-demo.ts",
     "roles:sync": "tsx scripts/sync-employee-roles.ts",
+    "admin:create": "tsx scripts/create-super-admin.ts",
     "notifications:backfill": "tsx scripts/backfill-notification-preferences.ts",
     "notifications:audit": "tsx scripts/audit-notification-wiring.ts",
     "notifications:provision": "tsx scripts/provision-notification-automation-rules.ts",
-    "partners:backfill": "tsx scripts/backfill-partner-profiles.ts"
+    "partners:backfill": "tsx scripts/backfill-partner-profiles.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --import ./scripts/unit-test-env.mjs --import tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",
@@ -30,6 +33,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@sentry/node": "^10.78.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",

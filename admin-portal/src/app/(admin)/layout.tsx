@@ -194,7 +194,11 @@ export default function AdminLayout({
     token,
     fallbackPath: '/',
   });
-  const billing = useApiBillingSummary();
+  const canSeeApiBilling =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'ADMIN' ||
+    hasAnyPermission(user?.permissions, ['pan.verification.read', 'pan.mobile-to-pan.read', 'gst.verification.read', 'aadhaar.digilocker.read', 'driving-license.verification.read', 'rc.owner-history.read', 'rc.challan.verification.read', 'rc.chassis-to-rc.read', 'rc.to-mobile.read', 'rc.mobile-number-check.read', 'settings.manage']);
+  const billing = useApiBillingSummary(canSeeApiBilling);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -284,7 +288,14 @@ export default function AdminLayout({
   );
   const employeeCanSeeUsers = hasAnyPermission(userPermissions, employeeUsersPermissions);
   const employeeCanSeeRoles = hasAnyPermission(userPermissions, employeeRolesPermissions);
-  const employeeHasAnyVisibleRoute = employeeNavItems.length > 0 || employeeCanSeeUsers || employeeCanSeeRoles;
+  // Recruitment-only (HR) and accounts-only roles have no module nav items; counting only those logged such
+  // employees out whenever they opened a page outside their permissions instead of sending them home.
+  const employeeHasAnyVisibleRoute =
+    employeeNavItems.length > 0 ||
+    employeeCanSeeUsers ||
+    employeeCanSeeRoles ||
+    recruitmentNavItems.some((item) => hasAnyPermission(userPermissions, item.permissions)) ||
+    accountsNavItems.some((item) => Boolean(item.permissions) && hasAnyPermission(userPermissions, item.permissions));
   const visibleRecruitmentNavItems = useMemo(
     () => (isSuperAdmin
       ? recruitmentNavItems
@@ -487,8 +498,10 @@ export default function AdminLayout({
   // On visiting a module page, we update its seenAt to now — clearing the badge.
   // This is login/logout-safe: timestamps are keyed by user id in localStorage.
   // ─────────────────────────────────────────────────────────────────────────────
+  // The badge endpoint needs the dashboard permission; asking without it only produced a 403 on every page.
+  const canLoadBadges = isSuperAdmin || (user?.role === 'EMPLOYEE' && hasAnyPermission(userPermissions, ['dashboard.view']));
   useEffect(() => {
-    if (!hasHydrated || !isAuthenticated || (!isSuperAdmin && !isAdmin)) return;
+    if (!hasHydrated || !isAuthenticated || !canLoadBadges) return;
 
     // Mark current page as "seen" immediately when we navigate to it
     const markCurrentPageSeen = () => {
@@ -553,7 +566,7 @@ export default function AdminLayout({
       window.clearInterval(intervalId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHydrated, isAuthenticated, isSuperAdmin, isAdmin, pathname, user?.id]);
+  }, [hasHydrated, isAuthenticated, canLoadBadges, pathname, user?.id]);
 
   const handleLogout = () => {
     logout();

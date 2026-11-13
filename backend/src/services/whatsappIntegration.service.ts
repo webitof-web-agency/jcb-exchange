@@ -299,11 +299,11 @@ const credentialSecret = () => {
 const hasUsableCredentialSecret = () => /^[a-fA-F0-9]{64}$/.test(process.env.WHATSAPP_SETTINGS_SECRET?.trim() || '');
 
 const normalizePhone = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length < 8 || digits.length > 15) {
+  const phone = normalizeWhatsAppRecipientPhone(value);
+  if (!phone) {
     throw new Error('Enter a valid WhatsApp phone number including country code.');
   }
-  return digits;
+  return phone;
 };
 
 const maskPhone = (value?: string | null) => {
@@ -357,11 +357,13 @@ const serializeSettings = (settings: {
 });
 
 export const getWhatsAppSettings = async () => {
-  const settings = await prisma.whatsAppIntegrationSettings.upsert({
-    where: { id: SETTINGS_ID },
-    update: {},
-    create: { id: SETTINGS_ID },
-  });
+  // Two first-time requests can race to create the singleton row; the loser just reads it.
+  const settings = await prisma.whatsAppIntegrationSettings
+    .upsert({ where: { id: SETTINGS_ID }, update: {}, create: { id: SETTINGS_ID } })
+    .catch(async (error: unknown) => {
+      if ((error as { code?: string })?.code !== 'P2002') throw error;
+      return prisma.whatsAppIntegrationSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
+    });
   return serializeSettings(settings);
 };
 

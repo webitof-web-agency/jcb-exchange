@@ -9,3 +9,9 @@ test('public machine slug resolver preserves sold vehicle detail links', async (
 
   assert.equal(source.includes('/master/public-listings?status=SOLD'), true);
 });
+
+test('public machine slug resolver asks the API to resolve the short id first', async () => {
+  const source = await readFile(resolverPath, 'utf8');
+
+  assert.equal(source.includes('/master/public-listings/resolve/'), true);
+});

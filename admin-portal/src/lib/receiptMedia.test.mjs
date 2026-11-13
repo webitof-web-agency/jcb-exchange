@@ -38,10 +38,31 @@ test('uses Google Drive embedded preview URLs for legacy Drive receipts', () => 
 });
 
 test('uses a Google Drive thumbnail for an inline legacy receipt preview', () => {
-  assert.equal(
-    getReceiptThumbnailUrl('https://drive.google.com/uc?id=legacy-receipt-id'),
-    'https://drive.google.com/thumbnail?id=legacy-receipt-id&sz=w2000',
-  );
+  // Without an API URL the preview falls back to Drive's own thumbnail.
+  const saved = process.env.NEXT_PUBLIC_API_URL;
+  delete process.env.NEXT_PUBLIC_API_URL;
+  try {
+    assert.equal(
+      getReceiptThumbnailUrl('https://drive.google.com/uc?id=legacy-receipt-id'),
+      'https://drive.google.com/thumbnail?id=legacy-receipt-id&sz=w2000',
+    );
+  } finally {
+    if (saved !== undefined) process.env.NEXT_PUBLIC_API_URL = saved;
+  }
+});
+
+test('uses the API media proxy for a legacy Drive receipt when the API URL is set', () => {
+  const saved = process.env.NEXT_PUBLIC_API_URL;
+  process.env.NEXT_PUBLIC_API_URL = 'https://api.example.test/api';
+  try {
+    assert.equal(
+      getReceiptThumbnailUrl('https://drive.google.com/uc?id=legacy-receipt-id'),
+      'https://api.example.test/api/documents/upload/public/listing-media/drive/legacy-receipt-id',
+    );
+  } finally {
+    if (saved === undefined) delete process.env.NEXT_PUBLIC_API_URL;
+    else process.env.NEXT_PUBLIC_API_URL = saved;
+  }
 });
 
 test('masks native Drive viewer controls when a receipt is embedded', () => {

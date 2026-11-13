@@ -19,6 +19,7 @@ import {
   apiWalletBillingService,
   isApiWalletBillingError,
   type ApiBillingGateway,
+  refundFailedProviderCall,
 } from './apiWalletBilling.service';
 
 const RC_MOBILE_NUMBER_CHECK_STATUS = {
@@ -265,8 +266,10 @@ export class RcMobileNumberCheckService {
     }
     await this.writeAudit(requestedById, 'RC_MOBILE_NUMBER_CHECK_REQUESTED', pending.id, { maskedRcNumber, maskedMobileNumber, status: RC_MOBILE_NUMBER_CHECK_STATUS.PENDING });
 
+    let billing: Awaited<ReturnType<ApiBillingGateway['chargeForProviderCall']>> | undefined;
+
     try {
-      const billing = this.billing
+      billing = this.billing
         ? await this.billing.chargeForProviderCall({
             serviceKey: 'RC_MOBILE_NUMBER_CHECK',
             verificationRecordId: pending.id,
@@ -299,6 +302,7 @@ export class RcMobileNumberCheckService {
         : error instanceof RcMobileNumberCheckError
           ? error
           : new RcMobileNumberCheckError('RC Mobile Number Check could not be completed.', 502, 'check_failed');
+      await refundFailedProviderCall(this.billing, billing, error, String((normalizedError as { code?: unknown })?.code ?? 'provider_request_failed'));
       await this.markFailed(pending.id, normalizedError, error instanceof SurepassProviderError ? error.messageCode : null);
       await this.writeAudit(requestedById, 'RC_MOBILE_NUMBER_CHECK_FAILED', pending.id, { maskedRcNumber, maskedMobileNumber, status: RC_MOBILE_NUMBER_CHECK_STATUS.FAILED, code: normalizedError.code });
       throw normalizedError;

@@ -13,6 +13,7 @@ import {
 } from '../utils/listingPurchasePolicy';
 import { isPublicMarketplaceListingVisible } from '../utils/publicListingVisibility';
 import { PushNotificationService } from '../services/pushNotification.service';
+import { notifySellerOfListingStatus } from '../services/listingStatusNotification.service';
 import { detectRazorpayModeFromKeyId, getAppSettings } from '../utils/appSettings';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
 import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
@@ -1280,11 +1281,19 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
       return res.status(403).json({ error: 'Listing access is not available for this account.' });
     }
 
+    // Optional paging (?page=&limit=, limit up to 200); without limit the full list is returned as before.
+    const rawLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const pageSize = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : null;
+    const rawPage = Number.parseInt(String(req.query.page ?? '1'), 10);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    const total = pageSize ? await prismaAny.listing.count({ where }) : null;
+
     const listings = await prismaAny.listing.findMany({
       where,
       orderBy: {
         createdAt: 'desc',
       },
+      ...(pageSize ? { take: pageSize, skip: (page - 1) * pageSize } : {}),
       include: {
         partner: {
           select: {
@@ -1351,6 +1360,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
         dealerPhone: resolveListingContactNumber(listing.partner),
         dealerCategory: getDealerCategoryLabel(listing.partner),
       })),
+      ...(pageSize ? { pagination: { page, limit: pageSize, total, totalPages: Math.max(1, Math.ceil((total || 0) / pageSize)) } } : {}),
     });
   } catch (error) {
     next(error);
@@ -2065,6 +2075,8 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
             name: true,
             email: true,
             role: true,
+            mobile: true,
+            whatsappNumber: true,
             partnerProfile: {
               select: {
                 businessName: true,
@@ -2085,6 +2097,11 @@ export const updateListingStatus = async (req: Request, res: Response, next: Nex
     });
 
     await setListingSoldAt(updatedListing.id, soldAt);
+
+    // The seller hears about approval / changes requested from this screen too (it used to stay silent).
+    if (existingListing.status !== requestedStatus) {
+      await notifySellerOfListingStatus({ listing: updatedListing, partner: updatedListing.partner, status: requestedStatus });
+    }
 
     if (requestedStatus === 'PUBLISHED' && !isPublicListingStatus(existingListing.status)) {
       await createCustomerListingNotifications({
@@ -3031,7 +3048,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method, paymentStatus: 'PENDING' },
+          payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, method: payment.method, paymentStatus: 'PENDING' },
         });
         // Admin audit copy - notify all superadmins about new payment receipt for manual review
         void (async () => {
@@ -3047,7 +3064,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
                 relatedEntityId: payment.id,
                 recipientType: 'SUPER_ADMIN',
                 recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
-                payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, method: payment.method },
+                payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, method: payment.method },
               });
             });
           } catch (adminNotifErr) {
@@ -3061,7 +3078,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID' },
+          payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, paymentStatus: 'PAID' },
         });
         void dispatchMarketplaceWhatsApp({
           eventCode: 'LISTING_PAYMENT_APPROVED',
@@ -3069,7 +3086,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'PARTNER',
           recipientPhone: listing!.partner?.whatsappNumber || listing!.partner?.mobile,
-          payloadSnapshot: { paymentId: payment.id, listingId: listing!.id, listingTitle, paymentStatus: 'PAID', recipientRole: 'PARTNER' },
+          payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, paymentStatus: 'PAID', recipientRole: 'PARTNER' },
         });
       }
     } catch (notifErr) {

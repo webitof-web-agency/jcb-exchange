@@ -18,7 +18,7 @@ import {
   uploadSecureDocument,
   uploadSecurePassportPhoto,
 } from '../controllers/document.controller';
-import { requireAdmin, requireAuth, requirePortalOperator, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
+import { requireAdmin, requireAdminOrEmployeePermissions, requireAuth, requirePortalOperator, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
@@ -108,6 +108,8 @@ router.post(
 router.get('/upload/public/drive/:fileId', getPublicDriveMedia);
 router.get('/upload/public/listing-media/drive/:fileId', getPublicDriveMedia);
 router.get('/secure/:filename', requireAuth, requirePortalOperator, getSecureDocument);
-router.delete('/secure/:filename', requireAuth, requireAdmin, deleteSecureDocument);
+// Only the Sold Vehicle form discards secure uploads; KYC documents must not be deletable by every employee.
+const canDeleteSecureDocument = requireAdminOrEmployeePermissions(['accounts.sell.crud', 'accounts.sell.create', 'accounts.sell.update', 'kyc.edit.override']);
+router.delete('/secure/:filename', requireAuth, canDeleteSecureDocument, deleteSecureDocument);
 
 export default router;

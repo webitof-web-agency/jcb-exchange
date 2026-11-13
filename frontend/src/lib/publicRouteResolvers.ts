@@ -54,6 +54,17 @@ export const resolvePublicMachineListingId = async (rawParam: string): Promise<s
   }
 
   try {
+    // One indexed lookup on the API (covers available and SOLD listings) instead of downloading the feed.
+    const resolved = await fetchWithTimeout(
+      `${API_BASE_URL}/master/public-listings/resolve/${encodeURIComponent(parsed.shortSuffix)}`,
+      { cache: 'no-store' },
+    );
+    const resolvedBody = (await resolved.json().catch(() => null)) as { success?: boolean; id?: string } | null;
+    if (resolvedBody && typeof resolvedBody.success === 'boolean') {
+      return resolvedBody.success && resolvedBody.id ? resolvedBody.id : null;
+    }
+
+    // Older API without the resolve route: fall back to scanning the public feeds.
     const response = await fetchWithTimeout(`${API_BASE_URL}/master/public-listings`, {
       cache: 'no-store',
     });

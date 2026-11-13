@@ -200,3 +200,16 @@ export const listingRcLookupRateLimit = (req: Request, res: Response, next: Next
   if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'EMPLOYEE') return next();
   return sellerRcLookupLimiter(req, res, next);
 };
+// Chassis-to-RC is also a paid lookup open to sellers on the listing form: same daily cap per account,
+// staff not limited.
+const sellerChassisLookupLimiter = createRateLimiter({
+  windowMs: 24 * 60 * MINUTE,
+  max: 20,
+  message: 'Too many chassis number checks today. Please try again tomorrow or contact support.',
+  key: (req) => (req as Request & { user?: { id?: string } }).user?.id || clientIp(req),
+});
+export const chassisLookupRateLimit = (req: Request, res: Response, next: NextFunction) => {
+  const role = (req as Request & { user?: { role?: string } }).user?.role;
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'EMPLOYEE') return next();
+  return sellerChassisLookupLimiter(req, res, next);
+};

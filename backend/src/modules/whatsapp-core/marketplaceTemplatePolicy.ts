@@ -1,3 +1,5 @@
+import { messageVariableValue } from '../../utils/messageDisplayValues';
+
 const MARKETPLACE_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
   PARTNER_KYC_STATUS_UPDATED: ['kycStatus'],
   PARTNER_LISTING_STATUS_UPDATED: ['listingId', 'listingTitle', 'listingStatus'],
@@ -20,8 +22,7 @@ const getPayloadValue = (variable: string, payload: Record<string, unknown>) => 
   if (variable === 'status') return payload.status ?? payload.paymentStatus;
   if (variable === 'paymentStatus') return payload.paymentStatus ?? payload.status;
   if (variable === 'recipientRole') return payload.recipientRole ?? payload.recipientType;
-  if (variable === 'partnerId') return payload.partnerCode ?? payload.partnerUserId ?? payload.userId ?? payload.partnerId;
-  return payload[variable];
+  return messageVariableValue(variable, payload);
 };
 
 const bodyVariableCount = (components: unknown) => {

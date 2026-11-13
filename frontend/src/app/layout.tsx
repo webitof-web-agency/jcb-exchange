@@ -31,9 +31,8 @@ export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  minimumScale: 1,
-  userScalable: false,
+  // Pinch-zoom stays on (accessibility, machine photos). iOS focus-zoom on inputs is prevented in
+  // globals.css by keeping form fields at 16px on touch screens instead.
 };
 
 const getIconType = (url: string) => {
