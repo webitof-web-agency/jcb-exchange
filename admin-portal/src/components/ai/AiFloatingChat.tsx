@@ -39,6 +39,8 @@ import { readRememberedAiConversationId, rememberAiConversationId, selectRestore
 import { filterAiModelOptions, getProviderModelCatalogMessage, hasProviderModel, type AiModelOption } from './aiModelPicker';
 import { formatAiTimestamp, normalizeAiDisplayText } from './aiDisplay';
 import { choosePreferredSpeechVoice, getSpeechRecognitionConstructor, getVoiceInputErrorMessage, getVoiceInputStatusLabel, getVoiceOutputButtonLabel, joinVoiceDraft, stripAiVoiceMarkup, type SpeechRecognitionLike } from './aiVoice';
+import AiFileActions from './AiFileActions';
+import type { AiFileAction } from './aiFileActionModel';
 
 type Conversation = {
   id: string;
@@ -144,6 +146,7 @@ export default function AiFloatingChat() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [fileActionsByRequestId, setFileActionsByRequestId] = useState<Record<string, AiFileAction[]>>({});
   const [draft, setDraft] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -810,12 +813,21 @@ export default function AiFloatingChat() {
         provider: string;
         model: string;
         answer: string;
+        tool?: {
+          uiActions?: AiFileAction[];
+        };
       }>('/ai/chat', {
         message: content,
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
       speakAiResponse(normalizeAiDisplayText(response.data.answer));
+      if (response.data.tool?.uiActions?.length && response.data.requestId) {
+        setFileActionsByRequestId((current) => ({
+          ...current,
+          [response.data.requestId]: response.data.tool?.uiActions || [],
+        }));
+      }
       const conversationId = response.data.conversationId;
       setActiveConversationId(conversationId);
       const [historyResponse, messagesResponse] = await Promise.all([
@@ -1193,6 +1205,9 @@ export default function AiFloatingChat() {
                         {message.role === 'ASSISTANT'
                           ? <div className="prose prose-sm max-w-none break-words text-inherit [&_a]:text-[#0B5FFF] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-slate-100 [&_table]:block [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: purifyAiHtml(normalizeAiDisplayText(message.content)) }} />
                           : <p className="whitespace-pre-wrap break-words">{normalizeAiDisplayText(message.content)}</p>}
+                        {message.role === 'ASSISTANT' && message.requestId && fileActionsByRequestId[message.requestId]?.length ? (
+                          <AiFileActions actions={fileActionsByRequestId[message.requestId]} />
+                        ) : null}
                         <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${message.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
                           <span className="truncate">
                             {message.role === 'ASSISTANT' && (message.provider || message.modelAlias)

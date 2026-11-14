@@ -954,7 +954,7 @@ export default function AccountsTasksPage() {
                 </span>
                 <select
                   value={requirementFilter}
-                  onChange={(e) => setRequirementFilter(e.target.value as any)}
+                  onChange={(e) => setRequirementFilter(e.target.value as 'ALL' | 'MANDATORY' | 'OPTIONAL')}
                   className="h-7.5 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-amber-400"
                 >
                   <option value="ALL">All Requirements</option>

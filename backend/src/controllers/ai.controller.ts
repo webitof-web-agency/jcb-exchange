@@ -13,17 +13,23 @@ import { aiGatewayService } from '../services/ai/aiGatewayInstance';
 import { AiProviderError } from '../services/ai/aiProvider.service';
 import { AiSettingsError, getAvailableAiModels } from '../services/ai/aiSettings.service';
 import { AiToolError, aiReadOnlyToolsService, type AiToolContext } from '../services/ai/aiReadOnlyTools.service';
-import { resolveAiMessage, type AiIntentContextMessage } from '../services/ai/aiIntentRouter.service';
+import { greetingResponseFor, isAiGreeting, resolveAiMessage, type AiIntentContextMessage } from '../services/ai/aiIntentRouter.service';
 import { getCachedDailyBriefing } from '../jobs/aiDailyBriefing.job';
 import { getBriefingDateKey, AI_DAILY_BRIEFING_TIMEZONE } from '../services/ai/aiDailyBriefing.service';
 import { AiConversationError, aiConversationService } from '../services/ai/aiConversation.service';
 import { AiMemoryError, aiMemoryService } from '../services/ai/aiMemory.service';
+import { aiFeedbackLearningService } from '../services/ai/aiFeedbackLearning.service';
 import { aiDatabaseService } from '../services/ai/aiDatabase.service';
 import { aiSyncService } from '../services/ai/aiSync.service';
 import { aiToolObservabilityService } from '../services/ai/aiToolObservability.service';
 import { createAiDataErrorContractForCode } from '../services/ai/aiDataContract.service';
 import { aiReliabilityObservabilityService, moduleForAiTool } from '../services/ai/aiReliabilityObservability.service';
 import { redactSensitiveData } from '../services/ai/aiRedaction';
+import { analyzeDocumentImage, type AiDocumentType } from '../services/ai/aiDocumentVision.service';
+
+const aiDocumentAssistSchema = z.object({
+  documentType: z.enum(['RC', 'PAN', 'GST', 'FINANCE']),
+}).strict();
 
 const aiToolCallSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -91,6 +97,34 @@ export const getAiModels = async (_req: Request, res: Response, next: NextFuncti
     });
   } catch (error) {
     return sendAiError(error, res, next);
+  }
+};
+
+export const assistAiDocument = async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = aiDocumentAssistSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'A valid documentType (RC, PAN, GST, or FINANCE) is required.',
+      code: 'AI_DOCUMENT_TYPE_INVALID',
+    });
+  }
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'A document image is required.',
+      code: 'AI_DOCUMENT_IMAGE_REQUIRED',
+    });
+  }
+  try {
+    const analysis = await analyzeDocumentImage({
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      documentType: parsed.data.documentType as AiDocumentType,
+    });
+    return res.status(200).json({ success: true, analysis });
+  } catch (error) {
+    return next(error);
   }
 };
 
@@ -403,6 +437,33 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       role: 'USER',
       content: parsed.data.message,
     });
+    if (!parsed.data.tool && isAiGreeting(parsed.data.message)) {
+      const requestId = randomUUID();
+      const answer = greetingResponseFor(parsed.data.message);
+      await aiConversationService.appendMessage(req.user.id, conversationId, {
+        role: 'ASSISTANT',
+        content: answer,
+        requestId,
+        provider: 'INTERNAL',
+        modelAlias: 'greeting-router',
+      });
+      await recordAiReliability({
+        actorUserId: req.user.id,
+        eventType: 'QUERY',
+        module: 'ai-router',
+        provider: 'INTERNAL',
+        status: 'SUCCEEDED',
+        latencyMs: Math.max(0, Date.now() - queryStartedAt),
+      });
+      return res.json({
+        success: true,
+        conversationId,
+        requestId,
+        provider: 'INTERNAL',
+        model: 'greeting-router',
+        answer,
+      });
+    }
     try {
       await aiMemoryService.captureExplicitMemory(req.user.id, parsed.data.message);
     } catch {
@@ -413,6 +474,11 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       memoryContext = await aiMemoryService.contextFor(req.user.id);
     } catch {
       memoryContext = [];
+    }
+    try {
+      memoryContext = [...memoryContext, ...(await aiFeedbackLearningService.contextFor(req.user.id))].slice(0, 10);
+    } catch {
+      // Feedback guidance is optional continuity; it must never block the current answer.
     }
     const context = await aiContextFor(req);
     const intentResolution = parsed.data.tool ? null : resolveAiMessage(parsed.data.message, intentContext);
@@ -514,6 +580,7 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
             ...(toolResult.dataAvailabilityMessage ? { dataAvailabilityMessage: toolResult.dataAvailabilityMessage } : {}),
             durationMs: toolResult.durationMs,
             ...(toolForecast || {}),
+            ...(toolResult.uiActions ? { uiActions: toolResult.uiActions } : {}),
           },
         }
         : {}),

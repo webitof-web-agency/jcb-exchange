@@ -62,6 +62,8 @@ test('builds bounded arguments for a selected read-only tool', () => {
   assert.deepEqual(getAiToolArguments(detailTool, ' JCB 3DX '), { query: 'JCB 3DX' });
   assert.deepEqual(getAiToolArguments(identityTool, ' CG04NF0268 '), { query: 'CG04NF0268' });
   assert.deepEqual(getAiToolArguments(documentsTool, '', 14), { days: 14 });
+  const analyticsTool: AiReadOnlyTool = { name: 'analytics.summary', label: 'Analytics summary', description: '', available: true };
+  assert.deepEqual(getAiToolArguments(analyticsTool, '', 14), { days: 14 });
   assert.deepEqual(getAiToolArguments(rangeTool, '', 250), { days: 90 });
   assert.deepEqual(getAiToolArguments(forecastTool, ' finance ', 14), { metric: 'finance', days: 14 });
   assert.deepEqual(getAiToolArguments(null, '', 30), {});

@@ -170,6 +170,25 @@ export const aiChatRateLimit = createDatabaseRateLimiter({
     return `${userId}:${config.provider}`;
   },
 });
+export const aiDocumentAssistRateLimit = createRateLimiter({
+  windowMs: 10 * MINUTE,
+  max: 20,
+  message: 'Document AI analysis limit reached. Please try again shortly.',
+  key: (req) => (req as Request & { user?: { id?: string } }).user?.id || clientIp(req),
+});
+export const publicAiRateLimit = createDatabaseRateLimiter({
+  namespace: 'public-ai',
+  windowMs: 5 * MINUTE,
+  max: 12,
+  message: 'The assistant request limit was reached. Please try again shortly.',
+  key: clientIp,
+});
+export const listingAiAssistRateLimit = createRateLimiter({
+  windowMs: 10 * MINUTE,
+  max: 30,
+  message: 'Listing assistant limit reached. Please try again shortly.',
+  key: (req) => (req as Request & { user?: { id?: string } }).user?.id || clientIp(req),
+});
 export const listingViewRateLimit = createRateLimiter({ windowMs: 10 * MINUTE, max: 60 });
 // The listing forms call this as the seller types, so it is counted per account rather than per network.
 export const vehicleIdentityCheckRateLimit = createRateLimiter({

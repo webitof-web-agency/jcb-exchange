@@ -26,6 +26,7 @@ import {
 } from '@/lib/siteBranding';
 import { serializeJsonLd } from '@/lib/jsonLd';
 import FormSanitizer from '@/components/FormSanitizer';
+import PublicAiAssistant from '@/components/ai/PublicAiAssistant';
 
 export const viewport: Viewport = {
   themeColor: DEFAULT_PWA_THEME_COLOR,
@@ -176,6 +177,7 @@ export default async function RootLayout({
         <ToastViewport />
         <PushNotificationManager />
         <SessionTimeoutManager />
+        <PublicAiAssistant />
         <ToastContainer position="bottom-right" style={{ zIndex: 999999 }} />
       </body>
     </html>

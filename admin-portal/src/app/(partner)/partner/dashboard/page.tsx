@@ -147,7 +147,13 @@ export default function PartnerDashboard() {
   };
 
   useEffect(() => {
-    void loadDashboard();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadDashboard();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const partnerName = user?.name || user?.ownerName || 'Partner';

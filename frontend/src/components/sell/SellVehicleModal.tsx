@@ -793,6 +793,8 @@ export default function SellVehicleModal({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [listingCopilotLoading, setListingCopilotLoading] = useState(false);
+  const [listingCopilotSummary, setListingCopilotSummary] = useState<{ qualityScore: number; warnings: Array<{ code: string; severity: string; message: string }> } | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [chassisVerificationStatus, setChassisVerificationStatus] = useState<ChassisVerificationStatus>('UNVERIFIED');
   const [verifiedChassisNumber, setVerifiedChassisNumber] = useState('');
@@ -1270,6 +1272,47 @@ export default function SellVehicleModal({
     }));
   };
 
+  const runListingCopilot = async () => {
+    if (!token || listingCopilotLoading) return;
+    setListingCopilotLoading(true);
+    setError('');
+    try {
+      const categoryName = categories.find((option) => option.id === form.category)?.name || form.category;
+      const brandName = brands.find((option) => option.id === form.brand)?.name || form.brand;
+      const response = await api.post<{
+        success: boolean;
+        copilot: {
+          qualityScore: number;
+          warnings: Array<{ code: string; severity: string; message: string }>;
+          suggestedTitle: string;
+          suggestedDescription: string;
+        };
+      }>('/listings/ai-assist', {
+        category: categoryName,
+        brand: brandName,
+        model: form.model,
+        manufacturingYear: form.manufacturingYear || null,
+        operatingHours: form.operatingHours || null,
+        condition: form.condition,
+        locationCity: form.city,
+        locationState: form.state,
+        price: form.price || 0,
+        mediaCount: Object.values(mediaState).filter(Boolean).length,
+        description: form.description,
+        registrationVerified: chassisVerificationStatus === 'VERIFIED',
+      });
+      setListingCopilotSummary({ qualityScore: response.data.copilot.qualityScore, warnings: response.data.copilot.warnings });
+      if (!form.title.trim()) updateField('title', response.data.copilot.suggestedTitle);
+      if (!form.description.trim()) updateField('description', response.data.copilot.suggestedDescription);
+      setMessage('AI suggestions added to your draft. Review them before submitting.');
+    } catch (copilotError) {
+      const apiMessage = (copilotError as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(apiMessage || 'Listing assistant is temporarily unavailable.');
+    } finally {
+      setListingCopilotLoading(false);
+    }
+  };
+
   const updateRtoField = <K extends keyof ListingRtoFormState>(key: K, value: ListingRtoFormState[K]) => {
     setForm((current) => ({ ...current, rtoDetails: { ...current.rtoDetails, [key]: value } }));
   };
@@ -1631,6 +1674,7 @@ export default function SellVehicleModal({
             slot: slot.key,
             fileUrl: uploadedFile.fileUrl,
             type: slot.kind === 'video' ? 'VIDEO' : 'IMAGE',
+            ...(slot.kind === 'image' && uploadedFile.aiAnalysis ? { aiAnalysis: uploadedFile.aiAnalysis } : {}),
           };
         })
         .filter(Boolean);
@@ -2040,6 +2084,15 @@ export default function SellVehicleModal({
                       />
                     </div>
                   </div>
+
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs text-amber-900"><Sparkles className="h-4 w-4 text-amber-500" /><span>AI can improve your title, description and listing quality checklist.</span></div>
+                    <button type="button" onClick={() => void runListingCopilot()} disabled={listingCopilotLoading || !token} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                      {listingCopilotLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-amber-300" />}
+                      {listingCopilotLoading ? 'Checking…' : 'Improve with AI'}
+                    </button>
+                  </div>
+                  {listingCopilotSummary ? <div className="mb-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"><strong>Quality score: {listingCopilotSummary.qualityScore}/100.</strong>{listingCopilotSummary.warnings.length ? ` ${listingCopilotSummary.warnings.length} improvement${listingCopilotSummary.warnings.length === 1 ? '' : 's'} suggested.` : ' Ready for review.'}</div> : null}
 
                   {/* Title and Owner */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -3379,6 +3432,15 @@ function ListingMediaUploadBox({
     try {
       const uploaded = await uploadListingMediaToServer({ file, kind });
       onUploaded(uploaded);
+
+      if (kind === 'image' && uploaded.aiAnalysis) {
+        const reviewIssues = uploaded.aiAnalysis.issues.slice(0, 2).join(' ');
+        if (uploaded.aiAnalysis.isMachine === false) {
+          setError('AI review: this image does not clearly show a construction machine. Please review it before submitting.');
+        } else if (reviewIssues) {
+          setError(`AI review: ${reviewIssues}`);
+        }
+      }
 
       if (kind === 'image') {
         onPreviewReady(URL.createObjectURL(file));

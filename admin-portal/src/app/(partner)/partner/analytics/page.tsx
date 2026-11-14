@@ -144,7 +144,13 @@ export default function PartnerAnalyticsPage() {
   };
 
   useEffect(() => {
-    void loadAnalytics();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadAnalytics();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const totalListingCount = data.summary.totalListings || 1;

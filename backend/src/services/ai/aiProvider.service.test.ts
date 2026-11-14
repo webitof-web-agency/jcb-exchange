@@ -119,6 +119,33 @@ test('OpenAI adapter sends the controlled request shape and parses usage', async
   assert.equal(body.max_tokens, 321);
 });
 
+test('OpenAI adapter sends an image as a data URL only when explicitly provided', async () => {
+  let capturedInit: RequestInit | undefined;
+  const provider = createAiProvider('openai', 'test-secret', async (_url, init) => {
+    capturedInit = init;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: 'Image reviewed' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  await provider.complete({
+    model: 'gpt-test',
+    systemPrompt: 'image inspection policy',
+    userMessage: 'inspect this listing image',
+    imageDataUrl: 'data:image/png;base64,AA==',
+    timeoutMs: 1000,
+  });
+
+  const body = JSON.parse(String(capturedInit?.body)) as Record<string, any>;
+  assert.deepEqual(body.messages[1], {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'inspect this listing image' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+    ],
+  });
+});
+
 test('OpenAI adapter uses Responses API for Responses-only pro models', async () => {
   let capturedUrl = '';
   let capturedInit: RequestInit | undefined;

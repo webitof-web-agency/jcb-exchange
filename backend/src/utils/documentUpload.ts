@@ -11,6 +11,7 @@ export type UploadPurpose =
   | 'resume'
   | 'offer-letter'
   | 'listing-media'
+  | 'ai-image'
   | 'finance-support'
   | 'blog-cover'
   | 'hero-image'
@@ -43,6 +44,8 @@ const allowedListingMediaMimeTypes = new Set([
   'video/webm',
   'video/quicktime',
 ]);
+
+const allowedAiImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const allowedDocumentExtensionsByMimeType: Record<string, string[]> = {
   'image/jpeg': ['.jpg', '.jpeg'],
@@ -141,6 +144,12 @@ export const isAllowedListingMediaFile = (mimeType: string, originalName: string
   return allowedExtensions.includes(extension);
 };
 
+export const isAllowedAiImageFile = (mimeType: string, originalName: string) => {
+  if (!allowedAiImageMimeTypes.has(mimeType)) return false;
+  const extension = getExtensionFromOriginalName(originalName);
+  return (allowedDocumentExtensionsByMimeType[mimeType] || []).includes(extension);
+};
+
 export const isAllowedFinanceSupportImageFile = (mimeType: string, originalName: string) => {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
     return false;
@@ -164,6 +173,7 @@ export const isAllowedResumeFile = (mimeType: string, originalName: string) => {
 export const getUploadFileSizeLimit = (purpose: UploadPurpose) => {
   if (purpose === 'passport-photo') return MAX_PASSPORT_PHOTO_UPLOAD_SIZE;
   if (purpose === 'listing-media') return MAX_LISTING_VIDEO_UPLOAD_SIZE;
+  if (purpose === 'ai-image') return MAX_DOCUMENT_UPLOAD_SIZE;
   if (purpose === 'blog-cover') return MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE;
   if (purpose === 'inspection-section') return MAX_INSPECTION_SECTION_IMAGE_UPLOAD_SIZE;
   if (purpose === 'site-logo' || purpose === 'site-dark-logo') return MAX_SITE_LOGO_IMAGE_UPLOAD_SIZE;
@@ -209,6 +219,8 @@ export const getDocumentUploadMiddleware = (
             ? isAllowedPassportPhotoFile(file.mimetype, file.originalname)
           : purpose === 'listing-media'
             ? isAllowedListingMediaFile(file.mimetype, file.originalname)
+          : purpose === 'ai-image'
+            ? isAllowedAiImageFile(file.mimetype, file.originalname)
               : purpose === 'finance-support' || purpose === 'blog-cover' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-dark-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
               ? isAllowedFinanceSupportImageFile(file.mimetype, file.originalname)
               : isAllowedDocumentFile(file.mimetype, file.originalname);
@@ -222,6 +234,8 @@ export const getDocumentUploadMiddleware = (
                 ? 'Only JPG, PNG, and WEBP passport photos are allowed.'
               : purpose === 'listing-media'
                 ? 'Only JPG, PNG, WEBP, MP4, WEBM, and MOV files are allowed.'
+              : purpose === 'ai-image'
+                ? 'Only JPG, PNG, and WEBP images are allowed for AI analysis.'
                 : purpose === 'finance-support' || purpose === 'blog-cover' || purpose === 'hero-image' || purpose === 'inspection-section' || purpose === 'site-logo' || purpose === 'site-favicon' || purpose === 'site-manifest-icon'
                   ? 'Only JPG, PNG, and WEBP images are allowed.'
                   : 'Only JPG, PNG, WEBP, and PDF files are allowed.'
@@ -238,6 +252,8 @@ export const getDocumentUploadMiddleware = (
           ? MAX_PASSPORT_PHOTO_UPLOAD_SIZE
           : purpose === 'listing-media'
           ? MAX_LISTING_VIDEO_UPLOAD_SIZE
+          : purpose === 'ai-image'
+          ? MAX_DOCUMENT_UPLOAD_SIZE
           : purpose === 'blog-cover'
             ? MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE
           : purpose === 'inspection-section'

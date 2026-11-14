@@ -153,6 +153,10 @@ function Dashboard() {
 
   const data = useCrmResource(() => getJson<Dashboard>('/crm/dashboard'), 'crm-dashboard');
   const access = meta?.access;
+  const myAgenda = data.data?.myAgenda;
+  const recentLeads = data.data?.recent;
+  const pipeline = data.data?.pipeline;
+  const sources30d = data.data?.sources30d;
 
   const copyPhone = (id: string, mobile: string | null | undefined) => {
     if (!mobile) return;
@@ -165,8 +169,8 @@ function Dashboard() {
 
   // Filtered Agenda items
   const filteredAgenda = useMemo(() => {
-    if (!data.data?.myAgenda) return [];
-    let items = data.data.myAgenda;
+    if (!myAgenda) return [];
+    let items = myAgenda;
 
     // Filter by tab
     if (agendaTab === 'overdue') {
@@ -196,17 +200,17 @@ function Dashboard() {
     }
 
     return items;
-  }, [data.data?.myAgenda, agendaTab, agendaSearch, now]);
+  }, [myAgenda, agendaTab, agendaSearch, now]);
 
   // Counts for agenda tabs
   const agendaCounts = useMemo(() => {
-    if (!data.data?.myAgenda) return { all: 0, overdue: 0, today: 0, upcoming: 0 };
-    const all = data.data.myAgenda.length;
+    if (!myAgenda) return { all: 0, overdue: 0, today: 0, upcoming: 0 };
+    const all = myAgenda.length;
     let overdue = 0;
     let today = 0;
     let upcoming = 0;
 
-    data.data.myAgenda.forEach((f) => {
+    myAgenda.forEach((f) => {
       const dueTime = new Date(f.dueAt).getTime();
       if (dueTime < now) {
         overdue++;
@@ -218,39 +222,39 @@ function Dashboard() {
     });
 
     return { all, overdue, today, upcoming };
-  }, [data.data?.myAgenda, now]);
+  }, [myAgenda, now]);
 
   // Filtered recent leads
   const filteredRecent = useMemo(() => {
-    if (!data.data?.recent) return [];
+    if (!recentLeads) return [];
     if (inquiryFilter === 'hot') {
-      return data.data.recent.filter((r) => r.temperature === 'HOT');
+      return recentLeads.filter((r) => r.temperature === 'HOT');
     }
     if (inquiryFilter === 'buy') {
-      return data.data.recent.filter((r) => r.leadType === 'BUY');
+      return recentLeads.filter((r) => r.leadType === 'BUY');
     }
     if (inquiryFilter === 'sell') {
-      return data.data.recent.filter((r) => r.leadType === 'SELL');
+      return recentLeads.filter((r) => r.leadType === 'SELL');
     }
-    return data.data.recent;
-  }, [data.data?.recent, inquiryFilter]);
+    return recentLeads;
+  }, [recentLeads, inquiryFilter]);
 
   // Pipeline metrics
   const totalPipelineValue = useMemo(() => {
-    if (!data.data?.pipeline) return 0;
-    return data.data.pipeline.reduce((acc, p) => acc + (p.expectedValue || 0), 0);
-  }, [data.data?.pipeline]);
+    if (!pipeline) return 0;
+    return pipeline.reduce((acc, p) => acc + (p.expectedValue || 0), 0);
+  }, [pipeline]);
 
   const maxPipelineCount = useMemo(() => {
-    if (!data.data?.pipeline || data.data.pipeline.length === 0) return 1;
-    return Math.max(...data.data.pipeline.map((p) => p.count), 1);
-  }, [data.data?.pipeline]);
+    if (!pipeline || pipeline.length === 0) return 1;
+    return Math.max(...pipeline.map((p) => p.count), 1);
+  }, [pipeline]);
 
   // Sources metrics
   const totalSourceCount = useMemo(() => {
-    if (!data.data?.sources30d) return 1;
-    return data.data.sources30d.reduce((acc, s) => acc + s.count, 0) || 1;
-  }, [data.data?.sources30d]);
+    if (!sources30d) return 1;
+    return sources30d.reduce((acc, s) => acc + s.count, 0) || 1;
+  }, [sources30d]);
 
   if (data.loading && !data.data) {
     return (

@@ -102,6 +102,8 @@ const DEFINITIONS: Record<ControlledActionType, ControlledActionDefinition> = {
   },
 };
 
+const configuredExecutorTypes = new Set<ControlledActionType>();
+
 const SECRET_KEY_PATTERN = /password|passcode|secret|token|api.?key|private.?key|bank|account.?number|ifsc|otp|card|cvv/iu;
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/u;
 const MAX_PAYLOAD_LENGTH = 10_000;
@@ -117,10 +119,10 @@ export class ControlledAutomationError extends Error {
 export const getControlledActionDefinition = (actionType: string): ControlledActionDefinition => {
   const definition = DEFINITIONS[actionType as ControlledActionType];
   if (!definition) throw new ControlledAutomationError('The requested action is not allowlisted.', 'CONTROLLED_ACTION_NOT_ALLOWLISTED', 400);
-  return definition;
+  return { ...definition, executorConfigured: configuredExecutorTypes.has(definition.type) };
 };
 
-export const listControlledActionDefinitions = () => CONTROLLED_ACTION_TYPES.map((type) => ({ ...DEFINITIONS[type] }));
+export const listControlledActionDefinitions = () => CONTROLLED_ACTION_TYPES.map((type) => getControlledActionDefinition(type));
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -467,6 +469,7 @@ const executors = new Map<ControlledActionType, ControlledActionExecutor>();
 /** Domain adapters are registered only when they call the existing service layer. */
 export const registerControlledActionExecutor = (actionType: ControlledActionType, executor: ControlledActionExecutor) => {
   executors.set(actionType, executor);
+  configuredExecutorTypes.add(actionType);
 };
 
 export const executeApprovedControlledAction = async (input: { proposalId: string; executorUserId: string }) => {
@@ -494,6 +497,7 @@ export const executeApprovedControlledAction = async (input: { proposalId: strin
   } catch (error) {
     await (prisma as any).aiActionProposal.update({ where: { id: proposal.id }, data: { status: 'EXECUTION_FAILED', executionErrorCode: 'DOMAIN_EXECUTOR_FAILED' } });
     await auditAction(input.executorUserId, proposal.id, 'AI_ACTION_EXECUTION_FAILED', { actionType: definition.type, targetRef: proposal.targetRef, status: 'EXECUTION_FAILED' });
-    throw error;
+    if (error instanceof ControlledAutomationError) throw error;
+    throw new ControlledAutomationError('The approved action could not be completed. Review the proposal and domain record before retrying.', 'CONTROLLED_ACTION_EXECUTION_FAILED', 409);
   }
 };

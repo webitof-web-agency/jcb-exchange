@@ -513,7 +513,13 @@ export default function SuperAdminDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadDashboard();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadDashboard();
+    });
+    return () => {
+      active = false;
+    };
   }, [loadDashboard]);
 
   // Derived calculations
@@ -1149,9 +1155,9 @@ export default function SuperAdminDashboard() {
                       boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                     }}
                     labelStyle={{ color: '#94a3b8', fontWeight: 600, marginBottom: '2px' }}
-                    formatter={(val: any) => [
-                      chartMode === 'finance' ? formatIndianCurrencyCompact(Number(val)) : val,
-                    ]}
+                    formatter={(val) =>
+                      chartMode === 'finance' ? formatIndianCurrencyCompact(Number(val)) : String(val ?? '')
+                    }
                   />
 
                   {chartMode === 'growth' ? (

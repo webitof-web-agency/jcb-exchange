@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
+import { reconcileCrmFollowUps } from '../../../services/ai/crmFollowUpReconciliation.service';
 import { canTouchLead, followUpScopeWhere, type CrmAccess } from '../access';
 import { badRequest, forbidden, notFound } from '../http';
 import { addDays, FOLLOW_UP_OUTCOMES, FOLLOW_UP_TYPES, istDayStart, isClosedStatus, needsNextFollowUp, oneOf } from '../rules';
@@ -68,14 +69,33 @@ export const followUpSummary = async (access: CrmAccess, ownerFilter: string) =>
   const tomorrow = addDays(todayStart, 1);
   const owner: Prisma.CrmFollowUpWhereInput = ownerFilter === 'me' ? { ownerId: access.userId } : ownerFilter ? { ownerId: ownerFilter } : {};
   const base = (extra: Prisma.CrmFollowUpWhereInput): Prisma.CrmFollowUpWhereInput => ({ AND: [followUpScopeWhere(access), owner, extra] });
-  const [overdue, today, upcoming, doneToday, missed] = await Promise.all([
+  const [overdue, today, upcoming, doneToday, missed, reconciliationRows] = await Promise.all([
     prisma.crmFollowUp.count({ where: base({ status: 'PENDING', dueAt: { lt: now } }) }),
     prisma.crmFollowUp.count({ where: base({ status: 'PENDING', dueAt: { gte: now, lt: tomorrow } }) }),
     prisma.crmFollowUp.count({ where: base({ status: 'PENDING', dueAt: { gte: tomorrow } }) }),
     prisma.crmFollowUp.count({ where: base({ status: 'DONE', completedAt: { gte: todayStart } }) }),
     prisma.crmFollowUp.count({ where: base({ status: 'MISSED' }) }),
+    prisma.crmFollowUp.findMany({
+      where: base({
+        OR: [
+          { status: 'DONE', missedAt: { not: null } },
+          { status: 'MISSED', completedAt: { not: null } },
+          { status: 'DONE', dueAt: { lt: now }, completedAt: { not: null } },
+        ],
+      }),
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+      select: { status: true, dueAt: true, completedAt: true, missedAt: true, updatedAt: true },
+    }),
   ]);
-  return { overdue, today, upcoming, doneToday, missed };
+  return {
+    overdue,
+    today,
+    upcoming,
+    doneToday,
+    missed,
+    reconciliation: reconcileCrmFollowUps(reconciliationRows),
+  };
 };
 
 const requireFollowUp = async (access: CrmAccess, id: string) => {

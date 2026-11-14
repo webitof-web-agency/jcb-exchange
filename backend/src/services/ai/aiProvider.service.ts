@@ -4,6 +4,8 @@ export type AiProviderRequest = {
   model: string;
   systemPrompt: string;
   userMessage: string;
+  /** A bounded, server-created data URL. Never accept provider URLs from the browser. */
+  imageDataUrl?: string;
   timeoutMs: number;
   maxOutputTokens?: number;
 };
@@ -206,7 +208,10 @@ class OpenAiProvider implements AiProvider {
         max_output_tokens: request.maxOutputTokens ?? 800,
         input: [
           { role: 'system', content: [{ type: 'input_text', text: request.systemPrompt }] },
-          { role: 'user', content: [{ type: 'input_text', text: request.userMessage }] },
+          { role: 'user', content: [
+            { type: 'input_text', text: request.userMessage },
+            ...(request.imageDataUrl ? [{ type: 'input_image', image_url: request.imageDataUrl }] : []),
+          ] },
         ],
       }
       : {
@@ -215,7 +220,12 @@ class OpenAiProvider implements AiProvider {
         max_tokens: request.maxOutputTokens ?? 800,
         messages: [
           { role: 'system', content: request.systemPrompt },
-          { role: 'user', content: request.userMessage },
+          { role: 'user', content: request.imageDataUrl
+            ? [
+              { type: 'text', text: request.userMessage },
+              { type: 'image_url', image_url: { url: request.imageDataUrl } },
+            ]
+            : request.userMessage },
         ],
       };
     const payload = await requestWithRetry(

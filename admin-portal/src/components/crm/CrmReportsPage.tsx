@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import {
   Activity,
   ArrowRight,
@@ -86,10 +87,10 @@ const minutesText = (m: number | null) =>
   m === null ? '—' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
 
 /** Custom glass tooltip for Velocity Trend */
-function TrendTooltip({ active, payload, label: dateLabel }: any) {
+function TrendTooltip({ active, payload, label: dateLabel }: Partial<TooltipContentProps<number, string>>) {
   if (active && payload && payload.length) {
-    const created = payload.find((p: any) => p.dataKey === 'created')?.value || 0;
-    const won = payload.find((p: any) => p.dataKey === 'won')?.value || 0;
+    const created = Number(payload.find((p) => p.dataKey === 'created')?.value || 0);
+    const won = Number(payload.find((p) => p.dataKey === 'won')?.value || 0);
     const ratio = created ? Math.round((won / created) * 100) : 0;
     return (
       <div className="rounded-xl border border-slate-700 bg-slate-900/95 p-2.5 text-xs text-white shadow-xl backdrop-blur-md">
@@ -242,23 +243,25 @@ function Reports() {
 
   const data = useCrmResource(() => getJson<Reports>('/crm/reports', params), JSON.stringify(params));
   const r = data.data;
+  const trend = r?.trend;
+  const totals = r?.totals;
 
   // Compute calculated metrics
   const peakDay = useMemo(() => {
-    if (!r?.trend?.length) return null;
-    return r.trend.reduce((max, cur) => (cur.created > max.created ? cur : max), r.trend[0]);
-  }, [r?.trend]);
+    if (!trend?.length) return null;
+    return trend.reduce((max, cur) => (cur.created > max.created ? cur : max), trend[0]);
+  }, [trend]);
 
   const avgPerDay = useMemo(() => {
-    if (!r?.trend?.length) return 0;
-    const total = r.trend.reduce((sum, d) => sum + d.created, 0);
-    return Math.round((total / r.trend.length) * 10) / 10;
-  }, [r?.trend]);
+    if (!trend?.length) return 0;
+    const total = trend.reduce((sum, d) => sum + d.created, 0);
+    return Math.round((total / trend.length) * 10) / 10;
+  }, [trend]);
 
   const avgDealSize = useMemo(() => {
-    if (!r?.totals?.won || !r?.totals?.wonValue) return 0;
-    return Math.round(r.totals.wonValue / r.totals.won);
-  }, [r?.totals]);
+    if (!totals?.won || !totals.wonValue) return 0;
+    return Math.round(totals.wonValue / totals.won);
+  }, [totals]);
 
   // Stage name resolver from meta
   const stageName = (code: string) => {

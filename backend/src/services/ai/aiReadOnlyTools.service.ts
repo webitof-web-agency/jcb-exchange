@@ -2,10 +2,13 @@ import { z } from 'zod';
 import { KycStatus, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { buildCrmAccess, followUpScopeWhere, leadScopeWhere, type CrmAccess } from '../../modules/crm/access';
+import * as crmContacts from '../../modules/crm/services/contacts.service';
+import * as crmDataExchange from '../../modules/crm/services/dataExchange.service';
 import { contactScopeWhere } from '../../modules/crm/services/contacts.service';
 import * as crmFollowUps from '../../modules/crm/services/followups.service';
 import * as crmLeads from '../../modules/crm/services/leads.service';
 import * as crmReports from '../../modules/crm/services/reports.service';
+import * as crmSegments from '../../modules/crm/services/segments.service';
 import { listRtoTransferTasks } from '../rtoTransfer.service';
 import { isTransferTaskDone } from '../rtoTransferTasks';
 import { findVehicleIdentityMatches, toVehicleIdentityKey } from '../listingVehicleIdentity';
@@ -23,31 +26,65 @@ import {
   type AiDataContract,
 } from './aiDataContract.service';
 import { sanitizeAiToolData } from './aiFieldSecurity.service';
+import { buildAiFileAction, type AiFileAction } from './aiUiActions.service';
+import { buildLeadCopilot } from './leadCopilot.service';
+import { buildCallIntelligence } from './callIntelligence.service';
+import { buildFraudSignalSummary } from './fraudSignals.service';
+import { buildUnifiedOperationsReport } from './unifiedOperationsReport.service';
+import { listMarketInsights, type MarketCategory, type MarketPriority } from './marketIntelligence.service';
+import { searchApprovedKnowledge } from './aiKnowledge.service';
+import {
+  buildFinanceReview,
+  buildKycReview,
+  buildPartnerReview,
+  buildRecruitmentReview,
+  buildRtoReview,
+} from './operationsCopilot.service';
+import { extractDriveFileIdFromSecureUrl, getSecureDocumentUrl } from '../../utils/secureDocumentUrl';
+import { getVehicleDocs, VehicleDocsError } from '../vehicleDocs.service';
+import { listVerificationHistory } from '../verificationHistory.service';
 
 export type { AiToolExecutionObservability } from './aiToolObservability.service';
 
 export const AI_READ_ONLY_TOOL_NAMES = [
   'dashboard.summary',
+  'operations.unified.report',
+  'knowledge.search',
   'pending.kyc',
+  'kyc.copilot',
   'hot.leads',
   'crm.leads.summary',
   'crm.lead.detail',
+  'crm.lead.copilot',
+  'crm.dashboard.summary',
+  'crm.contacts.summary',
+  'crm.won.customers.summary',
+  'crm.contact.detail',
+  'crm.campaigns.summary',
+  'crm.import.summary',
+  'ai.documents.search',
+  'market.intelligence',
   'customer.summary',
   'customer.detail',
   'enquiry.summary',
   'enquiry.detail',
   'tasks.summary',
   'lead.statistics',
+  'analytics.summary',
   'listing.summary',
   'listing.statistics',
   'listing.detail',
   'vehicle.identity',
+  'vehicle.documents.detail',
   'sold.vehicles',
   'inventory.trend',
   'revenue.summary',
   'partner.statistics',
+  'partner.agreements.summary',
   'partner.performance',
+  'partner.copilot',
   'finance.trend',
+  'finance.copilot',
   'finance.workspace.summary',
   'invoice.summary',
   'payment.summary',
@@ -71,11 +108,16 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'forecast.operations',
   'rto.pending.tasks',
   'rto.documents.summary',
+  'rto.copilot',
   'crm.followups',
+  'crm.call.intelligence',
   'recruitment.summary',
+  'recruitment.copilot',
+  'fraud.signals',
   'listing.search',
   'whatsapp.activity.summary',
   'verification.summary',
+  'verification.history',
   'surepass.status',
   'whatsapp.status',
   'whatsapp.campaigns.summary',
@@ -112,6 +154,7 @@ export type AiToolExecutionResult = {
   contract: AiDataContract<unknown>;
   dataAvailability?: AiToolDataAvailability;
   dataAvailabilityMessage?: string;
+  uiActions?: AiFileAction[];
   durationMs?: number;
 };
 
@@ -132,6 +175,12 @@ type LimitArguments = { limit?: number };
 type FollowUpArguments = { owner?: 'me' | 'all' };
 type LeadSummaryArguments = { limit?: number; view?: 'all' | 'open' | 'closed' | 'won' | 'lost' };
 type LeadDetailArguments = { leadId?: string; query?: string };
+type CrmContactSearchArguments = { query?: string; limit?: number; lifecycle?: string; pipelineStage?: 'WON' };
+type CrmContactDetailArguments = { contactId?: string; query?: string };
+type DocumentSearchArguments = { query: string; kind?: 'all' | 'kyc' | 'resume' | 'invoice' | 'rto' | 'offer' | 'vehicle' | 'verification'; limit?: number };
+type KycCopilotArguments = { partnerCode?: string; query?: string };
+type KnowledgeArguments = { query: string; limit?: number };
+type MarketIntelligenceArguments = RangeLimitArguments & { category?: MarketCategory; priority?: MarketPriority };
 type CustomerDetailArguments = { customerId?: string; query?: string };
 type ListingSearchArguments = { query: string; limit?: number };
 type ListingSummaryArguments = { limit?: number; status?: 'DRAFT' | 'PENDING_APPROVAL' | 'CHANGES_REQUESTED' | 'PUBLISHED' | 'PAUSED' | 'RESERVED' | 'SOLD' | 'REJECTED' | 'UNLISTED' | 'SUSPENDED' | 'BLOCKED' };
@@ -145,30 +194,48 @@ type RangeLimitArguments = { days?: number; limit?: number };
 type ModelSummaryArguments = RangeLimitArguments & { brandId?: string };
 type PartnerPerformanceArguments = RangeLimitArguments & { partnerId?: string; partnerCode?: string };
 type VehicleIdentityArguments = { listingId?: string; query?: string };
+type VehicleDocumentsArguments = { query: string };
+type VerificationHistoryArguments = { group: 'identity' | 'vehicle'; limit?: number; search?: string; type?: string };
+type PartnerAgreementsArguments = { query?: string; limit?: number; includeContent?: boolean };
 type EmptyArguments = Record<string, never>;
 
 export type AiReadOnlyToolDependencies = {
   dashboardSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  unifiedOperationsReport?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  knowledgeSearch?: (context: AiToolContext, args: KnowledgeArguments) => Promise<unknown>;
   pendingKycCases: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
+  kycCopilot?: (context: AiToolContext, args: KycCopilotArguments) => Promise<unknown>;
   hotLeads: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
   crmLeadsSummary: (context: AiToolContext, args: LeadSummaryArguments) => Promise<unknown>;
   crmLeadDetail: (context: AiToolContext, args: LeadDetailArguments) => Promise<unknown>;
+  crmLeadCopilot?: (context: AiToolContext, args: LeadDetailArguments) => Promise<unknown>;
+  crmDashboardSummary?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  crmContactsSummary?: (context: AiToolContext, args: CrmContactSearchArguments) => Promise<unknown>;
+  crmContactDetail?: (context: AiToolContext, args: CrmContactDetailArguments) => Promise<unknown>;
+  crmCampaignsSummary?: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  crmImportSummary?: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
+  aiDocumentsSearch?: (context: AiToolContext, args: DocumentSearchArguments) => Promise<unknown>;
+  marketIntelligence?: (context: AiToolContext, args: MarketIntelligenceArguments) => Promise<unknown>;
   customerSummary: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
   customerDetail: (context: AiToolContext, args: CustomerDetailArguments) => Promise<unknown>;
   enquirySummary: (context: AiToolContext, args: LeadSummaryArguments) => Promise<unknown>;
   enquiryDetail: (context: AiToolContext, args: LeadDetailArguments) => Promise<unknown>;
   tasksSummary: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
   leadStatistics: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  analyticsSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   listingSummary: (context: AiToolContext, args: ListingSummaryArguments) => Promise<unknown>;
   listingStatistics: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   listingDetail: (context: AiToolContext, args: ListingDetailArguments) => Promise<unknown>;
   vehicleIdentity: (context: AiToolContext, args: VehicleIdentityArguments) => Promise<unknown>;
+  vehicleDocumentsDetail?: (context: AiToolContext, args: VehicleDocumentsArguments) => Promise<unknown>;
   soldVehicles: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   inventoryTrend: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   revenueSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   partnerStatistics: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
   partnerPerformance: (context: AiToolContext, args: PartnerPerformanceArguments) => Promise<unknown>;
+  partnerCopilot?: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   financeTrend: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  financeCopilot?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   financeWorkspaceSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   invoiceSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   paymentSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
@@ -192,11 +259,17 @@ export type AiReadOnlyToolDependencies = {
   forecastOperations: (context: AiToolContext, args: ForecastArguments) => Promise<unknown>;
   pendingRtoTasks: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
   rtoDocumentsSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  rtoCopilot?: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   crmFollowUps: (context: AiToolContext, args: FollowUpArguments) => Promise<unknown>;
+  crmCallIntelligence: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   recruitmentSummary: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
+  recruitmentCopilot?: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
+  fraudSignals?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   listingSearch: (context: AiToolContext, args: ListingSearchArguments) => Promise<unknown>;
   whatsappActivitySummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   verificationSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  verificationHistory?: (context: AiToolContext, args: VerificationHistoryArguments) => Promise<unknown>;
+  partnerAgreementsSummary?: (context: AiToolContext, args: PartnerAgreementsArguments) => Promise<unknown>;
   surepassStatus: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
   whatsappStatus: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   whatsappCampaignsSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
@@ -212,6 +285,10 @@ type PermissionedDefinition = AiToolDefinition & {
 };
 
 const emptyArguments = z.object({}).strict();
+const knowledgeArguments = z.object({
+  query: z.string().trim().min(2).max(500),
+  limit: z.number().int().min(1).max(5).optional(),
+}).strict();
 const rangeArguments = z.object({
   days: z.number().int().min(1).max(90).optional(),
 }).strict();
@@ -231,6 +308,23 @@ const leadDetailArguments = z.object({
 }).strict().refine((value) => Boolean(value.leadId || value.query), {
   message: 'Provide a lead ID or a lead search query.',
 });
+const crmContactSearchArguments = z.object({
+  query: z.string().trim().min(1).max(100).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+  lifecycle: z.string().trim().min(1).max(40).optional(),
+  pipelineStage: z.literal('WON').optional(),
+}).strict();
+const crmContactDetailArguments = z.object({
+  contactId: z.string().uuid().optional(),
+  query: z.string().trim().min(1).max(100).optional(),
+}).strict().refine((value) => Boolean(value.contactId || value.query), {
+  message: 'Provide a contact ID or a contact search query.',
+});
+const documentSearchArguments = z.object({
+  query: z.string().trim().min(2).max(100),
+  kind: z.enum(['all', 'kyc', 'resume', 'invoice', 'rto', 'offer', 'vehicle', 'verification']).optional(),
+  limit: z.number().int().min(1).max(10).optional(),
+}).strict();
 const customerDetailArguments = z.object({
   customerId: z.string().uuid().optional(),
   query: z.string().trim().min(1).max(100).optional(),
@@ -259,6 +353,20 @@ const vehicleIdentityArguments = z.object({
 }).strict().refine((value) => Boolean(value.listingId || value.query), {
   message: 'Provide a listing ID or vehicle search query.',
 });
+const vehicleDocumentsArguments = z.object({
+  query: z.string().trim().min(3).max(100),
+}).strict();
+const verificationHistoryArguments = z.object({
+  group: z.enum(['identity', 'vehicle']),
+  limit: z.number().int().min(1).max(20).optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+  type: z.string().trim().min(2).max(40).optional(),
+}).strict();
+const partnerAgreementsArguments = z.object({
+  query: z.string().trim().min(1).max(100).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+  includeContent: z.boolean().optional(),
+}).strict();
 const rangeLimitArguments = z.object({
   days: z.number().int().min(1).max(90).optional(),
   limit: z.number().int().min(1).max(20).optional(),
@@ -278,6 +386,24 @@ const forecastArguments = z.object({
 
 const CRM_READ_PERMISSIONS = ['crm.read', 'crm.manage', 'crm.manage_all', 'crm.assign', 'enquiries.manage'] as const;
 const CRM_REPORT_PERMISSIONS = ['crm.reports', 'crm.manage', 'crm.manage_all', 'enquiries.manage'] as const;
+const DOCUMENT_READ_PERMISSIONS = [
+  'crm.read',
+  'crm.manage',
+  'crm.manage_all',
+  'kyc.manage',
+  'kyc.edit.override',
+  'recruitment.applications.read',
+  'recruitment.candidates.read',
+  'recruitment.offers.read',
+  'accounts.sell.read',
+  'accounts.sell.crud',
+  'accounts.rto.read',
+  'accounts.rto.crud',
+  'tasks.read',
+  'pan.verification.read',
+  'gst.verification.read',
+  'aadhaar.digilocker.read',
+] as const;
 const FINANCE_READ_PERMISSIONS = [
   'finance.read',
   'finance.manage',
@@ -309,6 +435,7 @@ const VEHICLE_IDENTITY_PERMISSIONS = ['listings.read', 'partners.read', 'kyc.man
 const RTO_DOCUMENTS_PERMISSIONS = ['accounts.rto.read', 'accounts.rto.crud', 'tasks.read'] as const;
 const SOLD_VEHICLE_PERMISSIONS = ['listings.read', 'accounts.sell.read', 'accounts.sell.crud', ...FINANCE_READ_PERMISSIONS] as const;
 const PARTNER_READ_PERMISSIONS = ['partners.read', 'MANAGE_PARTNERS'] as const;
+const PARTNER_AGREEMENT_READ_PERMISSIONS = ['partner.agreements.read', 'partner.agreements.manage', 'partners.read', 'MANAGE_PARTNERS'] as const;
 const FORECAST_ACCESS_PERMISSIONS = [...LISTING_READ_PERMISSIONS, ...FINANCE_READ_PERMISSIONS, ...CRM_REPORT_PERMISSIONS, ...PARTNER_READ_PERMISSIONS, 'kyc.manage'] as const;
 const VERIFICATION_READ_PERMISSIONS = [
   'pan.verification.read',
@@ -340,6 +467,28 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.dashboardSummary(context, args as RangeArguments),
   },
   {
+    name: 'operations.unified.report',
+    label: 'Unified operations report',
+    description: 'Combines read-only Dashboard, CRM, Listings, Sold Vehicles, RTO, Vehicle Docs, Tasks, Verifications, Partners, Finance, Accounts, Payments, and Recruitment evidence with source and freshness metadata.',
+    permissions: ['dashboard.view'],
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.unifiedOperationsReport
+      ? dependencies.unifiedOperationsReport(context, args as RangeArguments)
+      : Promise.reject(new AiToolError('Unified operations reporting is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'knowledge.search',
+    label: 'Approved knowledge search',
+    description: 'Searches approved internal SOP, policy, FAQ, and support sources with source attribution; it never uses raw database rows or unapproved documents.',
+    permissions: ['dashboard.view'],
+    available: false,
+    schema: knowledgeArguments,
+    execute: (dependencies, context, args) => dependencies.knowledgeSearch
+      ? dependencies.knowledgeSearch(context, args as KnowledgeArguments)
+      : Promise.reject(new AiToolError('Approved knowledge sources are not configured.', 503, 'AI_KNOWLEDGE_NOT_CONFIGURED')),
+  },
+  {
     name: 'pending.kyc',
     label: 'Pending KYC cases',
     description: 'Pending KYC counts and non-contact case summaries.',
@@ -347,6 +496,20 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: limitArguments,
     execute: (dependencies, context, args) => dependencies.pendingKycCases(context, args as LimitArguments),
+  },
+  {
+    name: 'kyc.copilot',
+    label: 'KYC review copilot',
+    description: 'Prepares a safe KYC evidence checklist for one partner without exposing document numbers, URLs, or identity values; approval remains human-controlled.',
+    permissions: ['kyc.manage', 'kyc.edit.override'],
+    available: false,
+    schema: z.object({
+      partnerCode: z.string().trim().min(2).max(100).optional(),
+      query: z.string().trim().min(2).max(120).optional(),
+    }).strict().refine((value) => Boolean(value.partnerCode || value.query), { message: 'Provide a partner code or business search query.' }),
+    execute: (dependencies, context, args) => dependencies.kycCopilot
+      ? dependencies.kycCopilot(context, args as KycCopilotArguments)
+      : Promise.reject(new AiToolError('KYC copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'hot.leads',
@@ -374,6 +537,108 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: leadDetailArguments,
     execute: (dependencies, context, args) => dependencies.crmLeadDetail(context, args as LeadDetailArguments),
+  },
+  {
+    name: 'crm.lead.copilot',
+    label: 'CRM lead copilot',
+    description: 'Returns a safe next-best-action, follow-up state, reasons, and message draft for one scoped lead without contact PII or internal identifiers.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: leadDetailArguments,
+    execute: (dependencies, context, args) => dependencies.crmLeadCopilot
+      ? dependencies.crmLeadCopilot(context, args as LeadDetailArguments)
+      : Promise.reject(new AiToolError('Lead copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.dashboard.summary',
+    label: 'CRM dashboard',
+    description: 'Returns the current scoped CRM dashboard KPIs, pipeline, source mix, follow-up agenda, and team workload.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.crmDashboardSummary
+      ? dependencies.crmDashboardSummary(context, args as RangeArguments)
+      : Promise.reject(new AiToolError('CRM dashboard data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.contacts.summary',
+    label: 'CRM contacts',
+    description: 'Searches the scoped CRM contacts page and returns safe contact, lifecycle, ownership, and lead counts.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: crmContactSearchArguments,
+    execute: (dependencies, context, args) => dependencies.crmContactsSummary
+      ? dependencies.crmContactsSummary(context, args as CrmContactSearchArguments)
+      : Promise.reject(new AiToolError('CRM contacts data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.won.customers.summary',
+    label: 'Won customers',
+    description: 'Returns current scoped Won Customers totals and one row per customer with at least one CRM lead closed as Won.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: limitArguments,
+    execute: (dependencies, context, args) => dependencies.crmContactsSummary
+      ? dependencies.crmContactsSummary(context, { ...((args as LimitArguments).limit !== undefined ? { limit: (args as LimitArguments).limit } : {}), pipelineStage: 'WON' })
+      : Promise.reject(new AiToolError('Won Customers data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.contact.detail',
+    label: 'CRM contact detail',
+    description: 'Returns a scoped contact 360 view with leads, follow-ups, activities, and linked operational summaries without raw contact secrets.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: crmContactDetailArguments,
+    execute: (dependencies, context, args) => dependencies.crmContactDetail
+      ? dependencies.crmContactDetail(context, args as CrmContactDetailArguments)
+      : Promise.reject(new AiToolError('CRM contact data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.campaigns.summary',
+    label: 'CRM campaigns',
+    description: 'Summarizes CRM segments and WhatsApp campaign delivery state without recipient phone numbers or message bodies.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: rangeLimitArguments,
+    execute: (dependencies, context, args) => dependencies.crmCampaignsSummary
+      ? dependencies.crmCampaignsSummary(context, args as RangeLimitArguments)
+      : Promise.reject(new AiToolError('CRM campaign data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'crm.import.summary',
+    label: 'CRM imports',
+    description: 'Returns CRM import history, row outcomes, and failure counts without raw imported contact values.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: limitArguments,
+    execute: (dependencies, context, args) => dependencies.crmImportSummary
+      ? dependencies.crmImportSummary(context, args as LimitArguments)
+      : Promise.reject(new AiToolError('CRM import data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'ai.documents.search',
+    label: 'Stored document search',
+    description: 'Finds authorized stored KYC documents, resumes, or generated invoices and returns safe View/Download actions to the portal UI.',
+    permissions: DOCUMENT_READ_PERMISSIONS,
+    available: false,
+    schema: documentSearchArguments,
+    execute: (dependencies, context, args) => dependencies.aiDocumentsSearch
+      ? dependencies.aiDocumentsSearch(context, args as DocumentSearchArguments)
+      : Promise.reject(new AiToolError('Stored document search is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'market.intelligence',
+    label: 'Market intelligence',
+    description: 'Returns source-attributed industry, OEM, government, finance, competitor, and technology updates with impact, priority, and recommended review actions.',
+    permissions: ['dashboard.view', 'analytics.read', 'settings.manage'],
+    available: false,
+    schema: rangeLimitArguments.extend({
+      category: z.enum(['INDUSTRY', 'OEM', 'GOVERNMENT', 'FINANCE', 'COMPETITOR', 'TECHNOLOGY']).optional(),
+      priority: z.enum(['URGENT', 'HIGH', 'MEDIUM', 'WATCH']).optional(),
+    }),
+    execute: (dependencies, context, args) => dependencies.marketIntelligence
+      ? dependencies.marketIntelligence(context, args as MarketIntelligenceArguments)
+      : Promise.reject(new AiToolError('Market intelligence is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'customer.summary',
@@ -430,6 +695,15 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.leadStatistics(context, args as RangeArguments),
   },
   {
+    name: 'analytics.summary',
+    label: 'Analytics summary',
+    description: 'Returns bounded, source-backed marketplace analytics events and event-type breakdowns for the analytics pages.',
+    permissions: ['analytics.read', 'dashboard.view'],
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.analyticsSummary(context, args as RangeArguments),
+  },
+  {
     name: 'listing.summary',
     label: 'Listing summary',
     description: 'Returns inventory totals, status counts, and safe listing rows for list questions.',
@@ -464,6 +738,17 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: vehicleIdentityArguments,
     execute: (dependencies, context, args) => dependencies.vehicleIdentity(context, args as VehicleIdentityArguments),
+  },
+  {
+    name: 'vehicle.documents.detail',
+    label: 'Vehicle document detail',
+    description: 'Returns RTO and document pending status for one registration number without internal IDs, document URLs, or owner contact data.',
+    permissions: [...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS],
+    available: false,
+    schema: vehicleDocumentsArguments,
+    execute: (dependencies, context, args) => dependencies.vehicleDocumentsDetail
+      ? dependencies.vehicleDocumentsDetail(context, args as VehicleDocumentsArguments)
+      : Promise.reject(new AiToolError('Vehicle document lookup is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'sold.vehicles',
@@ -502,6 +787,17 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.partnerStatistics(context, args as EmptyArguments),
   },
   {
+    name: 'partner.agreements.summary',
+    label: 'Partner agreements',
+    description: 'Returns the source-backed partner agreement catalogue, publication state, version, applicability, and acceptance counts. Agreement content is returned only when explicitly requested.',
+    permissions: PARTNER_AGREEMENT_READ_PERMISSIONS,
+    available: false,
+    schema: partnerAgreementsArguments,
+    execute: (dependencies, context, args) => dependencies.partnerAgreementsSummary
+      ? dependencies.partnerAgreementsSummary(context, args as PartnerAgreementsArguments)
+      : Promise.reject(new AiToolError('Partner agreement data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
     name: 'partner.performance',
     label: 'Partner performance',
     description: 'Ranks partner inventory activity using scoped listing counts, sales, views, and prices.',
@@ -511,6 +807,17 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.partnerPerformance(context, args as PartnerPerformanceArguments),
   },
   {
+    name: 'partner.copilot',
+    label: 'Partner copilot',
+    description: 'Explains partner inventory health, unanswered lead pressure, response speed, and safe coaching recommendations.',
+    permissions: PARTNER_READ_PERMISSIONS,
+    available: false,
+    schema: rangeLimitArguments,
+    execute: (dependencies, context, args) => dependencies.partnerCopilot
+      ? dependencies.partnerCopilot(context, args as RangeLimitArguments)
+      : Promise.reject(new AiToolError('Partner copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
     name: 'finance.trend',
     label: 'Finance trend',
     description: 'Aggregated daily inflow, outflow, net movement, and transaction counts.',
@@ -518,6 +825,17 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: rangeArguments,
     execute: (dependencies, context, args) => dependencies.financeTrend(context, args as RangeArguments),
+  },
+  {
+    name: 'finance.copilot',
+    label: 'Finance copilot',
+    description: 'Summarizes cash movement and overdue collection signals with reviewer-only recommendations; it never posts or changes accounting data.',
+    permissions: FINANCE_READ_PERMISSIONS,
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.financeCopilot
+      ? dependencies.financeCopilot(context, args as RangeArguments)
+      : Promise.reject(new AiToolError('Finance copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'finance.workspace.summary',
@@ -733,6 +1051,17 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.rtoDocumentsSummary(context, args as RangeLimitArguments),
   },
   {
+    name: 'rto.copilot',
+    label: 'RTO copilot',
+    description: 'Prioritizes RTO blockers, document readiness, and transfer task follow-up without exposing vehicle or customer identifiers.',
+    permissions: RTO_DOCUMENTS_PERMISSIONS,
+    available: false,
+    schema: rangeLimitArguments,
+    execute: (dependencies, context, args) => dependencies.rtoCopilot
+      ? dependencies.rtoCopilot(context, args as RangeLimitArguments)
+      : Promise.reject(new AiToolError('RTO copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
     name: 'crm.followups',
     label: 'CRM follow-ups',
     description: 'Scoped follow-up counts for overdue, today, upcoming, done, and missed work.',
@@ -742,6 +1071,15 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.crmFollowUps(context, args as FollowUpArguments),
   },
   {
+    name: 'crm.call.intelligence',
+    label: 'CRM call intelligence',
+    description: 'Aggregates scoped CRM call outcomes, topics, and follow-up pressure without exposing call notes or contact data.',
+    permissions: CRM_READ_PERMISSIONS,
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.crmCallIntelligence(context, args as RangeArguments),
+  },
+  {
     name: 'recruitment.summary',
     label: 'Recruitment summary',
     description: 'Recruitment pipeline and hiring workload counts without candidate PII.',
@@ -749,6 +1087,28 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: emptyArguments,
     execute: (dependencies, context, args) => dependencies.recruitmentSummary(context, args as EmptyArguments),
+  },
+  {
+    name: 'recruitment.copilot',
+    label: 'Recruitment copilot',
+    description: 'Prepares hiring-pipeline next steps and interview workload guidance without making candidate decisions.',
+    permissions: ['recruitment.dashboard.read'],
+    available: false,
+    schema: emptyArguments,
+    execute: (dependencies, context, args) => dependencies.recruitmentCopilot
+      ? dependencies.recruitmentCopilot(context, args as EmptyArguments)
+      : Promise.reject(new AiToolError('Recruitment copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'fraud.signals',
+    label: 'Fraud signals',
+    description: 'Aggregates explainable listing, identity, media, payment, and account anomaly signals for human review only.',
+    permissions: ['listings.read', 'kyc.manage', 'finance.read'],
+    available: false,
+    schema: rangeArguments,
+    execute: (dependencies, context, args) => dependencies.fraudSignals
+      ? dependencies.fraudSignals(context, args as RangeArguments)
+      : Promise.reject(new AiToolError('Fraud signals are not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'listing.search',
@@ -776,6 +1136,17 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: rangeArguments,
     execute: (dependencies, context, args) => dependencies.verificationSummary(context, args as RangeArguments),
+  },
+  {
+    name: 'verification.history',
+    label: 'Verification history',
+    description: 'Returns the newest authorized Identity Hub or Vehicle & Transport verification history with provider-safe fields and bounded pagination.',
+    permissions: VERIFICATION_READ_PERMISSIONS,
+    available: false,
+    schema: verificationHistoryArguments,
+    execute: (dependencies, context, args) => dependencies.verificationHistory
+      ? dependencies.verificationHistory(context, args as VerificationHistoryArguments)
+      : Promise.reject(new AiToolError('Verification history is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'surepass.status',
@@ -964,6 +1335,86 @@ const safeCustomer = (value: unknown) => {
     createdAt,
     updatedAt,
   };
+};
+
+const safeCrmContact = (value: unknown) => {
+  const contact = asRecord(value);
+  const profile = asRecord(contact.crmProfile);
+  return {
+    customerName: typeof contact.name === 'string' ? contact.name : null,
+    city: typeof contact.city === 'string' ? contact.city : null,
+    state: typeof contact.state === 'string' ? contact.state : null,
+    companyName: typeof profile.companyName === 'string' ? profile.companyName : null,
+    lifecycle: typeof profile.lifecycle === 'string' ? profile.lifecycle : null,
+    source: typeof profile.source === 'string' ? profile.source : null,
+    contactTypes: Array.isArray(profile.contactTypes) ? profile.contactTypes.filter((item): item is string => typeof item === 'string').slice(0, 10) : [],
+    tags: Array.isArray(profile.tags) ? profile.tags.filter((item): item is string => typeof item === 'string').slice(0, 20) : [],
+    doNotContact: profile.doNotContact === true,
+    leadCount: typeof contact.leadCount === 'number' ? contact.leadCount : 0,
+    openLeadCount: typeof contact.openLeadCount === 'number' ? contact.openLeadCount : 0,
+    pipelineStage: typeof contact.pipelineStage === 'string' ? contact.pipelineStage : null,
+    createdAt: isoDate(contact.createdAt),
+    nextFollowUpAt: isoDate(contact.nextFollowUpAt),
+  };
+};
+
+const safeFollowUpItem = (value: unknown) => {
+  const followUp = asRecord(value);
+  const lead = asRecord(followUp.lead);
+  return {
+    type: typeof followUp.type === 'string' ? followUp.type : null,
+    status: typeof followUp.status === 'string' ? followUp.status : null,
+    dueAt: isoDate(followUp.dueAt),
+    completedAt: isoDate(followUp.completedAt),
+    outcome: typeof followUp.outcome === 'string' ? followUp.outcome : null,
+    title: typeof followUp.title === 'string' ? followUp.title : null,
+    leadStatus: typeof lead.status === 'string' ? lead.status : null,
+    leadType: typeof lead.leadType === 'string' ? lead.leadType : null,
+    listingTitle: typeof lead.listingTitleSnapshot === 'string' ? lead.listingTitleSnapshot : null,
+  };
+};
+
+type AiToolPayload = {
+  data: unknown;
+  uiActions?: AiFileAction[];
+};
+
+const splitAiToolPayload = (value: unknown): AiToolPayload => {
+  const record = asRecord(value);
+  if (!Array.isArray(record.uiActions) || !Object.prototype.hasOwnProperty.call(record, 'data')) {
+    return { data: value };
+  }
+  return {
+    data: record.data,
+    uiActions: record.uiActions.filter((action): action is AiFileAction => {
+      const candidate = asRecord(action);
+      return candidate.type === 'FILE'
+        && typeof candidate.label === 'string'
+        && typeof candidate.fileName === 'string'
+        && typeof candidate.mimeType === 'string'
+        && typeof candidate.url === 'string'
+        && candidate.downloadable === true;
+    }),
+  };
+};
+
+const secureUiFileUrl = (value: unknown): string | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const url = value.trim();
+  if (url.startsWith('/api/documents/secure/')) return url;
+  const driveFileId = extractDriveFileIdFromSecureUrl(url);
+  return driveFileId ? getSecureDocumentUrl(driveFileId) : null;
+};
+
+const mimeTypeForFileName = (fileName: string | null | undefined): string => {
+  const normalized = (fileName || '').toLowerCase();
+  if (normalized.endsWith('.pdf')) return 'application/pdf';
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  if (normalized.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (normalized.endsWith('.doc')) return 'application/msword';
+  return 'application/octet-stream';
 };
 
 const safeListingSummaryItem = (value: unknown) => {
@@ -1240,6 +1691,13 @@ const verificationSummaryFor = async (context: AiToolContext, args: RangeArgumen
 };
 
 const defaultDependencies: AiReadOnlyToolDependencies = {
+  async knowledgeSearch(_context, args) {
+    const result = searchApprovedKnowledge(args.query);
+    return {
+      ...result,
+      sources: result.sources.slice(0, Math.min(5, Math.max(1, Math.floor(args.limit ?? 5)))),
+    };
+  },
   async dashboardSummary(_context, args) {
     const from = daysBack(args.days);
     const [partners, activePartners, pendingKyc, listings, publishedListings, newListings, leads, hotLeads, pendingRtoTasks, pendingFollowUps] = await Promise.all([
@@ -1263,6 +1721,25 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async unifiedOperationsReport(context, args) {
+    const nestedService = new AiReadOnlyToolsService(defaultDependencies);
+    return buildUnifiedOperationsReport({
+      ...(args.days !== undefined ? { days: args.days } : {}),
+      connectivityTools: AI_READ_ONLY_TOOL_NAMES.filter((toolName) => toolName !== 'operations.unified.report'),
+      readTool: async (toolName, toolArguments) => {
+        const result = await nestedService.execute(context, { name: toolName, arguments: toolArguments });
+        return {
+          toolName: result.toolName,
+          data: result.data,
+          contract: {
+            source: result.contract.source,
+            fetchedAt: result.contract.fetchedAt,
+          },
+        };
+      },
+    });
+  },
+
   async pendingKycCases(_context, args) {
     const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
     const where = { kycStatus: { in: [KycStatus.SUBMITTED, KycStatus.UNDER_REVIEW, KycStatus.CHANGES_REQUESTED] } };
@@ -1283,8 +1760,46 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         partnerType: row.partnerType,
         kycStatus: row.kycStatus,
         onboardingStatus: row.onboardingStatus,
-        updatedAt: row.updatedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
       })),
+    };
+  },
+
+  async kycCopilot(_context, args) {
+    const where: Prisma.PartnerProfileWhereInput = args.partnerCode
+      ? { partnerCode: { equals: args.partnerCode.trim(), mode: 'insensitive' } }
+      : { businessName: { contains: args.query?.trim() || '', mode: 'insensitive' } };
+    const partners = await prisma.partnerProfile.findMany({
+      where,
+      take: 6,
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        businessName: true,
+        partnerType: true,
+        partnerCode: true,
+        kycStatus: true,
+        onboardingStatus: true,
+        kycDocuments: { select: { documentType: true, status: true, expiryDate: true, fileUrl: true, documentNumber: true } },
+      },
+    });
+    if (!partners.length) return { found: false, requested: args.partnerCode || args.query || null, matches: [] };
+    if (partners.length > 1 && !args.partnerCode) throw new AiToolError('Multiple partners match that search. Please provide a partner code or more specific business name.', 409, 'AI_TOOL_AMBIGUOUS');
+    const partner = partners[0]!;
+    const review = buildKycReview(
+      partner.kycDocuments.map((document) => ({
+        type: document.documentType,
+        status: document.status,
+        expiryDate: document.expiryDate,
+        hasFile: Boolean(document.fileUrl),
+        hasDocumentNumber: Boolean(document.documentNumber),
+      })),
+      ['PAN_CARD', 'GST_CERTIFICATE', 'AUTHORIZED_PERSON_ID', 'PASSPORT_PHOTO', 'CANCELLED_CHEQUE'],
+    );
+    return {
+      found: true,
+      partner: { businessName: partner.businessName, partnerType: partner.partnerType, partnerCode: partner.partnerCode, kycStatus: partner.kycStatus, onboardingStatus: partner.onboardingStatus },
+      review,
+      maskedFields: ['partnerId', 'documentNumber', 'fileUrl', 'ownerName', 'gstNumber', 'mobile', 'email'],
     };
   },
 
@@ -1343,6 +1858,468 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     if (!leadId) throw new AiToolError('A lead ID or search query is required.', 400, 'AI_TOOL_ARGUMENTS_INVALID');
     const result = await crmLeads.getLead(access, leadId);
     return safeLeadDetail(result);
+  },
+
+  async crmLeadCopilot(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canRead) throw new AiToolError('You do not have CRM read permission for lead copilot.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    let leadId = args.leadId;
+    if (!leadId && args.query) {
+      const matches = await crmLeads.listLeads(access, { q: args.query, page: '1', pageSize: '6' });
+      if (!matches.items.length) return { found: false, requested: args.query, matches: [] };
+      if (matches.items.length > 1) {
+        throw new AiToolError('Multiple CRM leads match that search. Please provide a more specific lead search.', 409, 'AI_TOOL_AMBIGUOUS');
+      }
+      leadId = matches.items[0]?.id;
+    }
+    if (!leadId) throw new AiToolError('A lead ID or search query is required.', 400, 'AI_TOOL_ARGUMENTS_INVALID');
+    const result = await crmLeads.getLead(access, leadId);
+    const lead = result.lead as Record<string, unknown>;
+    const copilot = buildLeadCopilot({
+      status: typeof lead.status === 'string' ? lead.status : 'UNKNOWN',
+      score: typeof lead.score === 'number' ? lead.score : null,
+      temperature: typeof lead.temperature === 'string' ? lead.temperature : null,
+      priority: typeof lead.priority === 'string' ? lead.priority : null,
+      leadType: typeof lead.leadType === 'string' ? lead.leadType : null,
+      listingTitle: typeof lead.listingTitleSnapshot === 'string' ? lead.listingTitleSnapshot : null,
+      listingPrice: typeof lead.listingPriceSnapshot === 'number' ? lead.listingPriceSnapshot : null,
+      requirementCity: typeof lead.requirementCity === 'string' ? lead.requirementCity : null,
+      requirementState: typeof lead.requirementState === 'string' ? lead.requirementState : null,
+      createdAt: lead.createdAt instanceof Date || typeof lead.createdAt === 'string' ? lead.createdAt : new Date(),
+      lastContactedAt: lead.lastContactedAt instanceof Date || typeof lead.lastContactedAt === 'string' ? lead.lastContactedAt : null,
+      nextFollowUpAt: lead.nextFollowUpAt instanceof Date || typeof lead.nextFollowUpAt === 'string' ? lead.nextFollowUpAt : null,
+      slaDueAt: lead.slaDueAt instanceof Date || typeof lead.slaDueAt === 'string' ? lead.slaDueAt : null,
+      slaBreached: Boolean(lead.slaBreachedAt),
+    });
+    return { found: true, copilot, maskedFields: ['leadId', 'customerId', 'ownerId', 'dealerId', 'mobile', 'email', 'message', 'documentUrl'] };
+  },
+
+  async crmDashboardSummary(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canRead) throw new AiToolError('You do not have CRM read permission for the dashboard.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const dashboard = await crmReports.getDashboard(access);
+    return {
+      kpis: dashboard.kpis,
+      pipeline: dashboard.pipeline,
+      sources30d: dashboard.sources30d,
+      followUps: dashboard.followUps,
+      team: dashboard.team?.map((row) => ({
+        name: row.name,
+        openLeads: row.openLeads,
+        overdue: row.overdue,
+        dueToday: row.dueToday,
+        doneToday: row.doneToday,
+      })) ?? null,
+      myAgenda: dashboard.myAgenda.map(safeFollowUpItem),
+      recent: dashboard.recent.map(safeLead),
+      periodDays: Math.min(90, Math.max(1, Math.floor(args.days ?? 30))),
+      maskedFields: ['leadId', 'customerId', 'ownerId', 'dealerId', 'mobile', 'email', 'message', 'notes'],
+    };
+  },
+
+  async crmContactsSummary(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canRead) throw new AiToolError('You do not have CRM read permission for contacts.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 20)));
+    const result = await crmContacts.listContacts(access, {
+      page: '1',
+      pageSize: String(limit),
+      ...(args.query ? { q: args.query } : {}),
+      ...(args.lifecycle ? { lifecycle: args.lifecycle } : {}),
+      ...(args.pipelineStage ? { pipelineStage: args.pipelineStage } : {}),
+    });
+    return {
+      total: result.total,
+      returned: result.items.length,
+      hasMore: result.total > result.items.length,
+      ...(args.pipelineStage === 'WON' ? {
+        module: 'won-customers',
+        activeAccounts: result.activeTotal ?? 0,
+        primeCustomers: result.primeTotal ?? 0,
+        wonLeads: result.wonLeadTotal ?? 0,
+      } : {}),
+      items: result.items.map(safeCrmContact),
+      maskedFields: ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes'],
+    };
+  },
+
+  async crmContactDetail(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canRead) throw new AiToolError('You do not have CRM read permission for contact details.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    let contactId = args.contactId;
+    if (!contactId && args.query) {
+      const matches = await crmContacts.listContacts(access, { q: args.query, page: '1', pageSize: '6' });
+      if (!matches.items.length) return { found: false, requested: args.query, matches: [] };
+      if (matches.items.length > 1) {
+        throw new AiToolError('Multiple contacts match that search. Please provide a more specific name or company.', 409, 'AI_TOOL_AMBIGUOUS');
+      }
+      contactId = matches.items[0]?.id;
+    }
+    if (!contactId) throw new AiToolError('A contact ID or search query is required.', 400, 'AI_TOOL_ARGUMENTS_INVALID');
+    const result = await crmContacts.getContact360(access, contactId);
+    const contact = asRecord(result.contact);
+    return {
+      found: true,
+      contact: safeCrmContact(contact),
+      leads: Array.isArray(result.leads) ? result.leads.map(safeLead) : [],
+      pipelineStage: result.pipelineStage ?? null,
+      followUps: Array.isArray(result.followUps) ? result.followUps.map(safeFollowUpItem) : [],
+      activities: Array.isArray(result.activities)
+        ? result.activities.map((activity) => {
+          const row = asRecord(activity);
+          return { type: row.type ?? null, title: row.title ?? null, createdAt: isoDate(row.createdAt) };
+        })
+        : [],
+      prime: result.prime ? { active: result.prime.active, history: result.prime.history } : null,
+      payments: Array.isArray(result.payments) ? result.payments.map((payment) => ({ status: payment.status, amount: payment.amount, method: payment.method, submittedAt: isoDate(payment.submittedAt) })) : [],
+      deals: Array.isArray(result.deals) ? result.deals.map((deal) => ({ listingTitle: deal.listingTitle, dealStatus: deal.dealStatus, sellAmount: deal.sellAmount, purchaseAmount: deal.purchaseAmount, side: deal.side, createdAt: isoDate(deal.createdAt) })) : [],
+      rto: Array.isArray(result.rto) ? result.rto.map((record) => ({ rtoStatus: record.rtoStatus, rtoOffice: record.rtoOffice, createdAt: isoDate(record.createdAt) })) : [],
+      interest: result.interest ? { listingViews: result.interest.listingViews, contactClicks: result.interest.contactClicks, searches: result.interest.searches?.length ?? 0, viewedListings: result.interest.viewedListings?.map((listing) => ({ title: listing.title, price: listing.price, status: listing.status, city: listing.locationCity })) ?? [] } : null,
+      finance: result.finance ? { receivable: result.finance.receivable, payable: result.finance.payable, partyCount: result.finance.parties?.length ?? 0 } : null,
+      maskedFields: ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes', 'documentUrl', 'vehicleNumber', 'customerNumber'],
+    };
+  },
+
+  async crmCampaignsSummary(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canCampaigns) throw new AiToolError('You do not have permission to view CRM campaigns.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const from = daysBack(periodDays);
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
+    const [segments, campaigns] = await Promise.all([
+      crmSegments.listSegments(access),
+      prisma.whatsAppCampaign.findMany({
+        where: { createdAt: { gte: from } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: { name: true, category: true, status: true, createdAt: true, updatedAt: true, _count: { select: { recipients: true } } },
+      }),
+    ]);
+    return {
+      periodDays,
+      segments: segments.slice(0, limit).map((segment) => ({ name: segment.name, description: segment.description, count: segment.count, createdAt: segment.createdAt })),
+      campaigns: campaigns.map((campaign) => ({ name: campaign.name, category: campaign.category, status: campaign.status, recipients: campaign._count.recipients, createdAt: campaign.createdAt, updatedAt: campaign.updatedAt })),
+      maskedFields: ['recipientPhone', 'messageBody', 'audienceFilters', 'createdByUserId', 'confirmedByUserId'],
+    };
+  },
+
+  async crmImportSummary(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canImport) throw new AiToolError('You do not have permission to view CRM import history.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
+    const batches = await crmDataExchange.importHistory(access);
+    return {
+      total: batches.length,
+      returned: Math.min(limit, batches.length),
+      hasMore: batches.length > limit,
+      items: batches.slice(0, limit).map((batch) => ({
+        fileName: batch.fileName,
+        totalRows: batch.totalRows,
+        created: batch.createdCount,
+        duplicates: batch.duplicateCount,
+        failed: batch.failedCount,
+        createdAt: batch.createdAt,
+      })),
+      maskedFields: ['batchId', 'createdById', 'errors', 'mobile', 'email', 'name'],
+    };
+  },
+
+  async aiDocumentsSearch(context, args) {
+    const access = crmAccessFor(context);
+    if (!hasPermission(context, DOCUMENT_READ_PERMISSIONS)) throw new AiToolError('You do not have permission to search stored documents.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const limit = Math.min(10, Math.max(1, Math.floor(args.limit ?? 10)));
+    const kind = args.kind ?? 'all';
+    const query = args.query.trim();
+    const lowerQuery = query.toLowerCase();
+    const requestedDocumentType = lowerQuery.includes('aadhaar') || lowerQuery.includes('aadhar')
+      ? 'AADHAAR_CARD'
+      : lowerQuery.includes('pan')
+        ? 'PAN_CARD'
+        : lowerQuery.includes('gst')
+          ? 'GST_CERTIFICATE'
+          : null;
+    const actions: AiFileAction[] = [];
+    const items: Array<Record<string, unknown>> = [];
+
+    if ((kind === 'all' || kind === 'kyc') && hasPermission(context, ['kyc.manage', 'kyc.edit.override'])) {
+      const partners = await prisma.partnerProfile.findMany({
+        where: {
+          OR: [
+            { businessName: { contains: query, mode: 'insensitive' } },
+            { partnerCode: { contains: query, mode: 'insensitive' } },
+          ],
+          ...(requestedDocumentType ? { kycDocuments: { some: { documentType: requestedDocumentType as never, fileUrl: { not: null } } } } : {}),
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        select: { businessName: true, partnerCode: true, kycDocuments: { where: { fileUrl: { not: null }, ...(requestedDocumentType ? { documentType: requestedDocumentType as never } : {}) }, orderBy: { uploadedAt: 'desc' }, take: 3, select: { documentType: true, status: true, fileUrl: true, fileName: true, uploadedAt: true } } },
+      });
+      for (const partner of partners) {
+        for (const document of partner.kycDocuments) {
+          const url = secureUiFileUrl(document.fileUrl);
+          if (!url) continue;
+          const action = buildAiFileAction({ label: `${partner.businessName || partner.partnerCode || 'Partner'} · ${document.documentType} document`, fileName: document.fileName || `${document.documentType}.file`, mimeType: mimeTypeForFileName(document.fileName), url });
+          if (!action) continue;
+          items.push({ kind: 'KYC', documentType: document.documentType, status: document.status, partner: partner.businessName, partnerCode: partner.partnerCode, uploadedAt: document.uploadedAt });
+          actions.push(action);
+        }
+      }
+    }
+
+    if ((kind === 'all' || kind === 'kyc') && hasPermission(context, ['accounts.sell.read', 'accounts.sell.crud'])) {
+      const sellAccounts = await prisma.sellAccount.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            { recordNumber: { contains: query, mode: 'insensitive' } },
+            { listingTitle: { contains: query, mode: 'insensitive' } },
+            { ownerName: { contains: query, mode: 'insensitive' } },
+            { sellerName: { contains: query, mode: 'insensitive' } },
+            { purchaserName: { contains: query, mode: 'insensitive' } },
+            { vehicleNumber: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        select: { recordNumber: true, listingTitle: true, documents: true },
+      });
+      const documentKeyPattern = requestedDocumentType === 'AADHAAR_CARD'
+        ? /aadhaar/i
+        : requestedDocumentType === 'PAN_CARD'
+          ? /pan/i
+          : requestedDocumentType === 'GST_CERTIFICATE'
+            ? /gst/i
+            : null;
+      for (const account of sellAccounts) {
+        const documents = asRecord(account.documents);
+        for (const [documentKey, value] of Object.entries(documents)) {
+          if (documentKeyPattern && !documentKeyPattern.test(documentKey)) continue;
+          const document = asRecord(value);
+          const fileUrl = secureUiFileUrl(document.fileUrl ?? document.url ?? document.absoluteUrl);
+          if (!fileUrl) continue;
+          const fileName = typeof document.originalName === 'string' && document.originalName.trim()
+            ? document.originalName
+            : typeof document.fileName === 'string' && document.fileName.trim()
+              ? document.fileName
+              : `${documentKey}.file`;
+          const mimeType = typeof document.mimeType === 'string' && document.mimeType.trim()
+            ? document.mimeType
+            : mimeTypeForFileName(fileName);
+          const label = documentKey.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, (character) => character.toUpperCase());
+          const action = buildAiFileAction({ label: `${account.recordNumber} · ${label}`, fileName, mimeType, url: fileUrl });
+          if (!action) continue;
+          items.push({ kind: 'SELL_ACCOUNT', recordNumber: account.recordNumber, listingTitle: account.listingTitle, documentType: documentKey });
+          actions.push(action);
+        }
+      }
+    }
+
+    if ((kind === 'all' || kind === 'vehicle') && hasPermission(context, ['accounts.sell.read', 'accounts.sell.crud'])) {
+      const vehicle = await getVehicleDocs(query).catch((error: unknown) => {
+        if (error instanceof VehicleDocsError && error.status === 404) return null;
+        throw error;
+      });
+      if (vehicle) {
+        const vehicleNumber = encodeURIComponent(vehicle.vehicleNumber);
+        const archiveAction = buildAiFileAction({
+          label: `${vehicle.vehicleNumber} · All vehicle documents`,
+          fileName: `${vehicle.vehicleNumber} - Vehicle Documents.zip`,
+          mimeType: 'application/zip',
+          url: `/api/vehicle-docs/${vehicleNumber}/zip`,
+        });
+        if (archiveAction) actions.push(archiveAction);
+        const detailsAction = buildAiFileAction({
+          label: `${vehicle.vehicleNumber} · Vehicle details`,
+          fileName: `${vehicle.vehicleNumber} - Vehicle Details.pdf`,
+          mimeType: 'application/pdf',
+          url: `/api/vehicle-docs/${vehicleNumber}/details.pdf?inline=1`,
+        });
+        if (detailsAction) actions.push(detailsAction);
+        for (const document of vehicle.documents.slice(0, limit)) {
+          const action = buildAiFileAction({
+            label: `${vehicle.vehicleNumber} · ${document.label}`,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            url: `/api/vehicle-docs/${vehicleNumber}/files/${encodeURIComponent(document.id)}`,
+          });
+          if (!action) continue;
+          items.push({ kind: 'VEHICLE_DOCUMENT', section: document.section, label: document.label, fileName: document.fileName, date: document.date, generated: document.generated });
+          actions.push(action);
+        }
+      }
+    }
+
+    if ((kind === 'all' || kind === 'verification') && hasPermission(context, ['pan.verification.read', 'gst.verification.read', 'aadhaar.digilocker.read'])) {
+      const broadQuery = /^(?:all|verification|verifications|template|templates|document|documents|file|files)$/iu.test(query);
+      const verificationRows: Array<{ kind: 'PAN' | 'GST' | 'AADHAAR'; status: string; identifier: string; recordId: string; fileName: string; mimeType: string; createdAt: Date; route: string }> = [];
+      if (hasPermission(context, ['pan.verification.read'])) {
+        const rows = await prisma.panVerificationRecord.findMany({
+          where: { template: { isNot: null }, ...(broadQuery ? {} : { maskedPan: { contains: query, mode: 'insensitive' } }) },
+          orderBy: { createdAt: 'desc' }, take: limit,
+          select: { id: true, maskedPan: true, status: true, createdAt: true, template: { select: { fileName: true, mimeType: true } } },
+        });
+        rows.forEach((row) => row.template && verificationRows.push({ kind: 'PAN', status: row.status, identifier: row.maskedPan, recordId: row.id, fileName: row.template.fileName, mimeType: row.template.mimeType, createdAt: row.createdAt, route: `/api/pan-verification/${row.id}/template` }));
+      }
+      if (hasPermission(context, ['gst.verification.read'])) {
+        const rows = await prisma.gstVerificationRecord.findMany({
+          where: { template: { isNot: null }, ...(broadQuery ? {} : { OR: [{ maskedGstin: { contains: query, mode: 'insensitive' } }, { businessName: { contains: query, mode: 'insensitive' } }, { legalName: { contains: query, mode: 'insensitive' } }] }) },
+          orderBy: { createdAt: 'desc' }, take: limit,
+          select: { id: true, maskedGstin: true, status: true, createdAt: true, template: { select: { fileName: true, mimeType: true } } },
+        });
+        rows.forEach((row) => row.template && verificationRows.push({ kind: 'GST', status: row.status, identifier: row.maskedGstin, recordId: row.id, fileName: row.template.fileName, mimeType: row.template.mimeType, createdAt: row.createdAt, route: `/api/gst-verification/${row.id}/template` }));
+      }
+      if (hasPermission(context, ['aadhaar.digilocker.read'])) {
+        const rows = await prisma.aadhaarVerificationRecord.findMany({
+          where: { template: { isNot: null }, ...(broadQuery ? {} : { maskedAadhaar: { contains: query, mode: 'insensitive' } }) },
+          orderBy: { createdAt: 'desc' }, take: limit,
+          select: { id: true, maskedAadhaar: true, status: true, createdAt: true, template: { select: { fileName: true, mimeType: true } } },
+        });
+        rows.forEach((row) => row.template && verificationRows.push({ kind: 'AADHAAR', status: row.status, identifier: row.maskedAadhaar, recordId: row.id, fileName: row.template.fileName, mimeType: row.template.mimeType, createdAt: row.createdAt, route: `/api/aadhaar-verification/${row.id}/template` }));
+      }
+      verificationRows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).forEach((row) => {
+        const action = buildAiFileAction({ label: `${row.kind} verification template`, fileName: row.fileName, mimeType: row.mimeType, url: row.route });
+        if (!action) return;
+        items.push({ kind: 'VERIFICATION_TEMPLATE', verificationType: row.kind, identifier: row.identifier, status: row.status, createdAt: row.createdAt });
+        actions.push(action);
+      });
+    }
+
+    if ((kind === 'all' || kind === 'resume') && hasPermission(context, ['recruitment.applications.read', 'recruitment.candidates.read'])) {
+      const applications = await prisma.jobApplication.findMany({
+        where: { OR: [{ applicationRef: { contains: query, mode: 'insensitive' } }, { candidate: { fullName: { contains: query, mode: 'insensitive' } } }] },
+        orderBy: { appliedAt: 'desc' },
+        take: limit,
+        select: { applicationRef: true, candidate: { select: { fullName: true } }, documents: { where: { category: 'RESUME' }, orderBy: { uploadedAt: 'desc' }, take: 1, select: { fileName: true, fileUrl: true, mimeType: true, uploadedAt: true } } },
+      });
+      for (const application of applications) {
+        const document = application.documents[0];
+        const url = secureUiFileUrl(document?.fileUrl);
+        if (!document || !url) continue;
+        const action = buildAiFileAction({ label: `${application.candidate.fullName} · Resume`, fileName: document.fileName, mimeType: document.mimeType || mimeTypeForFileName(document.fileName), url });
+        if (!action) continue;
+        items.push({ kind: 'RESUME', applicationRef: application.applicationRef, candidate: application.candidate.fullName, uploadedAt: document.uploadedAt });
+        actions.push(action);
+      }
+    }
+
+    if ((kind === 'all' || kind === 'offer') && hasPermission(context, ['recruitment.offers.read'])) {
+      const broadQuery = /^(?:all|offer|offers|document|documents|file|files)$/iu.test(query);
+      const offers = await prisma.offer.findMany({
+        where: {
+          offerLetterUrl: { not: null },
+          ...(broadQuery ? {} : {
+            OR: [
+              { application: { applicationRef: { contains: query, mode: 'insensitive' } } },
+              { candidate: { fullName: { contains: query, mode: 'insensitive' } } },
+              { job: { title: { contains: query, mode: 'insensitive' } } },
+            ],
+          }),
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        select: {
+          application: { select: { applicationRef: true } },
+          candidate: { select: { fullName: true } },
+          job: { select: { title: true } },
+          offerLetterUrl: true,
+          offerLetterFileName: true,
+          updatedAt: true,
+        },
+      });
+      for (const offer of offers) {
+        const url = secureUiFileUrl(offer.offerLetterUrl);
+        if (!url) continue;
+        const fileName = offer.offerLetterFileName || `offer-letter-${offer.application.applicationRef}.pdf`;
+        const action = buildAiFileAction({
+          label: `${offer.candidate.fullName} · Offer letter`,
+          fileName,
+          mimeType: mimeTypeForFileName(fileName),
+          url,
+        });
+        if (!action) continue;
+        items.push({ kind: 'OFFER_LETTER', applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, updatedAt: offer.updatedAt });
+        actions.push(action);
+      }
+    }
+
+    if ((kind === 'all' || kind === 'rto') && hasPermission(context, RTO_DOCUMENTS_PERMISSIONS)) {
+      const broadQuery = /^(?:all|rto|document|documents|file|files)$/iu.test(query);
+      const tasks = await prisma.rtoTransferTask.findMany({
+        where: broadQuery ? {} : {
+          OR: [
+            { taskKey: { contains: query, mode: 'insensitive' } },
+            { label: { contains: query, mode: 'insensitive' } },
+            { rtoRecord: { is: { vehicleNumber: { contains: query, mode: 'insensitive' } } } },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        select: {
+          taskKey: true,
+          label: true,
+          documents: true,
+          updatedAt: true,
+          rtoRecord: { select: { vehicleNumber: true, vehicleModel: true } },
+        },
+      });
+      for (const task of tasks) {
+        const documents = Array.isArray(task.documents) ? task.documents : [];
+        for (const rawDocument of documents) {
+          const document = asRecord(rawDocument);
+          const url = secureUiFileUrl(document.fileUrl ?? document.url ?? document.absoluteUrl);
+          if (!url) continue;
+          const fileName = typeof document.originalName === 'string' && document.originalName.trim()
+            ? document.originalName
+            : typeof document.fileName === 'string' && document.fileName.trim()
+              ? document.fileName
+              : `${task.taskKey}.file`;
+          const action = buildAiFileAction({
+            label: `${task.rtoRecord.vehicleNumber} · ${task.label}`,
+            fileName,
+            mimeType: typeof document.mimeType === 'string' ? document.mimeType : mimeTypeForFileName(fileName),
+            url,
+          });
+          if (!action) continue;
+          items.push({ kind: 'RTO_DOCUMENT', vehicleModel: task.rtoRecord.vehicleModel, task: task.label, uploadedAt: document.uploadedAt ?? task.updatedAt });
+          actions.push(action);
+        }
+      }
+    }
+
+    if ((kind === 'all' || kind === 'invoice') && hasPermission(context, ['accounts.sell.read', 'accounts.sell.crud'])) {
+      const invoices = await prisma.sellAccount.findMany({
+        where: { deletedAt: null, invoiceNumber: { not: null }, invoiceGeneratedAt: { not: null }, OR: [{ invoiceNumber: { contains: query, mode: 'insensitive' } }, { recordNumber: { contains: query, mode: 'insensitive' } }, { listingTitle: { contains: query, mode: 'insensitive' } }] },
+        orderBy: { invoiceGeneratedAt: 'desc' },
+        take: limit,
+        select: { id: true, invoiceNumber: true, invoiceGeneratedAt: true, dealStatus: true },
+      });
+      for (const invoice of invoices) {
+        const action = buildAiFileAction({ label: `${invoice.invoiceNumber || 'Invoice'} · Invoice PDF`, fileName: `${invoice.invoiceNumber || 'invoice'}.pdf`, mimeType: 'application/pdf', url: `/api/recruitment/admin/sell-accounts/${invoice.id}/invoice` });
+        if (!action) continue;
+        items.push({ kind: 'INVOICE', invoiceNumber: invoice.invoiceNumber, status: invoice.dealStatus, generatedAt: invoice.invoiceGeneratedAt });
+        actions.push(action);
+      }
+    }
+
+    const boundedItems = items.slice(0, limit);
+    return {
+      data: {
+        found: boundedItems.length > 0,
+        returned: boundedItems.length,
+        hasMore: items.length > boundedItems.length,
+        items: boundedItems,
+        maskedFields: ['documentUrl', 'fileUrl', 'candidateName', 'partnerId', 'mobile', 'email', 'aadhaar', 'pan', 'gstin'],
+      },
+      uiActions: actions.slice(0, limit),
+    } satisfies AiToolPayload;
+  },
+
+  async marketIntelligence(_context, args) {
+    return listMarketInsights({
+      ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.category !== undefined ? { category: args.category } : {}),
+      ...(args.priority !== undefined ? { priority: args.priority } : {}),
+    });
   },
 
   async customerSummary(context, args) {
@@ -1518,7 +2495,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
           prisma.rtoTransferTask.findMany({
             orderBy: { updatedAt: 'desc' },
             take: limit,
-            select: { id: true, taskKey: true, label: true, status: true, isOptional: true, createdAt: true, updatedAt: true },
+            select: { id: true, taskKey: true, label: true, status: true, isOptional: true, documents: true, createdAt: true, updatedAt: true, rtoRecord: { select: { vehicleNumber: true, rtoStatus: true } } },
           }),
         ])
         : Promise.resolve(null),
@@ -1541,6 +2518,9 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         label: task.label,
         status: task.status,
         optional: task.isOptional,
+        vehicleNumber: task.rtoRecord.vehicleNumber,
+        rtoStatus: task.rtoRecord.rtoStatus,
+        documentsUploaded: Array.isArray(task.documents) ? task.documents.length : task.documents ? 1 : 0,
         createdAt: task.createdAt.toISOString(),
         updatedAt: task.updatedAt.toISOString(),
       })),
@@ -1576,6 +2556,35 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async analyticsSummary(_context, args) {
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const from = daysBack(periodDays);
+    const [totalEvents, byEventType, bySource] = await Promise.all([
+      prisma.analyticsEvent.count({ where: { occurredAt: { gte: from } } }),
+      prisma.analyticsEvent.groupBy({
+        by: ['eventType'],
+        where: { occurredAt: { gte: from } },
+        _count: { _all: true },
+        orderBy: { _count: { eventType: 'desc' } },
+        take: 20,
+      }),
+      prisma.analyticsEvent.groupBy({
+        by: ['source'],
+        where: { occurredAt: { gte: from } },
+        _count: { _all: true },
+        orderBy: { _count: { source: 'desc' } },
+        take: 20,
+      }),
+    ]);
+    return {
+      periodDays,
+      totalEvents,
+      byEventType: byEventType.map((row) => ({ eventType: row.eventType, count: row._count._all })),
+      bySource: bySource.map((row) => ({ source: row.source || 'UNSPECIFIED', count: row._count._all })),
+      maskedFields: ['anonymousId', 'sessionId', 'actorUserId', 'listingId', 'partnerId', 'query', 'filterPayload'],
+    };
+  },
+
   async listingStatistics(_context, args) {
     const from = daysBack(args.days);
     const [total, createdInPeriod, byStatus, price, views] = await Promise.all([
@@ -1594,6 +2603,31 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       totalViews: views._sum.views ?? 0,
       viewsInPeriod: views._sum.views ?? 0,
     };
+  },
+
+  async fraudSignals(_context, args) {
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const from = daysBack(periodDays);
+    const listings = await prisma.listing.findMany({
+      where: { createdAt: { gte: from }, status: { in: ['PUBLISHED', 'PENDING_APPROVAL', 'PAUSED'] } },
+      take: 1_000,
+      select: { id: true, price: true, partnerId: true, vehicleVerification: { select: { status: true } } },
+    });
+    const [media, rejectedPayments] = await Promise.all([
+      listings.length
+        ? prisma.media.findMany({ where: { listingId: { in: listings.map((listing) => listing.id) } }, select: { url: true } })
+        : Promise.resolve([]),
+      prisma.listingPaymentSubmission.count({ where: { submittedAt: { gte: from }, status: { in: ['REJECTED', 'FAILED'] } } }),
+    ]);
+    const identityConflicts = listings.filter((listing) => listing.vehicleVerification?.status === 'REVERIFICATION_REQUIRED' || listing.vehicleVerification?.status === 'MANUALLY_MODIFIED').length;
+    const summary = buildFraudSignalSummary({
+      prices: listings.map((listing) => listing.price),
+      identityConflictCount: identityConflicts,
+      mediaUrls: media.map((item) => item.url),
+      rejectedPaymentCount: rejectedPayments,
+      listingPartnerIds: listings.map((listing) => listing.partnerId),
+    });
+    return { periodDays, ...summary, maskedFields: ['listingId', 'partnerId', 'mediaUrl', 'paymentReference', 'buyerId', 'mobile', 'email'] };
   },
 
   async listingSummary(_context, args) {
@@ -1803,6 +2837,75 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async vehicleDocumentsDetail(_context, args) {
+    const query = args.query.trim().toUpperCase();
+    const compact = query.replace(/[\s-]/gu, '');
+    const variants = [...new Set([query, compact, compact.replace(/^(..)(\d{1,2})([A-Z]{1,3})(\d{1,4})$/u, '$1-$2-$3-$4')])];
+    const records = await prisma.vehicleRtoRecord.findMany({
+      where: { OR: variants.map((vehicleNumber) => ({ vehicleNumber: { equals: vehicleNumber, mode: 'insensitive' as const } })) },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+      select: {
+        vehicleNumber: true,
+        brandName: true,
+        vehicleType: true,
+        vehicleModel: true,
+        rtoOffice: true,
+        rtoStatus: true,
+        documentSendDate: true,
+        taxStatus: true,
+        taxValidUntil: true,
+        fitnessStatus: true,
+        fitnessValidUntil: true,
+        insuranceStatus: true,
+        insuranceValidUntil: true,
+        pucStatus: true,
+        pucValidUntil: true,
+        hsrpStatus: true,
+        updatedAt: true,
+        transferTasks: { select: { taskKey: true, label: true, status: true, isOptional: true, documents: true, updatedAt: true } },
+      },
+    });
+    const items = records.map((record) => {
+      const pendingDocuments = record.transferTasks
+        .filter((task) => !isTransferTaskDone(task.status))
+        .map((task) => ({
+          task: task.label,
+          taskKey: task.taskKey,
+          status: task.status,
+          optional: task.isOptional,
+          proofUploaded: Boolean(task.documents),
+          updatedAt: task.updatedAt.toISOString(),
+          dueDate: null,
+        }));
+      return {
+        vehicleNumber: record.vehicleNumber,
+        vehicle: { brand: record.brandName, type: record.vehicleType, model: record.vehicleModel },
+        rtoOffice: record.rtoOffice,
+        rtoStatus: record.rtoStatus,
+        documentSendDate: record.documentSendDate?.toISOString() || null,
+        documents: {
+          tax: { status: record.taxStatus, validUntil: record.taxValidUntil?.toISOString() || null },
+          fitness: { status: record.fitnessStatus, validUntil: record.fitnessValidUntil?.toISOString() || null },
+          insurance: { status: record.insuranceStatus, validUntil: record.insuranceValidUntil?.toISOString() || null },
+          puc: { status: record.pucStatus, validUntil: record.pucValidUntil?.toISOString() || null },
+          hsrp: { status: record.hsrpStatus, validUntil: null },
+        },
+        pendingDocuments,
+        dueDateStatus: 'NOT_CONFIGURED',
+        updatedAt: record.updatedAt.toISOString(),
+      };
+    });
+    return {
+      found: items.length > 0,
+      requestedRegistration: query,
+      items,
+      dueDateStatus: 'NOT_CONFIGURED',
+      dueDateMessage: 'RTO transfer task schema में due date field configured नहीं है; कोई अनुमानित date नहीं दिखाई गई।',
+      maskedFields: ['rtoRecordId', 'listingId', 'customerName', 'customerNumber', 'ownerName', 'documentUrl', 'fileUrl'],
+    };
+  },
+
   async soldVehicles(_context, args) {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const from = daysBack(periodDays);
@@ -1939,6 +3042,54 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async partnerAgreementsSummary(_context, args) {
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 20)));
+    const query = args.query?.trim();
+    const where: Prisma.PartnerAgreementDefinitionWhereInput = query
+      ? {
+        OR: [
+          { title: { contains: query, mode: 'insensitive' } },
+          { agreementType: { equals: query.toUpperCase() as any } },
+          { status: { equals: query.toUpperCase() as any } },
+        ],
+      }
+      : {};
+    const [total, definitions, statusCounts] = await Promise.all([
+      prisma.partnerAgreementDefinition.count({ where }),
+      prisma.partnerAgreementDefinition.findMany({
+        where,
+        orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+        take: limit,
+        include: { _count: { select: { acceptances: true } } },
+      }),
+      prisma.partnerAgreementDefinition.groupBy({ by: ['status'], _count: { _all: true } }),
+    ]);
+    return {
+      total,
+      returned: definitions.length,
+      hasMore: total > definitions.length,
+      statusCounts: statusCounts.map((row) => ({ status: row.status, count: row._count._all })),
+      items: definitions.map((definition) => ({
+        agreementId: definition.id,
+        agreementType: definition.agreementType,
+        title: definition.title,
+        summary: definition.summary || null,
+        version: definition.version,
+        applicablePartnerTypes: definition.applicablePartnerTypes,
+        isRequired: definition.isRequired,
+        status: definition.status,
+        effectiveFrom: definition.effectiveFrom?.toISOString() ?? null,
+        displayOrder: definition.displayOrder,
+        acceptanceCount: definition._count.acceptances,
+        contentAvailable: Boolean(definition.content),
+        ...(args.includeContent ? { content: definition.content } : {}),
+        createdAt: definition.createdAt.toISOString(),
+        updatedAt: definition.updatedAt.toISOString(),
+      })),
+      maskedFields: ['createdById', 'updatedById', 'acceptedByUserId', 'ipAddress', 'userAgent', 'contentHash'],
+    };
+  },
+
   async partnerPerformance(_context, args) {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
@@ -1993,6 +3144,34 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       };
     }).sort((a, b) => b.sold - a.sold || b.published - a.published || b.totalViews - a.totalViews);
     return { periodDays, partners: performance.slice(0, limit) };
+  },
+
+  async partnerCopilot(_context, args) {
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const from = daysBack(periodDays);
+    const [partners, listingRows, unansweredLeads] = await Promise.all([
+      prisma.partnerProfile.findMany({ take: 1000, select: { userId: true, businessName: true, partnerCode: true } }),
+      prisma.listing.groupBy({ by: ['partnerId', 'status'], where: { createdAt: { gte: from } }, _count: { _all: true } }),
+      prisma.lead.groupBy({ by: ['dealerId'], where: { createdAt: { gte: from }, status: { notIn: ['WON', 'LOST'] }, firstResponseAt: null }, _count: { _all: true } }),
+    ]);
+    const listStats = new Map<string, { total: number; published: number; sold: number }>();
+    for (const row of listingRows) {
+      const current = listStats.get(row.partnerId) || { total: 0, published: 0, sold: 0 };
+      current.total += row._count._all;
+      current.published += row.status === 'PUBLISHED' ? row._count._all : 0;
+      current.sold += row.status === 'SOLD' ? row._count._all : 0;
+      listStats.set(row.partnerId, current);
+    }
+    const leadStats = new Map(unansweredLeads.map((row) => [row.dealerId, row._count._all]));
+    const items = partners.map((partner) => {
+      const stats = listStats.get(partner.userId) || { total: 0, published: 0, sold: 0 };
+      return {
+        businessName: partner.businessName,
+        partnerCode: partner.partnerCode,
+        review: buildPartnerReview({ publishedListings: stats.published, totalListings: stats.total, soldListings: stats.sold, unansweredLeads: leadStats.get(partner.userId) || 0, averageResponseHours: null }),
+      };
+    }).filter((item) => item.review.health !== 'HEALTHY').slice(0, Math.min(20, Math.max(1, Math.floor(args.limit ?? 10))));
+    return { periodDays, returned: items.length, items, maskedFields: ['partnerId', 'dealerId', 'ownerId', 'mobile', 'email'] };
   },
 
   async financeTrend(_context, args) {
@@ -2052,6 +3231,22 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       returned: transactions.length,
       hasMore: transactions.length === 20,
       transactions: transactions.map(safeFinanceTransactionItem),
+    };
+  },
+
+  async financeCopilot(_context, args) {
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const from = daysBack(periodDays);
+    const [byType, overdue] = await Promise.all([
+      prisma.financeTransaction.groupBy({ by: ['type'], where: { status: { not: 'VOIDED' }, transactionDate: { gte: from } }, _sum: { amount: true } }),
+      prisma.finDocument.aggregate({ where: { dueDate: { lt: new Date() }, status: { not: 'CANCELLED' } }, _count: { _all: true }, _sum: { total: true } }),
+    ]);
+    const inflow = numeric(byType.find((row) => row.type === 'CREDIT')?._sum.amount);
+    const outflow = numeric(byType.find((row) => row.type === 'DEBIT')?._sum.amount);
+    const net = inflow - outflow;
+    return {
+      review: buildFinanceReview({ periodDays, inflow, outflow, net, overdueCount: overdue._count._all, overdueAmount: numeric(overdue._sum.total) }),
+      maskedFields: ['partyId', 'accountNumber', 'reference', 'attachmentUrl', 'notes', 'userId'],
     };
   },
 
@@ -2352,6 +3547,20 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       pendingCount: pending.length,
       byStatus: [...statusCounts].map(([status, count]) => ({ status, count })),
       byTask: [...labelCounts].map(([task, count]) => ({ task, count })).slice(0, limit),
+      items: pending.slice(0, limit).map((task) => ({
+        vehicleNumber: task.rtoRecord?.vehicleNumber || null,
+        rtoOffice: task.rtoRecord?.rtoOffice || null,
+        rtoStatus: task.rtoRecord?.rtoStatus || null,
+        task: task.label,
+        taskKey: task.taskKey,
+        status: task.status,
+        optional: task.isOptional,
+        updatedAt: task.updatedAt.toISOString(),
+        dueDate: null,
+        dueDateStatus: 'NOT_CONFIGURED',
+      })),
+      dueDateStatus: 'NOT_CONFIGURED',
+      dueDateMessage: 'RTO transfer task schema में due date field configured नहीं है; कोई अनुमानित date नहीं दिखाई गई।',
     };
   },
 
@@ -2427,10 +3636,57 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async rtoCopilot(_context, args) {
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
+    const records = await prisma.vehicleRtoRecord.findMany({
+      where: { createdAt: { gte: daysBack(periodDays) } },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+      select: {
+        rtoStatus: true,
+        taxStatus: true,
+        fitnessStatus: true,
+        insuranceStatus: true,
+        pucStatus: true,
+        hsrpStatus: true,
+        listing: { select: { title: true } },
+        transferTasks: { select: { status: true, isOptional: true } },
+      },
+    });
+    const items = records.map((record) => {
+      const pendingTasks = record.transferTasks.filter((task) => !['TRANSFERRED', 'NOT_REQUIRED'].includes(task.status)).length;
+      const optionalPendingTasks = record.transferTasks.filter((task) => task.isOptional && !['TRANSFERRED', 'NOT_REQUIRED'].includes(task.status)).length;
+      return {
+        listingTitle: record.listing?.title || null,
+        status: record.rtoStatus,
+        review: buildRtoReview({ rtoStatus: record.rtoStatus, taxStatus: record.taxStatus, fitnessStatus: record.fitnessStatus, insuranceStatus: record.insuranceStatus, pucStatus: record.pucStatus, hsrpStatus: record.hsrpStatus, pendingTasks, optionalPendingTasks }),
+      };
+    });
+    return { periodDays, returned: items.length, items, maskedFields: ['rtoRecordId', 'listingId', 'registrationNumber', 'chassisNumber', 'ownerName', 'mobile', 'documentUrl'] };
+  },
+
   async crmFollowUps(context, args) {
     const access = crmAccessFor(context);
     if (!access.canRead) throw new AiToolError('You do not have CRM read permission for follow-ups.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
     return crmFollowUps.followUpSummary(access, args.owner === 'me' ? 'me' : '');
+  },
+
+  async crmCallIntelligence(context, args) {
+    const access = crmAccessFor(context);
+    if (!access.canRead) throw new AiToolError('You do not have CRM read permission for call intelligence.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
+    const activities = await prisma.leadActivity.findMany({
+      where: {
+        type: 'CALL',
+        createdAt: { gte: daysBack(periodDays) },
+        lead: leadScopeWhere(access),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1_000,
+      select: { type: true, title: true, content: true, createdAt: true },
+    });
+    return { periodDays, ...buildCallIntelligence(activities) };
   },
 
   async recruitmentSummary() {
@@ -2448,6 +3704,22 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     return {
       stats: { activeJobs, totalApplications, newApplications, underReview, interviewsScheduled, selectedCandidates, offersSent, hiredCandidates },
       pipeline: applicationsByStage.map((row) => ({ stage: row.currentStage, count: row._count._all })),
+    };
+  },
+
+  async recruitmentCopilot() {
+    const [activeJobs, newApplications, underReview, interviewsScheduled, offersSent, hiredCandidates] = await Promise.all([
+      prisma.job.count({ where: { status: 'PUBLISHED' } }),
+      prisma.jobApplication.count({ where: { currentStage: 'NEW' } }),
+      prisma.jobApplication.count({ where: { currentStage: 'UNDER_REVIEW' } }),
+      prisma.interview.count({ where: { status: 'SCHEDULED' } }),
+      prisma.offer.count({ where: { status: 'SENT' } }),
+      prisma.jobApplication.count({ where: { currentStage: 'HIRED' } }),
+    ]);
+    return {
+      review: buildRecruitmentReview({ activeJobs, newApplications, underReview, interviewsScheduled, offersSent, hiredCandidates }),
+      stats: { activeJobs, newApplications, underReview, interviewsScheduled, offersSent, hiredCandidates },
+      maskedFields: ['candidateId', 'candidateName', 'mobile', 'email', 'resumeUrl'],
     };
   },
 
@@ -2664,6 +3936,36 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
 
   async verificationSummary(context, args) {
     return verificationSummaryFor(context, args);
+  },
+
+  async verificationHistory(context, args) {
+    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 20)));
+    const result = await listVerificationHistory(
+      args.group,
+      {
+        limit,
+        ...(args.search ? { search: args.search } : {}),
+        ...(args.type ? { type: args.type } : {}),
+      },
+      { id: context.userId, role: context.role },
+    );
+    const records = result.records.slice(0, limit);
+    return {
+      group: args.group,
+      returned: records.length,
+      pagination: result.pagination ? {
+        ...result.pagination,
+        limit,
+        totalPages: Math.ceil(Number(result.pagination.total ?? 0) / limit),
+      } : undefined,
+      sourceTotals: Object.entries(result.totals).map(([source, count]) => ({ source, count })),
+      availableTypes: result.types,
+      items: records.map((record) => safeVerificationItem({
+        ...record,
+        source: record._type || null,
+      })),
+      maskedFields: [...VERIFICATION_MASKED_FIELDS, 'encryptedResult', 'rawResponse', 'documentNumber', 'ownerName'],
+    };
   },
 
   async surepassStatus(context) {
@@ -2966,10 +4268,13 @@ export class AiReadOnlyToolsService {
       throw new AiToolError('The AI tool arguments are not valid.', 400, 'AI_TOOL_ARGUMENTS_INVALID');
     }
     let data: unknown;
+    let uiActions: AiFileAction[] | undefined;
     let databaseLatencyMs = 0;
     const databaseStartedAt = Date.now();
     try {
-      data = await definition.execute(this.dependencies, context, parsed.data);
+      const payload = splitAiToolPayload(await definition.execute(this.dependencies, context, parsed.data));
+      data = payload.data;
+      uiActions = payload.uiActions?.length ? payload.uiActions : undefined;
       databaseLatencyMs = Math.max(0, Date.now() - databaseStartedAt);
     } catch (error) {
       databaseLatencyMs = Math.max(0, Date.now() - databaseStartedAt);
@@ -2991,9 +4296,10 @@ export class AiReadOnlyToolsService {
     const availability = dataAvailabilityFor(data);
     const durationMs = Math.max(0, Date.now() - startedAt);
     const forecastConfidence = forecastConfidenceFor(data);
+    const contractSource = definition.name === 'knowledge.search' ? 'cache' : 'database';
     const contract = createAiDataContract({
       status: availability.status === 'AVAILABLE' ? 'success' : 'empty',
-      source: 'database',
+      source: contractSource,
       fetchedAt: new Date(),
       freshness: 'current',
       data,
@@ -3022,6 +4328,7 @@ export class AiReadOnlyToolsService {
       contract,
       dataAvailability: availability.status,
       ...(availability.message ? { dataAvailabilityMessage: availability.message } : {}),
+      ...(uiActions ? { uiActions } : {}),
       durationMs,
     };
   }

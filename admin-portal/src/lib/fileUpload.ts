@@ -66,6 +66,14 @@ export type UploadedFileResult = {
   size: number;
   fileUrl: string;
   absoluteUrl: string;
+  aiAnalysis?: ListingImageAnalysis;
+};
+
+export type ListingImageAnalysis = {
+  qualityScore: number;
+  isMachine: boolean | null;
+  issues: string[];
+  suggestedSlot: string;
 };
 
 const normalizeUploadPath = (fileUrl: string) => {
@@ -901,6 +909,24 @@ export const uploadListingMediaToServer = async ({
   kind: ListingMediaKind;
 }) => {
   const preparedFile = await prepareListingMediaForUpload(file, kind);
+  let aiAnalysis: ListingImageAnalysis | undefined;
+  if (kind === 'image') {
+    try {
+      const analysisForm = new FormData();
+      analysisForm.append('file', preparedFile);
+      const analysisResponse = await api.post<{ analysis: ListingImageAnalysis }>(
+        '/listings/ai-image-assist',
+        analysisForm,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 12_000,
+        }
+      );
+      aiAnalysis = analysisResponse.data.analysis;
+    } catch {
+      // Image analysis is advisory. A provider outage must never discard a valid upload.
+    }
+  }
   const formData = new FormData();
   formData.append('file', preparedFile);
 
@@ -914,7 +940,7 @@ export const uploadListingMediaToServer = async ({
     }
   );
 
-  return response.data.file;
+  return aiAnalysis ? { ...response.data.file, aiAnalysis } : response.data.file;
 };
 
 export const uploadFinanceSupportImageToServer = async (file: File) => {

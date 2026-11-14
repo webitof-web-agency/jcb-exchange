@@ -24,7 +24,7 @@
     "notifications:provision": "tsx scripts/provision-notification-automation-rules.ts",
     "partners:backfill": "tsx scripts/backfill-partner-profiles.ts",
     "typecheck": "tsc --noEmit -p .",
-    "test": "node --import ./scripts/unit-test-env.mjs --import tsx --test \"src/**/*.test.ts\""
+    "test": "node scripts/run-tests.mjs"
   },
   "keywords": [],
   "author": "",

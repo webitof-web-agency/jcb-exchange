@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveAiMessage, routeAiMessage, type AiIntentContextMessage } from './aiIntentRouter.service';
+import { greetingResponseFor, isAiGreeting, resolveAiMessage, routeAiMessage, type AiIntentContextMessage } from './aiIntentRouter.service';
 
 test('routes an English listing count question to the read-only statistics tool', () => {
   assert.deepEqual(routeAiMessage('How many listings do we have?'), {
@@ -62,6 +62,20 @@ test('detects registration, listing, invoice, and partner identifiers before gen
   });
 });
 
+test('routes a registration paper-pending question to the vehicle documents tool', () => {
+  assert.deepEqual(routeAiMessage('CG-04-NF-0268 iske paper me kya pending hai?'), {
+    name: 'vehicle.documents.detail',
+    arguments: { query: 'CG04NF0268' },
+  });
+});
+
+test('routes a full software pending-work request to the unified report tool', () => {
+  assert.deepEqual(routeAiMessage('poore software ka pending work, finance aur operations report do'), {
+    name: 'operations.unified.report',
+    arguments: {},
+  });
+});
+
 test('routes a generic listing request to the safe inventory summary tool', () => {
   assert.deepEqual(routeAiMessage('show me the listings'), {
     name: 'listing.summary',
@@ -78,6 +92,51 @@ test('routes supported operational aggregate questions', () => {
   assert.equal(routeAiMessage('show pending KYC cases')?.name, 'pending.kyc');
   assert.equal(routeAiMessage('how much revenue did we make this month')?.name, 'revenue.summary');
   assert.equal(routeAiMessage('give me the lead statistics for the last 30 days')?.name, 'lead.statistics');
+});
+
+test('routes approved policy and SOP questions to the grounded knowledge tool', () => {
+  assert.deepEqual(routeAiMessage('What is the approved KYC SOP checklist?'), {
+    name: 'knowledge.search',
+    arguments: { query: 'what is the approved kyc sop checklist' },
+  });
+});
+
+test('routes the new operational copilots and market intelligence tools', () => {
+  assert.deepEqual(routeAiMessage('review KYC for partner code CG-RAIPUR-01'), {
+    name: 'kyc.copilot',
+    arguments: { partnerCode: 'CG-RAIPUR-01' },
+  });
+  assert.deepEqual(routeAiMessage('RTO blockers and priority batao'), {
+    name: 'rto.copilot',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('show finance cash flow trend and recommend actions'), {
+    name: 'finance.copilot',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('partner unanswered leads and health batao'), {
+    name: 'partner.copilot',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('recruitment interview next steps batao'), {
+    name: 'recruitment.copilot',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('show suspicious listings and duplicate media'), {
+    name: 'fraud.signals',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('market updates and government changes batao'), {
+    name: 'market.intelligence',
+    arguments: {},
+  });
+});
+
+test('routes a lead next-action request to the scoped lead copilot', () => {
+  assert.deepEqual(routeAiMessage('show lead details for Ramesh next action batao'), {
+    name: 'crm.lead.copilot',
+    arguments: { query: 'ramesh' },
+  });
 });
 
 test('routes CRM lead totals and lead lists to the scoped CRM summary tool', () => {
@@ -189,6 +248,29 @@ test('routes partner lists and finance activity questions to bounded summary too
   });
 });
 
+test('routes the connected admin modules to their exact read-only sources', () => {
+  assert.deepEqual(routeAiMessage('Identity Hub ki history dikhao'), {
+    name: 'verification.history',
+    arguments: { group: 'identity' },
+  });
+  assert.deepEqual(routeAiMessage('Vehicle & Transport ki history dikhao'), {
+    name: 'verification.history',
+    arguments: { group: 'vehicle' },
+  });
+  assert.deepEqual(routeAiMessage('partner agreements ka status batao'), {
+    name: 'partner.agreements.summary',
+    arguments: {},
+  });
+  assert.deepEqual(routeAiMessage('partner agreement ka content dikhao'), {
+    name: 'partner.agreements.summary',
+    arguments: { includeContent: true },
+  });
+  assert.deepEqual(routeAiMessage('visitors ki list dikhao'), {
+    name: 'customer.summary',
+    arguments: {},
+  });
+});
+
 test('routes Phase 5 finance and commercial questions to dedicated read-only tools', () => {
   assert.equal(routeAiMessage('show invoices and bills for last 30 days')?.name, 'invoice.summary');
   assert.equal(routeAiMessage('payment receipts ka summary batao')?.name, 'payment.summary');
@@ -200,6 +282,14 @@ test('routes Phase 5 finance and commercial questions to dedicated read-only too
   assert.equal(routeAiMessage('finance workspace summary')?.name, 'finance.workspace.summary');
   assert.equal(routeAiMessage('journal activity dikhao')?.name, 'journal.summary');
   assert.equal(routeAiMessage('accounting chart of accounts summary')?.name, 'accounting.summary');
+});
+
+test('routes page-specific analytics and listing payment questions to their source tools', () => {
+  assert.deepEqual(routeAiMessage('analytics overview for last 14 days'), {
+    name: 'analytics.summary',
+    arguments: { days: 14 },
+  });
+  assert.equal(routeAiMessage('listing payments ka status batao')?.name, 'payment.summary');
 });
 
 test('routes Phase 6 remaining-module questions to dedicated read-only tools', () => {
@@ -236,6 +326,51 @@ test('routes Phase 3 customer, enquiry, and task questions to dedicated tools', 
     name: 'tasks.summary',
     arguments: {},
   });
+});
+
+test('routes Won Customers questions to the Won Customers source', () => {
+  assert.equal(routeAiMessage('won customer module me kitne hain')?.name, 'crm.won.customers.summary');
+  assert.equal(routeAiMessage('won customers ka detail batao')?.name, 'crm.won.customers.summary');
+  assert.equal(routeAiMessage('won customer wala module dikhao')?.name, 'crm.won.customers.summary');
+});
+
+test('routes CRM page questions to the page-specific read-only tools', () => {
+  assert.equal(routeAiMessage('CRM dashboard ka complete summary batao')?.name, 'crm.dashboard.summary');
+  assert.equal(routeAiMessage('contacts me Ramesh ka detail batao')?.name, 'crm.contact.detail');
+  assert.equal(routeAiMessage('CRM contacts ki list dikhao')?.name, 'crm.contacts.summary');
+  assert.equal(routeAiMessage('CRM campaigns ka status batao')?.name, 'crm.campaigns.summary');
+  assert.equal(routeAiMessage('CRM import history dikhao')?.name, 'crm.import.summary');
+});
+
+test('routes stored file requests to the secure document search tool', () => {
+  assert.deepEqual(routeAiMessage('Ramesh ka resume download karke do'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'Ramesh', kind: 'resume', limit: 10 },
+  });
+  assert.deepEqual(routeAiMessage('invoice JCB/26-27/0001 ka PDF dikhao'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'JCB/26-27/0001', kind: 'invoice', limit: 10 },
+  });
+  assert.deepEqual(routeAiMessage('APP-001 ka offer letter download karke do'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'APP-001', kind: 'offer', limit: 10 },
+  });
+  assert.deepEqual(routeAiMessage('CG04NF0268 ka RTO document PDF dikhao'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'CG04NF0268', kind: 'rto', limit: 10 },
+  });
+  assert.deepEqual(routeAiMessage('CG04NF0268 ke vehicle docs download karo'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'CG04NF0268', kind: 'vehicle', limit: 10 },
+  });
+  assert.deepEqual(routeAiMessage('verification template download karo'), {
+    name: 'ai.documents.search',
+    arguments: { query: 'verification template', kind: 'verification', limit: 10 },
+  });
+});
+
+test('keeps identity verification status questions on the verification tool', () => {
+  assert.equal(routeAiMessage('show PAN GST Aadhaar verification status')?.name, 'verification.summary');
 });
 
 test('routes Vehicle Identity and RTO/Documents questions to bounded read-only tools', () => {
@@ -351,6 +486,15 @@ test('does not treat an immediate sell command as a forecast', () => {
 test('returns null for unrelated or ambiguous messages', () => {
   assert.equal(routeAiMessage('hello'), null);
   assert.equal(routeAiMessage('Explain how the listing workflow works'), null);
+});
+
+test('recognises greetings separately so they cannot inherit an old operational answer', () => {
+  assert.equal(isAiGreeting('hello'), true);
+  assert.equal(isAiGreeting('Hi there'), true);
+  assert.equal(isAiGreeting('namaste ji'), true);
+  assert.equal(isAiGreeting('hello how many leads are pending?'), false);
+  assert.match(greetingResponseFor('hello'), /JCB Exchange/iu);
+  assert.doesNotMatch(greetingResponseFor('hello'), /CG04NF0268|pending KYC/iu);
 });
 
 test('resolves a generic listing request with the inventory summary tool', () => {

@@ -2392,6 +2392,7 @@ export default function PartnerListingsPage() {
             slot: slot.key,
             fileUrl: uploadedFile.fileUrl,
             type: slot.kind === 'video' ? 'VIDEO' : 'IMAGE',
+            ...(slot.kind === 'image' && uploadedFile.aiAnalysis ? { aiAnalysis: uploadedFile.aiAnalysis } : {}),
           };
         })
         .filter(Boolean);

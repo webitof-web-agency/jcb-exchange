@@ -86,7 +86,15 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/admin/visitors
     } finally { setLoading(false); setRefreshing(false); }
   }, [canView]);
 
-  useEffect(() => { void loadVisitors(); }, [loadVisitors]);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadVisitors();
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadVisitors]);
   const filteredVisitors = useMemo(() => {
     const query = search.trim().toLowerCase();
     return visitors.filter((visitor) => {
@@ -100,7 +108,15 @@ export default function VisitorDirectoryPage({ detailBaseHref = '/admin/visitors
       return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [search, segment, sourceFilter, visitors]);
-  useEffect(() => { setPage(1); }, [search, segment, sourceFilter]);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setPage(1);
+    });
+    return () => {
+      active = false;
+    };
+  }, [search, segment, sourceFilter]);
   const totalPages = Math.max(1, Math.ceil(filteredVisitors.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filteredVisitors.slice((currentPage - 1) * pageSize, currentPage * pageSize);

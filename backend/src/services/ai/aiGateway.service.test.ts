@@ -12,13 +12,16 @@ import {
 test('system instructions require item rows when the operator asks for a list or detail', () => {
   assert.match(AI_SYSTEM_PROMPT, /enumerate.*items|list.*item rows/iu);
   assert.match(AI_SYSTEM_PROMPT, /do not reply only with.*count/iu);
+  assert.match(AI_SYSTEM_PROMPT, /Roman Hindi|English alphabet/iu);
+  assert.match(AI_SYSTEM_PROMPT, /current snapshot.*authoritative|authoritative.*current snapshot/iu);
+  assert.match(AI_SYSTEM_PROMPT, /never use.*previous assistant|previous assistant.*never/iu);
 });
 import { AiProviderError } from './aiProvider.service';
 
 const config: AiRuntimeConfig = {
   enabled: true,
   provider: 'openai',
-  model: 'test-model',
+  model: 'gpt-4.1-mini',
   apiKey: 'test-key',
   maxInputChars: 4000,
   maxOutputChars: 12000,
@@ -142,6 +145,29 @@ test('gateway rejects an unrecognised selected model before provider access', as
   assert.equal(providerCalls, 0);
 });
 
+test('gateway rejects an invalid configured model before provider access', async () => {
+  let providerCalls = 0;
+  const gateway = new AiGatewayService({
+    configReader: () => ({ ...config, model: 'not-a-provider-model' }),
+    providerFactory: () => ({
+      complete: async () => {
+        providerCalls += 1;
+        return { text: 'must not run' };
+      },
+    }),
+    auditWriter: async () => undefined,
+  });
+
+  await assert.rejects(
+    () => gateway.chat({ userId: 'employee-1', role: 'EMPLOYEE', message: 'Use the configured model.' }),
+    (error: unknown) => error instanceof Error
+      && error.message === 'The configured AI model is not compatible with the configured provider.'
+      && 'code' in error
+      && error.code === 'AI_MODEL_INVALID',
+  );
+  assert.equal(providerCalls, 0);
+});
+
 test('gateway passes only redacted read-only tool context to the provider', async () => {
   let providerMessage = '';
   const gateway = new AiGatewayService({
@@ -176,6 +202,55 @@ test('gateway passes only redacted read-only tool context to the provider', asyn
   assert.match(providerMessage, /pendingKyc/);
   assert.equal(providerMessage.includes('private@example.com'), false);
   assert.equal(providerMessage.includes('9876543210'), false);
+});
+
+test('gateway compacts a unified report without dropping the last department from provider context', async () => {
+  let providerMessage = '';
+  const moduleNames = ['dashboard', 'crm', 'listings', 'soldVehicles', 'rto', 'vehicleDocs', 'tasks', 'verifications', 'partners', 'finance', 'accounts', 'payments', 'recruitment'];
+  const modules = Object.fromEntries(moduleNames.map((name) => [name, {
+    label: name,
+    availability: 'AVAILABLE',
+    dataSource: 'database',
+    lastUpdated: '2026-11-14T10:00:00.000Z',
+    reportingPeriod: { days: 30, from: '2026-10-15T10:00:00.000Z', to: '2026-11-14T10:00:00.000Z' },
+    status: { pending: 1, overdue: 0, missed: 0, inProgress: 0, completed: 0 },
+    items: [{ description: 'large non-report row '.repeat(500) }],
+  }]));
+  (modules.rto as Record<string, unknown>).items = [{ task: 'RTO-ROW', dueDate: null }];
+  const report = {
+    reportType: 'UNIFIED_OPERATIONS_REPORT',
+    generatedAt: '2026-11-14T10:00:00.000Z',
+    dataSource: 'database',
+    lastUpdated: '2026-11-14T10:00:00.000Z',
+    reportingPeriod: { days: 30, from: '2026-10-15T10:00:00.000Z', to: '2026-11-14T10:00:00.000Z' },
+    checks: { totalTools: 65, availableTools: 65, failedTools: 0, failedToolsList: [], failedToolsByName: [] },
+    toolConnectivity: Array.from({ length: 65 }, (_, index) => ({ tool: `tool-${index}`, status: 'CONNECTED', dataSource: 'database', lastUpdated: '2026-11-14T10:00:00.000Z' })),
+    modules,
+    crmReconciliation: { conflictCount: 0, conflicts: [], rule: 'safe' },
+    financeVerification: { sourceRecordsAvailable: true, grossProfit: 10, netProfit: 8, gst: 2, receivedPayment: 10, outstanding: 0, verifiedFrom: [], warnings: [] },
+  };
+  const gateway = new AiGatewayService({
+    configReader: () => config,
+    providerFactory: () => ({
+      complete: async (request) => {
+        providerMessage = request.userMessage;
+        return { text: 'Unified report received.' };
+      },
+    }),
+    auditWriter: async () => undefined,
+  });
+
+  await gateway.chat({
+    userId: 'employee-1',
+    role: 'EMPLOYEE',
+    message: 'poore software ka report batao',
+    toolContext: { toolName: 'operations.unified.report', label: 'Unified operations report', data: { source: 'database', fetchedAt: '2026-11-14T10:00:00.000Z', data: report } },
+  });
+
+  assert.match(providerMessage, /RTO-ROW/);
+  assert.match(providerMessage, /recruitment/);
+  assert.match(providerMessage, /financeVerification/);
+  assert.ok(providerMessage.length < 16_000);
 });
 
 test('gateway never sends document URLs or signed credentials to the provider', async () => {

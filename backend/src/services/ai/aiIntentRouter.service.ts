@@ -83,6 +83,7 @@ const DEVANAGARI_CODEPOINT_ALIASES: Array<[RegExp, string]> = [
 ];
 
 const SPELLING_ALIASES: Array<[RegExp, string]> = [
+  [/\bsoftwar\b/gu, 'software'],
   [/\bdashbord\b/gu, 'dashboard'],
   [/\bsummry\b/gu, 'summary'],
   [/\bhott\b/gu, 'hot'],
@@ -118,6 +119,7 @@ const SPELLING_ALIASES: Array<[RegExp, string]> = [
   [/\bpartnr\b/gu, 'partner'],
   [/\bnotificaton\b/gu, 'notification'],
   [/\bdetial(s)?\b/gu, 'details'],
+  [/\bpappers?\b/gu, 'papers'],
   [/\bkon\b/gu, 'kaun'],
   [/\bleds?\b/gu, 'leads'],
   [/\bwhatasapp\b/gu, 'whatsapp'],
@@ -131,6 +133,14 @@ const normalizeMessage = (message: string) => {
   for (const [pattern, replacement] of SPELLING_ALIASES) normalized = normalized.replace(pattern, replacement);
   return normalized.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 };
+
+export const isAiGreeting = (message: string): boolean => {
+  const normalized = normalizeMessage(message);
+  return /^(?:hi|hello|hey|namaste|नमस्ते|good\s+(?:morning|afternoon|evening))(?:\s+(?:there|ji|sir|maam|mam|friend))?$/u.test(normalized);
+};
+
+export const greetingResponseFor = (_message: string): string =>
+  'Namaste! Main JCB Exchange ke Dashboard, CRM, Listings, RTO, Finance aur Recruitment ka read-only data bata sakta hoon. Aap kya dekhna chahte hain?';
 
 const hasAny = (message: string, patterns: readonly RegExp[]) => patterns.some((pattern) => pattern.test(message));
 
@@ -319,6 +329,15 @@ const extractLeadDetailQuery = (message: string): string | null => {
   return null;
 };
 
+const extractLeadCopilotQuery = (message: string): string | null => {
+  const query = extractLeadDetailQuery(message);
+  if (!query) return null;
+  const cleaned = query
+    .replace(/\s+(?:next\s+action|follow[ -]?up\s+draft|what\s+should\s+i\s+do|recommend(?:ation)?s?|copilot)\b.*$/u, '')
+    .trim();
+  return cleaned ? cleaned.slice(0, 100) : null;
+};
+
 const extractEnquiryDetailQuery = (message: string): string | null => {
   const directMatch = /\b(?:enquir(?:y|ies)|inquir(?:y|ies))\s+(.+?)\s+(?:details?|info|information|status)\b.*$/u.exec(message);
   if (directMatch?.[1]?.trim()) return directMatch[1].trim().slice(0, 100);
@@ -338,6 +357,54 @@ const extractCustomerDetailQuery = (message: string): string | null => {
     if (query && !/^(?:the|a|an)$/u.test(query)) return query.slice(0, 100);
   }
   return null;
+};
+
+const extractContactDetailQuery = (message: string): string | null => {
+  const patterns = [
+    /\b(?:contact|contacts?)\s+(.+?)\s+(?:ka|ki|ke)\s+(?:details?|info|information|status|vivaran|jankari|jaankari)\b.*$/u,
+    /\b(?:details?|info|information|status|vivaran|jankari|jaankari)\s+(?:of|for|on)\s+(?:contact|contacts?)\s+(.+)$/u,
+    /\b(?:contact|contacts?)\s+(?:details?|info|information|status|vivaran|jankari|jaankari)\s+(?:of|for|on|ka|ki|ke)?\s*(.+?)(?:\s+(?:batao|btao|show|dikhao))?$/u,
+  ];
+  for (const pattern of patterns) {
+    const query = pattern.exec(message)?.[1]?.trim();
+    if (query && !/^(?:the|a|an)$/u.test(query)) return query.slice(0, 100);
+  }
+  return null;
+};
+
+const extractDocumentSearchQuery = (message: string): string | null => {
+  if (/^\s*verification\s+templates?\s+(?:(?:download|open|view|show|give|send|do|de|karo|kar|please|pls)\s*)+$/iu.test(message)) return 'verification template';
+  const withoutAction = message
+    .replace(/\s+(?:do|de|dikhao|dikhaiye|nikalo|nikaal|download|open|view|bhejo|send|please|pls|karke|karo|kar)(?:\s+(?:do|de|dikhao|dikhaiye|nikalo|nikaal|download|open|view|bhejo|send|please|pls|karke|karo|kar)){0,3}\s*$/iu, '')
+    .trim();
+  const startsWithDocument = /^(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b/iu.test(withoutAction);
+  const patterns = startsWithDocument
+    ? [ /\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\s+(?:of|for|ka|ki|ke)?\s*(.+)$/iu ]
+    : [ /\b(.+?)\s+(?:ka|ki|ke)\s+(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b.*$/iu ];
+  for (const pattern of patterns) {
+    const query = pattern.exec(withoutAction)?.[1]
+      ?.replace(/\s+(?:ka|ki|ke)\s+(?:pdf|document|file)\s*$/iu, '')
+      ?.trim();
+    if (query && !/^(?:the|a|an|mujhe|please|pls)$/iu.test(query)) return query.slice(0, 100);
+  }
+  const cleaned = message
+    .replace(/\b(?:mujhe|please|pls|show|give|do|de|dikhao|dikhaiye|nikalo|nikaal|download|open|view|bhejo|send|ka|ki|ke|of|for|the|a|an)\b/giu, ' ')
+    .replace(/\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer|letter|vehicle|docs?|verification|templates?|document|pdf|file)\b/giu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (cleaned) return cleaned.slice(0, 100);
+  return /\bverification\s+templates?\b/iu.test(message) ? 'verification template' : null;
+};
+
+const documentKindFor = (message: string): 'all' | 'kyc' | 'resume' | 'invoice' | 'rto' | 'offer' | 'vehicle' | 'verification' => {
+  if (/\b(?:resume|cv)\b/iu.test(message)) return 'resume';
+  if (/\b(?:invoice|bill)\b/iu.test(message)) return 'invoice';
+  if (/\b(?:offer(?:\s+letter)?)\b/iu.test(message)) return 'offer';
+  if (/\b(?:rto|insurance|fitness|puc|hsrp)\b/iu.test(message)) return 'rto';
+  if (/\bvehicle\s+docs?\b/iu.test(message)) return 'vehicle';
+  if (/\bverification\s+templates?\b/iu.test(message)) return 'verification';
+  if (/\b(?:aadhaar|aadhar|pan|gst|kyc)\b/iu.test(message)) return 'kyc';
+  return 'all';
 };
 
 const extractVehicleIdentityQuery = (message: string): string | null => {
@@ -388,7 +455,9 @@ const hasMutationIntent = (message: string) => {
 
 const rangeToolNames = new Set<AiReadOnlyToolName>([
   'dashboard.summary',
+  'crm.dashboard.summary',
   'lead.statistics',
+  'analytics.summary',
   'listing.statistics',
   'sold.vehicles',
   'inventory.trend',
@@ -417,6 +486,15 @@ const rangeToolNames = new Set<AiReadOnlyToolName>([
   'subscriptions.summary',
   'forecast.operations',
   'rto.documents.summary',
+  'rto.copilot',
+  'kyc.copilot',
+  'crm.lead.copilot',
+  'crm.campaigns.summary',
+  'finance.copilot',
+  'partner.copilot',
+  'market.intelligence',
+  'fraud.signals',
+  'recruitment.copilot',
   'whatsapp.activity.summary',
   'whatsapp.status',
   'whatsapp.campaigns.summary',
@@ -440,6 +518,18 @@ const catalogFallbackRequest = (message: string): AiAutoToolRequest | null => {
   if (match.toolName === 'crm.lead.detail') {
     const query = extractLeadDetailQuery(message);
     return query ? { name: match.toolName, arguments: { query } } : null;
+  }
+  if (match.toolName === 'crm.contact.detail') {
+    const query = extractContactDetailQuery(message);
+    return query ? { name: match.toolName, arguments: { query } } : null;
+  }
+  if (match.toolName === 'crm.contacts.summary') {
+    const query = extractContactDetailQuery(message);
+    return query ? { name: match.toolName, arguments: { query, limit: 20 } } : { name: match.toolName, arguments: {} };
+  }
+  if (match.toolName === 'ai.documents.search') {
+    const query = extractDocumentSearchQuery(message);
+    return query ? { name: match.toolName, arguments: { query, kind: documentKindFor(message), limit: 10 } } : null;
   }
   if (match.toolName === 'vehicle.identity') {
     const listingId = extractUuid(message);
@@ -515,7 +605,9 @@ const followUpRequestFor = (
   // widens the lookup to an unscoped CRM/customer/enquiry search.
   if (previousTool === 'crm.lead.detail'
     || previousTool === 'enquiry.detail'
-    || previousTool === 'customer.detail') {
+    || previousTool === 'customer.detail'
+    || previousTool === 'crm.contact.detail'
+    || previousTool === 'ai.documents.search') {
     return { name: previousTool, arguments: { ...previousArguments } };
   }
 
@@ -558,6 +650,67 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     && hasAny(normalized, [/\b(summary|status|list|details?|count|total|report|batao|btao|dikhao)\b/u]);
   if (hasAny(normalized, MUTATION_PATTERNS) && !sellAccountReadQuery) return null;
 
+  if (hasAny(normalized, [
+    /\b(?:overall|complete|full|whole|entire|all|poora|pura|poore|sampurn)\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:software|system|operations?|pending\s+work|departments?|modules?|finance)\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:report|summary|status|pending|work|data|batao|btao|dikhao)\b/u,
+  ])) {
+    return { name: 'operations.unified.report', arguments: rangeArguments(normalized) };
+  }
+
+  const partnerKycReviewIntent = /\b(?:kyc[\s\S]{0,80}partner|partner[\s\S]{0,80}kyc)\b/u.test(normalized)
+    && hasAny(normalized, [
+      /\b(pending|awaiting|backlog|review|checklist|missing|expired|mismatch|copilot|recommendation)\b/u,
+    ]);
+  if (!partnerKycReviewIntent && hasAny(normalized, [
+    /\b(?:sop|policy|policies|faq|approved|process|procedure|checklist|guideline|terms|support)\b/u,
+    /\bhow\s+(?:do|can)\s+i\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:kyc|rto|listing|payment|finance|partner|seller|buyer|account|support|verification|document|vehicle)\b/u,
+    /\b(?:approved|sop|policy|faq|guideline|procedure)\b/u,
+  ])) {
+    return { name: 'knowledge.search', arguments: { query: normalized.slice(0, 120) } };
+  }
+
+  if (/\bpartner\s+agreements?\b|\bagreement\s+(?:catalog(?:ue)?|list)\b/u.test(normalized)
+    && hasAny(normalized, [
+      /\b(summary|status|list|show|details?|detail|history|content|terms?|count|total|batao|btao|dikhao)\b/u,
+    ])) {
+    return {
+      name: 'partner.agreements.summary',
+      arguments: /\b(content|full\s+terms?|agreement\s+text)\b/u.test(normalized) ? { includeContent: true } : {},
+    };
+  }
+
+  if (/\bidentity\s+hub\b/u.test(normalized)
+    && hasAny(normalized, [/\b(summary|status|history|records?|activity|list|recent|count|total|pichla|dikhao|batao|btao)\b/u])) {
+    return /\b(history|records?|activity|recent|pichla)\b/u.test(normalized)
+      ? { name: 'verification.history', arguments: { group: 'identity' } }
+      : { name: 'verification.summary', arguments: {} };
+  }
+
+  if (/\bvehicle\s*(?:&|and)?\s*transport\b/u.test(normalized)
+    && hasAny(normalized, [/\b(summary|status|history|records?|activity|list|recent|count|total|pichla|dikhao|batao|btao)\b/u])) {
+    return /\b(history|records?|activity|recent|pichla)\b/u.test(normalized)
+      ? { name: 'verification.history', arguments: { group: 'vehicle' } }
+      : { name: 'rto.documents.summary', arguments: {} };
+  }
+
+  if (/\bcrm\s+(?:dashboard|home|overview)\b/u.test(normalized)
+    && hasAny(normalized, [ /\b(summary|status|report|data|batao|btao|dikhao|complete|full)\b/u ])) {
+    return { name: 'crm.dashboard.summary', arguments: rangeArguments(normalized) };
+  }
+  if (/\bcrm\s+(?:campaign|campaigns|segment|segments)\b/u.test(normalized)
+    && hasAny(normalized, [ /\b(summary|status|stat|report|list|data|batao|btao|dikhao)\b/u ])) {
+    return rangeTool('crm.campaigns.summary', normalized);
+  }
+  if (/\bcrm\s+import(?:\s+history)?\b/u.test(normalized)
+    && hasAny(normalized, [ /\b(summary|status|report|list|history|histroy|record|data|batao|btao|dikhao)\b/u ])) {
+    return { name: 'crm.import.summary', arguments: {} };
+  }
+
   // Let resolveAiMessage handle pronoun-based invoice follow-ups against the
   // previous listing detail instead of turning "iska invoice" into an aggregate.
   if (/\b(?:iska|iske|uska|uske|this|that)\s+(?:invoice|bill)\b/u.test(normalized)) return null;
@@ -571,12 +724,46 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   const entityLookupIntent = hasAny(normalized, [
     /\b(details?|information|info|status|show|tell|give|what|which|number|owner|malik|verification|batao|btao|dikhao)\b/u,
   ]);
+  const storedFileRequest = hasAny(normalized, [
+    /\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:download|open|view|show|give|send|bhejo|nikal|nikaal|do|de|dikhao|dikhaiye|mangao|mangwana)\b/u,
+  ]) && !(
+    /\b(?:rto|insurance|fitness|puc|hsrp|readiness)\b/u.test(normalized)
+    && !/\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|offer(?:\s+letter)?|pdf|file)\b/u.test(normalized)
+  ) && !(
+    /\b(?:aadhaar|aadhar|pan|gst)\b/u.test(normalized)
+    && !/\b(?:resume|cv|invoice|bill|document|pdf|file|offer(?:\s+letter)?)\b/u.test(normalized)
+    && /\b(?:verification|verfication|verify|status|stat|summary|count|total|details?|information|info|check)\b/u.test(normalized)
+    && !/\b(?:ka|ki|ke)\b/u.test(normalized)
+  ) && !(
+    /\b(?:summary|status|count|total|report|statistics|stats|history|trend|readiness)\b/u.test(normalized)
+    && !/\b(?:pdf|file|document)\b/u.test(normalized)
+    && !/\b(?:download|open|view|send|bhejo|nikal|nikaal)\b/u.test(normalized)
+  );
+  if (storedFileRequest) {
+    const query = extractDocumentSearchQuery(message);
+    if (query) return { name: 'ai.documents.search', arguments: { query, kind: documentKindFor(message), limit: 10 } };
+  }
+  if (registrationNumber && hasAny(normalized, [
+    /\b(?:paper|papers|document|documents|docs?|kagaz|kaagaz|rc|insurance|fitness|puc|hsrp|rto)\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:pending|status|details?|information|info|what|which|batao|btao|dikhao)\b/u,
+  ])) {
+    return { name: 'vehicle.documents.detail', arguments: { query: registrationNumber } };
+  }
   if (invoiceNumber && (entityLookupIntent || /\b(?:invoice|bill)\b/u.test(normalized))) {
     return { name: 'listing.detail', arguments: { invoiceNumber } };
   }
   const customerDetailQuery = extractCustomerDetailQuery(normalized);
   if (customerSignals.test(normalized) && listingId && entityLookupIntent) {
     return { name: 'customer.detail', arguments: { customerId: listingId } };
+  }
+  if (/\b(?:won\s+customers?|won\s+customer\s+(?:module|page|wala|wale|wali)|customers?\s+(?:won|closed\s+as\s+won))\b/u.test(normalized)
+    && hasAny(normalized, [
+      /\b(summary|count|total|number|list|show|which|what|status|active|all|kitne|kitni|kitna|kaun|dikhao|batao|btao|details?|detail)\b/u,
+    ])) {
+    return { name: 'crm.won.customers.summary', arguments: {} };
   }
   if (customerSignals.test(normalized) && customerDetailQuery) {
     return { name: 'customer.detail', arguments: { query: customerDetailQuery } };
@@ -585,6 +772,15 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     /\b(summary|count|total|number|list|show|which|what|status|active|all|kitne|kitni|kaun|dikhao|batao|btao)\b/u,
   ])) {
     return { name: 'customer.summary', arguments: {} };
+  }
+  const contactDetailQuery = extractContactDetailQuery(normalized);
+  if (/\bcontacts?\b/u.test(normalized) && contactDetailQuery) {
+    return { name: 'crm.contact.detail', arguments: { query: contactDetailQuery } };
+  }
+  if (/\bcontacts?\b/u.test(normalized) && hasAny(normalized, [
+    /\b(summary|count|total|number|list|show|which|what|status|history|activity|kitne|kitni|kaun|dikhao|batao|btao)\b/u,
+  ])) {
+    return { name: 'crm.contacts.summary', arguments: {} };
   }
   const enquiryDetailQuery = extractEnquiryDetailQuery(normalized);
   if (enquirySignals.test(normalized) && hasAny(normalized, [
@@ -601,7 +797,18 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   ])) {
     return { name: 'enquiry.summary', arguments: {} };
   }
+  if (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u])
+    && hasAny(normalized, [/\bunanswered\b/u, /\bresponse\s+time\b/u, /\bhealth\b/u, /\bat\s+risk\b/u, /\bcoach(?:ing)?\b/u, /\bcopilot\b/u])) {
+    return rangeTool('partner.copilot', normalized);
+  }
   const leadDetailQuery = extractLeadDetailQuery(normalized);
+  if (leadSignals.test(normalized) && hasAny(normalized, [
+    /\b(next\s+action|follow[ -]?up\s+draft|reactivat(?:e|ion)|what\s+should\s+i\s+do|copilot|recommend(?:ation)s?)\b/u,
+  ])) {
+    const query = extractLeadCopilotQuery(normalized);
+    if (query) return { name: 'crm.lead.copilot', arguments: { query } };
+    return null;
+  }
   if (leadSignals.test(normalized) && leadDetailSignals.test(normalized)) {
     if (listingId && /\b(?:lead|enquiry)\s+(?:id|details?|info)\b/u.test(normalized)) {
       return { name: 'crm.lead.detail', arguments: { leadId: listingId } };
@@ -612,7 +819,9 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   if (listingId && (entityLookupIntent || /\blisting\s+id\b/u.test(normalized))) {
     return { name: 'listing.detail', arguments: { listingId } };
   }
-  if (partnerIdentifier && hasAny(normalized, [
+  if (partnerIdentifier && !(/\bkyc\b/u.test(normalized) && hasAny(normalized, [
+    /\b(pending|awaiting|backlog|review|checklist|missing|expired|mismatch|copilot|recommendation)\b/u,
+  ])) && hasAny(normalized, [
     /\b(performance|details?|information|info|status|show|tell|give|what|which|batao|btao|dikhao)\b/u,
   ])) {
     return { name: 'partner.performance', arguments: partnerIdentifier };
@@ -638,8 +847,26 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     && hasAny(normalized, [
       /\b(document|documents|transfer|insurance|fitness|puc|hsrp)\b/u,
       /\b(status|pending|readiness|ready|count|total|kitne|kitni|batao|btao)\b/u,
+      /\b(priority|blockers?|checklist|next\s+action|copilot)\b/u,
     ])) {
+    if (hasAny(normalized, [/\bpriority\b/u, /\bblockers?\b/u, /\bchecklist\b/u, /\bnext\s+action\b/u, /\bcopilot\b/u])) {
+      return rangeTool('rto.copilot', normalized);
+    }
     return rangeTool('rto.documents.summary', normalized);
+  }
+
+  if (hasAny(normalized, [
+    /\bmarket\b/u,
+    /\bindustry\b/u,
+    /\boem\b/u,
+    /\bcompetitors?\b/u,
+    /\bgovernment\s+(?:update|news|change)\b/u,
+    /\bregulatory\b/u,
+    /\bauctions?\b/u,
+  ]) && hasAny(normalized, [
+    /\b(update|updates|news|change|watch|digest|impact|recommendation|trend|summary|batao|btao|dikhao)\b/u,
+  ])) {
+    return rangeTool('market.intelligence', normalized);
   }
 
   if (surepassSignals.test(normalized)
@@ -694,6 +921,9 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     /\btop\s+partners?\b/u,
     /\bbest\s+partners?\b/u,
   ])) {
+    if (hasAny(normalized, [/\bunanswered\b/u, /\bresponse\s+time\b/u, /\bhealth\b/u, /\bat\s+risk\b/u, /\bcoach(?:ing)?\b/u, /\bcopilot\b/u])) {
+      return rangeTool('partner.copilot', normalized);
+    }
     return rangeTool('partner.performance', normalized);
   }
 
@@ -809,6 +1039,9 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     /\bcash\s*flow\s+trend\b/u,
     /\b(?:income|expense|expenses)\s+trend\b/u,
   ])) {
+    if (hasAny(normalized, [/\bcopilot\b/u, /\baction\b/u, /\brecommend(?:ation)?\b/u, /\bwhy\b/u, /\boverdue\b/u, /\bcollection\b/u, /\bcash\s*flow\b/u])) {
+      return rangeTool('finance.copilot', normalized);
+    }
     return rangeTool('finance.trend', normalized);
   }
 
@@ -817,6 +1050,24 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
     if (query) {
       return { name: 'listing.search', arguments: { query, limit: 10 } };
     }
+  }
+
+  if (listingSignals.test(normalized)
+    && /\b(?:payment|payments|receipt|receipts|collection|collections)\b/u.test(normalized)
+    && hasAny(normalized, [
+      /\b(summary|stats?|statistics|total|status|activity|history|report|count|batao|btao|dikhao)\b/u,
+    ])) {
+    return rangeTool('payment.summary', normalized);
+  }
+
+  if (hasAny(normalized, [
+    /\bfraud\b/u,
+    /\bsuspicious\b/u,
+    /\banomal(?:y|ies)\b/u,
+    /\bduplicate\s+(?:media|image|receipt|listing)\b/u,
+    /\bidentity\s+(?:conflict|mismatch)\b/u,
+  ])) {
+    return rangeTool('fraud.signals', normalized);
   }
 
   if (listingSignals.test(normalized) && hasAny(normalized, listingListIntent)) {
@@ -834,6 +1085,11 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   }
 
   if (hasAny(normalized, [/\b(pending|awaiting|backlog)\b/u, /\bkyc\b/u])) {
+    if (hasAny(normalized, [/\breview\b/u, /\bchecklist\b/u, /\bmissing\b/u, /\bexpired\b/u, /\bmismatch\b/u, /\bcopilot\b/u, /\brecommendation\b/u])) {
+      const partner = extractPartnerIdentifier(message);
+      if (partner?.partnerCode) return { name: 'kyc.copilot', arguments: { partnerCode: partner.partnerCode } };
+      if (partner?.partnerId) return { name: 'kyc.copilot', arguments: { query: partner.partnerId } };
+    }
     return { name: 'pending.kyc', arguments: {} };
   }
 
@@ -859,6 +1115,11 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   }
 
   if (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u])
+    && hasAny(normalized, [/\bunanswered\b/u, /\bresponse\s+time\b/u, /\bhealth\b/u, /\bat\s+risk\b/u, /\bcoach(?:ing)?\b/u, /\bcopilot\b/u])) {
+    return rangeTool('partner.copilot', normalized);
+  }
+
+  if (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u])
     && hasAny(normalized, [/\b(status|performance|details?|information|info|activity|history|trend)\b/u])) {
     return rangeTool('partner.performance', normalized);
   }
@@ -871,6 +1132,11 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
   if (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u])
     && hasAny(normalized, [/\b(count|total|number|stats?|statistics|status|kitne|kitni|how\s+many)\b/u])) {
     return { name: 'partner.statistics', arguments: {} };
+  }
+
+  if (hasAny(normalized, [/\brecruitment\b/u, /\bhiring\b/u, /\bjobs?\b/u, /\bcandidates?\b/u])
+    && hasAny(normalized, [/\bscreen(?:ing)?\b/u, /\binterview\b/u, /\bnext\s+steps?\b/u, /\bcopilot\b/u])) {
+    return { name: 'recruitment.copilot', arguments: {} };
   }
 
   if (hasAny(normalized, [/\brecruitment\b/u, /\bhiring\b/u, /\bjobs?\b/u, /\bcandidates?\b/u])
@@ -906,6 +1172,16 @@ export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
 
   if (hasAny(normalized, [/\bnotifications?\b/u, /\balerts?\b/u]) && notificationSummarySignals.test(normalized)) {
     return rangeTool('notifications.summary', normalized);
+  }
+
+  if (hasAny(normalized, [
+    /\banalytics\b/u,
+    /\binsights?\b/u,
+    /\banalytics\s+reports?\b/u,
+  ]) && hasAny(normalized, [
+    /\b(summary|overview|status|history|activity|trend|report|count|total|stats?|statistics|batao|btao|dikhao)\b/u,
+  ])) {
+    return rangeTool('analytics.summary', normalized);
   }
 
   if (hasAny(normalized, [/\bdashboard\b/u, /\boverall\s+(summary|stats?|status)\b/u, /\boperational\s+(summary|kpis?)\b/u])) {

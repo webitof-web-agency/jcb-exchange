@@ -118,7 +118,13 @@ export default function PartnerPaymentsPage() {
   };
 
   useEffect(() => {
-    void loadPayments();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadPayments();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filteredPayments = useMemo(() => {

@@ -90,7 +90,13 @@ function ContactOwnerCell({ contact, onSaved }: { contact: ContactRow; onSaved: 
 
   // Sync state if contact prop changes
   useEffect(() => {
-    setOwnerId(currentOwnerId);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setOwnerId(currentOwnerId);
+    });
+    return () => {
+      active = false;
+    };
   }, [currentOwnerId]);
 
   // Close popover on outside click and Escape

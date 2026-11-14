@@ -153,6 +153,7 @@ const context: AiToolContext = {
     'visitors.read',
     'enquiries.manage',
     'listings.read',
+    'analytics.read',
     'finance.read',
     'fh.dashboard.read',
     'fh.reports.read',
@@ -164,6 +165,7 @@ const context: AiToolContext = {
     'accounts.rto.read',
     'tasks.read',
     'recruitment.dashboard.read',
+    'recruitment.offers.read',
     'whatsapp.read',
     'sms.read',
     'pan.verification.read',
@@ -183,9 +185,11 @@ const context: AiToolContext = {
 
 const dependencies: AiReadOnlyToolDependencies = {
   dashboardSummary: async () => ({ totalPartners: 4 }),
+  unifiedOperationsReport: async () => ({ reportType: 'UNIFIED_OPERATIONS_REPORT', modules: {} }),
   pendingKycCases: async () => ({ pending: 2 }),
   hotLeads: async () => ({ items: [{ score: 90 }] }),
   leadStatistics: async () => ({ totals: { created: 10 } }),
+  analyticsSummary: async () => ({ periodDays: 30, totalEvents: 10, byEventType: [] }),
   crmLeadsSummary: async () => ({ total: 4, items: [] }),
   crmLeadDetail: async () => ({ found: true }),
   customerSummary: async () => ({ total: 3, items: [] }),
@@ -197,8 +201,10 @@ const dependencies: AiReadOnlyToolDependencies = {
   listingSummary: async () => ({ total: 6, items: [] }),
   revenueSummary: async () => ({ sales: 100 }),
   partnerStatistics: async () => ({ total: 4 }),
+  partnerAgreementsSummary: async () => ({ total: 0, items: [] }),
   pendingRtoTasks: async () => ({ pending: 3 }),
   crmFollowUps: async () => ({ overdue: 1 }),
+  crmCallIntelligence: async () => ({ totalCalls: 0 }),
   recruitmentSummary: async () => ({ activeJobs: 2 }),
   listingSearch: async () => [{ id: 'listing-1' }],
   whatsappActivitySummary: async () => ({ sent: 4 }),
@@ -209,8 +215,10 @@ const dependencies: AiReadOnlyToolDependencies = {
   financeTrend: async () => ({ periodDays: 30, trend: [] }),
   forecastOperations: async () => ({ metric: 'sales', confidenceScore: 75 }),
   vehicleIdentity: async () => ({ found: true, matches: [] }),
+  vehicleDocumentsDetail: async () => ({ found: true, items: [] }),
   rtoDocumentsSummary: async () => ({ total: 0, items: [] }),
   verificationSummary: async () => ({ periodDays: 30, total: 4, sources: [] }),
+  verificationHistory: async () => ({ group: 'identity', returned: 0, items: [] }),
   surepassStatus: async () => ({ provider: 'SUREPASS', configured: true }),
   whatsappStatus: async () => ({ enabled: true, templates: [] }),
   whatsappCampaignsSummary: async () => ({ total: 1, campaigns: [] }),
@@ -263,7 +271,7 @@ test('read-only tool registry exposes the complete allow-list', () => {
   const tools = service.listTools(context);
 
   assert.deepEqual(tools.map((tool) => tool.name), AI_READ_ONLY_TOOL_NAMES);
-  assert.equal(tools.length, 55);
+  assert.equal(tools.length, AI_READ_ONLY_TOOL_NAMES.length);
   assert.equal(tools.every((tool) => tool.available), true);
 });
 
@@ -281,6 +289,62 @@ test('executes CRM and listing summary/detail tools through their injected depen
   await service.execute(context, { name: 'listing.summary' });
 
   assert.deepEqual(calls, ['crm.leads.summary', 'crm.lead.detail', 'listing.summary']);
+});
+
+test('keeps file actions in the portal response and out of the provider contract', async () => {
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    aiDocumentsSearch: async () => ({
+      data: { found: true, items: [{ kind: 'RESUME', candidate: 'Candidate' }] },
+      uiActions: [{
+        type: 'FILE',
+        label: 'Resume',
+        fileName: 'resume.pdf',
+        mimeType: 'application/pdf',
+        url: '/api/documents/secure/drive-private-file-123',
+        previewable: true,
+        downloadable: true,
+      }],
+    }),
+  });
+
+  const result = await service.execute(context, { name: 'ai.documents.search', arguments: { query: 'Candidate', kind: 'resume' } });
+
+  assert.equal(result.uiActions?.[0]?.url, '/api/documents/secure/drive-private-file-123');
+  assert.equal(JSON.stringify(result.contract).includes('/api/documents/secure/drive-private-file-123'), false);
+  assert.equal(JSON.stringify(result.contract).includes('uiActions'), false);
+});
+
+test('accepts authorized RTO proofs and offer letters as retrievable document kinds', async () => {
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    aiDocumentsSearch: async (_context, args) => ({
+      data: { found: true, kind: args.kind, items: [] },
+      uiActions: [],
+    }),
+  });
+
+  const rto = await service.execute(context, { name: 'ai.documents.search', arguments: { query: 'CG04NF0268', kind: 'rto' } });
+  const offer = await service.execute(context, { name: 'ai.documents.search', arguments: { query: 'APP-001', kind: 'offer' } });
+
+  assert.equal((rto.data as { kind: string }).kind, 'rto');
+  assert.equal((offer.data as { kind: string }).kind, 'offer');
+});
+
+test('grounds approved knowledge through the cache contract and keeps source data bounded', async () => {
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    knowledgeSearch: async (_context, args) => ({
+      found: true,
+      query: args.query,
+      sources: [{ title: 'KYC SOP', category: 'KYC', content: 'Use the approved checklist.', sourceUrl: 'https://example.com/kyc' }],
+    }),
+  });
+
+  const result = await service.execute(context, { name: 'knowledge.search', arguments: { query: 'KYC checklist' } });
+  assert.equal(result.contract.source, 'cache');
+  assert.equal(result.contract.status, 'success');
+  assert.equal(JSON.stringify(result.contract.data).includes('sourceKey'), false);
 });
 
 test('executes Phase 3 customer, enquiry, and task tools through their injected dependencies', async () => {
@@ -307,6 +371,23 @@ test('executes Phase 3 customer, enquiry, and task tools through their injected 
     'enquiry.detail',
     'tasks.summary',
   ]);
+});
+
+test('executes Won Customers through the CRM contacts source with a mandatory WON filter', async () => {
+  let received: unknown;
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    crmContactsSummary: async (_context, args) => {
+      received = args;
+      return { total: 3, activeAccounts: 3, primeCustomers: 1, wonLeads: 3, items: [] };
+    },
+  });
+
+  const result = await service.execute(context, { name: 'crm.won.customers.summary' });
+
+  assert.deepEqual(received, { pipelineStage: 'WON' });
+  assert.equal(result.toolName, 'crm.won.customers.summary');
+  assert.deepEqual(result.data, { total: 3, activeAccounts: 3, primeCustomers: 1, wonLeads: 3, items: [] });
 });
 
 test('tool execution is permission-scoped and calls only the selected dependency', async () => {

@@ -39,6 +39,7 @@ import {
   toVehicleIdentityKey,
 } from '../services/listingVehicleIdentity';
 import { getRenderableMediaUrl, normalizeListingMedia, normalizeRemoteMediaUrl } from '../utils/mediaUrl';
+import { normalizeListingImageAnalysis, type ListingImageAnalysis } from '../services/ai/aiVision.service';
 import { getDriveFileIdsToDelete } from '../utils/driveMediaLifecycle';
 import { normalizeBillingLocation } from '../utils/billingLocation';
 import { canBypassListingVerification, canCreateListing, canEditListing } from '../utils/listingAccess';
@@ -607,7 +608,16 @@ const getDealerCategoryLabel = (partner?: {
   return 'User';
 };
 
-const normalizeMedia = (media: unknown) => {
+type NormalizedListingMedia = {
+  url: string;
+  type: string;
+  slot: string | null;
+  isFeatured: boolean;
+  aiAnalysis?: ListingImageAnalysis;
+  aiAnalyzedAt?: Date | string;
+};
+
+const normalizeMedia = (media: unknown): NormalizedListingMedia[] => {
   if (!Array.isArray(media)) {
     return [];
   }
@@ -627,15 +637,20 @@ const normalizeMedia = (media: unknown) => {
         return null;
       }
 
+      const aiAnalysis = type === 'IMAGE' && (item as any).aiAnalysis
+        ? normalizeListingImageAnalysis((item as any).aiAnalysis)
+        : null;
+
       return {
         url: fileUrl,
         type,
         slot: slot || (type === 'IMAGE' && isFeatured ? 'front-view' : null),
         isFeatured,
+        ...(aiAnalysis ? { aiAnalysis, aiAnalyzedAt: (item as any).aiAnalyzedAt || new Date() } : {}),
       };
     })
     .filter(
-      (item): item is { url: string; type: string; slot: string | null; isFeatured: boolean } =>
+      (item): item is NormalizedListingMedia =>
         item !== null
     );
 };
@@ -647,7 +662,7 @@ const serializeListingMediaForResponse = <T extends { media?: unknown; vehicleVe
 
   return {
     ...listing,
-    media: normalizeListingMedia(listing.media),
+    media: normalizeMedia(listing.media),
     // Only owners and admins get here, so the full breakdown (seller price, margin) is fine.
     ...(Object.prototype.hasOwnProperty.call(listing, 'price')
       ? { pricing: getListingPricing(listing as Record<string, unknown>) }
@@ -1655,11 +1670,12 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const hasMediaField = hasOwnField('media');
     const normalizedMedia = hasMediaField
       ? normalizeMedia(media)
-      : existingListing.media.map((item: { url: string; type: string; isFeatured: boolean }) => ({
+      : existingListing.media.map((item: { url: string; type: string; isFeatured: boolean; slot?: string | null; aiAnalysis?: unknown; aiAnalyzedAt?: Date | string | null }) => ({
           url: item.url,
           type: item.type,
-          slot: (item as any).slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
+          slot: item.slot || (item.isFeatured && item.type === 'IMAGE' ? 'front-view' : null),
           isFeatured: item.isFeatured,
+          ...(item.aiAnalysis ? { aiAnalysis: normalizeListingImageAnalysis(item.aiAnalysis), aiAnalyzedAt: item.aiAnalyzedAt || new Date() } : {}),
         }));
     const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
       ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)

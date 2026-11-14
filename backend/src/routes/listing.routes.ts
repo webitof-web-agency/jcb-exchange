@@ -21,12 +21,17 @@ import {
   updateListingAvailability,
 } from '../controllers/listing.controller';
 import { verifyRcFullForListing } from '../controllers/rcFull.controller';
+import { assistListingDraft, assistListingImage } from '../controllers/listingCopilot.controller';
 import { requireAuth, requireAdmin } from '../middlewares/auth.middleware';
-import { listingRcLookupRateLimit, surepassVerificationRateLimit, vehicleIdentityCheckRateLimit } from '../middlewares/rateLimit.middleware';
+import { listingAiAssistRateLimit, listingRcLookupRateLimit, surepassVerificationRateLimit, vehicleIdentityCheckRateLimit } from '../middlewares/rateLimit.middleware';
+import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 
 const router = Router();
+const listingAiImageUpload = getDocumentUploadMiddleware('secure', 'ai-image');
 
 router.post('/', requireAuth, createListing);
+router.post('/ai-assist', requireAuth, listingAiAssistRateLimit, assistListingDraft);
+router.post('/ai-image-assist', requireAuth, listingAiAssistRateLimit, listingAiImageUpload.single('file'), assistListingImage);
 router.get('/', requireAuth, getListings);
 router.get('/verification-policy', requireAuth, getListingVerificationPolicy);
 router.get('/vehicle-identity-check', requireAuth, vehicleIdentityCheckRateLimit, checkListingVehicleIdentity);

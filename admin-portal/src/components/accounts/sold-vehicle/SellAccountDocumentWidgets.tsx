@@ -161,22 +161,25 @@ function SavedVerificationTemplate({ kind, record, template }: SavedVerification
     if (!recordId || !templateId) return;
     let active = true;
     let objectUrl = '';
-    setBlob(null);
-    setPreviewUrl('');
-    setError('');
-    getVerificationTemplateBlob(`${kind}:${recordId}:${templateId}`, async () => {
-      const response = await api.get<Blob>(savedTemplateEndpoint(kind, recordId), { responseType: 'blob' });
-      return response.data;
-    })
-      .then((nextBlob) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(nextBlob);
-        setBlob(nextBlob);
-        setPreviewUrl(objectUrl);
+    queueMicrotask(() => {
+      if (!active) return;
+      setBlob(null);
+      setPreviewUrl('');
+      setError('');
+      getVerificationTemplateBlob(`${kind}:${recordId}:${templateId}`, async () => {
+        const response = await api.get<Blob>(savedTemplateEndpoint(kind, recordId), { responseType: 'blob' });
+        return response.data;
       })
-      .catch(() => {
-        if (active) setError(`Saved ${kind.toUpperCase()} template could not be loaded.`);
-      });
+        .then((nextBlob) => {
+          if (!active) return;
+          objectUrl = URL.createObjectURL(nextBlob);
+          setBlob(nextBlob);
+          setPreviewUrl(objectUrl);
+        })
+        .catch(() => {
+          if (active) setError(`Saved ${kind.toUpperCase()} template could not be loaded.`);
+        });
+    });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);

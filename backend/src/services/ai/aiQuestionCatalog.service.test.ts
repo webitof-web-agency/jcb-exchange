@@ -74,6 +74,14 @@ test('catalog exposes dedicated customer, enquiry, and task operational tools', 
   assert.ok(findSupportedQuestionMatches('pending tasks ka summary batao').some((match) => match.toolName === 'tasks.summary'));
 });
 
+test('catalog exposes CRM page coverage and stored document retrieval', () => {
+  assert.ok(findSupportedQuestionMatches('CRM dashboard ka summary batao').some((match) => match.toolName === 'crm.dashboard.summary'));
+  assert.ok(findSupportedQuestionMatches('CRM contacts ki list dikhao').some((match) => match.toolName === 'crm.contacts.summary'));
+  assert.ok(findSupportedQuestionMatches('CRM campaigns ka status').some((match) => match.toolName === 'crm.campaigns.summary'));
+  assert.ok(findSupportedQuestionMatches('CRM import history dikhao').some((match) => match.toolName === 'crm.import.summary'));
+  assert.ok(findSupportedQuestionMatches('Ramesh ka resume details batao').some((match) => match.toolName === 'ai.documents.search'));
+});
+
 test('catalog exposes Phase 4 campaign and delivery-log tools', () => {
   assert.ok(findSupportedQuestionMatches('show WhatsApp campaigns status').some((match) => match.toolName === 'whatsapp.campaigns.summary'));
   assert.ok(findSupportedQuestionMatches('show WhatsApp and SMS delivery logs').some((match) => match.toolName === 'communication.delivery.summary'));
@@ -100,4 +108,30 @@ test('catalog exposes Phase 6 remaining-module tools', () => {
   assert.ok(findSupportedQuestionMatches('users summary').some((match) => match.toolName === 'users.summary'));
   assert.ok(findSupportedQuestionMatches('roles summary').some((match) => match.toolName === 'roles.summary'));
   assert.ok(findSupportedQuestionMatches('subscriptions summary').some((match) => match.toolName === 'subscriptions.summary'));
+});
+
+test('catalog maps secondary portal pages to executable read-only sources', () => {
+  assert.ok(findSupportedQuestionMatches('analytics overview dikhao').some((match) => match.toolName === 'analytics.summary'));
+  assert.ok(findSupportedQuestionMatches('vehicle docs ka status batao').some((match) => match.toolName === 'rto.documents.summary'));
+  assert.ok(findSupportedQuestionMatches('CMS blogs ka summary').some((match) => match.toolName === 'blogs.summary'));
+  assert.ok(findSupportedQuestionMatches('users and permissions ka status').some((match) => match.toolName === 'users.summary' || match.toolName === 'roles.summary'));
+  assert.ok(findSupportedQuestionMatches('AI provider settings ka status').some((match) => match.toolName === 'settings.summary'));
+  assert.ok(findSupportedQuestionMatches('CG04NF0268 ke vehicle docs download karo').some((match) => match.toolName === 'ai.documents.search'));
+  assert.ok(findSupportedQuestionMatches('verification template download karo').some((match) => match.toolName === 'ai.documents.search'));
+});
+
+test('catalog exposes the connected Identity Hub, Vehicle & Transport, and agreements pages', () => {
+  assert.ok(findSupportedQuestionMatches('Identity Hub history dikhao').some((match) => match.toolName === 'verification.history'));
+  assert.ok(findSupportedQuestionMatches('Vehicle Transport history batao').some((match) => match.toolName === 'verification.history'));
+  assert.ok(findSupportedQuestionMatches('partner agreements ka status').some((match) => match.toolName === 'partner.agreements.summary'));
+  assert.ok(findSupportedQuestionMatches('visitors ki list').some((match) => match.toolName === 'customer.summary'));
+});
+
+test('catalog exposes operational copilot and market intelligence tools', () => {
+  assert.ok(findSupportedQuestionMatches('RTO checklist and blockers batao').some((match) => match.toolName === 'rto.copilot'));
+  assert.ok(findSupportedQuestionMatches('finance cash flow recommendations').some((match) => match.toolName === 'finance.copilot'));
+  assert.ok(findSupportedQuestionMatches('partner health and unanswered leads').some((match) => match.toolName === 'partner.copilot'));
+  assert.ok(findSupportedQuestionMatches('recruitment interview next steps').some((match) => match.toolName === 'recruitment.copilot'));
+  assert.ok(findSupportedQuestionMatches('latest market government updates').some((match) => match.toolName === 'market.intelligence'));
+  assert.ok(findSupportedQuestionMatches('suspicious duplicate listing signals').some((match) => match.toolName === 'fraud.signals'));
 });

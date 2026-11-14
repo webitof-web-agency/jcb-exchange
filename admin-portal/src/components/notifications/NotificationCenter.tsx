@@ -245,7 +245,13 @@ export default function NotificationCenter({ portal = 'partner' }: NotificationC
   );
 
   useEffect(() => {
-    fetchNotifications(1);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void fetchNotifications(1);
+    });
+    return () => {
+      active = false;
+    };
   }, [fetchNotifications]);
 
   const handleMarkAsRead = async (id: string, link?: string | null) => {

@@ -596,7 +596,13 @@ export default function AnalyticsListingDetail({ listingId, backHref }: { listin
   }, [listingId]);
 
   useEffect(() => {
-    void load();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void load();
+    });
+    return () => {
+      active = false;
+    };
   }, [load]);
 
   const listing = data?.listing;
@@ -657,9 +663,10 @@ export default function AnalyticsListingDetail({ listingId, backHref }: { listin
   const paginationItems = useMemo(() => buildPaginationItems(currentPage, totalPages), [currentPage, totalPages]);
 
   // Timeline chart data
+  const trackedViewTimeline = data?.trackedViewTimeline;
   const timelineData = useMemo(() => {
-    if (!data?.trackedViewTimeline?.length) return [];
-    return data.trackedViewTimeline.map((item) => {
+    if (!trackedViewTimeline?.length) return [];
+    return trackedViewTimeline.map((item) => {
       const parts = item.date.split('-');
       const shortDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : item.date;
       return {
@@ -667,15 +674,17 @@ export default function AnalyticsListingDetail({ listingId, backHref }: { listin
         shortDate,
       };
     });
-  }, [data?.trackedViewTimeline]);
+  }, [trackedViewTimeline]);
 
   // Sale price variance
+  const saleRecord = listing?.saleRecord;
+  const listingPrice = listing?.price;
   const saleVariance = useMemo(() => {
-    if (!listing?.saleRecord || !listing.price) return null;
-    const diff = listing.saleRecord.soldPrice - listing.price;
-    const pct = Number(((diff / listing.price) * 100).toFixed(1));
+    if (!saleRecord || !listingPrice) return null;
+    const diff = saleRecord.soldPrice - listingPrice;
+    const pct = Number(((diff / listingPrice) * 100).toFixed(1));
     return { diff, pct };
-  }, [listing?.saleRecord, listing?.price]);
+  }, [saleRecord, listingPrice]);
 
   const mediaList = listing?.media || [];
   const photosCount = mediaList.filter((m) => m.type.toUpperCase() !== 'VIDEO').length;

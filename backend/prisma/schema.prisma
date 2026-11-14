@@ -2030,6 +2030,9 @@ model Media {
   type          String
   slot          String?
   isFeatured    Boolean   @default(false)
+  /// Safe listing-image quality result only. Never stores OCR, document text, or provider raw output.
+  aiAnalysis    Json?
+  aiAnalyzedAt  DateTime?
   toBeDeletedAt DateTime?
   createdAt     DateTime  @default(now())
 
@@ -2567,6 +2570,30 @@ model AiSyncCheckpoint {
 
   @@index([status, updatedAt])
   @@index([lastSyncedAt])
+}
+
+// External market updates are stored as source-attributed, reviewable insights.
+// They are recommendations only; no production workflow is changed by ingestion.
+model AiMarketInsight {
+  id                String   @id @default(uuid())
+  sourceKey         String   @db.VarChar(80)
+  sourceName        String   @db.VarChar(160)
+  sourceCategory    String   @db.VarChar(30)
+  title             String   @db.VarChar(500)
+  summary           String   @db.VarChar(1200)
+  sourceUrl         String   @db.VarChar(2000)
+  sourcePublishedAt DateTime?
+  impact            String   @db.VarChar(20)
+  priority          String   @db.VarChar(20)
+  recommendation    String   @db.VarChar(1200)
+  contentHash      String   @db.VarChar(128)
+  observedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([sourceKey, contentHash])
+  @@index([priority, sourcePublishedAt])
+  @@index([sourceCategory, observedAt])
 }
 
 model Notification {

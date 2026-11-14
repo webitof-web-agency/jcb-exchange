@@ -50,6 +50,8 @@ import {
   stripAiVoiceMarkup,
   type SpeechRecognitionLike,
 } from './aiVoice';
+import AiFileActions from './AiFileActions';
+import type { AiFileAction } from './aiFileActionModel';
 import {
   getAiRuntimePresentation,
   getAiToolArguments,
@@ -91,6 +93,7 @@ type AiChatResponse = {
     automatic?: boolean;
     confidenceScore?: number;
     confidenceLabel?: string;
+    uiActions?: AiFileAction[];
   };
 };
 
@@ -192,6 +195,7 @@ export default function AiCommandCenter() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<AiConversation[]>([]);
   const [conversationMessages, setConversationMessages] = useState<AiConversationMessage[]>([]);
+  const [fileActionsByRequestId, setFileActionsByRequestId] = useState<Record<string, AiFileAction[]>>({});
   const [historyQuery, setHistoryQuery] = useState('');
   const [olderHistoryOpen, setOlderHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -781,6 +785,12 @@ export default function AiCommandCenter() {
       }
       const response = await api.post<AiChatResponse>('/ai/chat', request);
       speakAiResponse(normalizeAiDisplayText(response.data.answer));
+      if (response.data.tool?.uiActions?.length) {
+        setFileActionsByRequestId((current) => ({
+          ...current,
+          [response.data.requestId]: response.data.tool?.uiActions || [],
+        }));
+      }
       if (response.data.conversationId) {
         setActiveConversationId(response.data.conversationId);
         notifyAiConversationUpdated({ conversationId: response.data.conversationId });
@@ -1264,6 +1274,9 @@ export default function AiCommandCenter() {
                         {conversationMessage.role === 'ASSISTANT'
                           ? <div className="prose prose-sm max-w-none break-words text-inherit [&_a]:text-[#0B5FFF] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-slate-100 [&_table]:block [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: purifyAiHtml(normalizeAiDisplayText(conversationMessage.content)) }} />
                           : <p className="whitespace-pre-wrap break-words">{normalizeAiDisplayText(conversationMessage.content)}</p>}
+                        {conversationMessage.role === 'ASSISTANT' && conversationMessage.requestId && fileActionsByRequestId[conversationMessage.requestId]?.length ? (
+                          <AiFileActions actions={fileActionsByRequestId[conversationMessage.requestId]} />
+                        ) : null}
                         <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${conversationMessage.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
                           <span className="truncate">
                             {conversationMessage.role === 'ASSISTANT' && (conversationMessage.provider || conversationMessage.modelAlias)

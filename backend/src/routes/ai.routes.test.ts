@@ -38,6 +38,7 @@ test('protects every AI endpoint with authentication and internal AI access midd
     'patch:/history/:conversationId',
     'delete:/history/:conversationId',
     'post:/chat',
+    'post:/document-assist',
     'post:/feedback',
     'get:/memory',
     'delete:/memory/:id',

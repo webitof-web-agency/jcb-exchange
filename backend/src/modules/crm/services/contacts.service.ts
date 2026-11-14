@@ -124,6 +124,7 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
   const lifecycle = oneOf(LIFECYCLES, query.lifecycle);
   if (lifecycle) and.push({ crmProfile: { lifecycle } });
   const pipelineStage = query.pipelineStage?.trim().toUpperCase();
+  const wonCustomerStats = pipelineStage === 'WON';
   if (pipelineStage) {
     and.push({ leads: { some: { AND: [{ mergedIntoId: null }, { status: pipelineStage }, leadScopeWhere(access)] } } });
   }
@@ -136,8 +137,11 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
   if (query.openLeads === 'yes') and.push({ leads: { some: { status: { notIn: [...terminal] }, mergedIntoId: null } } });
 
   const where: Prisma.UserWhereInput = { AND: and };
-  const [total, users] = await Promise.all([
+  const [total, activeTotal, primeTotal, wonLeadTotal, users] = await Promise.all([
     prisma.user.count({ where }),
+    wonCustomerStats ? prisma.user.count({ where: { AND: [where, { status: 'ACTIVE' }] } }) : Promise.resolve(null),
+    wonCustomerStats ? prisma.user.count({ where: { AND: [where, { customerPrimeSubscriptions: { some: { status: 'ACTIVE' } } }] } }) : Promise.resolve(null),
+    wonCustomerStats ? prisma.lead.count({ where: { AND: [{ status: 'WON', mergedIntoId: null }, leadScopeWhere(access)] } }) : Promise.resolve(null),
     prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -147,7 +151,7 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
         ...contactSelect,
         createdAt: true,
         crmProfile: { select: { companyName: true, lifecycle: true, contactTypes: true, tags: true, doNotContact: true, owner: { select: { id: true, name: true } } } },
-        leads: { where: { mergedIntoId: null }, select: { id: true, status: true, createdAt: true, nextFollowUpAt: true, pipelineStage: { select: { code: true, name: true, color: true, isTerminal: true } } }, orderBy: { createdAt: 'desc' }, take: 20 },
+        leads: { where: { mergedIntoId: null, ...(pipelineStage ? { status: pipelineStage } : {}) }, select: { id: true, status: true, createdAt: true, nextFollowUpAt: true, pipelineStage: { select: { code: true, name: true, color: true, isTerminal: true } } }, orderBy: { createdAt: 'desc' }, take: 20 },
         customerPrimeSubscriptions: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 },
       },
     }),
@@ -156,6 +160,7 @@ export const listContacts = async (access: CrmAccess, query: Record<string, stri
     page,
     pageSize,
     total,
+    ...(wonCustomerStats ? { activeTotal, primeTotal, wonLeadTotal } : {}),
     items: users.map(({ leads, customerPrimeSubscriptions, ...user }) => ({
       ...user,
       isPrime: customerPrimeSubscriptions.length > 0,

@@ -28,6 +28,7 @@ export const normalizeAiMessage = (value: string): string =>
 const DAY_RANGE_TOOLS = new Set([
   'dashboard.summary',
   'lead.statistics',
+  'analytics.summary',
   'listing.statistics',
   'sold.vehicles',
   'inventory.trend',

@@ -42,6 +42,7 @@ import {
   Trash2,
   Users,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
@@ -111,7 +112,7 @@ const labelForType = (value: string) =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 const getAgreementTypeMeta = (type: string) => {
-  const metaMap: Record<string, { label: string; group: string; icon: any; tone: string }> = {
+  const metaMap: Record<string, { label: string; group: string; icon: LucideIcon; tone: string }> = {
     MARKETPLACE_TERMS: {
       label: 'Marketplace Terms & Platform Agreement',
       group: 'Platform Governance',

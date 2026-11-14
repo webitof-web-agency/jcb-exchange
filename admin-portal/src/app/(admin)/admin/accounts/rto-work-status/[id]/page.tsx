@@ -1446,7 +1446,7 @@ export default function RtoRecordDetailView() {
                           </div>
                           {/* Remark box */}
                           <div className="mt-1 rounded-lg border border-slate-100 bg-slate-50/80 p-2 text-xs text-slate-700 italic">
-                            "{log.remark}"
+                            &quot;{log.remark}&quot;
                           </div>
                         </div>
                       </div>

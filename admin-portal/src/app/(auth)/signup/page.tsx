@@ -378,7 +378,7 @@ function SignupPageInner() {
     const cleanConfirmPassword = sanitizePassword(registerData.confirmPassword);
 
     // Helper: set field error, scroll to ref, optionally focus
-    function scrollToError(ref: React.RefObject<any>, field: string, message: string) {
+    function scrollToError(ref: React.RefObject<HTMLElement | null>, field: string, message: string) {
       setFieldErrors((prev) => ({ ...prev, [field]: message }));
       ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setTimeout(() => ref.current?.focus?.(), 350);
