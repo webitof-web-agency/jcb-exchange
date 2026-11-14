@@ -53,6 +53,11 @@ export type UploadVisibility = 'public' | 'secure';
 export type UploadPurpose = 'document' | 'passport-photo';
 export type ListingMediaKind = 'image' | 'video';
 
+export const getListingMediaPreparationPlan = (kind: ListingMediaKind) => ({
+  operation: kind === 'video' ? 'compress-video' : 'compress-image',
+  maxOutputBytes: kind === 'video' ? MAX_LISTING_VIDEO_UPLOAD_SIZE : LISTING_TARGET_MAX_IMAGE_SIZE,
+} as const);
+
 export type UploadedFileResult = {
   access: UploadVisibility;
   fileName: string;
@@ -680,14 +685,14 @@ export const prepareFileForUpload = async (file: File) => {
 export const prepareListingMediaForUpload = async (file: File, kind: ListingMediaKind) => {
   await validateListingMediaFile(file, kind);
 
-  if (kind === 'image') {
+  if (getListingMediaPreparationPlan(kind).operation === 'compress-image') {
     return compressImageForUpload(file, {
       targetMinBytes: LISTING_TARGET_MIN_IMAGE_SIZE,
       targetMaxBytes: LISTING_TARGET_MAX_IMAGE_SIZE,
     });
   }
 
-  return file;
+  return compressVideoForUpload(file);
 };
 
 export const prepareFinanceSupportImageForUpload = async (file: File) => {

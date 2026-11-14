@@ -44,7 +44,7 @@ export const verifyRcFullForListing = async (req: Request, res: Response, next: 
     const returnedRegistration = normalizeRcNumber(normalizedResult.rcNumber);
     if (!requestedRegistration || returnedRegistration !== requestedRegistration) {
       throw new RcOwnerHistoryError(
-        'The verified vehicle number does not match the entered vehicle number.',
+        'The verified registration number does not match the entered registration number.',
         422,
         'provider_identity_mismatch',
       );
@@ -60,4 +60,3 @@ export const verifyRcFullForListing = async (req: Request, res: Response, next: 
     return sendError(error, res, next);
   }
 };
-

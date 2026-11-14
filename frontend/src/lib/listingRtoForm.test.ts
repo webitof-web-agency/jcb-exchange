@@ -36,6 +36,13 @@ test('accepts unavailable provider validity dates without falsely requiring a da
   assert.equal(validateListingRtoForm(validWithoutProviderDates, base), null);
 });
 
+test('uses registration number terminology when registration is missing', () => {
+  assert.equal(
+    validateListingRtoForm(validWithoutProviderDates, { ...base, registrationNo: '' }),
+    'Registration Number is required.',
+  );
+});
+
 test('allows vehicle maintenance cost to be omitted', () => {
   assert.equal(validateListingRtoForm({ ...validWithoutProviderDates, vehicleMaintenanceCost: '' }, base), null);
 });

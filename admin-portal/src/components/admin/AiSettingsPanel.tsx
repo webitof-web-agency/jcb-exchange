@@ -5,8 +5,10 @@ import { Activity, AlertCircle, Check, CheckCircle2, ChevronDown, Clock3, Databa
 import { isAxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { notifyAiModelUpdated, subscribeToAiModelUpdates } from '@/lib/aiModelSync';
 import { availabilityLabel, formatLatency, type AiToolDataAvailability } from './aiObservabilityModel';
 import { useAuthStore } from '@/store/authStore';
+import { getProviderModelCatalogMessage } from '@/components/ai/aiModelPicker';
 
 type AiProvider = 'openai' | 'anthropic';
 
@@ -428,6 +430,7 @@ export default function AiSettingsPanel() {
       });
       const nextModels = response.data.models || [];
       setModelOptions(nextModels);
+      setModelsError(getProviderModelCatalogMessage(null, nextModels.length));
       setForm((current) => {
         if (!nextModels.length || nextModels.some((model) => model.id === current.model)) return current;
         return { ...current, model: nextModels[0].id };
@@ -455,11 +458,13 @@ export default function AiSettingsPanel() {
     return () => window.clearTimeout(timer);
   }, [form.provider, loadModels, loading]);
 
-  const availableModelOptions = useMemo(() => {
-    const savedModel = form.model.trim();
-    if (!savedModel || modelOptions.some((model) => model.id === savedModel)) return modelOptions;
-    return [{ id: savedModel, name: savedModel, capabilities: [] }, ...modelOptions];
-  }, [form.model, modelOptions]);
+  useEffect(() => subscribeToAiModelUpdates((detail) => {
+    if (detail.provider !== form.provider) return;
+    setSettings((current) => ({ ...current, model: detail.model }));
+    setForm((current) => ({ ...current, model: detail.model }));
+  }), [form.provider]);
+
+  const availableModelOptions = modelOptions;
 
   const selectedModel = useMemo(
     () => availableModelOptions.find((model) => model.id === form.model),
@@ -493,6 +498,7 @@ export default function AiSettingsPanel() {
       setForm(toForm(nextSettings));
       setShowKey(false);
       setRevealedKey(null);
+      notifyAiModelUpdated({ provider: nextSettings.provider, model: nextSettings.model });
       toast.success('AI settings saved securely.');
     } catch (error) {
       toast.error(errorMessage(error, 'AI settings could not be saved.'));
@@ -802,7 +808,7 @@ export default function AiSettingsPanel() {
                   }`}
                 >
                   <span className="min-w-0 truncate font-medium">
-                    {selectedModel ? selectedModel.name : form.model || 'Select a model'}
+                    {selectedModel ? selectedModel.name : 'Select a provider model'}
                   </span>
                   <ChevronDown className={`ml-3 h-4 w-4 shrink-0 text-gray-400 transition-transform ${modelOpen ? 'rotate-180 text-yellow-600' : ''}`} />
                 </button>

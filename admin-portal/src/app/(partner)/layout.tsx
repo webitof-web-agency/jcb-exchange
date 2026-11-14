@@ -15,6 +15,7 @@ import { formatDateTime } from '@/lib/i18n/formatters';
 import { formatPartnerTypeLabel } from '@/lib/partnerType';
 import { isDefinitiveSessionFailure, isInactiveAccessError, isRevokedAccessError } from '@/lib/sessionAccess';
 import { getProfileSessionToken } from '@/lib/profileSession.mjs';
+import { shouldDismissDropdown } from '@/lib/dropdownInteractions';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import PushNotificationManager from '@/components/shared/PushNotificationManager';
@@ -55,6 +56,7 @@ export default function PartnerLayout({
   const { customHeader } = useHeaderStore();
   const { isAuthenticated, user, logout, hasHydrated, hydrateAuth, refreshSession, updateUser } = useAuthStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
   const isApproved = partnerIsApproved(user);
@@ -68,6 +70,30 @@ export default function PartnerLayout({
   const hasLoadedNotifications = useRef(false);
   const lastSeenNotificationId = useRef<string | null>(null);
   const unreadCount = notifications.length;
+
+  useEffect(() => {
+    if (!isDropdownOpen) return undefined;
+
+    const closeOnOutsideInteraction = (event: globalThis.Event) => {
+      if (shouldDismissDropdown(profileDropdownRef.current, event.target, event.type)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setIsDropdownOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideInteraction, true);
+    document.addEventListener('click', closeOnOutsideInteraction, true);
+    document.addEventListener('touchstart', closeOnOutsideInteraction, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction, true);
+      document.removeEventListener('click', closeOnOutsideInteraction, true);
+      document.removeEventListener('touchstart', closeOnOutsideInteraction, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isDropdownOpen]);
 
   const [badges, setBadges] = useState<{
     enquiries: number;
@@ -707,7 +733,7 @@ export default function PartnerLayout({
               <div className="w-px h-8 bg-gray-200"></div>
 
               {/* Profile Dropdown */}
-              <div className="relative shrink-0 ml-2">
+              <div ref={profileDropdownRef} className="relative shrink-0 ml-2">
                 <button
                   type="button"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}

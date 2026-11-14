@@ -30,13 +30,13 @@ export const getVehicleVerificationIdentityMismatch = (
   const returnedChassis = normalizeChassisNumber(providerSnapshot.chassisNumber);
 
   if (source === 'RC_FULL' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   if (requestedChassis && returnedChassis && requestedChassis !== returnedChassis) {
     return 'The verified chassis number does not match the entered chassis number.';
   }
   if (source === 'CHASSIS' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   return null;
 };

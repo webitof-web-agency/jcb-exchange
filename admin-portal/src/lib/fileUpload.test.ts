@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   MAX_PASSPORT_PHOTO_INPUT_SIZE,
   getPassportPhotoUploadValidationError,
+  getListingMediaPreparationPlan,
   prepareFileForUpload,
 } from './fileUpload';
 
@@ -26,4 +27,11 @@ test('passes valid PDF KYC documents through without video compression', async (
   const preparedFile = await prepareFileForUpload(selectedFile);
 
   assert.equal(preparedFile, selectedFile);
+});
+
+test('prepares listing videos for compression before the 15MB server upload limit', () => {
+  assert.deepEqual(getListingMediaPreparationPlan('video'), {
+    operation: 'compress-video',
+    maxOutputBytes: 15 * 1024 * 1024,
+  });
 });

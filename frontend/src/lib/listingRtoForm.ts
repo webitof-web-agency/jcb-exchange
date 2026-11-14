@@ -46,7 +46,7 @@ export const validateListingRtoForm = (
   form: ListingRtoFormState,
   base: { registrationNo: string; vehicleType: string; vehicleModel: string; operatingHours: string; insuranceExpiry: string },
 ) => {
-  if (!base.registrationNo.trim()) return 'Vehicle Number is required.';
+  if (!base.registrationNo.trim()) return 'Registration Number is required.';
   if (!base.vehicleType.trim()) return 'Vehicle Type is required.';
   if (!base.vehicleModel.trim()) return 'Vehicle Model is required.';
   if (!form.hirePurchaseStatus) return 'Hire Purchase is required.';

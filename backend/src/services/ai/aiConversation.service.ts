@@ -228,12 +228,20 @@ export class AiConversationService {
 
   async listConversations(actorUserId: string) {
     validateActorId(actorUserId);
-    return this.repository.listConversations(actorUserId);
+    const conversations = await this.repository.listConversations(actorUserId);
+    return conversations.map((conversation) => ({
+      ...conversation,
+      title: redactSensitiveData(conversation.title),
+    }));
   }
 
   async getMessages(actorUserId: string, conversationId: string) {
     await this.ensureOwnership(actorUserId, conversationId);
-    return this.repository.listMessages(conversationId);
+    const messages = await this.repository.listMessages(conversationId);
+    return messages.map((message) => ({
+      ...message,
+      content: redactSensitiveData(message.content),
+    }));
   }
 
   async renameConversation(actorUserId: string, conversationId: string, title: string) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import api from '@/lib/api';
 import AccountAccessInactive from '@/components/auth/AccountAccessInactive';
 import AccountAccessRevoked from '@/components/auth/AccountAccessRevoked';
@@ -50,6 +50,7 @@ import PushNotificationManager from '@/components/shared/PushNotificationManager
 import { UserAvatar } from '@/components/profile/AvatarUpload';
 import { getPublicSiteTarget } from '@/lib/publicSite.mjs';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
+import { shouldDismissDropdown } from '@/lib/dropdownInteractions';
 
 const navItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
@@ -200,6 +201,7 @@ export default function AdminLayout({
     hasAnyPermission(user?.permissions, ['pan.verification.read', 'pan.mobile-to-pan.read', 'gst.verification.read', 'aadhaar.digilocker.read', 'driving-license.verification.read', 'rc.owner-history.read', 'rc.challan.verification.read', 'rc.chassis-to-rc.read', 'rc.to-mobile.read', 'rc.mobile-number-check.read', 'settings.manage']);
   const billing = useApiBillingSummary(canSeeApiBilling);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [usersMenuExpansion, setUsersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
@@ -217,6 +219,33 @@ export default function AdminLayout({
   });
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
   const [isAccessInactive, setIsAccessInactive] = useState(false);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return undefined;
+
+    const closeOnOutsideInteraction = (event: globalThis.Event) => {
+      if (shouldDismissDropdown(profileDropdownRef.current, event.target, event.type)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setIsDropdownOpen(false);
+    };
+
+    // Capture the interaction before any page component can stop propagation.
+    // Supporting click/touch as well as pointerdown covers mouse, touch and
+    // browser/assistive-technology generated clicks consistently.
+    document.addEventListener('pointerdown', closeOnOutsideInteraction, true);
+    document.addEventListener('click', closeOnOutsideInteraction, true);
+    document.addEventListener('touchstart', closeOnOutsideInteraction, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction, true);
+      document.removeEventListener('click', closeOnOutsideInteraction, true);
+      document.removeEventListener('touchstart', closeOnOutsideInteraction, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isDropdownOpen]);
   // ─── Industry-standard timestamp-based notification tracking ───────────────
   // localStorage stores ISO timestamps of when each module was last visited.
   // The backend receives these timestamps and returns only NEW-since-then counts.
@@ -1539,7 +1568,7 @@ export default function AdminLayout({
             <div className="h-5 w-px bg-slate-200 hidden sm:block" />
 
             {/* Profile Dropdown Container */}
-            <div className="relative shrink-0">
+            <div ref={profileDropdownRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -1549,7 +1578,8 @@ export default function AdminLayout({
                     : ''
                 }`}
                 aria-expanded={isDropdownOpen}
-                aria-haspopup="true"
+                aria-controls="portal-profile-menu"
+                aria-haspopup="menu"
                 title={`${displayName} (${translatedRoleLabel})`}
               >
                 {/* User Name & Role Pill */}
@@ -1583,14 +1613,7 @@ export default function AdminLayout({
 
               {/* Dropdown Menu */}
               {isDropdownOpen && (
-                <>
-                  {/* Transparent overlay to detect outside clicks */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsDropdownOpen(false)}
-                  />
-
-                  <div className="absolute right-0 top-full mt-2 w-68 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 transform origin-top-right transition-all duration-150 ease-out animate-in fade-in zoom-in-95">
+                <div id="portal-profile-menu" role="menu" className="absolute right-0 top-full mt-2 w-68 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 transform origin-top-right transition-all duration-150 ease-out animate-in fade-in zoom-in-95">
                     {/* Header Summary */}
                     <div className="px-4 py-3.5 bg-gradient-to-b from-slate-50/90 to-white flex items-center gap-3">
                       <div className="relative shrink-0">
@@ -1655,8 +1678,7 @@ export default function AdminLayout({
                         <span>{t('common.logoutSecurely')}</span>
                       </button>
                     </div>
-                  </div>
-                </>
+                </div>
               )}
             </div>
           </div>

@@ -5489,7 +5489,7 @@ function ListingMediaUploadBox({
         }
       }
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Upload failed.');
+      setError(getApiErrorMessage(uploadError, 'Upload failed.'));
     } finally {
       setUploading(false);
       onUploadingChange(false);

@@ -25,6 +25,14 @@ const SAFE_BOOLEANISH_FIELD_PATTERN = /(?:configured|present|count|status|enable
 
 const normalizedFieldName = (field: string) => field.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
 
+const isInternalIdentifierField = (normalized: string): boolean => normalized === 'id'
+  || normalized === 'uuid'
+  || normalized === 'object_id'
+  || normalized === 'objectid'
+  || normalized === 'database_id'
+  || normalized.endsWith('_id')
+  || normalized.endsWith('_ids');
+
 const kindForField = (field: string): SensitiveFieldKind => {
   const normalized = normalizedFieldName(field);
   if (DOCUMENT_URL_FIELD_PATTERN.test(normalized)) return 'documentUrl';
@@ -77,6 +85,10 @@ export const sanitizeAiToolData = (value: unknown, _context: AiFieldSecurityCont
     for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
       const childPath = pathFor(path, key);
       const normalized = normalizedFieldName(key);
+      if (isInternalIdentifierField(normalized)) {
+        maskedFields.add(childPath);
+        continue;
+      }
       const safeMetadata = SAFE_BOOLEANISH_FIELD_PATTERN.test(normalized)
         && (typeof child !== 'object' || child === null);
       const kind = safeMetadata ? null : kindForField(key);

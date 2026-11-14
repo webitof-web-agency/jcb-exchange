@@ -6,6 +6,7 @@ import {
   getProviderDateStatus,
   getVehicleVerificationButtonState,
   getVehicleVerificationSubmitValidationError,
+  mergeMasterOptions,
   mapChassisToRcVehicle,
   mapProviderVehicleToListing,
   normalizeRegistrationNumber,
@@ -160,7 +161,7 @@ test('maps RC Full response and rejects a mismatched vehicle identity', () => {
   });
 
   assert.equal(mapped.registrationNo, 'DL01AB1234');
-  assert.equal(getProviderVehicleIdentityMismatch('RC_FULL', 'DL01AB9999', '', mapped), 'The verified vehicle number does not match the entered vehicle number.');
+  assert.equal(getProviderVehicleIdentityMismatch('RC_FULL', 'DL01AB9999', '', mapped), 'The verified registration number does not match the entered registration number.');
   assert.equal(getProviderVehicleIdentityMismatch('RC_FULL', 'DL-01 AB/1234', '', mapped), null);
 });
 
@@ -182,7 +183,7 @@ test('requires the identity selected by the user and prevents stale edit verific
     verifiedRegistrationNumber: 'DL01AB1234',
     verifiedChassisNumber: 'CHASSIS123',
     verifiedSource: 'RC_FULL',
-  }), 'Verify the current vehicle number before posting this vehicle.');
+  }), 'Verify the current registration number before posting this vehicle.');
   assert.equal(getVehicleVerificationSubmitValidationError({
     required: true,
     source: 'CHASSIS',
@@ -210,4 +211,19 @@ test('shows loading only for the requested source and locks the alternate source
     isVerified: false,
     isLocked: true,
   });
+});
+
+test('preserves a provider category when master metadata resolves after verification', () => {
+  const providerCategory = { id: '__provider_category__motor_car_lmv', name: 'Motor Car (LMV)' };
+
+  assert.deepEqual(
+    mergeMasterOptions(
+      [{ id: 'category-excavator', name: 'Excavator' }],
+      [providerCategory],
+    ),
+    [
+      { id: 'category-excavator', name: 'Excavator' },
+      providerCategory,
+    ],
+  );
 });

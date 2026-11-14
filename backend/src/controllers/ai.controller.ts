@@ -23,6 +23,7 @@ import { aiSyncService } from '../services/ai/aiSync.service';
 import { aiToolObservabilityService } from '../services/ai/aiToolObservability.service';
 import { createAiDataErrorContractForCode } from '../services/ai/aiDataContract.service';
 import { aiReliabilityObservabilityService, moduleForAiTool } from '../services/ai/aiReliabilityObservability.service';
+import { redactSensitiveData } from '../services/ai/aiRedaction';
 
 const aiToolCallSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -260,7 +261,9 @@ export const getAiBriefing = async (req: Request, res: Response, next: NextFunct
       briefing: briefing
         ? {
           status: briefing.status,
-          content: briefing.status === 'READY' ? briefing.resultRedacted : null,
+          content: briefing.status === 'READY' && briefing.resultRedacted
+            ? redactSensitiveData(briefing.resultRedacted)
+            : null,
           generatedAt: briefing.generatedAt?.toISOString() ?? null,
           expiresAt: briefing.expiresAt?.toISOString() ?? null,
           updatedAt: briefing.updatedAt.toISOString(),

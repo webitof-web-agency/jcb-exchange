@@ -17,7 +17,7 @@ test('detects provider identity mismatches before listing save', () => {
     getVehicleVerificationIdentityMismatch('RC_FULL', 'DL01AB1234', '', {
       registrationNumber: 'DL02ZZ9999',
     }),
-    'The verified vehicle number does not match the entered vehicle number.',
+    'The verified registration number does not match the entered registration number.',
   );
   assert.equal(
     getVehicleVerificationIdentityMismatch('CHASSIS', 'DL01AB1234', 'CHASSIS123', {

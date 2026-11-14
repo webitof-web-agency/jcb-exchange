@@ -77,3 +77,27 @@ test('preserves safe configuration flags while masking the underlying credential
   assert.equal(data.accessToken, '[REDACTED_SECRET]');
   assert.equal(data.phoneNumber, '[REDACTED_MOBILE]');
 });
+
+test('removes internal database identifiers from every nested provider-safe tool result', () => {
+  const result = sanitizeAiToolData({
+    leadId: '32e28d69-5b6e-41b8-a1dd-850528f6ad09',
+    nested: {
+      listingId: '507f1f77bcf86cd799439011',
+      recordId: 'another-internal-id',
+      title: 'JCB 3DX',
+    },
+    items: [{ id: '32e28d69-5b6e-41b8-a1dd-850528f6ad09', name: 'Lead' }],
+  }, { role: 'EMPLOYEE', permissions: [] });
+  const data = result.data as Record<string, unknown>;
+  const nested = data.nested as Record<string, unknown>;
+  const item = (data.items as Array<Record<string, unknown>>)[0]!;
+
+  assert.equal('leadId' in data, false);
+  assert.equal('listingId' in nested, false);
+  assert.equal('recordId' in nested, false);
+  assert.equal('id' in item, false);
+  assert.equal(nested.title, 'JCB 3DX');
+  assert.ok(result.maskedFields.includes('leadId'));
+  assert.ok(result.maskedFields.includes('nested.listingId'));
+  assert.ok(result.maskedFields.includes('items.0.id'));
+});

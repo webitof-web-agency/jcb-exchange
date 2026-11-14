@@ -55,3 +55,20 @@ test('redacts document URLs and signed access values before provider access', ()
   assert.match(redacted, /\[REDACTED_DOCUMENT_URL\]/);
   assert.match(redacted, /\[REDACTED_SECRET\]/);
 });
+
+test('redacts UUID and Mongo ObjectId values wherever they appear in text', () => {
+  const redacted = redactSensitiveData(
+    'Lead ID: 32e28d69-5b6e-41b8-a1dd-850528f6ad09 and record 507f1f77bcf86cd799439011.',
+  );
+
+  assert.equal(redacted.includes('32e28d69-5b6e-41b8-a1dd-850528f6ad09'), false);
+  assert.equal(redacted.includes('507f1f77bcf86cd799439011'), false);
+  assert.match(redacted, /\[REDACTED_INTERNAL_ID\]/g);
+});
+
+test('redacts human-readable entity ID labels even when the value is not UUID-shaped', () => {
+  const redacted = redactSensitiveData('Lead ID: 12345 and Listing ID: LST-0099.');
+
+  assert.equal(redacted.includes('12345'), false);
+  assert.equal(redacted.includes('LST-0099'), false);
+});

@@ -30,11 +30,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import { notifyAiModelUpdated, subscribeToAiModelUpdates } from '@/lib/aiModelSync';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
-import { filterAiModelOptions, type AiModelOption } from './aiModelPicker';
+import { readRememberedAiConversationId, rememberAiConversationId, selectRestoredConversationId, type RestorableConversation } from '@/lib/aiConversationState';
+import { filterAiModelOptions, getProviderModelCatalogMessage, hasProviderModel, type AiModelOption } from './aiModelPicker';
 import { formatAiTimestamp, normalizeAiDisplayText } from './aiDisplay';
 import { choosePreferredSpeechVoice, getSpeechRecognitionConstructor, getVoiceInputErrorMessage, getVoiceInputStatusLabel, getVoiceOutputButtonLabel, joinVoiceDraft, stripAiVoiceMarkup, type SpeechRecognitionLike } from './aiVoice';
 
@@ -77,6 +79,14 @@ type AiModelsResponse = {
   provider: string;
   selectedModel: string;
   models: AiModelOption[];
+};
+
+type AiSettingsUpdateResponse = {
+  success: boolean;
+  settings: {
+    provider: string;
+    model: string;
+  };
 };
 
 const CHAT_PANEL_POSITION_KEY = 'jcb-intelligence-hub-chat-panel-position';
@@ -126,6 +136,7 @@ export default function AiFloatingChat() {
   const [modelQuery, setModelQuery] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
@@ -175,6 +186,10 @@ export default function AiFloatingChat() {
       || (user.role === 'EMPLOYEE' && hasAnyPermission(user.permissions, ['ai.use']))
     ),
   );
+  const canManageSharedModel = Boolean(
+    user?.role === 'SUPER_ADMIN'
+    || (user?.role === 'EMPLOYEE' && hasAnyPermission(user.permissions, ['ai.manage'])),
+  );
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) || null,
     [activeConversationId, conversations],
@@ -208,20 +223,37 @@ export default function AiFloatingChat() {
     && !sending
     && activeConversation?.status !== 'ARCHIVED',
   );
-  const availableModelOptions = useMemo(() => {
-    if (modelOptions.length) return modelOptions;
-    if (!status.model || status.model === 'not configured') return [];
-    return [{
-      id: status.model,
-      name: status.model,
-      capabilities: ['chat'],
-      transport: 'chat_completions' as const,
-    }];
-  }, [modelOptions, status.model]);
+  const availableModelOptions = modelOptions;
   const filteredModelOptions = useMemo(
     () => filterAiModelOptions(availableModelOptions, modelQuery),
     [availableModelOptions, modelQuery],
   );
+
+  const persistModelSelection = useCallback(async (modelId: string, previousModel: string | null) => {
+    if (!canManageSharedModel) {
+      setSelectedModel(modelId);
+      toast.info('This model is selected for the current chat. Shared default changes require AI management permission.');
+      return;
+    }
+
+    setSelectedModel(modelId);
+    try {
+      const response = await api.put<AiSettingsUpdateResponse>('/superadmin/ai-settings', { model: modelId });
+      const nextSettings = response.data.settings;
+      setSelectedModel(nextSettings.model);
+      setStatus((current) => ({
+        ...current,
+        provider: nextSettings.provider,
+        model: nextSettings.model,
+        modelConfigured: true,
+      }));
+      notifyAiModelUpdated({ provider: nextSettings.provider, model: nextSettings.model });
+      toast.success('AI model updated across Settings and Intelligence Hub.');
+    } catch (nextError) {
+      setSelectedModel(previousModel);
+      toast.error(readError(nextError, 'The shared AI model could not be updated.'));
+    }
+  }, [canManageSharedModel]);
 
   const stopSpeaking = useCallback(() => {
     speechUtteranceRef.current = null;
@@ -254,6 +286,10 @@ export default function AiFloatingChat() {
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    rememberAiConversationId(user?.id, activeConversationId);
+  }, [activeConversationId, user?.id]);
 
   useEffect(() => {
     latestPositionRef.current = panelPosition;
@@ -407,18 +443,27 @@ export default function AiFloatingChat() {
       setModelsLoading(true);
       setError(null);
       setStatusError(null);
+      setModelsError(null);
       try {
+        const modelsPromise = api.get<AiModelsResponse>('/ai/models').catch((nextError) => {
+          if (!cancelled) {
+            setModelsError(getProviderModelCatalogMessage(readError(nextError, 'Provider models could not be loaded.'), 0));
+          }
+          return null;
+        });
         const [statusResponse, historyResponse, modelsResponse] = await Promise.all([
           api.get<{ success: boolean } & AiStatus>('/ai/status'),
           api.get<{ success: boolean; conversations: Conversation[] }>('/ai/history'),
-          api.get<AiModelsResponse>('/ai/models').catch(() => null),
+          modelsPromise,
         ]);
         if (cancelled) return;
         const nextConversations = historyResponse.data.conversations || [];
         const currentConversationId = activeConversationIdRef.current;
-        const nextActiveId = currentConversationId && nextConversations.some((item) => item.id === currentConversationId)
-          ? currentConversationId
-          : nextConversations.find((item) => item.status === 'ACTIVE')?.id || nextConversations[0]?.id || null;
+        const nextActiveId = selectRestoredConversationId(
+          nextConversations as RestorableConversation[],
+          currentConversationId,
+          readRememberedAiConversationId(user?.id),
+        );
         setStatus({
           enabled: Boolean(statusResponse.data.enabled),
           provider: statusResponse.data.provider || 'configured provider',
@@ -429,7 +474,16 @@ export default function AiFloatingChat() {
         });
         const loadedModels = modelsResponse?.data.models || [];
         setModelOptions(loadedModels);
-        setSelectedModel(modelsResponse?.data.selectedModel || statusResponse.data.model || null);
+        if (modelsResponse) {
+          setModelsError(getProviderModelCatalogMessage(null, loadedModels.length));
+          setSelectedModel(
+            hasProviderModel(loadedModels, modelsResponse.data.selectedModel)
+              ? modelsResponse.data.selectedModel
+              : null,
+          );
+        } else {
+          setSelectedModel(null);
+        }
         setConversations(nextConversations);
         setActiveConversationId(nextActiveId);
         if (nextActiveId) {
@@ -458,7 +512,17 @@ export default function AiFloatingChat() {
     return () => {
       cancelled = true;
     };
-  }, [canUse, isOpen]);
+  }, [canUse, isOpen, user?.id]);
+
+  useEffect(() => subscribeToAiModelUpdates((detail) => {
+    setSelectedModel(detail.model);
+    setStatus((current) => ({
+      ...current,
+      provider: detail.provider,
+      model: detail.model,
+      modelConfigured: true,
+    }));
+  }), []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -529,9 +593,10 @@ export default function AiFloatingChat() {
   };
 
   const handleCopyMessage = async (messageId: string, content: string) => {
-    const plainText = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const safeContent = normalizeAiDisplayText(content);
+    const plainText = safeContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     try {
-      await navigator.clipboard.writeText(plainText || content);
+      await navigator.clipboard.writeText(plainText || safeContent);
       setCopiedMessageId(messageId);
       window.setTimeout(() => {
         setCopiedMessageId((current) => (current === messageId ? null : current));
@@ -750,7 +815,7 @@ export default function AiFloatingChat() {
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
-      speakAiResponse(response.data.answer);
+      speakAiResponse(normalizeAiDisplayText(response.data.answer));
       const conversationId = response.data.conversationId;
       setActiveConversationId(conversationId);
       const [historyResponse, messagesResponse] = await Promise.all([
@@ -1127,7 +1192,7 @@ export default function AiFloatingChat() {
                       <div className={`min-w-0 max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-2xs sm:max-w-[85%] ${message.role === 'USER' ? 'rounded-br-md bg-[#061532] text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'}`}>
                         {message.role === 'ASSISTANT'
                           ? <div className="prose prose-sm max-w-none break-words text-inherit [&_a]:text-[#0B5FFF] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-slate-100 [&_table]:block [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: purifyAiHtml(normalizeAiDisplayText(message.content)) }} />
-                          : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+                          : <p className="whitespace-pre-wrap break-words">{normalizeAiDisplayText(message.content)}</p>}
                         <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${message.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
                           <span className="truncate">
                             {message.role === 'ASSISTANT' && (message.provider || message.modelAlias)
@@ -1212,8 +1277,8 @@ export default function AiFloatingChat() {
                                 role="option"
                                 aria-selected={selectedModel === model.id}
                                 onClick={() => {
-                                  setSelectedModel(model.id);
                                   setModelMenuOpen(false);
+                                  void persistModelSelection(model.id, selectedModel);
                                 }}
                                 className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition ${selectedModel === model.id ? 'bg-[#FFF8E1] text-slate-950' : 'text-slate-700 hover:bg-slate-50'}`}
                               >
@@ -1225,6 +1290,7 @@ export default function AiFloatingChat() {
                               </button>
                             )) : null}
                           </div>
+                          {modelsError ? <p className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800" role="status">{modelsError}</p> : null}
                           <p className="border-t border-slate-200 px-3 py-2 text-[10px] leading-4 text-slate-400">Only models returned by the configured provider are selectable.</p>
                         </div>
                       ) : null}

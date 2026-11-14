@@ -2810,7 +2810,7 @@ function ListingMediaUploadBox({
         }
       }
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload the selected file.');
+      setError(getApiErrorMessage(uploadError, 'Unable to upload the selected file.'));
     } finally {
       setUploading(false);
       onUploadingChange(false);

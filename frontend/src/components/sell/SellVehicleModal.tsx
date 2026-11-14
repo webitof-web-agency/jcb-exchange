@@ -60,6 +60,7 @@ import {
   getProviderVehicleIdentityMismatch,
   getVehicleVerificationButtonState,
   getVehicleVerificationSubmitValidationError,
+  mergeMasterOptions,
   mapProviderVehicleToListing,
   type VehicleVerificationSource,
 } from '@/lib/sellVehicleVerification';
@@ -865,15 +866,15 @@ export default function SellVehicleModal({
         }
 
         if (categoryResult.status === 'fulfilled') {
-          setCategories(categoryResult.value.data.data || []);
+          setCategories((current) => mergeMasterOptions(categoryResult.value.data.data || [], current));
         } else {
           throw categoryResult.reason;
         }
 
         if (brandResult.status === 'fulfilled') {
-          setBrands(brandResult.value.data.data || []);
+          setBrands((current) => mergeMasterOptions(brandResult.value.data.data || [], current));
         } else {
-          setBrands([]);
+          setBrands((current) => mergeMasterOptions([], current));
         }
 
         if (listingResult.status === 'fulfilled' && listingResult.value) {
@@ -1275,7 +1276,7 @@ export default function SellVehicleModal({
 
   const handleChassisVerification = async () => {
     if (listingVerificationPolicy?.chassisEnabled !== true) {
-      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use vehicle number verification.');
+      setError('Chassis verification is currently disabled. Enter the vehicle details manually or use registration number verification.');
       return;
     }
 
@@ -1389,7 +1390,7 @@ export default function SellVehicleModal({
     const registrationNumber = form.registrationNo.trim();
     if (!registrationNumber) {
       setChassisVerificationStatus('FAILED');
-      setError('Enter a vehicle number before verification.');
+      setError('Enter a registration number before verification.');
       return;
     }
 
@@ -1472,7 +1473,7 @@ export default function SellVehicleModal({
       setVerifiedRegistrationNumber('');
       setVehicleVerificationSource('');
       setChassisVerificationId('');
-      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the vehicle number and try again.'));
+      setError(getApiErrorMessage(verificationError, 'Vehicle verification failed. Please check the registration number and try again.'));
     } finally {
       if (requestId === chassisVerificationRequestRef.current) {
         setVerificationLoadingSource('');
@@ -1975,7 +1976,7 @@ export default function SellVehicleModal({
                         check={vehicleIdentity.result?.registration}
                         ready={vehicleIdentity.registrationReady}
                         isChecking={vehicleIdentity.isChecking}
-                        label="vehicle number"
+                        label="registration number"
                       />
                     </div>
 

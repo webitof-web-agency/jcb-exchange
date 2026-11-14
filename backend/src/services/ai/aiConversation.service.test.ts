@@ -71,6 +71,28 @@ test('persists database source and fetch time with an assistant tool result', as
   assert.equal(created.toolFetchedAt.toISOString(), fetchedAt.toISOString());
 });
 
+test('redacts internal identifiers when previously stored messages are read', async () => {
+  const repository = repositoryMock();
+  repository.listMessages = async () => [{
+    id: 'message-1',
+    conversationId: 'conversation-1',
+    role: 'ASSISTANT',
+    content: 'Lead ID: 32e28d69-5b6e-41b8-a1dd-850528f6ad09',
+    requestId: 'request-1',
+    provider: 'openai',
+    modelAlias: 'test-model',
+    toolName: 'crm.leads',
+    toolSource: 'database',
+    toolFetchedAt: null,
+    createdAt: new Date('2026-11-13T00:00:00.000Z'),
+  }];
+  const service = new AiConversationService(repository);
+
+  const [message] = await service.getMessages('user-1', 'conversation-1');
+  assert.equal(message?.content.includes('32e28d69-5b6e-41b8-a1dd-850528f6ad09'), false);
+  assert.match(message?.content ?? '', /\[REDACTED_INTERNAL_ID\]/);
+});
+
 test('rejects appending to a conversation owned by another operator', async () => {
   const repository = repositoryMock();
   repository.findConversation = async () => ({ id: 'conversation-1', actorUserId: 'other-user' });

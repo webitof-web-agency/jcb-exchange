@@ -46,6 +46,19 @@ export type VehicleVerificationButtonState = {
   isLocked: boolean;
 };
 
+export const mergeMasterOptions = <T extends { id: string | number; name: string }>(
+  loadedOptions: readonly T[],
+  currentOptions: readonly T[],
+): T[] => {
+  const loadedIds = new Set(loadedOptions.map((option) => String(option.id)));
+  const providerOptions = currentOptions.filter((option) => {
+    const optionId = String(option.id);
+    return optionId.startsWith('__provider_') && !loadedIds.has(optionId);
+  });
+
+  return [...loadedOptions, ...providerOptions];
+};
+
 export const getVehicleVerificationButtonState = (
   source: VehicleVerificationSource,
   loadingSource: VehicleVerificationSource | '',
@@ -159,16 +172,16 @@ export const getVehicleVerificationSubmitValidationError = ({
     return 'Verify the current vehicle identity before posting this vehicle.';
   }
   if (source === 'RC_FULL' && !currentRegistration) {
-    return 'Vehicle number is required before RC verification.';
+    return 'Registration number is required before RC verification.';
   }
   if (currentChassis !== verifiedChassis) {
     return 'Verify the current chassis number before posting this vehicle.';
   }
   if (source === 'RC_FULL' && (!verifiedRegistration || currentRegistration !== verifiedRegistration)) {
-    return 'Verify the current vehicle number before posting this vehicle.';
+    return 'Verify the current registration number before posting this vehicle.';
   }
   if (source === 'CHASSIS' && currentRegistration && verifiedRegistration && currentRegistration !== verifiedRegistration) {
-    return 'Verify the current vehicle number before posting this vehicle.';
+    return 'Verify the current registration number before posting this vehicle.';
   }
   return null;
 };
@@ -365,13 +378,13 @@ export const getProviderVehicleIdentityMismatch = (
   const requestedChassis = normalizeChassis(requestedChassisNumber);
 
   if (source === 'RC_FULL' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   if (requestedChassis && returnedChassis && requestedChassis !== returnedChassis) {
     return 'The verified chassis number does not match the entered chassis number.';
   }
   if (source === 'CHASSIS' && requestedRegistration && returnedRegistration && requestedRegistration !== returnedRegistration) {
-    return 'The verified vehicle number does not match the entered vehicle number.';
+    return 'The verified registration number does not match the entered registration number.';
   }
   return null;
 };

@@ -472,13 +472,13 @@ const getListingVerificationContext = async ({
   const normalizedRegistration = normalizeText(registrationNumber).toUpperCase().replace(/[\s/-]+/g, '');
   const normalizedVerificationId = normalizeText(verificationId);
   if (!normalizedRegistration && !canBypassVerification) {
-    return { record: null, error: 'Vehicle number is required before posting this vehicle.', source };
+    return { record: null, error: 'Registration number is required before posting this vehicle.', source };
   }
 
   let record: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
   if (normalizedVerificationId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedVerificationId)) {
-      return { record: null, error: canBypassVerification ? null : 'Verify the current vehicle number before posting this vehicle.', source };
+      return { record: null, error: canBypassVerification ? null : 'Verify the current registration number before posting this vehicle.', source };
     }
     record = await prismaAny.rcOwnerHistoryRecord.findUnique({
       where: { id: normalizedVerificationId, serviceKey: 'RC_FULL' },
@@ -505,7 +505,7 @@ const getListingVerificationContext = async ({
 
   return {
     record: verifiedForSnapshot ? record : null,
-    error: canBypassVerification || verifiedForRequester ? null : 'Verify the current vehicle number before posting this vehicle.',
+    error: canBypassVerification || verifiedForRequester ? null : 'Verify the current registration number before posting this vehicle.',
     source,
   };
 };
@@ -1168,10 +1168,10 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
     }
     if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
-      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the vehicle number or chassis number again.', code: 'vehicle_verification_required' });
+      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the registration number or chassis number again.', code: 'vehicle_verification_required' });
     }
     if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
-      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and vehicle number before saving.', code: 'vehicle_reverification_required' });
+      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and registration number before saving.', code: 'vehicle_reverification_required' });
     }
 
     const listing = await prismaAny.$transaction(async (tx: any) => {
@@ -1831,10 +1831,10 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
     }
     if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
-      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the vehicle number or chassis number again.', code: 'vehicle_verification_required' });
+      return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the registration number or chassis number again.', code: 'vehicle_verification_required' });
     }
     if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
-      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and vehicle number before saving.', code: 'vehicle_reverification_required' });
+      return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and registration number before saving.', code: 'vehicle_reverification_required' });
     }
 
     const updatedListing = await prismaAny.$transaction(async (tx: any) => {
