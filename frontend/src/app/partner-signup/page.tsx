@@ -60,6 +60,7 @@ export default function PartnerSignupPage() {
   const [loadingLocations, setLoadingLocations] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const gstinReady = GSTIN_PATTERN.test(gstin);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,17 +98,11 @@ export default function PartnerSignupPage() {
   const verifyGst = async () => {
     setError('');
     const cleanGstin = gstin.replace(/\s/g, '').toUpperCase();
-    const cleanEmail = sanitizeEmail(email);
-    const cleanMobile = sanitizeMobile(mobile);
     if (!GSTIN_PATTERN.test(cleanGstin)) return setGst({ status: 'error', message: 'Enter a valid 15-character GSTIN.' });
-    if (!isBusinessEmail(cleanEmail)) return setGst({ status: 'error', message: 'Use your dealership/company email. Gmail and other personal email providers are not accepted.' });
-    if (!isValidIndianMobile(cleanMobile)) return setGst({ status: 'error', message: 'Enter a valid 10-digit mobile number first.' });
-    if (!countryId || !stateId || !cityId) return setGst({ status: 'error', message: 'Select country, state and city first.' });
     setGst({ status: 'loading' });
     try {
       const response = await api.post('/auth/partner/signup/verify-gstin', {
-        gstin: cleanGstin, email: cleanEmail, mobile: cleanMobile,
-        countryId: Number(countryId), stateId: Number(stateId), cityId: Number(cityId),
+        gstin: cleanGstin,
       });
       const result = response.data as { claimToken?: string; status?: string; businessName?: string | null; legalName?: string | null; maskedGstin?: string | null };
       if (!result.claimToken || result.status !== 'SUCCESS') throw new Error('GST verification did not return a valid claim.');
@@ -169,18 +164,18 @@ export default function PartnerSignupPage() {
             <label className="block text-sm font-semibold">Dealer name<div className="relative mt-1.5"><User className="absolute left-3 top-3 h-4 w-4 text-zinc-400" /><input value={name} onChange={(e) => setName(e.target.value)} className={`${fieldClass} pl-10`} placeholder="Enter dealer name" required /></div></label>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-semibold">Mobile number<div className="relative mt-1.5"><Phone className="absolute left-3 top-3 h-4 w-4 text-zinc-400" /><input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))} className={`${fieldClass} pl-10`} placeholder="10-digit mobile number" inputMode="numeric" required /></div></label>
-              <label className="block text-sm font-semibold">Business email<div className="relative mt-1.5"><Mail className="absolute left-3 top-3 h-4 w-4 text-zinc-400" /><input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setGst({ status: 'idle' }); }} className={`${fieldClass} pl-10`} placeholder="dealer@yourcompany.in" required /></div><p className="mt-1 text-xs text-zinc-500">Use your dealership/company domain. Gmail, Yahoo, Outlook and other personal email providers are not accepted.</p></label>
+              <label className="block text-sm font-semibold">Business email<div className="relative mt-1.5"><Mail className="absolute left-3 top-3 h-4 w-4 text-zinc-400" /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={`${fieldClass} pl-10`} placeholder="dealer@yourcompany.in" required /></div><p className="mt-1 text-xs text-zinc-500">Use your dealership/company domain. Gmail, Yahoo, Outlook and other personal email providers are not accepted.</p></label>
             </div>
             <label className="flex items-center gap-2 text-sm text-zinc-700"><input type="checkbox" checked={whatsappSameAsMobile} onChange={(e) => setWhatsappSameAsMobile(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 text-amber-500" />Mobile number is also my WhatsApp number</label>
             {!whatsappSameAsMobile && <label className="block text-sm font-semibold">WhatsApp number<input value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 10))} className={`${fieldClass} mt-1.5`} placeholder="10-digit WhatsApp number" required /></label>}
             <div className="grid gap-3 sm:grid-cols-3">
-              <select value={countryId} onChange={(e) => { setCountryId(e.target.value); setStates([]); setCities([]); setStateId(''); setCityId(''); setGst({ status: 'idle' }); }} className={fieldClass} required disabled={loadingLocations}><option value="">Select country</option>{countries.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
-              <select value={stateId} onChange={(e) => { setStateId(e.target.value); setCities([]); setCityId(''); setGst({ status: 'idle' }); }} className={fieldClass} required disabled={!countryId || !states.length}><option value="">Select state</option>{states.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
-              <select value={cityId} onChange={(e) => { setCityId(e.target.value); setGst({ status: 'idle' }); }} className={fieldClass} required disabled={!stateId || !cities.length}><option value="">Select city</option>{cities.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
+              <select value={countryId} onChange={(e) => { setCountryId(e.target.value); setStates([]); setCities([]); setStateId(''); setCityId(''); }} className={fieldClass} required disabled={loadingLocations}><option value="">Select country</option>{countries.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
+              <select value={stateId} onChange={(e) => { setStateId(e.target.value); setCities([]); setCityId(''); }} className={fieldClass} required disabled={!countryId || !states.length}><option value="">Select state</option>{states.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
+              <select value={cityId} onChange={(e) => setCityId(e.target.value)} className={fieldClass} required disabled={!stateId || !cities.length}><option value="">Select city</option>{cities.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
               <div className="flex items-center justify-between gap-3"><label className="text-sm font-semibold">GSTIN verification</label>{gst.status === 'verified' && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Verified</span>}</div>
-              <div className="mt-2 flex gap-2"><input value={gstin} onChange={(e) => { setGstin(e.target.value.replace(/\s/g, '').toUpperCase().slice(0, 15)); setGst({ status: 'idle' }); }} className={`${fieldClass} min-w-0 flex-1 bg-white`} placeholder="15-character GSTIN" required /><button type="button" onClick={() => void verifyGst()} disabled={gst.status === 'loading' || loading} className="h-11 shrink-0 rounded-xl bg-amber-400 px-4 text-sm font-bold text-zinc-900 disabled:opacity-60">{gst.status === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}</button></div>
+              <div className="mt-2 flex gap-2"><input value={gstin} onChange={(e) => { setGstin(e.target.value.replace(/\s/g, '').toUpperCase().slice(0, 15)); setGst({ status: 'idle' }); }} className={`${fieldClass} min-w-0 flex-1 bg-white`} placeholder="15-character GSTIN" required /><button type="button" onClick={() => void verifyGst()} disabled={!gstinReady || gst.status === 'loading' || loading} title={gstinReady ? 'Verify GSTIN' : 'Enter a valid GSTIN to enable verification'} className="h-11 shrink-0 rounded-xl bg-amber-400 px-4 text-sm font-bold text-zinc-900 disabled:opacity-60">{gst.status === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}</button></div>
               {gst.status === 'verified' && <p className="mt-2 text-xs font-medium text-emerald-700">{gst.businessName || gst.legalName || gst.maskedGstin || 'GSTIN verified successfully.'}</p>}
               {gst.status === 'error' && <p className="mt-2 text-xs font-medium text-red-700">{gst.message}</p>}
             </div>

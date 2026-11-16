@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import aiRouter from './ai.routes';
+import publicAiRouter from './publicAi.routes';
 import superadminRouter from './superadmin.routes';
 
 type RouterLayer = {
@@ -68,4 +69,15 @@ test('keeps AI provider settings behind the dedicated AI settings permission han
     { path: '/ai-settings/test', methods: ['post'], handlers: ['requireAiSettingsManagement', 'testAiSettingsConnectionController'] },
     { path: '/ai-settings/key', methods: ['delete'], handlers: ['requireAiSettingsManagement', 'removeAiSettingsKeyController'] },
   ]);
+});
+
+test('protects legacy public AI endpoints with internal operator authorization', () => {
+  const layers = layersOf(publicAiRouter);
+  assert.deepEqual(layers.slice(0, 2).map((layer) => layer.name), ['requireAuth', 'requireAiAccess']);
+
+  const endpoints = layers
+    .filter((layer) => layer.route)
+    .map((layer) => `${Object.keys(layer.route?.methods || {}).sort().join(',')}:${layer.route?.path}`);
+
+  assert.deepEqual(endpoints, ['post:/buyer-search', 'post:/support']);
 });

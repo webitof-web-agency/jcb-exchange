@@ -24,6 +24,7 @@ import {
   AlertCircle,
   TrendingUp,
   Handshake,
+  Video,
 } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
@@ -720,44 +721,66 @@ const getVideoPosterFrame = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const video = document.createElement('video');
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
 
+    let finished = false;
     const cleanup = () => {
       URL.revokeObjectURL(objectUrl);
+      video.removeAttribute('src');
+      video.load();
     };
 
-    video.onloadeddata = () => {
+    const done = (dataUrl: string) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      resolve(dataUrl);
+    };
+
+    const fail = (error: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      reject(error);
+    };
+
+    const timeout = setTimeout(() => {
+      fail(new Error('Video poster timeout'));
+    }, 4000);
+
+    const tryCapture = () => {
       try {
+        if (!video.videoWidth || !video.videoHeight) return false;
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        canvas.width = Math.min(video.videoWidth, 1280);
+        canvas.height = Math.min(video.videoHeight, 720);
         const context = canvas.getContext('2d');
-
-        if (!context) {
-          cleanup();
-          reject(new Error('Unable to prepare video preview.'));
-          return;
-        }
-
+        if (!context) { fail(new Error('Unable to prepare video preview.')); return true; }
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/webp', 0.82);
-        cleanup();
-        resolve(dataUrl);
+        done(canvas.toDataURL('image/jpeg', 0.85));
+        return true;
       } catch (error) {
-        cleanup();
-        reject(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+        fail(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+        return true;
       }
     };
 
-    video.onerror = () => {
-      cleanup();
-      reject(new Error('Unable to read the selected video.'));
+    video.onloadedmetadata = () => {
+      try {
+        if (video.duration > 0.1) { video.currentTime = Math.min(0.5, video.duration / 2); }
+        else { tryCapture(); }
+      } catch { tryCapture(); }
     };
-
+    video.onseeked = () => { tryCapture(); };
+    video.onloadeddata = () => { if (!finished) tryCapture(); };
+    video.onerror = () => { fail(new Error('Unable to read the selected video.')); };
     video.src = objectUrl;
   });
+
 
 export default function SellVehicleModal({
   isOpen,
@@ -3445,12 +3468,11 @@ function ListingMediaUploadBox({
       if (kind === 'image') {
         onPreviewReady(URL.createObjectURL(file));
       } else {
-        try {
-          const posterFrame = await getVideoPosterFrame(file);
-          onPreviewReady(posterFrame);
-        } catch {
-          onPreviewReady('');
-        }
+        // For video: set blob URL immediately so the <video> element can play it
+        const blobUrl = URL.createObjectURL(file);
+        onPreviewReady(blobUrl);
+        // Also try to get a poster frame (optional; if it fails, the video tag still shows)
+        void getVideoPosterFrame(file).catch(() => {});
       }
     } catch (uploadError) {
       if (axios.isAxiosError(uploadError) && isAuthenticationFailure(uploadError)) {
@@ -3481,16 +3503,22 @@ function ListingMediaUploadBox({
       >
         {hasUploadedPreview ? (
           kind === 'video' ? (
-            <video
-              src={previewUrl || restoredFileUrl}
-              muted
-              loop
-              autoPlay
-              playsInline
-              preload="metadata"
-              aria-label={label}
-              className="h-full w-full rounded-xl object-cover transition duration-300 group-hover:scale-105"
-            />
+            <>
+              <video
+                key={previewUrl || restoredFileUrl}
+                src={previewUrl || restoredFileUrl}
+                muted
+                playsInline
+                preload="metadata"
+                aria-label={label}
+                className="h-full w-full rounded-xl object-cover transition duration-300 group-hover:scale-105"
+              />
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/25">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md">
+                  <PlayCircle className="h-4 w-4 text-gray-900" />
+                </div>
+              </div>
+            </>
           ) : (
             <Image
               src={previewUrl || restoredFileUrl}

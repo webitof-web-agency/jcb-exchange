@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeListingPayload } from './listingMedia';
+import { getListingVideoMedia, normalizeListingPayload } from './listingMedia';
 
 const driveUrl = 'https://drive.google.com/uc?id=1Q8mluWQeWxKb91VwauI1Xfu1F6LmtcbH';
 
@@ -35,4 +35,26 @@ test('falls back to legacy top-level media when listing.media is absent', () => 
     id: 'media-0',
     isFeatured: false,
   }]);
+});
+
+test('retains the submitted walkaround video for the partner review form', () => {
+  const videoUrl = 'https://drive.google.com/uc?id=1VideoFileIdABC123456';
+
+  assert.deepEqual(
+    getListingVideoMedia({
+      listing: {
+        media: [
+          { url: driveUrl, type: 'IMAGE' },
+          { url: videoUrl, type: 'VIDEO', slot: 'walkaround-video' },
+        ],
+      },
+    }),
+    {
+      url: videoUrl,
+      type: 'VIDEO',
+      slot: 'walkaround-video',
+      id: 'media-1',
+      isFeatured: false,
+    },
+  );
 });

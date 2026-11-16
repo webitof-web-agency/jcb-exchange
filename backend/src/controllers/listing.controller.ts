@@ -19,8 +19,10 @@ import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization'
 import { dispatchMarketplaceWhatsApp, dispatchPublishedWhatsApp } from '../services/whatsappIntegration.service';
 import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
-import { syncListingRtoForListing } from '../services/listingRto.service';
+import { syncListingRtoForListing, validateListingRtoDetails } from '../services/listingRto.service';
 import { deleteListingPermanently, getListingDeletionImpact } from '../services/listingDeletion.service';
+import { isPartnerListingDraftSave } from '../services/listingDraftPolicy';
+import { normalizePartnerDraftSubmissionStatus } from '../services/listingCompletionReviewPolicy';
 import { isModeratedListingStatus, ListingModerationError, moderateListing } from '../services/listingModeration.service';
 import {
   assertListingStatusChangeAllowed,
@@ -1057,7 +1059,16 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const normalizedModelName = normalizeText(modelName) || 'Not specified';
     const normalizedTitle = normalizeText(title);
     const normalizedStatus = normalizeListingStatus(status, 'PENDING_APPROVAL');
-    const initialListingStatus = isCustomer || req.user.role === 'PARTNER' ? 'PENDING_APPROVAL' : normalizedStatus;
+    const saveAsDraft = isPartnerListingDraftSave({
+      role: req.user.role,
+      status: normalizedStatus,
+      saveAsDraft: req.body?.saveAsDraft,
+    });
+    const initialListingStatus = saveAsDraft
+      ? 'DRAFT'
+      : isCustomer || req.user.role === 'PARTNER'
+        ? 'PENDING_APPROVAL'
+        : normalizedStatus;
     const normalizedState = normalizeText(locationState) || 'Not specified';
     const normalizedCity = normalizeText(locationCity) || 'Not specified';
     const normalizedAddress = normalizeText(address);
@@ -1075,7 +1086,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
       ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
       : parseListingDescriptionRegistration(normalizedDescription);
-    const vehicleVerification = vehicleListingVerificationEnabled
+    const vehicleVerification = !saveAsDraft && vehicleListingVerificationEnabled
       ? await getListingVerificationContext({
         source: normalizedVehicleVerificationSource,
         registrationNumber: requestedRegistrationNumber,
@@ -1088,7 +1099,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     if (vehicleVerification.error) {
       return res.status(422).json({ error: vehicleVerification.error, code: 'vehicle_verification_required' });
     }
-    const providerVerificationDetail = vehicleListingVerificationEnabled
+    const providerVerificationDetail = !saveAsDraft && vehicleListingVerificationEnabled
       ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
       : null;
     const providerVerificationSnapshot = providerVerificationDetail || null;
@@ -1179,13 +1190,13 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
         providerVerificationSnapshot,
       )
       : null;
-    if (identityMismatch) {
+    if (!saveAsDraft && identityMismatch) {
       return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
     }
-    if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
+    if (!saveAsDraft && vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
       return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the registration number or chassis number again.', code: 'vehicle_verification_required' });
     }
-    if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
+    if (!saveAsDraft && vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
       return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and registration number before saving.', code: 'vehicle_reverification_required' });
     }
 
@@ -1254,7 +1265,9 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
 
     // The customer listing push notifications are fired inside createCustomerListingNotifications
     return res.status(201).json({
-      message: 'Listing submitted successfully. It will go live after admin approval.',
+      message: saveAsDraft
+        ? 'Draft saved. Share the completion link with the vehicle owner when ready.'
+        : 'Listing submitted successfully. It will go live after admin approval.',
       listing: serializeListingMediaForResponse(responseListing || listing),
     });
   } catch (error) {
@@ -1310,6 +1323,16 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
       },
       ...(pageSize ? { take: pageSize, skip: (page - 1) * pageSize } : {}),
       include: {
+        ...(req.user.role === 'PARTNER'
+          ? {
+              completionInvites: {
+                where: { status: 'SUBMITTED' as any },
+                orderBy: { usedAt: 'desc' as const },
+                take: 1,
+                select: { id: true, status: true, usedAt: true },
+              },
+            }
+          : {}),
         partner: {
           select: {
             id: true,
@@ -1367,6 +1390,9 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
       listings: listings.map((listing: any) => ({
         ...serializeListingMediaForResponse(listing),
         isPubliclyVisible: isOwnedListingPubliclyVisible(listing),
+        completionReviewRequired: req.user?.role === 'PARTNER'
+          && listing.status === 'DRAFT'
+          && listing.completionInvites?.some((invite: { status: string }) => invite.status === 'SUBMITTED') === true,
         dealer:
           listing.partner?.partnerProfile?.businessName ||
           listing.partner?.name ||
@@ -1434,6 +1460,16 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
     const listing = await prismaAny.listing.findUnique({
       where: { id: String(req.params.id || '') },
       include: {
+        ...(req.user.role === 'PARTNER'
+          ? {
+              completionInvites: {
+                where: { status: 'SUBMITTED' as any },
+                orderBy: { usedAt: 'desc' as const },
+                take: 1,
+                select: { id: true, status: true, usedAt: true },
+              },
+            }
+          : {}),
         partner: {
           select: {
             id: true,
@@ -1507,6 +1543,9 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
           'Unknown partner',
         dealerPhone: resolveListingContactNumber(listing.partner),
         dealerCategory: getDealerCategoryLabel(listing.partner),
+        completionReviewRequired: req.user.role === 'PARTNER'
+          && listing.status === 'DRAFT'
+          && listing.completionInvites?.some((invite: { status: string }) => invite.status === 'SUBMITTED') === true,
         ...(vehicleIdentity !== undefined ? { vehicleIdentity } : {}),
       },
     });
@@ -1645,6 +1684,11 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       : hasOwnField('status') && !isReviewPendingStatus(existingListing.status)
         ? normalizedStatus
         : (existingListing.status || 'PENDING_APPROVAL');
+    nextStatus = normalizePartnerDraftSubmissionStatus({
+      role: req.user.role,
+      currentStatus: existingListing.status,
+      requestedStatus: nextStatus,
+    });
     const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
     const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
     const normalizedAddress = hasOwnField('address')
@@ -1736,6 +1780,67 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
 
     if (payloadValidationError) {
       return res.status(400).json({ error: payloadValidationError });
+    }
+
+    const partnerSubmittingDraft = req.user.role === 'PARTNER'
+      && String(existingListing.status || '').toUpperCase() === 'DRAFT'
+      && nextStatus === 'PENDING_APPROVAL';
+    if (partnerSubmittingDraft) {
+      const missingPartnerField = [
+        [normalizedCategoryId, 'Category'],
+        [normalizedBrandName, 'Brand'],
+        [normalizedModelName, 'Model'],
+        [normalizedAddress, 'Address'],
+      ].find(([value]) => !String(value || '').trim() || /^not specified$/i.test(String(value || '').trim()));
+      if (missingPartnerField) {
+        return res.status(400).json({ error: `${missingPartnerField[1]} is required before submitting for admin approval.` });
+      }
+
+      if (!parsedPrice || parsedPrice.lessThanOrEqualTo(0)) {
+        return res.status(400).json({ error: 'Price is required before submitting for admin approval.' });
+      }
+      if (!parsedOperatingHours || parsedOperatingHours <= 0) {
+        return res.status(400).json({ error: 'Hours Running is required before submitting for admin approval.' });
+      }
+
+      const imageCount = normalizedMedia.filter((item: { type: string }) => item.type === 'IMAGE').length;
+      const videoCount = normalizedMedia.filter((item: { type: string }) => item.type === 'VIDEO').length;
+      if (!imageCount) {
+        return res.status(400).json({ error: 'At least one vehicle image is required before submitting for admin approval.' });
+      }
+      if (!videoCount) {
+        return res.status(400).json({ error: 'A vehicle video is required before submitting for admin approval.' });
+      }
+
+      const storedRto = existingListing.rtoRecords?.[0];
+      const rtoInput = rtoDetails && typeof rtoDetails === 'object'
+        ? rtoDetails
+        : storedRto
+          ? {
+              registrationNo: storedRto.vehicleNumber,
+              vehicleType: storedRto.vehicleType,
+              vehicleModel: storedRto.vehicleModel,
+              operatingHours: parsedOperatingHours,
+              hirePurchaseStatus: storedRto.hirePurchaseStatus,
+              financerName: storedRto.financerName,
+              taxStatus: storedRto.taxStatus,
+              taxValidUntil: storedRto.taxValidUntil,
+              fitnessStatus: storedRto.fitnessStatus,
+              fitnessValidUntil: storedRto.fitnessValidUntil,
+              insuranceStatus: storedRto.insuranceStatus,
+              insuranceValidUntil: storedRto.insuranceValidUntil,
+              pucStatus: storedRto.pucStatus,
+              pucValidUntil: storedRto.pucValidUntil,
+              hsrpStatus: storedRto.hsrpStatus,
+              rtoOffice: storedRto.rtoOffice,
+            }
+          : null;
+      const rtoValidationError = rtoInput && typeof rtoInput === 'object'
+        ? validateListingRtoDetails(rtoInput)
+        : 'RTO details are required';
+      if (rtoValidationError) {
+        return res.status(400).json({ error: `${rtoValidationError} before submitting for admin approval.` });
+      }
     }
 
     const keepsStoredVehicleKeys = !hasOwnField('description') && !hasOwnField('chassisOrSerialNo') && !hasOwnField('rtoDetails');

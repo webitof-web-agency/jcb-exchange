@@ -7,7 +7,6 @@ export const AI_MANAGE_PERMISSION = 'ai.manage';
 
 export const canUseAiRole = (role: string, permissions: readonly string[]): boolean => (
   role === 'SUPER_ADMIN' ||
-  role === 'ADMIN' ||
   (role === 'EMPLOYEE' && (permissions.includes('ALL_ACCESS') || permissions.includes(AI_PERMISSION)))
 );
 
@@ -39,7 +38,7 @@ export const requireAiAccess = async (req: Request, res: Response, next: NextFun
     return;
   }
 
-  if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN') {
+  if (req.user.role === 'SUPER_ADMIN') {
     next();
     return;
   }

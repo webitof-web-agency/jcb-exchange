@@ -128,30 +128,13 @@ export class PartnerSignupGstVerificationService {
     const validationError = validateGstin(gstin);
     if (validationError) throw new GstVerificationError(validationError, 400, 'invalid_gstin_request');
 
-    const emailValidation = validateBusinessEmail(input.email);
-    if (!emailValidation.valid) {
-      throw new GstVerificationError(
-        emailValidation.code === 'consumer_domain'
-          ? 'Use your dealership or company email address. Consumer email providers such as Gmail are not accepted.'
-          : 'A valid dealership or company email is required.',
-        400,
-        'invalid_business_email',
-      );
-    }
-    const email = emailValidation.normalized;
-    const mobile = normalizeMobile(input.mobile ?? input.whatsappNumber);
-    const countryId = numberId(input.countryId);
-    const stateId = numberId(input.stateId);
-    const cityId = numberId(input.cityId);
-    const emailHash = hashSignupIdentity(email, this.claimSecret);
-    const mobileHash = mobile ? hashSignupIdentity(mobile, this.claimSecret) : null;
+    // GST verification is intentionally independent from the rest of signup.
+    // The returned claim is unbound until registration, where the final email,
+    // mobile and location are validated and atomically attached to this claim.
+    // This lets users complete the form in any order without weakening the
+    // one-time, expiring claim protection.
     const requestFingerprint = createVerificationFingerprint('PARTNER_SIGNUP_GST_VERIFY', {
       gstin,
-      emailHash,
-      mobileHash,
-      countryId,
-      stateId,
-      cityId,
     });
 
     const pending = await this.record.findFirst({
@@ -175,11 +158,11 @@ export class PartnerSignupGstVerificationService {
         maskedGstin: maskGstin(gstin),
         requestFingerprint,
         claimHash: hashSignupClaim(claimToken),
-        signupEmailHash: emailHash,
-        signupMobileHash: mobileHash,
-        countryId,
-        stateId,
-        cityId,
+        signupEmailHash: null,
+        signupMobileHash: null,
+        countryId: null,
+        stateId: null,
+        cityId: null,
         expiresAt,
       },
     });
@@ -242,19 +225,27 @@ export class PartnerSignupGstVerificationService {
     if (!record || record.status !== GST_STATUS.SUCCESS || record.consumedAt || record.expiresAt <= this.now()) {
       throw new GstVerificationError('GST verification has expired or was already used. Verify GST again.', 409, 'gst_claim_expired');
     }
-    if (record.signupEmailHash !== emailHash || record.signupMobileHash !== mobileHash) {
-      throw new GstVerificationError('GST verification does not match the signup details.', 409, 'gst_claim_identity_mismatch');
-    }
     const requestedLocation = {
       countryId: numberId(input.countryId),
       stateId: numberId(input.stateId),
       cityId: numberId(input.cityId),
     };
-    if (
+    const isUnboundClaim = !record.signupEmailHash
+      && !record.signupMobileHash
+      && record.countryId == null
+      && record.stateId == null
+      && record.cityId == null;
+    if (!isUnboundClaim && (
+      record.signupEmailHash !== emailHash ||
+      record.signupMobileHash !== mobileHash
+    )) {
+      throw new GstVerificationError('GST verification does not match the signup details.', 409, 'gst_claim_identity_mismatch');
+    }
+    if (!isUnboundClaim && (
       record.countryId !== requestedLocation.countryId ||
       record.stateId !== requestedLocation.stateId ||
       record.cityId !== requestedLocation.cityId
-    ) {
+    )) {
       throw new GstVerificationError('GST verification does not match the selected location.', 409, 'gst_claim_location_mismatch');
     }
     const runtime = await this.runtime();
@@ -271,10 +262,32 @@ export class PartnerSignupGstVerificationService {
         status: GST_STATUS.SUCCESS,
         consumedAt: null,
         expiresAt: { gt: this.now() },
-        signupEmailHash: emailHash,
-        ...(mobileHash ? { signupMobileHash: mobileHash } : { signupMobileHash: null }),
+        ...(isUnboundClaim
+          ? {
+            signupEmailHash: null,
+            signupMobileHash: null,
+            countryId: null,
+            stateId: null,
+            cityId: null,
+          }
+          : {
+            signupEmailHash: emailHash,
+            ...(mobileHash ? { signupMobileHash: mobileHash } : { signupMobileHash: null }),
+          }),
       },
-      data: { consumedAt: this.now(), consumedByUserId },
+      data: {
+        ...(isUnboundClaim
+          ? {
+            signupEmailHash: emailHash,
+            signupMobileHash: mobileHash,
+            countryId: requestedLocation.countryId,
+            stateId: requestedLocation.stateId,
+            cityId: requestedLocation.cityId,
+          }
+          : {}),
+        consumedAt: this.now(),
+        consumedByUserId,
+      },
     });
     if (!consumed || consumed.count !== 1) {
       throw new GstVerificationError('GST verification was already used. Verify GST again.', 409, 'gst_claim_already_used');

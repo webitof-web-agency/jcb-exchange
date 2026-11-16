@@ -31,6 +31,7 @@ import { financeHubRoutes } from '../modules/finance-hub';
 import { crmRoutes } from '../modules/crm';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import listingCompletionRoutes from './listingCompletion.routes';
 
 const router = Router();
 
@@ -39,6 +40,7 @@ router.use('/auth', authRoutes);
 router.use('/documents', documentRoutes);
 router.use('/superadmin', superAdminRoutes);
 router.use('/listings', listingRoutes);
+router.use('/listing-completion', listingCompletionRoutes);
 router.use('/leads', leadRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);

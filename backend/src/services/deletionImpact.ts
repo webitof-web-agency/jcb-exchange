@@ -44,6 +44,42 @@ export type DeletionImpact = {
   confirmationWord: string;
 };
 
+export type FinancePartyActivity = {
+  id: string;
+  openingBalances: number;
+  vouchers: number;
+  voucherLines: number;
+  documents: number;
+  settlements: number;
+  schedules: number;
+  followUps: number;
+  writeOffs: number;
+  linkedElsewhere?: boolean;
+};
+
+export const canPermanentlyDeleteAccount = (viewer: { role: string; permissions?: readonly string[] }) =>
+  viewer.role === 'SUPER_ADMIN'
+  || viewer.permissions?.includes('ALL_ACCESS') === true
+  || viewer.permissions?.includes('users.delete') === true;
+
+export const classifyFinancePartyActivity = (parties: readonly FinancePartyActivity[]) => {
+  const hasActivity = (party: FinancePartyActivity) => [
+    party.openingBalances,
+    party.vouchers,
+    party.voucherLines,
+    party.documents,
+    party.settlements,
+    party.schedules,
+    party.followUps,
+    party.writeOffs,
+  ].some((count) => count > 0);
+
+  return {
+    deletableIds: parties.filter((party) => !hasActivity(party) && !party.linkedElsewhere).map((party) => party.id),
+    blockedIds: parties.filter((party) => hasActivity(party) || party.linkedElsewhere).map((party) => party.id),
+  };
+};
+
 export const DELETE_CONFIRMATION_WORD = 'DELETE';
 
 export class DeletionBlockedError extends Error {

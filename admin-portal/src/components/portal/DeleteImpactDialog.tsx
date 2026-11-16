@@ -44,17 +44,23 @@ function CheckRow({
   disabled,
   onToggle,
   hint,
+  readOnly = false,
 }: {
   item: ImpactGroup;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
   hint?: string;
+  readOnly?: boolean;
 }) {
   return (
     <li>
-      <label className={`flex items-start gap-2 px-3 py-2 ${disabled ? '' : 'cursor-pointer hover:bg-slate-50'}`}>
-        <input type="checkbox" checked={checked} onChange={onToggle} disabled={disabled} className="mt-0.5 h-4 w-4 shrink-0 accent-red-600" />
+      <label className={`flex items-start gap-2 px-3 py-2 ${readOnly || disabled ? '' : 'cursor-pointer hover:bg-slate-50'}`}>
+        {readOnly ? (
+          <span aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 rounded border border-slate-300 bg-slate-50" />
+        ) : (
+          <input type="checkbox" checked={checked} onChange={onToggle} disabled={disabled} className="mt-0.5 h-4 w-4 shrink-0 accent-red-600" />
+        )}
         <span className="min-w-0 flex-1">
           <span className="block font-medium text-slate-800">{item.label} <span className="text-slate-500">({item.count})</span></span>
           {item.note ? <span className="block text-[11px] text-slate-500">{item.note}</span> : null}
@@ -228,6 +234,7 @@ export default function DeleteImpactDialog({
                         checked={selected.includes(item.key)}
                         disabled={!deleteAvailable}
                         onToggle={() => toggle(item.key)}
+                        readOnly={!deleteAvailable}
                         hint={deleteAvailable && !selected.includes(item.key) ? 'These cannot be kept without the record.' : undefined}
                       />
                     ))}
@@ -246,6 +253,7 @@ export default function DeleteImpactDialog({
                         checked={selected.includes(item.key)}
                         disabled={!deleteAvailable}
                         onToggle={() => toggle(item.key)}
+                        readOnly={!deleteAvailable}
                       />
                     ))}
                   </ul>

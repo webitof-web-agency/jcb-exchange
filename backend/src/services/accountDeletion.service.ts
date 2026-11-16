@@ -3,6 +3,8 @@ import prisma from '../lib/prisma';
 import { removeListingMediaFiles, removeListingsInTx } from './listingDeletion.service';
 import {
   assertDeleteRequest,
+  canPermanentlyDeleteAccount,
+  classifyFinancePartyActivity,
   DeletionBlockedError,
   finishImpact,
   group,
@@ -19,7 +21,7 @@ import {
 type Db = Prisma.TransactionClient | typeof prisma;
 const anyDb = (db: Db) => db as any;
 
-export type AccountDeletionViewer = { id: string; role: string };
+export type AccountDeletionViewer = { id: string; role: string; permissions?: readonly string[] };
 
 // Paid verification lookups and API usage are billing records, all linked by requestedById.
 const VERIFICATION_DELEGATES = [
@@ -90,6 +92,43 @@ const splitLeads = async (db: Db, userId: string) => {
 const countVerificationRecords = async (db: Db, userId: string) =>
   sum(await Promise.all(VERIFICATION_DELEGATES.map((delegate) => anyDb(db)[delegate].count({ where: { requestedById: userId } }))));
 
+const loadFinancePartyDeletion = async (db: Db, userId: string, profileId: string | null) => {
+  const d = anyDb(db);
+  const targetLinks = await d.finPartyLink.findMany({
+    where: { OR: [{ linkType: 'USER', linkId: userId }, ...(profileId ? [{ linkType: 'PARTNER_PROFILE', linkId: profileId }] : [])] },
+    select: { partyId: true, linkType: true, linkId: true },
+  });
+  const partyIds = [...new Set<string>(targetLinks.map((link: { partyId: string }) => link.partyId))];
+  if (!partyIds.length) return { deletableIds: [], blockedIds: [] };
+
+  const allLinks = await d.finPartyLink.findMany({
+    where: { partyId: { in: partyIds } },
+    select: { partyId: true, linkType: true, linkId: true },
+  });
+  const targetLinkKeys = new Set(targetLinks.map((link: { linkType: string; linkId: string }) => `${link.linkType}:${link.linkId}`));
+  const linkedElsewhere = new Set(
+    allLinks
+      .filter((link: { partyId: string; linkType: string; linkId: string }) => !targetLinkKeys.has(`${link.linkType}:${link.linkId}`))
+      .map((link: { partyId: string }) => link.partyId),
+  );
+
+  const parties = await Promise.all(partyIds.map(async (id) => {
+    const [openingBalances, vouchers, voucherLines, documents, settlements, schedules, followUps, writeOffs] = await Promise.all([
+      d.finOpeningBalance.count({ where: { partyId: id } }),
+      d.finVoucher.count({ where: { partyId: id } }),
+      d.finVoucherLine.count({ where: { partyId: id } }),
+      d.finDocument.count({ where: { partyId: id } }),
+      d.finPartnerSettlement.count({ where: { partyId: id } }),
+      d.finPaymentSchedule.count({ where: { partyId: id } }),
+      d.finFollowUp.count({ where: { partyId: id } }),
+      d.finWriteOff.count({ where: { partyId: id } }),
+    ]);
+    return { id, openingBalances, vouchers, voucherLines, documents, settlements, schedules, followUps, writeOffs, linkedElsewhere: linkedElsewhere.has(id) };
+  }));
+
+  return classifyFinancePartyActivity(parties);
+};
+
 const buildAccountImpact = async (db: Db, userId: string, viewer: AccountDeletionViewer) => {
   const target = await loadTarget(db, userId);
   if (!target) return null;
@@ -146,15 +185,13 @@ const buildAccountImpact = async (db: Db, userId: string, viewer: AccountDeletio
         d.candidateRating.count({ where: { evaluatorId: userId } }),
         d.interviewFeedback.count({ where: { interviewerId: userId } }),
       ]).then(sum),
-      d.finPartyLink.count({
-        where: { OR: [{ linkType: 'USER', linkId: userId }, ...(profileId ? [{ linkType: 'PARTNER_PROFILE', linkId: profileId }] : [])] },
-      }),
+      loadFinancePartyDeletion(db, userId, profileId),
     ]),
   ]);
   const [
     notifications, mobileOtps, emailOtps, permissions, blogQuestions, crmContacts, crmContactFollowUps, teamMemberships,
     ownedLeads, ownedContacts, ownedFollowUps, reviewedWork, recruitmentWork, createdUsers,
-    payments, primeSubscriptions, auditLogs, kycReviewHistory, agreements, recruitmentNotes, financeParties,
+    payments, primeSubscriptions, auditLogs, kycReviewHistory, agreements, recruitmentNotes, financePartyDeletion,
   ] = counts;
 
   const partnerGroups: DeletionGroup[] = [];
@@ -179,7 +216,7 @@ const buildAccountImpact = async (db: Db, userId: string, viewer: AccountDeletio
   const selfOrOwner = target.role === 'SUPER_ADMIN'
     ? 'Super admin accounts cannot be deleted.'
     : target.id === viewer.id ? 'You cannot delete your own account.' : null;
-  const viewerIsSuperAdmin = viewer.role === 'SUPER_ADMIN';
+  const viewerMayDelete = canPermanentlyDeleteAccount(viewer);
 
   const impact = finishImpact(
     {
@@ -188,8 +225,8 @@ const buildAccountImpact = async (db: Db, userId: string, viewer: AccountDeletio
       name: target.partnerProfile?.businessName || target.name || target.email,
       subtitle: [target.email, target.mobile].filter(Boolean).join(' · '),
       currentStatus: String(target.status || 'ACTIVE'),
-      viewerCanDelete: viewerIsSuperAdmin && !selfOrOwner,
-      viewerDeleteNote: selfOrOwner || (viewerIsSuperAdmin ? null : 'Only a super admin can permanently delete accounts. You can deactivate, suspend, block or close it.'),
+      viewerCanDelete: viewerMayDelete && !selfOrOwner,
+      viewerDeleteNote: selfOrOwner || (viewerMayDelete ? null : 'Only a super admin or an employee with users.delete permission can permanently delete accounts.'),
       alternatives: target.role === 'SUPER_ADMIN' || target.id === viewer.id
         ? []
         : ACCOUNT_ALTERNATIVES.filter((item) => item.status !== String(target.status || 'ACTIVE')),
@@ -220,10 +257,11 @@ const buildAccountImpact = async (db: Db, userId: string, viewer: AccountDeletio
       group('verifications', 'Paid verification and API records', verificationRecords, 'BLOCKS'),
       group('auditLogs', 'Audit history of their actions', auditLogs + kycReviewHistory, 'BLOCKS'),
       group('recruitmentNotes', 'Recruitment notes, ratings and feedback they wrote', recruitmentNotes, 'BLOCKS'),
-      group('financeParties', 'Finance Hub party (accounts)', financeParties, 'BLOCKS'),
+      group('financeParties', 'Empty Finance Hub party (account)', financePartyDeletion.deletableIds.length, 'DELETED', 'No financial history exists; this empty account is removed with the user.'),
+      group('financeHistory', 'Finance Hub party with financial history or shared links', financePartyDeletion.blockedIds.length, 'BLOCKS', 'Financial records and shared accounting links are never deleted.'),
     ],
   );
-  return { target, profileId, listings, leads, impact };
+  return { target, profileId, listings, leads, impact, financePartyDeletion };
 };
 
 export const getAccountDeletionImpact = async (userId: string, viewer: AccountDeletionViewer) =>
@@ -239,7 +277,7 @@ export const deleteAccountPermanently = async (
   // except Finance Hub links is a restrict foreign key, and listings are re-checked one by one below.
   const built = await buildAccountImpact(prisma, userId, viewer);
   if (!built) return null;
-  const { target, profileId, listings, leads, impact } = built;
+  const { target, profileId, listings, leads, impact, financePartyDeletion } = built;
   if (!impact.viewerCanDelete) throw new DeletionBlockedError(impact.viewerDeleteNote || 'You cannot delete this account.', impact);
   const { reason, include } = assertDeleteRequest(impact, request, { requireReason: true });
 
@@ -258,6 +296,11 @@ export const deleteAccountPermanently = async (
       await t.partnerDeposit.deleteMany({ where: { partnerProfileId: profileId, status: { in: DELETABLE_DEPOSIT_STATUSES } } });
       await t.category.deleteMany({ where: { partnerProfileId: profileId } });
       await t.partnerProfile.delete({ where: { id: profileId } });
+    }
+
+    if (financePartyDeletion.deletableIds.length) {
+      await t.finPartyLink.deleteMany({ where: { partyId: { in: financePartyDeletion.deletableIds } } });
+      await t.finParty.deleteMany({ where: { id: { in: financePartyDeletion.deletableIds } } });
     }
 
     await t.mobileOtpChallenge.deleteMany({ where: { userId } });

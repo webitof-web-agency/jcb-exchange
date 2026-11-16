@@ -56,6 +56,16 @@ export const hasListingRtoInput = (form: ListingRtoFormState) => Boolean(
   || form.financerName.trim() || form.hsrpNumber.trim() || form.rtoOffice.trim() || form.rtoAgentName.trim() || form.rtoExpenses || form.vehicleMaintenanceCost,
 );
 
+export const shouldSyncListingRto = ({
+  saveAsDraft,
+  editingListingId,
+  hasInput,
+}: {
+  saveAsDraft: boolean;
+  editingListingId: string | null;
+  hasInput: boolean;
+}) => !saveAsDraft && (!editingListingId || hasInput);
+
 export const validateListingRtoForm = (
   form: ListingRtoFormState,
   base: { registrationNo: string; vehicleType: string; vehicleModel: string; operatingHours: string; insuranceExpiry: string },

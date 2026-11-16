@@ -26,8 +26,6 @@ import {
   List,
   ExternalLink,
   TrendingUp,
-  ArrowUpRight,
-  ShieldCheck,
   CheckCircle2,
   Clock,
   Sparkles,
@@ -52,9 +50,7 @@ import { deleteSecureFileFromServer } from '@/lib/fileUpload';
 import { normalizeSellAccountDocuments } from '@/lib/sellAccountDocuments.mjs';
 import { removeSellAccountRecord } from '@/lib/sellAccountForm.mjs';
 import { calculateSellAccountGst } from '@/lib/sellAccountFinance.mjs';
-import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from 'react-toastify';
-import { mergeSellAccountRecords } from '@/lib/sellAccountDrafts.mjs';
 import { getSourceTypeLabel } from '@/lib/soldVehicleParties.mjs';
 import { summarizeTransferTasks } from '@/lib/rtoTransferTasks.mjs';
 import { isHighlightedSellAccount } from '@/lib/sellAccountListNavigation.mjs';
@@ -63,85 +59,11 @@ import {
   DEAL_STATUS_CONFIG,
   formatDisplayDate as formatDate,
   normalizeServerSellAccount,
-  normalizeSellAccountRecord,
   type SellAccountApiRecord,
   type SellAccountDealStatus,
   type SellAccountDocuments,
   type SellAccountRecord,
-  type StoredSellAccountRecord,
 } from '@/components/accounts/sold-vehicle/soldVehicleModel';
-
-const INITIAL_MOCK_RECORDS: SellAccountRecord[] = [
-  {
-    id: 'SA-2026-001',
-    ownerName: 'Ramesh Patel Construction',
-    ownerNumber: '9876543210',
-    vehicleNumber: 'MH-12-AB-4592',
-    sellDate: '2026-09-10',
-    vehicleType: 'Backhoe Loader',
-    brandName: 'JCB',
-    vehicleModel: 'JCB 3DX Super 2023',
-    sellerName: 'Gujarat Heavy Infra',
-    sellerNumber: '9822011223',
-    purchaserName: 'Sharma Builders & Co',
-    purchaserNumber: '9421098765',
-    purchaseAmount: 2200000,
-    sellAmount: 2550000,
-    transferDetails: 'MH-12 RTO NOC issued, Bank hypothecation cleared',
-    balanceAmount: 50000,
-    expenses: 45000,
-    netProfit: 305000,
-    dealStatus: 'DEAL_DONE',
-    noteSheet: 'Vehicle inspected at Pune depot. Full payment received via NEFT.',
-    createdAt: '2026-09-10T10:30:00Z',
-  },
-  {
-    id: 'SA-2026-002',
-    ownerName: 'Venkatesh Mining Pvt Ltd',
-    ownerNumber: '9765432109',
-    vehicleNumber: 'KA-05-MN-3310',
-    sellDate: '2026-09-12',
-    vehicleType: 'Hydraulic Excavator',
-    brandName: 'CAT',
-    vehicleModel: 'CAT 320D2 GC',
-    sellerName: 'South Earthmovers & Traders',
-    sellerNumber: '9988776655',
-    purchaserName: 'Deccan Granite Works',
-    purchaserNumber: '9844112233',
-    purchaseAmount: 4100000,
-    sellAmount: 4600000,
-    transferDetails: 'State re-registration in progress KA to AP RTO',
-    balanceAmount: 200000,
-    expenses: 80000,
-    netProfit: 420000,
-    dealStatus: 'RTO_WORK_IN_PROGRESS',
-    noteSheet: 'Advance payment of 44 Lacs received. Final balance 2 Lacs due upon RTO transfer.',
-    createdAt: '2026-09-12T14:15:00Z',
-  },
-  {
-    id: 'SA-2026-003',
-    ownerName: 'Ahmad Freight Carriers',
-    ownerNumber: '9123456789',
-    vehicleNumber: 'GJ-01-CD-8821',
-    sellDate: '2026-09-14',
-    vehicleType: 'Heavy Tipper Truck',
-    brandName: 'Tata',
-    vehicleModel: 'Tata Prima 2830.K',
-    sellerName: 'Western Commercial Fleet',
-    sellerNumber: '9711223344',
-    purchaserName: 'Kutch Logistics Ltd',
-    purchaserNumber: '9655443322',
-    purchaseAmount: 3100000,
-    sellAmount: 3450000,
-    transferDetails: 'Fitness & Insurance updated. RTO transfer pending.',
-    balanceAmount: 100000,
-    expenses: 35000,
-    netProfit: 315000,
-    dealStatus: 'OPEN',
-    noteSheet: 'Token amount 50,000 paid by buyer. Inspection scheduled for tomorrow.',
-    createdAt: '2026-09-14T09:00:00Z',
-  },
-];
 
 type ExportFormat = 'csv' | 'xls';
 
@@ -174,8 +96,6 @@ export default function SellAccountsPage() {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const { t } = useTranslation();
-
   useEffect(() => {
     api
       .get('/master/categories')
@@ -235,48 +155,21 @@ export default function SellAccountsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const legacySeedMigrationKey = 'jcb_sell_accounts_legacy_seed_migrated_v2';
-    const readLocalRecords = () => {
-      const legacyRecords = INITIAL_MOCK_RECORDS.map((record) =>
-        normalizeSellAccountRecord(record as StoredSellAccountRecord),
-      );
-      let nextRecords = legacyRecords;
-      const saved = localStorage.getItem('jcb_sell_accounts_records');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          const savedRecords = Array.isArray(parsed)
-            ? (parsed as StoredSellAccountRecord[]).map(normalizeSellAccountRecord)
-            : [];
-          const shouldRestoreLegacyRecords = !localStorage.getItem(legacySeedMigrationKey);
-          nextRecords = shouldRestoreLegacyRecords
-            ? mergeSellAccountRecords(savedRecords, legacyRecords)
-            : savedRecords;
-          if (shouldRestoreLegacyRecords) {
-            localStorage.setItem(legacySeedMigrationKey, '1');
-          }
-        } catch {
-          nextRecords = legacyRecords;
-        }
-      }
-      return nextRecords;
-    };
 
     const loadRecords = async () => {
-      const localRecords = readLocalRecords();
       try {
         const response = await api.get<{ records?: SellAccountApiRecord[] }>('/recruitment/admin/sell-accounts');
         const serverRecords = Array.isArray(response.data?.records)
           ? response.data.records.map(normalizeServerSellAccount)
           : [];
         if (!cancelled) {
-          setRecords(mergeSellAccountRecords(serverRecords, localRecords));
+          setRecords(serverRecords);
           setLoading(false);
         }
       } catch (error) {
-        console.warn('Sold Vehicle API unavailable; using local draft records.', error);
+        console.warn('Sold Vehicle API unavailable.', error);
         if (!cancelled) {
-          setRecords(localRecords);
+          setRecords([]);
           setLoading(false);
         }
       }

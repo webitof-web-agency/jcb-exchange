@@ -18,3 +18,21 @@ export const isValidPartnerBusinessEmail = (value: unknown): boolean => {
 export const isValidPartnerGstin = (value: unknown): boolean => {
   return typeof value === 'string' && GSTIN_PATTERN.test(value.trim());
 };
+
+export type PartnerGstVerificationReadinessInput = {
+  gstin: unknown;
+  email: unknown;
+  mobile: unknown;
+  countryId: unknown;
+  stateId: unknown;
+  cityId: unknown;
+};
+
+export const getPartnerGstVerificationReadiness = (input: PartnerGstVerificationReadinessInput) => {
+  const missing: string[] = [];
+  const gstin = typeof input.gstin === 'string' ? input.gstin.replace(/\s/g, '').toUpperCase() : '';
+
+  if (!isValidPartnerGstin(gstin)) missing.push('GSTIN');
+
+  return { ready: missing.length === 0, missing };
+};

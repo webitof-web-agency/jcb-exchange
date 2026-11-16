@@ -59,9 +59,9 @@ test('creates an expiring signup GST claim and stores provider data encrypted', 
   assert.equal(records.length, 1);
   assert.equal(records[0].status, 'SUCCESS');
   assert.equal(records[0].gstin, '22AAHCJ5752E1ZR');
-  assert.equal(records[0].countryId, 101);
-  assert.equal(records[0].stateId, 22);
-  assert.equal(records[0].cityId, 2201);
+  assert.equal(records[0].countryId, null);
+  assert.equal(records[0].stateId, null);
+  assert.equal(records[0].cityId, null);
   assert.equal(typeof records[0].encryptedResult, 'string');
   assert.equal(records[0].encryptedResult.includes('Ravi Machines'), false);
   const retained = JSON.parse(decryptPanData(records[0].encryptedResult, dataSecret));
@@ -87,19 +87,110 @@ test('rejects an invalid GSTIN before calling the provider', async () => {
   assert.equal(providerCalls, 0);
 });
 
-test('rejects a consumer email before calling the GST provider', async () => {
+test('does not require signup contact details before calling the GST provider', async () => {
   let providerCalls = 0;
   const service = new PartnerSignupGstVerificationService({
     dataSecret,
-    provider: { verifyGstin: async () => { providerCalls += 1; return { data: {} }; } } as any,
-    record: { findFirst: async () => null, create: async () => ({}), update: async () => ({}), updateMany: async () => ({ count: 0 }) },
+    provider: {
+      verifyGstin: async () => {
+        providerCalls += 1;
+        return { data: { gstin: '22AAHCJ5752E1ZR', gstin_status: 'Active' } };
+      },
+    } as any,
+    record: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => ({ id: 'claim-optional', ...data }),
+      update: async ({ data }: any) => ({ id: 'claim-optional', ...data }),
+      updateMany: async () => ({ count: 0 }),
+    },
   });
 
-  await assert.rejects(
-    () => service.verifySignupGstin({ gstin: '22AAHCJ5752E1ZR', email: 'ravi@gmail.com' }),
-    { statusCode: 400, code: 'invalid_business_email' },
-  );
-  assert.equal(providerCalls, 0);
+  const result = await service.verifySignupGstin({ gstin: '22AAHCJ5752E1ZR', email: 'ravi@gmail.com' });
+  assert.equal(result.status, 'SUCCESS');
+  assert.equal(providerCalls, 1);
+});
+
+test('allows GST verification before signup contact and location details are entered', async () => {
+  const records: any[] = [];
+  const service = new PartnerSignupGstVerificationService({
+    dataSecret,
+    provider: {
+      verifyGstin: async ({ id_number }: { id_number: string }) => ({
+        data: { gstin: id_number, gstin_status: 'Active', business_name: 'Ravi Machines' },
+      }),
+    },
+    record: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        const record = { id: 'unbound-claim', ...data };
+        records.push(record);
+        return record;
+      },
+      update: async ({ data }: any) => {
+        Object.assign(records[0], data);
+        return records[0];
+      },
+      updateMany: async () => ({ count: 1 }),
+    },
+  });
+
+  const result = await service.verifySignupGstin({ gstin: '22AAHCJ5752E1ZR' });
+
+  assert.equal(result.status, 'SUCCESS');
+  assert.equal(records[0].signupEmailHash, null);
+  assert.equal(records[0].signupMobileHash, null);
+  assert.equal(records[0].countryId, null);
+  assert.equal(records[0].stateId, null);
+  assert.equal(records[0].cityId, null);
+});
+
+test('atomically binds an unbound GST claim to final signup details when consumed', async () => {
+  const claimToken = 'c'.repeat(64);
+  const updateCalls: any[] = [];
+  const service = new PartnerSignupGstVerificationService({
+    dataSecret,
+    claimSecret: 'claim-secret',
+    provider: {} as any,
+    record: {
+      findFirst: async () => ({
+        id: 'unbound-claim',
+        status: 'SUCCESS',
+        consumedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+        signupEmailHash: null,
+        signupMobileHash: null,
+        countryId: null,
+        stateId: null,
+        cityId: null,
+        encryptedResult: encryptPanData(JSON.stringify({ gstin: '22AAHCJ5752E1ZR' }), dataSecret),
+      }),
+      updateMany: async (args: any) => {
+        updateCalls.push(args);
+        return { count: 1 };
+      },
+      create: async () => ({}),
+      update: async () => ({}),
+    },
+  });
+
+  await service.consumeVerifiedClaim(claimToken, {
+    email: 'ravi@ravi-machines.in',
+    mobile: '9876543210',
+    countryId: 101,
+    stateId: 22,
+    cityId: 2201,
+  }, 'user-1');
+
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].where.id, 'unbound-claim');
+  assert.equal(updateCalls[0].where.signupEmailHash, null);
+  assert.equal(updateCalls[0].where.signupMobileHash, null);
+  assert.equal(updateCalls[0].data.signupEmailHash, hashSignupIdentity('ravi@ravi-machines.in', 'claim-secret'));
+  assert.equal(updateCalls[0].data.signupMobileHash, hashSignupIdentity('9876543210', 'claim-secret'));
+  assert.equal(updateCalls[0].data.countryId, 101);
+  assert.equal(updateCalls[0].data.stateId, 22);
+  assert.equal(updateCalls[0].data.cityId, 2201);
+  assert.equal(updateCalls[0].data.consumedByUserId, 'user-1');
 });
 
 test('does not consume a verified claim when signup location changes', async () => {

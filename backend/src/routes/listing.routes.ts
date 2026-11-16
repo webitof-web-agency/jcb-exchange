@@ -20,6 +20,12 @@ import {
   updateListingPricing,
   updateListingAvailability,
 } from '../controllers/listing.controller';
+import {
+  createCompletionInvite,
+  getActiveCompletionInvite,
+  revokeCompletionInvite,
+  submitCompletionForPartnerReview,
+} from '../controllers/listingCompletionInvite.controller';
 import { verifyRcFullForListing } from '../controllers/rcFull.controller';
 import { assistListingDraft, assistListingImage } from '../controllers/listingCopilot.controller';
 import { requireAuth, requireAdmin } from '../middlewares/auth.middleware';
@@ -38,6 +44,10 @@ router.get('/vehicle-identity-check', requireAuth, vehicleIdentityCheckRateLimit
 router.post('/vehicle-verification/rc-full', requireAuth, listingRcLookupRateLimit, surepassVerificationRateLimit, verifyRcFullForListing);
 router.get('/payment-submissions/customer', requireAuth, getCustomerListingPaymentSubmissions);
 router.get('/payment-submissions/partner', requireAuth, getPartnerListingPaymentSubmissions);
+router.get('/:id/completion-invite', requireAuth, getActiveCompletionInvite);
+router.post('/:id/completion-invite', requireAuth, createCompletionInvite);
+router.delete('/:id/completion-invite', requireAuth, revokeCompletionInvite);
+router.post('/:id/completion-review', requireAuth, submitCompletionForPartnerReview);
 router.get('/:id/payment-settings', requireAuth, getListingPaymentSettings);
 router.post('/:id/razorpay-order', requireAuth, createListingRazorpayOrder);
 router.post('/:id/phonepe-order', requireAuth, createListingPhonePeOrder);

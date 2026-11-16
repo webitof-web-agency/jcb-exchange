@@ -111,6 +111,13 @@ enum ListingStatus {
   BLOCKED
 }
 
+enum ListingCompletionInviteStatus {
+  ACTIVE
+  SUBMITTED
+  EXPIRED
+  REVOKED
+}
+
 enum PartnerStaffRole {
   OWNER
   LISTING_MANAGER
@@ -550,6 +557,7 @@ model User {
   partnerProfile                      PartnerProfile?
   teamMemberships                     PartnerTeamMember[]
   listings                            Listing[]
+  listingCompletionInvites            ListingCompletionInvite[]          @relation("ListingCompletionInvitePartner")
   leads                               Lead[]                               @relation("CustomerLeads")
   assignedLeads                       Lead[]                               @relation("DealerLeads")
   reviewedKycDocs                     KycDocument[]                        @relation("KycReviewer")
@@ -1435,6 +1443,7 @@ model Listing {
   rtoRecords          VehicleRtoRecord[]
   sellAccount         SellAccount?
   vehicleVerification ListingVehicleVerification?
+  completionInvites   ListingCompletionInvite[]
 
   @@index([status, soldAt])
   @@index([registrationNumberKey])
@@ -2570,6 +2579,45 @@ model AiSyncCheckpoint {
 
   @@index([status, updatedAt])
   @@index([lastSyncedAt])
+}
+
+model ListingCompletionInvite {
+  id             String                         @id @default(uuid())
+  listingId      String
+  partnerId      String
+  tokenHash      String                         @unique
+  status         ListingCompletionInviteStatus @default(ACTIVE)
+  expiresAt      DateTime
+  lastAccessedAt DateTime?
+  usedAt         DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+
+  listing Listing                  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  partner User                     @relation("ListingCompletionInvitePartner", fields: [partnerId], references: [id], onDelete: Cascade)
+  uploads ListingCompletionUpload[]
+
+  @@index([listingId, status])
+  @@index([partnerId, status])
+  @@index([status, expiresAt])
+}
+
+model ListingCompletionUpload {
+  id        String                  @id @default(uuid())
+  inviteId  String
+  slot      String?
+  fileUrl   String
+  fileName  String
+  mimeType  String
+  mediaType String
+  claimedAt DateTime?
+  createdAt DateTime                @default(now())
+
+  invite ListingCompletionInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+
+  @@index([inviteId, claimedAt])
+  @@index([inviteId, slot])
 }
 
 // External market updates are stored as source-attributed, reviewable insights.

@@ -122,6 +122,8 @@ function SignupPageInner() {
   const loginEmailId = useId();
   const loginPasswordId = useId();
 
+  const gstinReady = isValidPartnerGstin(gstin);
+
   const showLoginSuccessToast = useCallback((user?: AuthenticatedPortalUser) => {
     const displayName = user?.name?.trim() || 'User';
     const roleLabel = user?.role ? formatPortalLabel(user.role) : 'PORTAL';
@@ -259,37 +261,17 @@ function SignupPageInner() {
   const handleGstVerification = async () => {
     setError('');
     const cleanGstin = gstin.replace(/\s/g, '').toUpperCase();
-    const cleanEmail = sanitizeEmail(registerData.email);
-    const cleanMobile = sanitizeMobile(registerData.mobile);
 
     if (!isValidPartnerGstin(cleanGstin)) {
-      setGstVerification({ status: 'error', message: 'Enter a valid 15-character GSTIN.' });
+      setGstVerification({ status: 'idle' });
       return;
     }
-    if (!isValidPartnerBusinessEmail(cleanEmail)) {
-      setGstVerification({ status: 'error', message: 'Enter a valid business/contact email first.' });
-      return;
-    }
-    if (!isValidIndianMobile(cleanMobile)) {
-      setGstVerification({ status: 'error', message: 'Enter a valid mobile number first.' });
-      return;
-    }
-    if (!selectedCountryId || !selectedStateId || !selectedCityId) {
-      setGstVerification({ status: 'error', message: 'Select country, state and city before GST verification.' });
-      return;
-    }
-
     setGstin(cleanGstin);
     setGstVerification({ status: 'loading' });
 
     try {
       const response = await api.post('/auth/partner/signup/verify-gstin', {
         gstin: cleanGstin,
-        email: cleanEmail,
-        mobile: cleanMobile,
-        countryId: Number(selectedCountryId),
-        stateId: Number(selectedStateId),
-        cityId: Number(selectedCityId),
       });
       const result = response.data as {
         claimToken?: string;
@@ -611,7 +593,6 @@ function SignupPageInner() {
                             setSelectedStateId('');
                             setSelectedCityId('');
                             setLocationLoading((current) => ({ ...current, states: Boolean(value), cities: false }));
-                            setGstVerification({ status: 'idle' });
                             if (error) setError('');
                           }}
                         />
@@ -635,7 +616,6 @@ function SignupPageInner() {
                             setCities([]);
                             setSelectedCityId('');
                             setLocationLoading((current) => ({ ...current, cities: Boolean(value) }));
-                            setGstVerification({ status: 'idle' });
                             if (error) setError('');
                           }}
                         />
@@ -656,7 +636,6 @@ function SignupPageInner() {
                           placeholder={locationLoading.cities ? 'Loading…' : !selectedStateId ? 'Select state' : 'Select city'}
                           onChange={(option) => {
                             setSelectedCityId(String(option.id));
-                            setGstVerification({ status: 'idle' });
                             if (error) setError('');
                           }}
                         />
@@ -701,7 +680,8 @@ function SignupPageInner() {
                         <button
                           type="button"
                           onClick={handleGstVerification}
-                          disabled={gstVerification.status === 'loading' || loading}
+                          disabled={!gstinReady || gstVerification.status === 'loading' || loading}
+                          title={gstinReady ? 'Verify GSTIN' : 'Enter a valid GSTIN to enable verification'}
                           className="h-11 shrink-0 rounded-xl border border-amber-400 bg-amber-50 px-3 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {gstVerification.status === 'loading' ? 'Checking…' : 'Verify'}
@@ -717,7 +697,11 @@ function SignupPageInner() {
                           <span className="text-red-600">{gstVerification.message}</span>
                         )}
                         {gstVerification.status === 'idle' && (
-                          <span className="text-zinc-400">Verify GSTIN before registering the dealer.</span>
+                          <span className="text-zinc-400">
+                            {gstinReady
+                              ? 'Verify GSTIN before registering the dealer. Other signup details can be completed in any order.'
+                              : 'Enter a valid 15-character GSTIN to enable verification.'}
+                          </span>
                         )}
                       </div>
                       {fieldErrors.gstin && (
@@ -750,7 +734,6 @@ function SignupPageInner() {
                             onChange={(e) => {
                               const onlyNums = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
                               setRegisterData({ ...registerData, mobile: onlyNums });
-                              setGstVerification({ status: 'idle' });
                               if (error) setError('');
                               if (fieldErrors.mobile) setFieldErrors((prev) => ({ ...prev, mobile: '' }));
                             }}
@@ -825,7 +808,6 @@ function SignupPageInner() {
                           value={registerData.email}
                           onChange={(e) => {
                             setRegisterData({ ...registerData, email: e.target.value });
-                            setGstVerification({ status: 'idle' });
                             if (error) setError('');
                             if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
                           }}

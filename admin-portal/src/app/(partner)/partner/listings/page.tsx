@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, Eye, EyeOff, UserCheck, ChevronDown, CheckCircle2, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
+import { Plus, Search, Truck, X, Upload, Pencil, Trash2, MoreVertical, Eye, EyeOff, UserCheck, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Sparkles, ShieldCheck, Link2, LayoutGrid, MapPin, PlayCircle, Video } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -31,7 +31,7 @@ import {
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
-import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
+import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, shouldSyncListingRto, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
@@ -42,6 +42,9 @@ import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import ListingModerationDialog from '@/components/listings/ListingModerationDialog';
 import { availableListingActions, isHiddenListingStatus, LISTING_ACTION_META, LISTING_STATUS_BADGES, moderateListing, type ListingVisibilityAction } from '@/lib/listingVisibility';
 import { getVehicleIdentityBlockMessage, useVehicleIdentityCheck } from '@/hooks/useVehicleIdentityCheck';
+import { getListingFormTabs, type ListingFormTabKey } from '@/lib/listingFormTabs';
+import { getListingVideoMedia } from '@/lib/listingMedia';
+import { getMediaAssetDisplayName, getMediaPreviewSource } from '@/lib/listingMediaSlotPresentation';
 
 type ListingFormState = {
   category: string;
@@ -92,11 +95,30 @@ type CategoryOption = {
   name: string;
 };
 
+const copyTextToClipboard = async (value: string) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const helper = document.createElement('textarea');
+  helper.value = value;
+  helper.setAttribute('readonly', 'true');
+  helper.style.position = 'fixed';
+  helper.style.opacity = '0';
+  document.body.appendChild(helper);
+  helper.select();
+  const copied = document.execCommand('copy');
+  helper.remove();
+  if (!copied) throw new Error('Clipboard access is unavailable.');
+};
+
 type ListingFormDependencies = {
   categories: CategoryOption[];
   brands: Option[];
   states: Option[];
 };
+
+type ModalTabKey = ListingFormTabKey | 'all';
 
 type ChassisVerificationResponse = {
   success: boolean;
@@ -150,6 +172,7 @@ type ListingRecord = {
   locationCity: string;
   address?: string | null;
   status: string;
+  completionReviewRequired?: boolean;
   createdAt: string;
   brand?: { name: string };
   model?: { name: string };
@@ -392,8 +415,8 @@ const buildMediaPreviewState = (
 
       nextMediaState[explicitSlot] = {
         access: 'public',
-        fileName: mediaItem.url.split('/').pop() || 'image',
-        originalName: mediaItem.url.split('/').pop() || 'image',
+        fileName: getMediaAssetDisplayName({ kind: 'image', fileUrl: mediaItem.url }),
+        originalName: getMediaAssetDisplayName({ kind: 'image', fileUrl: mediaItem.url }),
         mimeType: 'image/webp',
         size: 0,
         fileUrl: mediaItem.url,
@@ -413,8 +436,8 @@ const buildMediaPreviewState = (
 
     nextMediaState[fallbackSlot] = {
       access: 'public',
-      fileName: mediaItem.url.split('/').pop() || 'image',
-      originalName: mediaItem.url.split('/').pop() || 'image',
+      fileName: getMediaAssetDisplayName({ kind: 'image', fileUrl: mediaItem.url }),
+      originalName: getMediaAssetDisplayName({ kind: 'image', fileUrl: mediaItem.url }),
       mimeType: 'image/webp',
       size: 0,
       fileUrl: mediaItem.url,
@@ -423,12 +446,12 @@ const buildMediaPreviewState = (
     nextPreviewState[fallbackSlot] = getAbsoluteFileUrl(mediaItem.url);
   });
 
-  const videoMedia = media.find((item) => String(item.type || '').toUpperCase() === 'VIDEO');
+  const videoMedia = getListingVideoMedia({ listing: { media } });
   if (videoMedia) {
     nextMediaState['walkaround-video'] = {
       access: 'public',
-      fileName: videoMedia.url.split('/').pop() || 'video',
-      originalName: videoMedia.url.split('/').pop() || 'video',
+      fileName: getMediaAssetDisplayName({ kind: 'video', fileUrl: videoMedia.url }),
+      originalName: getMediaAssetDisplayName({ kind: 'video', fileUrl: videoMedia.url }),
       mimeType: videoMedia.url.toLowerCase().endsWith('.webm')
         ? 'video/webm'
         : videoMedia.url.toLowerCase().endsWith('.mov')
@@ -438,13 +461,14 @@ const buildMediaPreviewState = (
       fileUrl: videoMedia.url,
       absoluteUrl: getAbsoluteFileUrl(videoMedia.url),
     };
+    nextPreviewState['walkaround-video'] = getAbsoluteFileUrl(videoMedia.url);
   }
 
   return { nextMediaState, nextPreviewState };
 };
 
 const fieldClassName =
-  'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]';
+  'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107] h-[34px]';
 
 const imageUploadHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
 const videoUploadHelper = `Auto-compressed video (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
@@ -458,10 +482,20 @@ const formatCurrency = (value: string | number) => {
   }).format(numericValue || 0);
 };
 
+const listingFormTabIcons = {
+  equipment: Truck,
+  rto: ShieldCheck,
+  media: Upload,
+  pricing: MapPin,
+  sale: UserCheck,
+} as const;
+
 const availabilityToListingStatus = (value: string) => {
   switch (value.toUpperCase()) {
     case 'AVAILABLE':
       return 'PUBLISHED';
+    case 'DRAFT':
+      return 'DRAFT';
     case 'PENDING':
       return 'PENDING_APPROVAL';
     case 'RESERVED':
@@ -481,8 +515,9 @@ const listingStatusToAvailability = (value: string) => {
       return value.toUpperCase();
     case 'PUBLISHED':
     case 'PAUSED':
-    case 'DRAFT':
       return 'AVAILABLE';
+    case 'DRAFT':
+      return 'DRAFT';
     case 'PENDING_APPROVAL':
     case 'CHANGES_REQUESTED':
       return 'PENDING';
@@ -501,6 +536,8 @@ const localizedAvailability = (status: string) => {
       return 'Available';
     case 'PENDING':
       return 'Pending approval from admin';
+    case 'DRAFT':
+      return 'Draft';
     case 'RESERVED':
       return 'Reserved';
     case 'SOLD':
@@ -659,40 +696,84 @@ const getVideoPosterFrame = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const video = document.createElement('video');
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
 
+    let finished = false;
     const cleanup = () => {
       URL.revokeObjectURL(objectUrl);
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    const done = (dataUrl: string) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      resolve(dataUrl);
+    };
+
+    const fail = (error: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      reject(error);
+    };
+
+    const timeout = setTimeout(() => {
+      fail(new Error('Video poster timeout'));
+    }, 4000);
+
+    const tryCapture = () => {
+      try {
+        if (!video.videoWidth || !video.videoHeight) {
+          return false;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(video.videoWidth, 1280);
+        canvas.height = Math.min(video.videoHeight, 720);
+        const context = canvas.getContext('2d');
+        if (!context) {
+          fail(new Error('Unable to prepare video preview.'));
+          return true;
+        }
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        done(dataUrl);
+        return true;
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+        return true;
+      }
+    };
+
+    video.onloadedmetadata = () => {
+      try {
+        if (video.duration > 0.1) {
+          video.currentTime = Math.min(0.5, video.duration / 2);
+        } else {
+          tryCapture();
+        }
+      } catch {
+        tryCapture();
+      }
+    };
+
+    video.onseeked = () => {
+      tryCapture();
     };
 
     video.onloadeddata = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        const context = canvas.getContext('2d');
-
-        if (!context) {
-          cleanup();
-          reject(new Error('Unable to prepare video preview.'));
-          return;
-        }
-
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/webp', 0.82);
-        cleanup();
-        resolve(dataUrl);
-      } catch (error) {
-        cleanup();
-        reject(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+      if (!finished) {
+        tryCapture();
       }
     };
 
     video.onerror = () => {
-      cleanup();
-      reject(new Error('Unable to read the selected video.'));
+      fail(new Error('Unable to read the selected video.'));
     };
 
     video.src = objectUrl;
@@ -836,6 +917,7 @@ function TableAvailabilityDropdown({
 export default function PartnerListingsPage() {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState<ModalTabKey>('equipment');
   const [form, setForm] = useState<ListingFormState>(initialForm);
   const modalFormRef = useRef<HTMLFormElement | null>(null);
   const soldSectionRef = useRef<HTMLDivElement | null>(null);
@@ -885,15 +967,50 @@ export default function PartnerListingsPage() {
   const { t } = useTranslation();
   const localizedCondition = (value: string) => t(`machineDetails.conditionOptions.${value}`, value);
   const localizedFuelType = (value: string) => t(`machineDetails.fuelOptions.${value}`, value);
+  const uploadedMediaCount = mediaSlots.filter((slot) => Boolean(mediaState[slot.key] || previewState[slot.key])).length;
+  const hasRequiredMedia = Boolean(
+    (mediaState['front-view'] || previewState['front-view']) &&
+    (mediaState['walkaround-video'] || previewState['walkaround-video']),
+  );
+  const listingFormTabs = getListingFormTabs(form.currentAvailability, uploadedMediaCount, hasRequiredMedia);
+  const activeTabIndex = Math.max(0, listingFormTabs.findIndex((tab) => tab.key === modalTab));
 
   const [deleteListingRecord, setDeleteListingRecord] = useState<ListingRecord | null>(null);
   const [visibilityTarget, setVisibilityTarget] = useState<{ listing: ListingRecord; action: ListingVisibilityAction } | null>(null);
   const [updatingAvailabilityIds, setUpdatingAvailabilityIds] = useState<string[]>([]);
   const [openActionDropdownId, setOpenActionDropdownId] = useState<string | null>(null);
+  const [completionInviteBusyId, setCompletionInviteBusyId] = useState<string | null>(null);
+  const [completionReviewListingId, setCompletionReviewListingId] = useState<string | null>(null);
 
   const refreshListings = async () => {
     const response = await api.get<{ listings: ListingRecord[] }>('/listings?compact=true');
     setListings(response.data.listings || []);
+  };
+
+  const createCompletionLink = async (listing: ListingRecord) => {
+    setCompletionInviteBusyId(listing.id);
+    try {
+      const response = await api.post<{ linkPath: string; expiresAt: string }>(`/listings/${listing.id}/completion-invite`, { ttlHours: 72 });
+      const link = `${window.location.origin}${response.data.linkPath}`;
+      await copyTextToClipboard(link);
+      setMessage('Secure completion link copied. It expires in 72 hours and becomes invalid after final submit.');
+    } catch (error) {
+      setError(axios.isAxiosError(error) ? error.response?.data?.error || 'Unable to create completion link.' : 'Unable to create completion link.');
+    } finally {
+      setCompletionInviteBusyId(null);
+    }
+  };
+
+  const revokeCompletionLink = async (listing: ListingRecord) => {
+    setCompletionInviteBusyId(listing.id);
+    try {
+      await api.delete(`/listings/${listing.id}/completion-invite`);
+      setMessage('Completion link revoked successfully.');
+    } catch (error) {
+      setError(axios.isAxiosError(error) ? error.response?.data?.error || 'Unable to revoke completion link.' : 'Unable to revoke completion link.');
+    } finally {
+      setCompletionInviteBusyId(null);
+    }
   };
 
   const ensureFormDependencies = useCallback(() => {
@@ -1141,6 +1258,8 @@ export default function PartnerListingsPage() {
     setMediaState(createEmptyMediaState());
     setPreviewState(createEmptyPreviewState());
     setEditingListingId(null);
+    setCompletionReviewListingId(null);
+    setModalTab('equipment');
     setChassisVerificationStatus('UNVERIFIED');
     setVerifiedChassisNumber('');
     setVerifiedRegistrationNumber('');
@@ -1158,6 +1277,8 @@ export default function PartnerListingsPage() {
     setMessage('');
     setError('');
     setEditingListingId(listing.id);
+    setCompletionReviewListingId(listing.completionReviewRequired ? listing.id : null);
+    setModalTab('equipment');
     const parsedDetails = parseListingDescription(listing.description);
     originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
@@ -1260,8 +1381,12 @@ export default function PartnerListingsPage() {
         ensureFormDependencies(),
       ]);
       const detailedListing = response.data.listing || listing;
-      setListings((current) => current.map((item) => (item.id === detailedListing.id ? detailedListing : item)));
-      populateEditForm(detailedListing, dependencies.states);
+      const listingForEdit = {
+        ...detailedListing,
+        completionReviewRequired: listing.completionReviewRequired || detailedListing.completionReviewRequired,
+      };
+      setListings((current) => current.map((item) => (item.id === listingForEdit.id ? listingForEdit : item)));
+      populateEditForm(listingForEdit, dependencies.states);
     } catch {
       try {
         const dependencies = await ensureFormDependencies();
@@ -1282,6 +1407,8 @@ export default function PartnerListingsPage() {
     setMediaState(createEmptyMediaState());
     setPreviewState(createEmptyPreviewState());
     setEditingListingId(null);
+    setCompletionReviewListingId(null);
+    setModalTab('equipment');
     chassisVerificationRequestRef.current += 1;
     originalChassisNumberRef.current = '';
     originalRegistrationNumberRef.current = '';
@@ -1518,8 +1645,10 @@ export default function PartnerListingsPage() {
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async (event?: React.FormEvent, options: { saveAsDraft?: boolean; submitForApproval?: boolean } = {}) => {
+    event?.preventDefault();
+    const saveAsDraft = options.saveAsDraft === true;
+    const submitForApproval = options.submitForApproval === true;
     setError('');
     setMessage('');
 
@@ -1530,7 +1659,7 @@ export default function PartnerListingsPage() {
       imageCount: mediaSlots.filter((slot) => slot.kind === 'image' && mediaState[slot.key]).length,
       hasVideo: Boolean(mediaState['walkaround-video']),
     });
-    if (mediaRequirementError) {
+    if (!saveAsDraft && mediaRequirementError) {
       setError(mediaRequirementError);
       return;
     }
@@ -1540,20 +1669,6 @@ export default function PartnerListingsPage() {
       return;
     }
 
-    const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
-    const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
-      required: vehicleVerificationRequired,
-      source: vehicleVerificationSource,
-      currentRegistrationNumber: sanitizedForm.registrationNo,
-      currentChassisNumber: sanitizedForm.chassisOrSerialNo,
-      verifiedRegistrationNumber,
-      verifiedChassisNumber,
-      verifiedSource: vehicleVerificationSource,
-    });
-    if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
-      setError(vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.');
-      return;
-    }
     const sanitizedRto = sanitizeListingRtoForm(sanitizedForm.rtoDetails);
     if (sanitizedRto.insuranceStatus !== 'VALID') {
       sanitizedForm.insuranceExpiry = '';
@@ -1565,104 +1680,126 @@ export default function PartnerListingsPage() {
       operatingHours: sanitizedForm.operatingHours,
       insuranceExpiry: sanitizedForm.insuranceExpiry,
     };
-    const shouldSyncRto = !editingListingId || hasListingRtoInput(sanitizedRto);
-    const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
-    if (rtoValidationError) {
-      setError(rtoValidationError);
-      setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
-      return;
-    }
+    const shouldSyncRto = shouldSyncListingRto({
+      saveAsDraft,
+      editingListingId,
+      hasInput: hasListingRtoInput(sanitizedRto),
+    });
 
-    if (!sanitizedForm.price || Number(sanitizedForm.price) <= 0) {
-      setError('Price is required and must be greater than 0.');
-      setForm(sanitizedForm);
-      return;
-    }
+    if (!saveAsDraft) {
+      const vehicleVerificationRequired = listingVerificationPolicy?.required === true;
+      const vehicleVerificationError = getVehicleVerificationSubmitValidationError({
+        required: vehicleVerificationRequired,
+        source: vehicleVerificationSource,
+        currentRegistrationNumber: sanitizedForm.registrationNo,
+        currentChassisNumber: sanitizedForm.chassisOrSerialNo,
+        verifiedRegistrationNumber,
+        verifiedChassisNumber,
+        verifiedSource: vehicleVerificationSource,
+      });
+      if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
+        setError(vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.');
+        return;
+      }
 
-    if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
-      setError('Price must contain digits only.');
-      setForm(sanitizedForm);
-      return;
-    }
+      const rtoValidationError = shouldSyncRto ? validateListingRtoForm(sanitizedRto, rtoBase) : null;
+      if (rtoValidationError) {
+        setError(rtoValidationError);
+        setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+        return;
+      }
 
-    if (!sanitizedForm.state.trim()) {
-      setError('State is required.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!sanitizedForm.city.trim()) {
-      setError('City is required.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!sanitizedForm.address.trim()) {
-      setError('Address is required.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    const pinCodeValidationError = getOptionalPinCodeValidationError(sanitizedForm.pinCode);
-    if (pinCodeValidationError) {
-      setError(pinCodeValidationError);
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!sanitizedForm.nearbyLandmark.trim()) {
-      setError('Nearby Landmark is required.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidYearValue(sanitizedForm.manufacturingYear)) {
-      setError('Manufacturing year must be a 4-digit year.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidDigitsOnlyValue(sanitizedForm.operatingHours)) {
-      setError('Operating hours must contain digits only.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidDateValue(sanitizedForm.registrationDate) || !isValidDateValue(sanitizedForm.registrationUpto)) {
-      setError('Registration dates must be valid calendar dates.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (sanitizedForm.registrationDate && sanitizedForm.registrationUpto && sanitizedForm.registrationDate > sanitizedForm.registrationUpto) {
-      setError('Registration upto cannot be before the registration date.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (!isValidDigitsOnlyValue(sanitizedForm.previousOwners)) {
-      setError('Previous owners must contain digits only.');
-      setForm(sanitizedForm);
-      return;
-    }
-
-    if (sanitizedForm.currentAvailability === 'SOLD') {
-      if (!sanitizedForm.buyerName.trim()) {
-        setError('Buyer Name is required when marking a vehicle as SOLD.');
+      if (!sanitizedForm.price || Number(sanitizedForm.price) <= 0) {
+        setError('Price is required and must be greater than 0.');
         setForm(sanitizedForm);
         return;
       }
 
-      if (sanitizedForm.buyerPhone.length !== 10) {
-        setError('Buyer Mobile Number must be 10 digits when marking a vehicle as SOLD.');
+      if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
+        setError('Price must contain digits only.');
         setForm(sanitizedForm);
         return;
       }
 
-      if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
-        setError('Final Sold Price is required when marking a vehicle as SOLD.');
+      if (!sanitizedForm.state.trim()) {
+        setError('State is required.');
         setForm(sanitizedForm);
         return;
+      }
+
+      if (!sanitizedForm.city.trim()) {
+        setError('City is required.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!sanitizedForm.address.trim()) {
+        setError('Address is required.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      const pinCodeValidationError = getOptionalPinCodeValidationError(sanitizedForm.pinCode);
+      if (pinCodeValidationError) {
+        setError(pinCodeValidationError);
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!sanitizedForm.nearbyLandmark.trim()) {
+        setError('Nearby Landmark is required.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!isValidYearValue(sanitizedForm.manufacturingYear)) {
+        setError('Manufacturing year must be a 4-digit year.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!isValidDigitsOnlyValue(sanitizedForm.operatingHours)) {
+        setError('Operating hours must contain digits only.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!isValidDateValue(sanitizedForm.registrationDate) || !isValidDateValue(sanitizedForm.registrationUpto)) {
+        setError('Registration dates must be valid calendar dates.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (sanitizedForm.registrationDate && sanitizedForm.registrationUpto && sanitizedForm.registrationDate > sanitizedForm.registrationUpto) {
+        setError('Registration upto cannot be before the registration date.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (!isValidDigitsOnlyValue(sanitizedForm.previousOwners)) {
+        setError('Previous owners must contain digits only.');
+        setForm(sanitizedForm);
+        return;
+      }
+
+      if (sanitizedForm.currentAvailability === 'SOLD') {
+        if (!sanitizedForm.buyerName.trim()) {
+          setError('Buyer Name is required when marking a vehicle as SOLD.');
+          setForm(sanitizedForm);
+          return;
+        }
+
+        if (sanitizedForm.buyerPhone.length !== 10) {
+          setError('Buyer Mobile Number must be 10 digits when marking a vehicle as SOLD.');
+          setForm(sanitizedForm);
+          return;
+        }
+
+        if (!sanitizedForm.soldPrice || Number(sanitizedForm.soldPrice) <= 0) {
+          setError('Final Sold Price is required when marking a vehicle as SOLD.');
+          setForm(sanitizedForm);
+          return;
+        }
       }
     }
 
@@ -1696,7 +1833,7 @@ export default function PartnerListingsPage() {
         modelName: sanitizedForm.model,
         ownerName: sanitizedForm.ownerName,
         chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
-        title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),
+        title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim() || 'Vehicle draft',
         price: sanitizedForm.price,
         manufacturingYear: sanitizedForm.manufacturingYear,
         operatingHours: sanitizedForm.operatingHours,
@@ -1716,11 +1853,14 @@ export default function PartnerListingsPage() {
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability)) {
+      if (saveAsDraft || submitForApproval) {
+        payload.status = 'DRAFT';
+        payload.saveAsDraft = true;
+      } else if (['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability)) {
         payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
       }
 
-      if (sanitizedForm.currentAvailability === 'SOLD') {
+      if (!saveAsDraft && sanitizedForm.currentAvailability === 'SOLD') {
         if (!form.buyerName.trim()) {
           throw new Error('Buyer Name is required when marking a vehicle as SOLD.');
         }
@@ -1745,7 +1885,7 @@ export default function PartnerListingsPage() {
 
       if (editingListingId) {
         const updateResponse = await api.put<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}`, payload);
-      const shouldSyncAvailability = ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
+        const shouldSyncAvailability = !saveAsDraft && ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
         let availabilityResponse;
 
         if (shouldSyncAvailability) {
@@ -1760,13 +1900,19 @@ export default function PartnerListingsPage() {
         response = await api.post<{ listing: ListingRecord; message: string }>('/listings', payload);
       }
 
+      if (submitForApproval && editingListingId) {
+        const reviewResponse = await api.post<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}/completion-review`);
+        response = reviewResponse;
+      }
+
       await refreshListings();
-      setMessage(response.data.message || (editingListingId ? 'Listing updated successfully.' : 'Listing saved successfully.'));
+      setMessage(response.data.message || (saveAsDraft ? 'Draft saved successfully.' : editingListingId ? 'Listing updated successfully.' : 'Listing saved successfully.'));
       setIsModalOpen(false);
       setForm(initialForm);
       setMediaState(createEmptyMediaState());
       setPreviewState(createEmptyPreviewState());
       setEditingListingId(null);
+      setCompletionReviewListingId(null);
     } catch (submitError) {
       setError(getApiErrorMessage(submitError, editingListingId ? 'Unable to update the listing.' : 'Unable to save the listing.'));
     } finally {
@@ -2145,6 +2291,55 @@ export default function PartnerListingsPage() {
                                 </button>
                               ))}
 
+                              {String(listing.status).toUpperCase() === 'DRAFT' && listing.completionReviewRequired ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setOpenActionDropdownId(null);
+                                    void openEditModal(listing);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-50"
+                                >
+                                  <CheckCircle2 className="h-4 w-4 text-amber-600" />
+                                  Review &amp; submit to admin
+                                </button>
+                              ) : null}
+
+                              {String(listing.status).toUpperCase() === 'DRAFT' && !listing.completionReviewRequired ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setOpenActionDropdownId(null);
+                                      void createCompletionLink(listing);
+                                    }}
+                                    disabled={completionInviteBusyId === listing.id}
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                                  >
+                                    {completionInviteBusyId === listing.id ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : <Link2 className="h-4 w-4 text-gray-400" />}
+                                    Share completion link
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setOpenActionDropdownId(null);
+                                      void revokeCompletionLink(listing);
+                                    }}
+                                    disabled={completionInviteBusyId === listing.id}
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                                  >
+                                    <Link2 className="h-4 w-4 text-gray-400" />
+                                    Revoke completion link
+                                  </button>
+                                </>
+                              ) : null}
+
                               {!isProtectedListing(listing) && (
                                 <>
                                   <div className="my-1 h-px bg-gray-100" />
@@ -2177,22 +2372,89 @@ export default function PartnerListingsPage() {
       </div>
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:px-4 sm:py-6">
-          <div className="relative flex h-[100dvh] sm:h-auto sm:max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-4 sm:px-6 py-3.5 sm:py-4">
+        <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-xs">
+          <div className="relative flex h-[100dvh] sm:h-auto sm:max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-5 py-3">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900">{editingListingId ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
+                  {editingListingId ? (
+                    <span className="rounded-md border border-amber-300/80 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                      {form.registrationNo || form.title || 'Vehicle'}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Save a draft to share a private completion link. It becomes public only after owner completion and admin approval.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {uploadingCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Uploading ({uploadingCount})
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-700 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex items-center gap-1.5">
+                {listingFormTabs.map((tab) => {
+                  const Icon = listingFormTabIcons[tab.key];
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setModalTab(tab.key)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                        modalTab === tab.key
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{tab.label}</span>
+                      {tab.badge ? (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          tab.badgeColor === 'complete'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : tab.badgeColor === 'sold'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                        }`}>{tab.badge}</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
               <button
                 type="button"
-                onClick={closeModal}
-                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                onClick={() => setModalTab((current) => current === 'all' ? 'equipment' : 'all')}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                  modalTab === 'all'
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-gray-200 bg-white'
+                }`}
+                title={modalTab === 'all' ? 'Switch back to tabbed view' : 'Show all sections in one scrollable page'}
               >
-                <X className="h-5 w-5" />
+                <LayoutGrid className="h-3 w-3" />
+                <span>{modalTab === 'all' ? 'Tab View' : 'View All'}</span>
               </button>
             </div>
 
-            <form ref={modalFormRef} onSubmit={handleSubmit} className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 flex-1 flex flex-col justify-between">
+            <form
+              ref={modalFormRef}
+              onSubmit={(event) => void handleSubmit(event, completionReviewListingId ? { submitForApproval: true } : {})}
+              noValidate
+              className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 sm:py-4 space-y-4"
+            >
               {editingListingId ? (
                 <div className={`mb-5 rounded-xl border px-4 py-3 text-sm ${editingVerification.className}`}>
                   <div className="flex items-center gap-2 font-semibold">
@@ -2208,10 +2470,10 @@ export default function PartnerListingsPage() {
                 </div>
               ) : null}
               <div className="grid gap-6">
-                <section className="rounded-2xl border border-gray-200 p-5">
+                <section className={modalTab !== 'equipment' && modalTab !== 'all' ? 'hidden' : 'rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-3'}>
                   <div className="mb-4 flex items-center gap-2 text-gray-900">
                     <Truck className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">Equipment Details</h3>
+                    <h3 className="text-base font-semibold">Equipment &amp; Specs</h3>
                   </div>
                   {listingVerificationPolicy?.enabled ? <div className="-mt-2 mb-4"><ApiFillLegend /></div> : null}
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
@@ -2400,12 +2662,18 @@ export default function PartnerListingsPage() {
                     </Field>
                     <Field label="Current Availability">
                       <SearchableSelect
-                        options={(form.currentAvailability === 'PENDING' ? ['PENDING'] : SELL_VEHICLE_AVAILABILITY_OPTIONS).map((option) => ({ id: option, name: localizedAvailability(option) }))}
+                        options={(form.currentAvailability === 'PENDING'
+                          ? ['PENDING']
+                          : form.currentAvailability === 'DRAFT'
+                            ? ['DRAFT', ...SELL_VEHICLE_AVAILABILITY_OPTIONS]
+                            : SELL_VEHICLE_AVAILABILITY_OPTIONS
+                        ).map((option) => ({ id: option, name: localizedAvailability(option) }))}
                         value={form.currentAvailability}
                         onChange={(opt) => {
                           const val = String(opt.id);
                           updateField('currentAvailability', val);
                           if (val === 'SOLD') {
+                            setModalTab('sale');
                             setTimeout(() => {
                               soldSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             }, 100);
@@ -2419,19 +2687,32 @@ export default function PartnerListingsPage() {
                     </Field>
                   </div>
 
-                <ListingRtoFields
-                  apiFillSource={vehicleApiFill?.source || ''}
-                  apiFilled={Boolean(vehicleApiFill?.filled)}
-                  value={form.rtoDetails}
-                  onChange={updateRtoField}
-                  manufacturingYear={form.manufacturingYear}
-                  insuranceExpiry={form.insuranceExpiry}
-                  onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
-                  required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
-                />
+                </section>
+
+                <section className={modalTab !== 'rto' && modalTab !== 'all' ? 'hidden' : 'rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5'}>
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                      <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+                      <span>RTO Documents &amp; Compliance</span>
+                    </div>
+                    <span className="text-[10px] text-gray-400">Tax, Fitness, Insurance, HSRP, and Loan NOC status</span>
+                  </div>
+                  <ListingRtoFields
+                    apiFillSource={vehicleApiFill?.source || ''}
+                    apiFilled={Boolean(vehicleApiFill?.filled)}
+                    compact
+                    value={form.rtoDetails}
+                    onChange={updateRtoField}
+                    manufacturingYear={form.manufacturingYear}
+                    insuranceExpiry={form.insuranceExpiry}
+                    onInsuranceExpiryChange={(value) => updateField('insuranceExpiry', value)}
+                    required={!editingListingId || hasListingRtoInput(form.rtoDetails)}
+                  />
+                </section>
 
                 {form.currentAvailability === 'SOLD' && (
-                    <div ref={soldSectionRef} className="mt-4 rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
+                    <section className={modalTab !== 'sale' && modalTab !== 'all' ? 'hidden' : 'rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4'}>
+                    <div ref={soldSectionRef}>
                       <div className="flex items-center gap-2 text-rose-900 border-b border-rose-200/60 pb-2">
                         <UserCheck className="h-4 w-4 text-rose-600" />
                         <h4 className="text-xs font-bold uppercase tracking-wider">Buyer & Sale Record (Confidential)</h4>
@@ -2510,18 +2791,23 @@ export default function PartnerListingsPage() {
                         </Field>
                       </div>
                     </div>
+                    </section>
                   )}
-                </section>
 
-                <section className="rounded-2xl border border-gray-200 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-gray-900">
-                    <Upload className="h-4 w-4" />
-                    <h3 className="text-base font-semibold">Media Uploads *</h3>
+                <section className={modalTab !== 'media' && modalTab !== 'all' ? 'hidden' : 'rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5'}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                      <Upload className="h-3.5 w-3.5 text-amber-500" />
+                      <span>Media Gallery (14 High-Density Slots)</span>
+                    </div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${hasRequiredMedia ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      {uploadedMediaCount} of 14 uploaded {hasRequiredMedia ? '✓ Required ready' : '(Front photo & Video required)'}
+                    </span>
                   </div>
-                  <p className="mb-4 text-xs font-medium text-gray-500">
+                  <p className="text-xs font-medium text-gray-500">
                     At least one vehicle image and one video are required. Each selected video is compressed before upload.
                   </p>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7">
                     {mediaSlots.map((slot) => (
                       <ListingMediaUploadBox
                         key={slot.key}
@@ -2561,10 +2847,10 @@ export default function PartnerListingsPage() {
                   </div>
                 </section>
 
-                <section className="rounded-2xl border border-gray-200 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-gray-900">
-                    <ImagePlus className="h-4 w-4" />
-                <h3 className="text-base font-semibold">Price and Sell Vehicle</h3>
+                <section className={modalTab !== 'pricing' && modalTab !== 'all' ? 'hidden' : 'rounded-xl border border-gray-200 bg-white p-3 shadow-2xs space-y-2.5'}>
+                  <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2 text-xs font-bold text-gray-900">
+                    <MapPin className="h-3.5 w-3.5 text-amber-500" />
+                    <h3>Pricing &amp; Machine Location</h3>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Field label="Price *">
@@ -2676,6 +2962,28 @@ export default function PartnerListingsPage() {
                 </section>
               </div>
 
+              {modalTab !== 'all' ? (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setModalTab(listingFormTabs[Math.max(0, activeTabIndex - 1)].key)}
+                    disabled={activeTabIndex <= 0}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" /> Prev
+                  </button>
+                  <span className="text-[11px] font-medium text-gray-400">Step {activeTabIndex + 1} of {listingFormTabs.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => setModalTab(listingFormTabs[Math.min(listingFormTabs.length - 1, activeTabIndex + 1)].key)}
+                    disabled={activeTabIndex >= listingFormTabs.length - 1}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
+
               <div className="sticky bottom-0 -mx-4 sm:-mx-6 -mb-4 sm:-mb-5 mt-6 border-t border-gray-100 bg-white px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-20">
                 <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                   {error ? (
@@ -2692,12 +3000,29 @@ export default function PartnerListingsPage() {
                       Cancel
                     </button>
                     <button
+                      type="button"
+                      onClick={() => void handleSubmit(undefined, { saveAsDraft: true })}
+                      disabled={saving || uploadingCount > 0 || vehicleIdentity.blocked}
+                      title={vehicleIdentity.blocked ? getVehicleIdentityBlockMessage(vehicleIdentity.result) : 'Save this vehicle as a private draft'}
+                      className="h-10 sm:h-auto rounded-lg border border-[#FFC107] bg-white px-4 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-gray-900 transition hover:bg-[#FFF8E1] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
+                    >
+                      {saving ? 'Saving...' : editingListingId && form.currentAvailability === 'DRAFT' ? 'Update draft' : 'Save draft'}
+                    </button>
+                    <button
                       type="submit"
                       disabled={saving || uploadingCount > 0 || vehicleIdentity.blocked}
                       title={vehicleIdentity.blocked ? getVehicleIdentityBlockMessage(vehicleIdentity.result) : undefined}
                       className="flex-1 sm:flex-none h-10 sm:h-auto rounded-lg bg-[#FFC107] px-4 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-black transition hover:bg-[#E5AD06] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer whitespace-nowrap"
                     >
-                      {saving ? (editingListingId ? 'Updating...' : 'Adding...') : uploadingCount > 0 ? 'Waiting for uploads...' : editingListingId ? 'Update' : 'Add'}
+                      {saving
+                        ? (completionReviewListingId ? 'Submitting...' : editingListingId ? 'Updating...' : 'Adding...')
+                        : uploadingCount > 0
+                          ? 'Waiting for uploads...'
+                          : completionReviewListingId
+                            ? 'Submit to admin for approval'
+                            : editingListingId
+                              ? 'Update'
+                              : 'Add'}
                     </button>
                   </div>
                 </div>
@@ -2751,9 +3076,17 @@ function Field({
   children: React.ReactNode;
   className?: string;
 }) {
+  const isRequired = label.trim().endsWith('*');
+  const cleanLabel = isRequired ? label.trim().replace(/\s*\*$/, '') : label;
+
   return (
     <label className={`block ${className || ''}`}>
-      <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
+      <div className="mb-1 flex items-center justify-between gap-1">
+        <span className="truncate text-[11px] font-semibold text-gray-700">
+          {cleanLabel}
+          {isRequired ? <span className="ml-0.5 font-bold text-rose-500">*</span> : null}
+        </span>
+      </div>
       <ApiFillBox apiFill={apiFill}>{children}</ApiFillBox>
     </label>
   );
@@ -2783,9 +3116,39 @@ function ListingMediaUploadBox({
   onUploadingChange: (isUploading: boolean) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'new' | 'replace' | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [videoPlaybackFailed, setVideoPlaybackFailed] = useState(false);
+  const [localBlobUrl, setLocalBlobUrl] = useState<string>('');
+  const [localPosterUrl, setLocalPosterUrl] = useState<string>('');
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
-  const hasUploadedPreview = Boolean(previewUrl);
+
+  const hasUploadedAsset = Boolean(uploadedFile || previewUrl || localBlobUrl);
+  const normalizedUploadedUrl = uploadedFile
+    ? getAbsoluteFileUrl(uploadedFile.fileUrl || uploadedFile.absoluteUrl)
+    : '';
+
+  const isImageData = (src?: string | null) => Boolean(src && (src.startsWith('data:image/') || /\.(jpe?g|png|webp|gif|svg)(\?.*)?$/i.test(src)));
+  const isVideoData = (src?: string | null) => Boolean(src && (src.startsWith('data:video/') || src.startsWith('blob:') || /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(src)));
+
+  const playableVideoSource = kind === 'video'
+    ? (localBlobUrl || (isVideoData(previewUrl) ? previewUrl : '') || normalizedUploadedUrl || uploadedFile?.absoluteUrl || uploadedFile?.fileUrl || '')
+    : '';
+
+  const effectivePosterUrl = kind === 'video'
+    ? (localPosterUrl || (isImageData(previewUrl) ? previewUrl : '') || '')
+    : '';
+
+  const previewSource = getMediaPreviewSource({
+    kind,
+    previewUrl,
+    absoluteUrl: normalizedUploadedUrl || uploadedFile?.absoluteUrl,
+    fileUrl: uploadedFile?.fileUrl,
+  });
+
+  const showImagePreview = hasUploadedAsset && Boolean(previewSource) && !previewFailed;
 
   const handleChange = async (file?: File) => {
     if (!file) {
@@ -2793,42 +3156,133 @@ function ListingMediaUploadBox({
     }
 
     setError('');
+    setPreviewFailed(false);
+    setVideoPlaybackFailed(false);
+    setUploadMode(hasUploadedAsset ? 'replace' : 'new');
     setUploading(true);
     onUploadingChange(true);
+
+    if (kind === 'video') {
+      const blobUrl = URL.createObjectURL(file);
+      setLocalBlobUrl(blobUrl);
+      onPreviewReady(blobUrl);
+
+      void getVideoPosterFrame(file)
+        .then((poster) => {
+          if (poster) {
+            setLocalPosterUrl(poster);
+          }
+        })
+        .catch(() => {
+          // Poster generation is optional; video player can still render directly
+        });
+    } else {
+      const blobUrl = URL.createObjectURL(file);
+      onPreviewReady(blobUrl);
+    }
 
     try {
       const uploaded = await uploadListingMediaToServer({ file, kind });
       onUploaded(uploaded);
-
-      if (kind === 'image') {
-        onPreviewReady(URL.createObjectURL(file));
-      } else {
-        try {
-          const posterFrame = await getVideoPosterFrame(file);
-          onPreviewReady(posterFrame);
-        } catch {
-          onPreviewReady('');
-        }
-      }
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError, 'Unable to upload the selected file.'));
     } finally {
       setUploading(false);
+      setUploadMode(null);
       onUploadingChange(false);
     }
   };
 
+  const handleClear = () => {
+    if (localBlobUrl) {
+      try {
+        URL.revokeObjectURL(localBlobUrl);
+      } catch {
+        // Ignore
+      }
+      setLocalBlobUrl('');
+    }
+    setLocalPosterUrl('');
+    setPreviewFailed(false);
+    setVideoPlaybackFailed(false);
+    onClear();
+  };
+
   return (
     <div className="space-y-2">
-      <label className="relative flex min-h-[154px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 p-4 transition hover:border-[#FFC107] hover:bg-[#FFC107]/5">
-        {hasUploadedPreview ? (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${hasUploadedAsset ? 'Replace' : 'Upload'} ${label}`}
+        onClick={(event) => {
+          if (kind === 'video' && (event.target as HTMLElement).closest('video')) {
+            return;
+          }
+          fileInputRef.current?.click();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        className={`relative flex min-h-[154px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 bg-gray-50/50 transition hover:border-[#FFC107] hover:bg-[#FFC107]/5 ${hasUploadedAsset ? 'border-emerald-400/80 bg-gray-950' : 'border-dashed border-gray-300'}`}
+      >
+        {hasUploadedAsset && kind === 'video' ? (
+          <div className="absolute inset-0 h-full w-full bg-black">
+            {playableVideoSource && !videoPlaybackFailed ? (
+              <video
+                key={playableVideoSource}
+                src={playableVideoSource}
+                poster={effectivePosterUrl || undefined}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={label}
+                onClick={(event) => event.stopPropagation()}
+                onError={() => setVideoPlaybackFailed(true)}
+                className="h-full w-full object-cover"
+              />
+            ) : effectivePosterUrl && !previewFailed ? (
+              <div className="relative h-full w-full">
+                <Image
+                  src={effectivePosterUrl}
+                  alt={label}
+                  fill
+                  unoptimized
+                  onError={() => setPreviewFailed(true)}
+                  className="object-cover"
+                />
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/35">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-950 shadow-lg">
+                    <PlayCircle className="h-6 w-6 text-gray-900" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-gray-900 to-gray-950 p-3 text-center text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/30">
+                  <Video className="h-5 w-5 text-amber-400" />
+                </div>
+                <span className="text-xs font-bold tracking-wide text-gray-200">Video Uploaded</span>
+                <span className="text-[10px] text-emerald-400 font-semibold">✓ Ready</span>
+              </div>
+            )}
+          </div>
+        ) : showImagePreview ? (
           <Image
-            src={previewUrl}
+            src={previewSource}
             alt={label}
             fill
             unoptimized
-            className="rounded-xl object-cover"
+            onError={() => setPreviewFailed(true)}
+            className="object-cover"
           />
+        ) : hasUploadedAsset ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 text-white">
+            <CheckCircle2 className="h-7 w-7 text-emerald-400" />
+            <span className="text-xs font-bold uppercase tracking-wide">Uploaded</span>
+          </div>
         ) : sampleMedia?.kind === 'image' ? (
           <Image
             src={sampleMedia.src}
@@ -2851,53 +3305,69 @@ function ListingMediaUploadBox({
           />
         ) : null}
 
-        {hasUploadedPreview && kind === 'video' ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/10">
-            <div className="flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-[#111827] shadow-lg">
-              <PlayCircle className="h-5 w-5" />
-              <span className="text-xs font-semibold uppercase tracking-[0.18em]">Preview</span>
-            </div>
+        {hasUploadedAsset ? (
+          <div className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-md bg-black/75 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 backdrop-blur-sm shadow-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>✓ {kind === 'video' ? 'Video' : 'Uploaded'}</span>
           </div>
-        ) : null}
-
-        {!hasUploadedPreview && sampleMedia ? (
+        ) : sampleMedia ? (
           <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 shadow-sm">
             Example
           </div>
         ) : null}
 
-        <div className={`relative z-20 flex flex-col items-center ${hasUploadedPreview || sampleMedia ? 'rounded-lg bg-white/90 px-3 py-2 shadow-sm' : ''}`}>
-          <Upload className="mb-2 h-5 w-5 text-gray-400" />
-          <span className="text-center text-xs font-medium text-gray-600">{label}</span>
-          {uploadedFile ? (
+        {!hasUploadedAsset ? (
+          <div className="relative z-20 flex flex-col items-center rounded-lg bg-white/90 px-3 py-2 shadow-sm">
+            <Upload className="mb-2 h-5 w-5 text-gray-400" />
+            <span className="text-center text-xs font-medium text-gray-600">{label}</span>
             <span className="mt-1 text-center text-[11px] text-gray-500">
-              {kind === 'video'
-                ? uploadedFile.originalName || `Max ${MAX_LISTING_VIDEO_DURATION_SECONDS} sec`
-                : `Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB`}
+              {kind === 'video' ? `Max ${MAX_LISTING_VIDEO_DURATION_SECONDS} sec` : `Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB`}
             </span>
-          ) : null}
-          {uploading ? <span className="mt-1 text-[11px] text-[#9a7600]">Optimizing &amp; uploading...</span> : null}
-        </div>
+          </div>
+        ) : null}
 
-        <input
-          type="file"
-          accept={kind === 'video' ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov' : 'image/jpeg,image/png,image/webp'}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          onChange={(event) => void handleChange(event.target.files?.[0])}
-          disabled={uploading}
-        />
-      </label>
+        {uploading ? (
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/45">
+            <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-gray-900 shadow-lg">
+              {uploadMode === 'replace' ? 'Uploading replacement...' : 'Uploading...'}
+            </span>
+          </div>
+        ) : null}
+
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={kind === 'video' ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov' : 'image/jpeg,image/png,image/webp'}
+        className="sr-only"
+        onChange={(event) => {
+          const selectedFile = event.target.files?.[0];
+          event.currentTarget.value = '';
+          void handleChange(selectedFile);
+        }}
+        disabled={uploading}
+      />
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] text-gray-500">{helperText}</p>
-        {uploadedFile ? (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-[11px] font-semibold text-red-600 transition hover:text-red-700"
-          >
-            Remove
-          </button>
+        {uploadedFile || localBlobUrl ? (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-[11px] font-semibold text-gray-700 transition hover:text-gray-900"
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-[11px] font-semibold text-red-600 transition hover:text-red-700"
+            >
+              Remove
+            </button>
+          </div>
         ) : null}
       </div>
 

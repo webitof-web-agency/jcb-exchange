@@ -13,7 +13,6 @@ import {
   Maximize2,
   Mic,
   MicOff,
-  MessageCircle,
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -41,6 +40,7 @@ import { formatAiTimestamp, normalizeAiDisplayText } from './aiDisplay';
 import { choosePreferredSpeechVoice, getSpeechRecognitionConstructor, getVoiceInputErrorMessage, getVoiceInputStatusLabel, getVoiceOutputButtonLabel, joinVoiceDraft, stripAiVoiceMarkup, type SpeechRecognitionLike } from './aiVoice';
 import AiFileActions from './AiFileActions';
 import type { AiFileAction } from './aiFileActionModel';
+import JcbBotLogo from './JcbBotLogo';
 
 type Conversation = {
   id: string;
@@ -92,6 +92,7 @@ type AiSettingsUpdateResponse = {
 };
 
 const CHAT_PANEL_POSITION_KEY = 'jcb-intelligence-hub-chat-panel-position';
+const BOT_POSITION_KEY = 'jcb-ai-bot-position';
 
 const defaultStatus: AiStatus = {
   enabled: false,
@@ -181,11 +182,26 @@ export default function AiFloatingChat() {
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const latestPositionRef = useRef<ChatPanelPosition | null>(panelPosition);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
+  const [botPosition, setBotPosition] = useState<{ left: number; top: number } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = window.localStorage.getItem(BOT_POSITION_KEY);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as Partial<{ left: number; top: number }>;
+      return typeof parsed.left === 'number' && typeof parsed.top === 'number'
+        ? { left: parsed.left, top: parsed.top }
+        : null;
+    } catch {
+      return null;
+    }
+  });
+  const [botDragging, setBotDragging] = useState(false);
+  const botDragRef = useRef<{ pointerId: number; startX: number; startY: number; startLeft: number; startTop: number; moved: boolean } | null>(null);
+  const botRef = useRef<HTMLDivElement | null>(null);
 
   const canUse = Boolean(
     user && (
       user.role === 'SUPER_ADMIN'
-      || user.role === 'ADMIN'
       || (user.role === 'EMPLOYEE' && hasAnyPermission(user.permissions, ['ai.use']))
     ),
   );
@@ -330,6 +346,15 @@ export default function AiFloatingChat() {
     };
   }, []);
 
+  const clampBotPosition = useCallback((left: number, top: number) => {
+    const size = 64; // approx button diameter (h-14 = 56px + some buffer)
+    const margin = 8;
+    return {
+      left: Math.max(margin, Math.min(left, window.innerWidth - size - margin)),
+      top: Math.max(margin, Math.min(top, window.innerHeight - size - margin)),
+    };
+  }, []);
+
   useEffect(() => {
     const syncViewport = () => {
       const desktop = window.innerWidth >= 640;
@@ -432,6 +457,52 @@ export default function AiFloatingChat() {
       } catch {
         // Position persistence is optional; dragging remains usable if storage is unavailable.
       }
+    }
+  };
+
+  const handleBotPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 && event.pointerType === 'mouse') return;
+    const rect = botRef.current?.getBoundingClientRect();
+    const startLeft = botPosition ? botPosition.left : (rect?.left ?? (window.innerWidth - 80));
+    const startTop = botPosition ? botPosition.top : (rect?.top ?? (window.innerHeight - 80));
+    botDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft,
+      startTop,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault(); // prevent page scroll / text-select on touch & mouse
+    setBotDragging(true);
+  };
+
+  const handleBotPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!botDragRef.current || botDragRef.current.pointerId !== event.pointerId) return;
+    const dx = event.clientX - botDragRef.current.startX;
+    const dy = event.clientY - botDragRef.current.startY;
+    if (!botDragRef.current.moved && Math.hypot(dx, dy) < 4) return;
+    botDragRef.current.moved = true;
+    const newPos = clampBotPosition(botDragRef.current.startLeft + dx, botDragRef.current.startTop + dy);
+    setBotPosition(newPos);
+  };
+
+  const handleBotPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!botDragRef.current || botDragRef.current.pointerId !== event.pointerId) return;
+    const moved = botDragRef.current.moved;
+    const finalPos = moved ? botPosition : null;
+    botDragRef.current = null;
+    setBotDragging(false);
+    if (moved && finalPos) {
+      try {
+        window.localStorage.setItem(BOT_POSITION_KEY, JSON.stringify(finalPos));
+      } catch {
+        // Storage unavailable; position won't persist but dragging still works.
+      }
+    }
+    if (!moved) {
+      setIsOpen(true);
     }
   };
 
@@ -1036,26 +1107,34 @@ export default function AiFloatingChat() {
   return (
     <>
       {!isOpen ? (
-        <div className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 animate-float-slow group select-none sm:bottom-6 sm:right-6">
-          {/* Elegant Pill Label on Hover */}
-          <span className="pointer-events-none hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-[0_8px_20px_rgba(0,0,0,0.10)] backdrop-blur-md opacity-0 -translate-x-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-x-0">
-            <span>JCB Intelligence Hub</span>
-          </span>
-
+        <div
+          ref={botRef}
+          className={`fixed z-40 select-none group${botDragging ? ' cursor-grabbing' : ' cursor-grab'}${!botPosition ? ' bottom-5 right-5 sm:bottom-6 sm:right-6' : ''}${!botDragging ? ' animate-float-slow' : ''}`}
+          style={botPosition
+            ? { left: `${botPosition.left}px`, top: `${botPosition.top}px`, bottom: 'auto', right: 'auto', touchAction: 'none' }
+            : { touchAction: 'none' }}
+          onPointerDown={handleBotPointerDown}
+          onPointerMove={handleBotPointerMove}
+          onPointerUp={handleBotPointerUp}
+          onPointerCancel={handleBotPointerUp}
+          role="presentation"
+        >
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
-            className="relative flex h-14 w-14 sm:h-[58px] sm:w-[58px] items-center justify-center rounded-full border border-slate-300/90 bg-gradient-to-b from-white via-slate-50 to-slate-100/90 text-slate-600 shadow-[0_10px_25px_rgba(15,23,42,0.12),0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 hover:scale-105 hover:border-slate-400 hover:text-slate-900 hover:shadow-[0_14px_32px_rgba(15,23,42,0.18)] active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/50 cursor-pointer"
-            aria-label="Open JCB Intelligence Hub"
-            title="Open JCB Intelligence Hub"
+            className="relative flex h-14 w-14 sm:h-[58px] sm:w-[58px] items-center justify-center rounded-full border-2 border-[#ECC230] bg-[#0D0E18] text-[#ECC230] shadow-[0_10px_25px_rgba(13,14,24,0.45),0_0_16px_rgba(236,194,48,0.25)] transition-all duration-300 hover:scale-105 hover:border-[#FFD54F] hover:shadow-[0_14px_32px_rgba(13,14,24,0.6),0_0_22px_rgba(236,194,48,0.4)] active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ECC230]/40"
+            style={{ cursor: 'inherit' }}
+            aria-label="Open JCB AI Assistant"
+            title="Open JCB AI Assistant (drag to move)"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsOpen(true); } }}
           >
-            {/* Message Logo in Gray Color (No Star) */}
-            <MessageCircle className="h-6 w-6 text-slate-600 transition-transform duration-300 group-hover:scale-110 group-hover:text-slate-900" aria-hidden="true" />
+            {/* JCB AI Assistant Bot Logo with Headphones */}
+            <JcbBotLogo className="h-11 w-11 sm:h-[48px] sm:w-[48px] transition-transform duration-300 group-hover:scale-105" />
 
             {/* Glowing Live Green Dot Indicator */}
             <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 shadow-xs" />
+              <span className="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-[#0D0E18] bg-[#0EAE5D] shadow-xs" />
             </span>
           </button>
         </div>

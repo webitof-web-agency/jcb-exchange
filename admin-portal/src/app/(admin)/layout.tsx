@@ -311,9 +311,9 @@ export default function AdminLayout({
   const employeeNavItems = useMemo(
     () =>
       employeeModuleNavItems.filter(
-        (item) => (item.href === '/employee/ai' && user?.role === 'ADMIN') || hasAnyPermission(userPermissions, item.permissions)
+        (item) => hasAnyPermission(userPermissions, item.permissions)
       ),
-    [user?.role, userPermissions]
+    [userPermissions]
   );
   const employeeCanSeeUsers = hasAnyPermission(userPermissions, employeeUsersPermissions);
   const employeeCanSeeRoles = hasAnyPermission(userPermissions, employeeRolesPermissions);
@@ -424,8 +424,6 @@ export default function AdminLayout({
       }
 
       const requiredPermissions = getRequiredPermissionsForPath(pathname);
-      const adminAiRoute = pathname === '/employee/ai' && user?.role === 'ADMIN';
-
       if (pathname === '/employee/dashboard' && !hasAnyPermission(userPermissions, ['dashboard.view'])) {
         if (!employeeHasAnyVisibleRoute) {
           logout();
@@ -437,7 +435,7 @@ export default function AdminLayout({
         return;
       }
 
-      if (!adminAiRoute && requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
+      if (requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
         if (!employeeHasAnyVisibleRoute) {
           logout();
           router.replace('/login');

@@ -190,6 +190,11 @@ export const listingAiAssistRateLimit = createRateLimiter({
   key: (req) => (req as Request & { user?: { id?: string } }).user?.id || clientIp(req),
 });
 export const listingViewRateLimit = createRateLimiter({ windowMs: 10 * MINUTE, max: 60 });
+export const listingCompletionRateLimit = createRateLimiter({
+  windowMs: 10 * MINUTE,
+  max: 60,
+  message: 'Too many completion-link requests. Please try again later.',
+});
 // The listing forms call this as the seller types, so it is counted per account rather than per network.
 export const vehicleIdentityCheckRateLimit = createRateLimiter({
   windowMs: 10 * MINUTE,

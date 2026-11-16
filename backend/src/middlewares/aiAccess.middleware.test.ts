@@ -17,9 +17,9 @@ const responseRecorder = () => {
   return { response, state };
 };
 
-test('allows Superadmin, Admin, and permitted Employee AI access only', () => {
+test('allows only Superadmin and permitted Employee AI access', () => {
   assert.equal(canUseAiRole('SUPER_ADMIN', []), true);
-  assert.equal(canUseAiRole('ADMIN', []), true);
+  assert.equal(canUseAiRole('ADMIN', []), false);
   assert.equal(canUseAiRole('EMPLOYEE', ['ai.use']), true);
   assert.equal(canUseAiRole('EMPLOYEE', ['ALL_ACCESS']), true);
   assert.equal(canUseAiRole('EMPLOYEE', []), false);
@@ -47,11 +47,13 @@ test('returns 403 for Partner and Customer requests before any database lookup',
   }
 });
 
-test('allows Admin requests without employee permission lookup', async () => {
-  const { response } = responseRecorder();
+test('rejects Admin requests without employee permission lookup', async () => {
+  const { response, state } = responseRecorder();
   let called = false;
   await requireAiAccess({ user: { id: 'admin-1', role: 'ADMIN' } } as Request, response, (() => { called = true; }) as NextFunction);
-  assert.equal(called, true);
+  assert.equal(called, false);
+  assert.equal(state.statusCode, 403);
+  assert.deepEqual(state.body, { error: 'AI access is restricted to internal operators.', code: 'AI_ACCESS_FORBIDDEN' });
 });
 
 test('keeps shared AI settings unavailable to Partner, Customer, and legacy Admin roles', async () => {

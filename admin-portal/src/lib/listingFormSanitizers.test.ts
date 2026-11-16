@@ -17,6 +17,7 @@ test('allows only available and sold in the sell vehicle availability choices', 
   assert.equal(normalizeSellVehicleAvailability('RESERVED'), 'AVAILABLE');
   assert.equal(normalizeSellVehicleAvailability('SOLD'), 'SOLD');
   assert.equal(normalizeSellVehicleAvailability('PENDING'), 'PENDING');
+  assert.equal(normalizeSellVehicleAvailability('DRAFT'), 'DRAFT');
 });
 
 test('allows an empty listing PIN code but validates a provided PIN code', () => {

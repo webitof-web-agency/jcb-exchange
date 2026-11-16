@@ -10,8 +10,15 @@ export type ListingMediaPayload = {
   isFeatured?: boolean;
 };
 
+export type NormalizedListingMedia = ListingMediaPayload & {
+  id: string;
+  url: string;
+  type: string;
+  isFeatured: boolean;
+};
+
 export type ListingPayload = {
-  media?: unknown;
+  media?: NormalizedListingMedia[];
   [key: string]: unknown;
 };
 
@@ -20,7 +27,7 @@ const getMediaUrl = (media: ListingMediaPayload) => {
   return candidates.find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0) || null;
 };
 
-export const normalizeListingMedia = (media: unknown) => {
+export const normalizeListingMedia = (media: unknown): NormalizedListingMedia[] => {
   if (!Array.isArray(media)) {
     return [];
   }
@@ -62,4 +69,11 @@ export const normalizeListingPayload = (payload: unknown): ListingPayload => {
     ...listing,
     media: nestedMedia.length > 0 ? nestedMedia : responseMedia,
   };
+};
+
+export const getListingVideoMedia = (payload: unknown) => {
+  const normalizedPayload = normalizeListingPayload(payload);
+  return normalizedPayload.media?.find(
+    (media) => String(media.type || '').toUpperCase() === 'VIDEO',
+  ) || null;
 };

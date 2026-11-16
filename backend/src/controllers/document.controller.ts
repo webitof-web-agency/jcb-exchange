@@ -360,9 +360,12 @@ export const createUploadPublicListingMedia = (
       randomUUID(),
       file.mimetype,
     );
-    const { viewLink } = await uploadToDrive(file.buffer, file.mimetype, fileName);
+    const { fileId } = await uploadToDrive(file.buffer, file.mimetype, fileName);
+    // Return the server-side Drive proxy instead of exposing a raw Drive view URL.
+    // The proxy supports byte ranges, which is required for reliable HTML5 video playback.
+    const proxyUrl = getDriveMediaProxyUrl(req, fileId);
 
-    res.status(201).json(buildUploadResponse(req, file, 'public', viewLink, fileName));
+    res.status(201).json(buildUploadResponse(req, file, 'public', proxyUrl, fileName));
   } catch (error) {
     await cleanupFile(file?.path);
     next(error);

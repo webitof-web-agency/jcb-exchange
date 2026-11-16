@@ -2318,12 +2318,28 @@ export const resetManagedUserPassword = async (req: Request, res: Response, next
   }
 };
 
-const deletionViewer = (req: Request) => ({ id: req.user!.id, role: req.user!.role });
+const deletionViewer = async (req: Request) => {
+  const viewer = req.user!;
+  if (viewer.role === 'SUPER_ADMIN') return { id: viewer.id, role: viewer.role, permissions: ['ALL_ACCESS'] };
+
+  const employee = await prisma.user.findUnique({
+    where: { id: viewer.id },
+    select: {
+      customRole: { select: { permissions: true } },
+      adminPermissions: { select: { permission: true } },
+    },
+  });
+  const permissions = (Array.isArray(employee?.customRole?.permissions)
+    ? employee.customRole.permissions
+    : (employee?.adminPermissions || []).map((item) => item.permission))
+    .filter((permission): permission is string => allowedAdminPermissions.has(permission));
+  return { id: viewer.id, role: viewer.role, permissions };
+};
 
 /** What a permanent delete of this account would remove, unlink or be blocked by. */
 export const getManagedUserDeletionImpact = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const impact = await getAccountDeletionImpact(String(req.params.id), deletionViewer(req));
+    const impact = await getAccountDeletionImpact(String(req.params.id), await deletionViewer(req));
     if (!impact) {
       return res.status(404).json({ error: 'User not found.' });
     }
@@ -2340,7 +2356,7 @@ export const getManagedUserDeletionImpact = async (req: Request, res: Response, 
 export const deleteManagedUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = String(req.params.id);
-    const result = await deleteAccountPermanently(id, deletionViewer(req), req.body || {});
+    const result = await deleteAccountPermanently(id, await deletionViewer(req), req.body || {});
     if (!result) {
       return res.status(404).json({ error: 'User not found.' });
     }
@@ -3591,7 +3607,7 @@ export const deletePartnerUser = async (req: Request, res: Response, next: NextF
       return res.status(404).json({ error: 'Partner not found.' });
     }
 
-    await deleteAccountPermanently(id, deletionViewer(req), req.body || {});
+    await deleteAccountPermanently(id, await deletionViewer(req), req.body || {});
     res.json({
       message: 'Partner deleted permanently.',
       id,

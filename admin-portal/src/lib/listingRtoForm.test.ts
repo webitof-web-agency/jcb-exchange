@@ -2,9 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildListingRtoDetails,
+  shouldSyncListingRto,
   validateListingRtoForm,
   type ListingRtoFormState,
 } from './listingRtoForm';
+
+test('draft saves never sync partial RTO data', () => {
+  assert.equal(shouldSyncListingRto({ saveAsDraft: true, editingListingId: null, hasInput: true }), false);
+  assert.equal(shouldSyncListingRto({ saveAsDraft: true, editingListingId: 'draft-1', hasInput: true }), false);
+  assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: null, hasInput: false }), true);
+  assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: 'listing-1', hasInput: true }), true);
+  assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: 'listing-1', hasInput: false }), false);
+});
 
 const base = {
   registrationNo: 'PB00AZ1234',

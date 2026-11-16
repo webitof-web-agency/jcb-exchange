@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertDeleteRequest, DeletionBlockedError, finishImpact, group } from './deletionImpact';
+import { assertDeleteRequest, canPermanentlyDeleteAccount, classifyFinancePartyActivity, DeletionBlockedError, finishImpact, group } from './deletionImpact';
 
 const base = {
   entityType: 'CUSTOMER' as const,
@@ -53,4 +53,20 @@ test('the confirmation and, when asked, a reason are required', () => {
   assert.throws(() => assertDeleteRequest(impact, { include: ['notifications'], confirmation: 'yes' }, { requireReason: false }), /Tick the box/);
   assert.throws(() => assertDeleteRequest(impact, { include: ['notifications'], confirmation: 'delete', reason: 'no' }, { requireReason: true }), /reason/);
   assert.equal(assertDeleteRequest(impact, { include: ['notifications'], confirmation: ' delete ' }, { requireReason: false }).reason, '');
+});
+
+test('empty Finance Hub parties can be deleted while parties with financial history stay blocked', () => {
+  const result = classifyFinancePartyActivity([
+    { id: 'empty-party', openingBalances: 0, vouchers: 0, voucherLines: 0, documents: 0, settlements: 0, schedules: 0, followUps: 0, writeOffs: 0 },
+    { id: 'used-party', openingBalances: 0, vouchers: 1, voucherLines: 2, documents: 0, settlements: 0, schedules: 0, followUps: 0, writeOffs: 0 },
+  ]);
+
+  assert.deepEqual(result.deletableIds, ['empty-party']);
+  assert.deepEqual(result.blockedIds, ['used-party']);
+});
+
+test('permanent account deletion follows the explicit user-delete permission', () => {
+  assert.equal(canPermanentlyDeleteAccount({ role: 'SUPER_ADMIN' }), true);
+  assert.equal(canPermanentlyDeleteAccount({ role: 'EMPLOYEE', permissions: ['users.delete'] }), true);
+  assert.equal(canPermanentlyDeleteAccount({ role: 'EMPLOYEE', permissions: ['users.update'] }), false);
 });

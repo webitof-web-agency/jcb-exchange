@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, FileText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus, ShieldCheck, CheckCircle2, Loader2, Sparkles, LayoutGrid, List, RefreshCw, MapPin, AlertCircle, TrendingUp, Handshake, Eye, EyeOff, Camera } from 'lucide-react';
+import { Search, Truck, X, Upload, ImagePlus, PlayCircle, Video, Pencil, Trash2, MoreVertical, UserCheck, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, FileText, Phone, Check, ArrowUpDown, ArrowUp, ArrowDown, Plus, ShieldCheck, CheckCircle2, Loader2, Sparkles, LayoutGrid, List, RefreshCw, MapPin, AlertCircle, TrendingUp, Handshake, Eye, EyeOff, Camera } from 'lucide-react';
 import PortalActionDropdown from '@/components/ui/PortalActionDropdown';
 import axios from 'axios';
 import api from '@/lib/api';
@@ -823,44 +823,66 @@ const getVideoPosterFrame = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const video = document.createElement('video');
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
 
+    let finished = false;
     const cleanup = () => {
       URL.revokeObjectURL(objectUrl);
+      video.removeAttribute('src');
+      video.load();
     };
 
-    video.onloadeddata = () => {
+    const done = (dataUrl: string) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      resolve(dataUrl);
+    };
+
+    const fail = (error: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      cleanup();
+      reject(error);
+    };
+
+    const timeout = setTimeout(() => {
+      fail(new Error('Video poster timeout'));
+    }, 4000);
+
+    const tryCapture = () => {
       try {
+        if (!video.videoWidth || !video.videoHeight) return false;
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        canvas.width = Math.min(video.videoWidth, 1280);
+        canvas.height = Math.min(video.videoHeight, 720);
         const context = canvas.getContext('2d');
-
-        if (!context) {
-          cleanup();
-          reject(new Error('Unable to prepare video preview.'));
-          return;
-        }
-
+        if (!context) { fail(new Error('Unable to prepare video preview.')); return true; }
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/webp', 0.82);
-        cleanup();
-        resolve(dataUrl);
+        done(canvas.toDataURL('image/jpeg', 0.85));
+        return true;
       } catch (error) {
-        cleanup();
-        reject(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+        fail(error instanceof Error ? error : new Error('Unable to capture video preview.'));
+        return true;
       }
     };
 
-    video.onerror = () => {
-      cleanup();
-      reject(new Error('Unable to read the selected video.'));
+    video.onloadedmetadata = () => {
+      try {
+        if (video.duration > 0.1) { video.currentTime = Math.min(0.5, video.duration / 2); }
+        else { tryCapture(); }
+      } catch { tryCapture(); }
     };
-
+    video.onseeked = () => { tryCapture(); };
+    video.onloadeddata = () => { if (!finished) tryCapture(); };
+    video.onerror = () => { fail(new Error('Unable to read the selected video.')); };
     video.src = objectUrl;
   });
+
 
 function CustomSelectPill({
   value,
@@ -5444,6 +5466,7 @@ function ListingMediaUploadBox({
   label,
   kind,
   previewUrl,
+  helperText,
   uploadedFile,
   onUploaded,
   onPreviewReady,
@@ -5465,30 +5488,47 @@ function ListingMediaUploadBox({
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [localBlobUrl, setLocalBlobUrl] = useState<string>('');
+  const [localPosterUrl, setLocalPosterUrl] = useState<string>('');
+  const [videoPlaybackFailed, setVideoPlaybackFailed] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
-  const hasUploadedPreview = Boolean(previewUrl);
+
+  const hasUploadedPreview = Boolean(previewUrl || localBlobUrl || uploadedFile);
+
+  const isImageData = (src?: string | null) => Boolean(src && (src.startsWith('data:image/') || /\.(jpe?g|png|webp)(\?.*)?$/i.test(src)));
+  const isVideoData = (src?: string | null) => Boolean(src && (src.startsWith('data:video/') || src.startsWith('blob:') || /\.(mp4|webm|mov)(\?.*)?$/i.test(src)));
+
+  const getAbsUrl = (u?: string | null) => u ? (() => { try { return getAbsoluteFileUrl(u); } catch { return u; } })() : '';
+
+  const playableVideoSource = kind === 'video'
+    ? (localBlobUrl || (isVideoData(previewUrl) ? previewUrl : '') || getAbsUrl(uploadedFile?.absoluteUrl) || getAbsUrl(uploadedFile?.fileUrl) || '')
+    : '';
+
+  const effectivePosterUrl = kind === 'video'
+    ? (localPosterUrl || (isImageData(previewUrl) ? previewUrl : '') || '')
+    : '';
 
   const handleChange = async (file?: File) => {
     if (!file) return;
-
     setError('');
+    setVideoPlaybackFailed(false);
+    setPreviewFailed(false);
     setUploading(true);
     onUploadingChange(true);
+
+    if (kind === 'video') {
+      const blobUrl = URL.createObjectURL(file);
+      setLocalBlobUrl(blobUrl);
+      onPreviewReady(blobUrl);
+      void getVideoPosterFrame(file).then((p) => { if (p) setLocalPosterUrl(p); }).catch(() => {});
+    } else {
+      onPreviewReady(URL.createObjectURL(file));
+    }
 
     try {
       const uploaded = await uploadListingMediaToServer({ file, kind });
       onUploaded(uploaded);
-
-      if (kind === 'image') {
-        onPreviewReady(URL.createObjectURL(file));
-      } else {
-        try {
-          const posterFrame = await getVideoPosterFrame(file);
-          onPreviewReady(posterFrame);
-        } catch {
-          onPreviewReady('');
-        }
-      }
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError, 'Upload failed.'));
     } finally {
@@ -5510,7 +5550,40 @@ function ListingMediaUploadBox({
             : 'border-dashed border-gray-200 bg-gray-50/70 hover:bg-amber-50/30 hover:border-amber-300'
         }`}
       >
-        {hasUploadedPreview ? (
+        {hasUploadedPreview && kind === 'video' ? (
+          <div className="absolute inset-0 h-full w-full bg-black">
+            {playableVideoSource && !videoPlaybackFailed ? (
+              <video
+                key={playableVideoSource}
+                src={playableVideoSource}
+                poster={effectivePosterUrl || undefined}
+                muted
+                playsInline
+                preload="metadata"
+                aria-label={label}
+                onError={() => setVideoPlaybackFailed(true)}
+                className="h-full w-full rounded-xl object-cover transition duration-300 group-hover:scale-105"
+              />
+            ) : effectivePosterUrl && !previewFailed ? (
+              <div className="relative h-full w-full">
+                <Image src={effectivePosterUrl} alt={label} fill unoptimized onError={() => setPreviewFailed(true)} className="rounded-xl object-cover" />
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/35">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 shadow-md">
+                    <PlayCircle className="h-5 w-5 text-gray-900" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-b from-gray-900 to-gray-950 text-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-400/20 border border-amber-400/30">
+                  <Video className="h-4 w-4 text-amber-400" />
+                </div>
+                <span className="text-[10px] font-bold text-gray-200">Video Uploaded</span>
+                <span className="text-[9px] text-emerald-400 font-semibold">✓ Ready</span>
+              </div>
+            )}
+          </div>
+        ) : hasUploadedPreview && previewUrl ? (
           <Image
             src={previewUrl}
             alt={label}
@@ -5519,29 +5592,13 @@ function ListingMediaUploadBox({
             className="rounded-xl object-cover transition duration-300 group-hover:scale-105"
           />
         ) : sampleMedia?.kind === 'image' ? (
-          <Image
-            src={sampleMedia.src}
-            alt={`Example ${label}`}
-            fill
-            unoptimized
-            aria-hidden="true"
-            className="rounded-xl object-cover opacity-20"
-          />
+          <Image src={sampleMedia.src} alt={`Example ${label}`} fill unoptimized aria-hidden="true" className="rounded-xl object-cover opacity-20" />
         ) : sampleMedia?.kind === 'video' ? (
-          <video
-            src={sampleMedia.src}
-            muted
-            loop
-            autoPlay
-            playsInline
-            preload="metadata"
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover opacity-20"
-          />
+          <video src={sampleMedia.src} muted loop autoPlay playsInline preload="metadata" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover opacity-20" />
         ) : null}
 
-        {/* Video Preview Overlay */}
-        {hasUploadedPreview && kind === 'video' ? (
+        {/* Video uploaded overlay */}
+        {hasUploadedPreview && kind === 'video' && playableVideoSource && !videoPlaybackFailed ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/25">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-gray-950 shadow-md">
               <PlayCircle className="h-4 w-4 text-gray-900" />
@@ -5551,112 +5608,82 @@ function ListingMediaUploadBox({
 
         {/* Top Badges */}
         <div className="absolute top-1.5 left-1.5 right-1.5 z-20 flex items-center justify-between pointer-events-none">
-          <span
-            className={`rounded px-1.5 py-0.2 text-[8.5px] font-extrabold uppercase tracking-wider ${
-              kind === 'video'
-                ? 'bg-amber-400 text-gray-950 shadow-2xs'
-                : hasUploadedPreview
-                ? 'bg-black/60 text-white backdrop-blur-xs'
-                : 'bg-gray-200 text-gray-700'
-            }`}
-          >
+          <span className={`rounded px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider ${
+            kind === 'video'
+              ? 'bg-amber-400 text-gray-950 shadow-2xs'
+              : hasUploadedPreview
+              ? 'bg-black/60 text-white backdrop-blur-xs'
+              : 'bg-gray-200 text-gray-700'
+          }`}>
             {kind === 'video' ? 'Video' : 'Photo'}
           </span>
 
           <div className="flex items-center gap-1 pointer-events-auto">
-            {/* Sample Guide Preview Button */}
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onOpenSampleGuide(slotKey);
-              }}
-              title="Click to view full sample photo & photography guide"
-              className="inline-flex items-center gap-0.5 rounded bg-black/65 hover:bg-black text-white px-1.5 py-0.5 text-[8.5px] font-bold shadow-xs backdrop-blur-xs transition cursor-pointer"
+              onClick={(e) => { e.preventDefault(); onOpenSampleGuide(slotKey); }}
+              className="rounded-full bg-white/90 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-gray-500 shadow-xs transition hover:bg-white hover:text-gray-800"
+              aria-label={`View sample for ${cleanLabel}`}
+              title={`View example ${cleanLabel}`}
             >
-              <Eye className="h-2.5 w-2.5 text-amber-300" />
-              <span>Sample</span>
+              eg.
             </button>
-
-            {hasUploadedPreview && (
-              <span className="flex items-center gap-0.5 rounded-full bg-emerald-600 px-1.5 py-0.2 text-[8.5px] font-bold text-white shadow-2xs">
-                <CheckCircle2 className="h-2.5 w-2.5" />
-                <span>OK</span>
-              </span>
-            )}
+            {hasUploadedPreview ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (localBlobUrl) { try { URL.revokeObjectURL(localBlobUrl); } catch {} setLocalBlobUrl(''); }
+                  setLocalPosterUrl('');
+                  setVideoPlaybackFailed(false);
+                  setPreviewFailed(false);
+                  onClear();
+                }}
+                className="rounded-full bg-white/90 p-0.5 text-gray-500 shadow-xs transition hover:bg-red-50 hover:text-red-600"
+                aria-label={`Remove ${cleanLabel}`}
+                title="Remove"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            ) : null}
           </div>
         </div>
 
-        {/* Center UI for empty slot */}
-        {!hasUploadedPreview && (
-          <div className="relative z-10 flex flex-col items-center px-1 text-center">
-            <Upload className="mb-0.5 h-3.5 w-3.5 text-gray-400 group-hover:text-amber-600 transition" />
-            <span className="text-[10.5px] font-bold text-gray-800 leading-tight truncate max-w-[95px]">
-              {cleanLabel}
-            </span>
-            <span className="text-[8.5px] text-gray-400 font-medium mt-0.5">
-              {kind === 'video' ? 'Max 120s' : 'Max 5MB'}
-            </span>
+        {!hasUploadedPreview ? (
+          <div className="relative z-10 mt-4 flex flex-col items-center px-1 text-center">
+            {kind === 'video' ? (
+              <Video className="mb-1 h-5 w-5 text-amber-500" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1 h-5 w-5 text-gray-400" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            )}
+            <span className="text-[10px] font-semibold text-gray-600">{cleanLabel}</span>
           </div>
-        )}
+        ) : null}
 
-        {/* Bottom Title on Uploaded Card */}
-        {hasUploadedPreview && (
-          <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center p-1 bg-gradient-to-t from-black/80 via-black/30 to-transparent">
-            <span className="text-[9.5px] font-bold text-white truncate text-center drop-shadow-xs">
-              {cleanLabel}
-            </span>
+        {hasUploadedPreview ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-b-xl bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-3">
+            <span className="block text-center text-[9px] font-bold uppercase tracking-widest text-emerald-300">✓ Uploaded</span>
           </div>
-        )}
+        ) : null}
 
-        {uploading && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 rounded-xl text-white">
-            <Loader2 className="h-4 w-4 animate-spin text-amber-400 mb-1" />
-            <span className="text-[9px] font-bold text-amber-300">Uploading...</span>
+        {uploading ? (
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-black/50">
+            <Loader2 className="h-5 w-5 animate-spin text-white" />
           </div>
-        )}
-
+        ) : null}
         <input
           type="file"
           accept={kind === 'video' ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov' : 'image/jpeg,image/png,image/webp'}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10"
-          onChange={(event) => void handleChange(event.target.files?.[0])}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
           disabled={uploading}
+          onChange={(event) => {
+            const selectedFile = event.target.files?.[0];
+            event.currentTarget.value = '';
+            void handleChange(selectedFile);
+          }}
         />
       </label>
-
-      {/* Footer link: Title, Guide & Remove button */}
-      <div className="mt-1 flex items-center justify-between px-0.5">
-        <span className="text-[9.5px] text-gray-600 font-semibold truncate max-w-[65px]" title={label}>
-          {cleanLabel}
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onOpenSampleGuide(slotKey)}
-            title="Read guide note & preview sample"
-            className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 hover:text-amber-800 hover:underline transition cursor-pointer"
-          >
-            <Eye className="h-2.5 w-2.5" />
-            <span>Guide</span>
-          </button>
-          {uploadedFile && (
-            <>
-              <span className="text-gray-300 text-[8px]">•</span>
-              <button
-                type="button"
-                onClick={onClear}
-                className="text-[9px] font-bold text-rose-600 hover:text-rose-700 hover:underline transition cursor-pointer"
-              >
-                Remove
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {error ? <p className="mt-0.5 text-[9px] font-medium text-red-600">{error}</p> : null}
+      {error ? <p className="mt-1 text-[10px] font-medium text-red-600">{error}</p> : null}
     </div>
   );
 }

@@ -32,6 +32,7 @@ export const normalizeSellVehicleAvailability = (value: string) => {
   const normalized = value.toUpperCase();
   if (normalized === 'SOLD') return 'SOLD';
   if (normalized === 'PENDING') return 'PENDING';
+  if (normalized === 'DRAFT') return 'DRAFT';
   return 'AVAILABLE';
 };
 

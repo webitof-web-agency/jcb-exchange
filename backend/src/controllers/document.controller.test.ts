@@ -131,7 +131,7 @@ test('uploads branding images to local public storage and returns the local publ
   });
 });
 
-test('uploads listing media through Google Drive and returns its Drive URL', async () => {
+test('uploads listing media through Google Drive and returns a range-capable media proxy URL', async () => {
   const uploadedFile = {
     buffer: Buffer.from('image-bytes'),
     mimetype: 'image/png',
@@ -184,8 +184,8 @@ test('uploads listing media through Google Drive and returns its Drive URL', asy
     originalName: 'machine.png',
     mimeType: 'image/png',
     size: 11,
-    fileUrl: 'https://drive.google.com/uc?id=drive-file-id-123',
-    absoluteUrl: 'https://drive.google.com/uc?id=drive-file-id-123',
+    fileUrl: 'http://localhost:5002/api/documents/upload/public/listing-media/drive/drive-file-id-123',
+    absoluteUrl: 'http://localhost:5002/api/documents/upload/public/listing-media/drive/drive-file-id-123',
   });
 });
 
