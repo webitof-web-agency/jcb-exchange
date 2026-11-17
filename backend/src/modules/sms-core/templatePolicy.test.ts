@@ -4,6 +4,7 @@ import {
   getMissingSmsTemplateVariables,
   getSmsTemplateVariableOptions,
   renderSmsVariables,
+  validateSmsTemplateConfiguration,
   validateSmsTemplateVariableOrder,
 } from './templatePolicy';
 
@@ -33,4 +34,19 @@ test('detects missing runtime values before sending to the provider', () => {
     ['listingTitle'],
   );
   assert.equal(renderSmsVariables('customerName|status', { customerName: 'Aman', status: 'APPROVED' }), 'Aman|APPROVED');
+});
+
+test('requires the complete payment receipt variable order when the SMS rule is enabled', () => {
+  assert.throws(
+    () => validateSmsTemplateConfiguration('VEHICLE_SALE_PAYMENT_RECEIPT', true, 'customerName|amount|receiptUrl'),
+    /must use this exact variable order/,
+  );
+  assert.equal(
+    validateSmsTemplateConfiguration(
+      'VEHICLE_SALE_PAYMENT_RECEIPT',
+      true,
+      'customerName|vehicleTitle|amount|receiptNumber|balance|paymentMethod|receiptUrl',
+    ),
+    'customerName|vehicleTitle|amount|receiptNumber|balance|paymentMethod|receiptUrl',
+  );
 });

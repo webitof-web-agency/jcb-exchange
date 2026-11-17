@@ -30,9 +30,11 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { usePathname } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
+import { matchAiPageContext } from '@/lib/financeWorkspace';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
@@ -51,6 +53,7 @@ import {
   type SpeechRecognitionLike,
 } from './aiVoice';
 import AiFileActions from './AiFileActions';
+import AiOperatorData from './AiOperatorData';
 import type { AiFileAction } from './aiFileActionModel';
 import {
   getAiRuntimePresentation,
@@ -94,6 +97,7 @@ type AiChatResponse = {
     confidenceScore?: number;
     confidenceLabel?: string;
     uiActions?: AiFileAction[];
+    operatorData?: unknown;
   };
 };
 
@@ -156,6 +160,7 @@ const errorMessage = (error: unknown, fallback: string) => {
 
 const defaultStatus: AiRuntimeStatus = {
   enabled: false,
+  localAssistantEnabled: false,
   provider: 'openai',
   model: 'not configured',
   modelConfigured: false,
@@ -179,6 +184,7 @@ const displayTitle = (value: string) => (value.length > 28 ? `${value.slice(0, 2
 
 export default function AiCommandCenter() {
   const { user } = useAuthStore();
+  const pathname = usePathname();
   const userId = user?.id;
   const [status, setStatus] = useState<AiRuntimeStatus>(defaultStatus);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -196,6 +202,7 @@ export default function AiCommandCenter() {
   const [conversations, setConversations] = useState<AiConversation[]>([]);
   const [conversationMessages, setConversationMessages] = useState<AiConversationMessage[]>([]);
   const [fileActionsByRequestId, setFileActionsByRequestId] = useState<Record<string, AiFileAction[]>>({});
+  const [operatorDataByRequestId, setOperatorDataByRequestId] = useState<Record<string, unknown>>({});
   const [historyQuery, setHistoryQuery] = useState('');
   const [olderHistoryOpen, setOlderHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -252,6 +259,9 @@ export default function AiCommandCenter() {
   const normalizedMessage = normalizeAiMessage(message);
   const selectedTool = tools.find((tool) => tool.name === selectedToolName) || null;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
+  const financePageContext = useMemo(() => {
+    return matchAiPageContext(pathname || '') || undefined;
+  }, [pathname]);
 
   useEffect(() => {
     rememberAiConversationId(userId, activeConversationId);
@@ -291,8 +301,9 @@ export default function AiCommandCenter() {
     || selectedTool?.name === 'listing.detail'
     || selectedTool?.name === 'vehicle.identity';
   const hasToolQueryInput = requiresToolQuery || selectedTool?.name === 'forecast.operations';
+  const chatAvailable = status.enabled || Boolean(status.localAssistantEnabled);
   const canSubmit = Boolean(
-    status.enabled
+    chatAvailable
     && normalizedMessage
     && activeConversation?.status !== 'ARCHIVED'
     && (!requiresToolQuery || toolQuery.trim())
@@ -753,7 +764,7 @@ export default function AiCommandCenter() {
 
   const submitMessage = async () => {
     const nextMessage = normalizeAiMessage(message);
-    if (!nextMessage || !status.enabled || activeConversation?.status === 'ARCHIVED' || (requiresToolQuery && !toolQuery.trim()) || chatLoading) return;
+    if (!nextMessage || !chatAvailable || activeConversation?.status === 'ARCHIVED' || (requiresToolQuery && !toolQuery.trim()) || chatLoading) return;
 
     stopVoiceInput();
     const optimisticMessageId = `pending-${Date.now()}`;
@@ -774,9 +785,11 @@ export default function AiCommandCenter() {
         conversationId?: string;
         model?: string;
         tool?: { name: string; arguments: Record<string, unknown> };
+        pageContext?: { groupKey: string; moduleKey: string; moduleLabel: string; recordId?: string };
       } = { message: nextMessage };
       if (activeConversationId) request.conversationId = activeConversationId;
       if (selectedModel) request.model = selectedModel;
+      if (financePageContext) request.pageContext = financePageContext;
       if (selectedTool) {
         request.tool = {
           name: selectedTool.name,
@@ -790,6 +803,9 @@ export default function AiCommandCenter() {
           ...current,
           [response.data.requestId]: response.data.tool?.uiActions || [],
         }));
+      }
+      if (response.data.tool?.operatorData !== undefined) {
+        setOperatorDataByRequestId((current) => ({ ...current, [response.data.requestId]: response.data.tool?.operatorData }));
       }
       if (response.data.conversationId) {
         setActiveConversationId(response.data.conversationId);
@@ -1277,6 +1293,9 @@ export default function AiCommandCenter() {
                         {conversationMessage.role === 'ASSISTANT' && conversationMessage.requestId && fileActionsByRequestId[conversationMessage.requestId]?.length ? (
                           <AiFileActions actions={fileActionsByRequestId[conversationMessage.requestId]} />
                         ) : null}
+                        {conversationMessage.role === 'ASSISTANT' && conversationMessage.requestId ? (
+                          <AiOperatorData data={operatorDataByRequestId[conversationMessage.requestId]} />
+                        ) : null}
                         <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${conversationMessage.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
                           <span className="truncate">
                             {conversationMessage.role === 'ASSISTANT' && (conversationMessage.provider || conversationMessage.modelAlias)
@@ -1329,7 +1348,7 @@ export default function AiCommandCenter() {
                       <button
                         key={idx}
                         type="button"
-                        disabled={!status.enabled || chatLoading || activeConversation?.status === 'ARCHIVED'}
+                        disabled={!chatAvailable || chatLoading || activeConversation?.status === 'ARCHIVED'}
                         onClick={() => {
                           setMessage(quickPrompt);
                           window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1370,7 +1389,7 @@ export default function AiCommandCenter() {
                           ? 'Forecast Metric (e.g. sales, inventory, finance)'
                           : selectedTool?.name === 'vehicle.identity' ? 'Vehicle Number (e.g. CG04NF0268)' : 'Search Term (e.g. JCB 3DX Raipur)'}
                         className="h-8 w-full rounded-lg border border-slate-300 px-3 text-xs text-slate-900 outline-none focus:border-[#C28B00] focus:ring-2 focus:ring-[#FFC107]/20"
-                        disabled={!status.enabled || chatLoading}
+                        disabled={!chatAvailable || chatLoading}
                       />
                     </div>
                   )}
@@ -1604,7 +1623,7 @@ export default function AiCommandCenter() {
                       <button
                         key={tool.name}
                         type="button"
-                        disabled={!status.enabled || chatLoading}
+                        disabled={!chatAvailable || chatLoading}
                         onClick={() => {
                           setSelectedToolName(tool.name);
                           if ((tool.name === 'listing.search' || tool.name === 'listing.detail' || tool.name === 'vehicle.identity') && !message) {
@@ -1638,7 +1657,7 @@ export default function AiCommandCenter() {
                       <button
                         key={idx}
                         type="button"
-                        disabled={!status.enabled || chatLoading}
+                        disabled={!chatAvailable || chatLoading}
                         onClick={() => setMessage(quickPrompt)}
                         className="w-full text-left rounded-lg border border-slate-200 p-2.5 text-xs text-slate-700 hover:border-amber-400 hover:bg-amber-50/40 transition disabled:opacity-50"
                       >

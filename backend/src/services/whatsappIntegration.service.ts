@@ -28,6 +28,7 @@ import { resolveNotificationPreference } from './notificationRecipient.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
 import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
+import { validateVehicleSalePaymentReceiptWhatsAppTemplate } from './vehicleSalePaymentReceiptWhatsAppTemplate';
 import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
 
 const SETTINGS_ID = 'default';
@@ -246,10 +247,13 @@ const saveWhatsAppAutomationRule = async ({
   allowedTemplatePurposes: readonly WhatsAppTemplatePurpose[];
 }) => {
   const selectedTemplate = templateId
-    ? await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, name: true, status: true, metaTemplateId: true, category: true } })
+    ? await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, name: true, status: true, metaTemplateId: true, category: true, components: true } })
     : null;
   if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(resolveWhatsAppTemplatePurpose(selectedTemplate.name, selectedTemplate.category), allowedTemplatePurposes)) {
     throw new Error('Selected template does not belong to this WhatsApp module.');
+  }
+  if (selectedTemplate && eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
+    validateVehicleSalePaymentReceiptWhatsAppTemplate(selectedTemplate);
   }
   if (enabled && (!selectedTemplate || selectedTemplate.status !== 'APPROVED' || !selectedTemplate.metaTemplateId)) {
     throw new Error('Select an approved Meta template before enabling this automation.');
@@ -790,6 +794,18 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
 
     if (!decision.shouldQueue || !settings || !rule?.template) {
       return { queued: false, reason: decision.shouldQueue ? 'AUTOMATION_CONFIGURATION_INVALID' : decision.reason };
+    }
+
+    if (input.eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
+      try {
+        validateVehicleSalePaymentReceiptWhatsAppTemplate(rule.template);
+      } catch (error) {
+        return {
+          queued: false,
+          reason: 'INVALID_TEMPLATE_CONFIGURATION',
+          error: error instanceof Error ? error.message : 'Payment receipt WhatsApp template is invalid.',
+        };
+      }
     }
 
     const resolvedTemplateComponents = getAutomationTemplateComponents(

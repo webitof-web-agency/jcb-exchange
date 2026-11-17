@@ -8,7 +8,7 @@ import {
 
 const documentXml = (paragraphs: string[]) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>${paragraphs.map((value) => `<w:p><w:r><w:t>${value}</w:t></w:r></w:p>`).join('')}</w:body>
+  <w:body>${paragraphs.map((value) => `<w:p><w:r><w:t>${value}</w:t></w:r></w:p>`).join('')}<w:sectPr><w:pgSz w:w="10000" w:h="10000"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr></w:body>
 </w:document>`;
 
 const makeTemplate = (paragraphs: string[]) => {
@@ -51,7 +51,7 @@ test('fills the supplied money receipt layout and replaces the embedded logo', (
 
   const output = fillMoneyReceiptTemplate(source, {
     companyName: 'JCB Exchange',
-    cin: 'U46594CT2026OPC020990',
+    gstin: '22AAPFU0939F1ZV',
     companyAddressLine: 'Raipur, Chhattisgarh - 492004',
     receiptNumber: 'JCB/RAIPUR/SAL/26-27/2404',
     receiptDate: '22/OCT/2026',
@@ -69,7 +69,11 @@ test('fills the supplied money receipt layout and replaces the embedded logo', (
   }, Buffer.from('not-a-real-jpg'));
 
   const xml = readDocument(output);
-  assert.match(xml, /U46594CT2026OPC020990/);
+  assert.match(xml, /GSTIN: 22AAPFU0939F1ZV/);
+  assert.doesNotMatch(xml, /CIN:/);
+  assert.match(xml, /<w:pgSz w:w="11906" w:h="16838"\/>/);
+  assert.match(xml, /<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/);
+  assert.match(xml, /<w:sz w:val="22"\/>/);
   assert.match(xml, /JCB\/RAIPUR\/SAL\/26-27\/2404/);
   assert.match(xml, /HITESH/);
   assert.match(xml, /BANK TRANSFER/);

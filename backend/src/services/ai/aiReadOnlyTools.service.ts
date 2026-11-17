@@ -25,7 +25,7 @@ import {
   createAiDataErrorContractForCode,
   type AiDataContract,
 } from './aiDataContract.service';
-import { sanitizeAiToolData } from './aiFieldSecurity.service';
+import { canReadAiSensitiveField, presentAiToolDataForOperator, sanitizeAiToolData } from './aiFieldSecurity.service';
 import { buildAiFileAction, type AiFileAction } from './aiUiActions.service';
 import { buildLeadCopilot } from './leadCopilot.service';
 import { buildCallIntelligence } from './callIntelligence.service';
@@ -43,6 +43,14 @@ import {
 import { extractDriveFileIdFromSecureUrl, getSecureDocumentUrl } from '../../utils/secureDocumentUrl';
 import { getVehicleDocs, VehicleDocsError } from '../vehicleDocs.service';
 import { listVerificationHistory } from '../verificationHistory.service';
+import { getAnalyticsAiPageData, type AnalyticsPageArguments } from './analyticsAiData.service';
+import { ANALYTICS_AI_PAGE_KEYS } from './analyticsAiPage.service';
+import { getRecruitmentAiPageData, type RecruitmentPageArguments } from './recruitmentAiData.service';
+import { RECRUITMENT_AI_PAGE_KEYS } from './recruitmentAiPage.service';
+import { getFinanceHubPageData, type FinanceHubPageArguments } from './financeAiData.service';
+import { financePagePermissionsFor, SCOPED_FINANCE_PAGE_KEYS, type ScopedFinancePageKey } from './financeAiPage.service';
+import { getAdministrationAiPageData, type AdministrationPageArguments } from './administrationAiData.service';
+import { ADMINISTRATION_AI_PAGE_KEYS, administrationPagePermissionsFor } from './administrationAiPage.service';
 
 export type { AiToolExecutionObservability } from './aiToolObservability.service';
 
@@ -71,6 +79,7 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'tasks.summary',
   'lead.statistics',
   'analytics.summary',
+  'analytics.page',
   'listing.summary',
   'listing.statistics',
   'listing.detail',
@@ -86,6 +95,7 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'finance.trend',
   'finance.copilot',
   'finance.workspace.summary',
+  'finance.hub.page',
   'invoice.summary',
   'payment.summary',
   'margin.summary',
@@ -103,6 +113,7 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'translations.summary',
   'settings.summary',
   'users.summary',
+  'administration.page',
   'roles.summary',
   'subscriptions.summary',
   'forecast.operations',
@@ -112,6 +123,7 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'crm.followups',
   'crm.call.intelligence',
   'recruitment.summary',
+  'recruitment.page',
   'recruitment.copilot',
   'fraud.signals',
   'listing.search',
@@ -151,6 +163,8 @@ export type AiToolExecutionResult = {
   toolName: AiReadOnlyToolName;
   label: string;
   data: unknown;
+  /** Portal-only authorized details; never passed to the external provider. */
+  operatorData?: unknown;
   contract: AiDataContract<unknown>;
   dataAvailability?: AiToolDataAvailability;
   dataAvailabilityMessage?: string;
@@ -191,6 +205,7 @@ type ListingDetailArguments = {
   partnerCode?: string;
 };
 type RangeLimitArguments = { days?: number; limit?: number };
+type SellAccountsSummaryArguments = RangeLimitArguments & { allRecords?: boolean };
 type ModelSummaryArguments = RangeLimitArguments & { brandId?: string };
 type PartnerPerformanceArguments = RangeLimitArguments & { partnerId?: string; partnerCode?: string };
 type VehicleIdentityArguments = { listingId?: string; query?: string };
@@ -223,6 +238,7 @@ export type AiReadOnlyToolDependencies = {
   tasksSummary: (context: AiToolContext, args: LimitArguments) => Promise<unknown>;
   leadStatistics: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   analyticsSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  analyticsPage?: (context: AiToolContext, args: AnalyticsPageArguments) => Promise<unknown>;
   listingSummary: (context: AiToolContext, args: ListingSummaryArguments) => Promise<unknown>;
   listingStatistics: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   listingDetail: (context: AiToolContext, args: ListingDetailArguments) => Promise<unknown>;
@@ -237,12 +253,13 @@ export type AiReadOnlyToolDependencies = {
   financeTrend: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   financeCopilot?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   financeWorkspaceSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  financeHubPage?: (context: AiToolContext, args: FinanceHubPageArguments) => Promise<unknown>;
   invoiceSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   paymentSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   marginSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   walletSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   apiBillingSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
-  sellAccountsSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  sellAccountsSummary: (context: AiToolContext, args: SellAccountsSummaryArguments) => Promise<unknown>;
   refundSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   accountingSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   journalSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
@@ -254,6 +271,7 @@ export type AiReadOnlyToolDependencies = {
   translationsSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   settingsSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   usersSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  administrationPage?: (context: AiToolContext, args: AdministrationPageArguments) => Promise<unknown>;
   rolesSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   subscriptionsSummary: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   forecastOperations: (context: AiToolContext, args: ForecastArguments) => Promise<unknown>;
@@ -263,6 +281,7 @@ export type AiReadOnlyToolDependencies = {
   crmFollowUps: (context: AiToolContext, args: FollowUpArguments) => Promise<unknown>;
   crmCallIntelligence: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   recruitmentSummary: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
+  recruitmentPage?: (context: AiToolContext, args: RecruitmentPageArguments) => Promise<unknown>;
   recruitmentCopilot?: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
   fraudSignals?: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   listingSearch: (context: AiToolContext, args: ListingSearchArguments) => Promise<unknown>;
@@ -371,6 +390,9 @@ const rangeLimitArguments = z.object({
   days: z.number().int().min(1).max(90).optional(),
   limit: z.number().int().min(1).max(20).optional(),
 }).strict();
+const sellAccountsSummaryArguments = rangeLimitArguments.extend({
+  allRecords: z.boolean().optional(),
+});
 const modelSummaryArguments = rangeLimitArguments.extend({
   brandId: z.string().uuid().optional(),
 });
@@ -382,6 +404,55 @@ const forecastArguments = z.object({
   metric: z.enum(['sales', 'inventory', 'finance', 'leads', 'kyc', 'partners', 'collections']).optional(),
   days: z.number().int().min(7).max(90).optional(),
   horizon: z.number().int().min(1).max(30).optional(),
+}).strict();
+const financeHubPageArguments = z.object({
+  pageKey: z.enum([...SCOPED_FINANCE_PAGE_KEYS] as [ScopedFinancePageKey, ...ScopedFinancePageKey[]]),
+  days: z.number().int().min(1).max(90).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+  query: z.string().trim().min(1).max(80).optional(),
+  from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  asOf: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  includeDrafts: z.boolean().optional(),
+  vehicleId: z.string().uuid().optional(),
+  partyId: z.string().uuid().optional(),
+  bankId: z.string().uuid().optional(),
+  accountId: z.string().uuid().optional(),
+  yearId: z.string().uuid().optional(),
+  includeZero: z.boolean().optional(),
+  status: z.string().trim().min(1).max(40).optional(),
+  assetId: z.string().uuid().optional(),
+  month: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/u).optional(),
+  runId: z.string().uuid().optional(),
+  side: z.enum(['SALES', 'PURCHASES', 'RECEIVABLE', 'PAYABLE', 'BOTH']).optional(),
+  taxType: z.string().trim().min(1).max(30).optional(),
+  compare: z.enum(['previous-year', 'previous-period']).optional(),
+  measure: z.enum(['INCOME', 'EXPENSE', 'PURCHASE']).optional(),
+  by: z.enum(['account', 'party', 'vehicle']).optional(),
+  periodId: z.string().uuid().optional(),
+  category: z.string().trim().min(1).max(60).optional(),
+  scope: z.enum(['manual', 'suspense', 'all']).optional(),
+  archived: z.boolean().optional(),
+  minAmount: z.number().int().min(0).max(1000000000).optional(),
+}).strict();
+const analyticsPageArguments = z.object({
+  pageKey: z.enum(ANALYTICS_AI_PAGE_KEYS),
+  days: z.number().int().min(1).max(90).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+  listingId: z.string().uuid().optional(),
+  export: z.boolean().optional(),
+}).strict();
+const recruitmentPageArguments = z.object({
+  pageKey: z.enum(RECRUITMENT_AI_PAGE_KEYS),
+  limit: z.number().int().min(1).max(20).optional(),
+  query: z.string().trim().min(1).max(80).optional(),
+  recordId: z.string().uuid().optional(),
+  days: z.number().int().min(1).max(90).optional(),
+}).strict();
+const administrationPageArguments = z.object({
+  pageKey: z.enum(ADMINISTRATION_AI_PAGE_KEYS),
+  days: z.number().int().min(1).max(90).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
 }).strict();
 
 const CRM_READ_PERMISSIONS = ['crm.read', 'crm.manage', 'crm.manage_all', 'crm.assign', 'enquiries.manage'] as const;
@@ -704,6 +775,17 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.analyticsSummary(context, args as RangeArguments),
   },
   {
+    name: 'analytics.page',
+    label: 'Analytics page data',
+    description: 'Returns bounded, source-backed Analytics overview or listing-detail data, breakdowns, availability, and explainable insights.',
+    permissions: ['analytics.read', 'dashboard.view'],
+    available: false,
+    schema: analyticsPageArguments,
+    execute: (dependencies, context, args) => dependencies.analyticsPage
+      ? dependencies.analyticsPage(context, args as AnalyticsPageArguments)
+      : dependencies.analyticsSummary(context, args as RangeArguments),
+  },
+  {
     name: 'listing.summary',
     label: 'Listing summary',
     description: 'Returns inventory totals, status counts, and safe listing rows for list questions.',
@@ -847,6 +929,23 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.financeWorkspaceSummary(context, args as RangeLimitArguments),
   },
   {
+    name: 'finance.hub.page',
+    label: 'Finance Hub page data',
+    description: 'Reads the selected scoped Finance Hub page from source-backed data, including bounded totals, rows, insights, and current-period status.',
+    permissions: ['fh.dashboard.read', 'fh.reports.read', 'fh.approve', 'fh.purchases.read', 'fh.purchases.manage', 'fh.sales.read', 'fh.sales.manage', 'fh.vehicle.read', 'fh.vehicle.manage', 'fh.arap.read', 'fh.arap.manage', 'fh.parties.read', 'fh.parties.manage', 'fh.banking.read', 'fh.banking.manage', 'fh.banking.reconcile', 'fh.books.read', 'fh.books.manage', 'fh.books.post', 'fh.expenses.read', 'fh.expenses.manage', 'fh.payroll.read', 'fh.payroll.manage', 'fh.tax.read', 'fh.tax.manage', 'fh.ca.read', 'fh.ca.manage', 'fh.settings.manage', 'fh.import.manage', 'fh.export', 'fh.reports.export', 'fh.period.lock', 'recurrence.manage'],
+    available: false,
+    schema: financeHubPageArguments,
+    execute: (dependencies, context, args) => {
+      const pageArgs = args as FinanceHubPageArguments;
+      if (!hasPermission(context, financePagePermissionsFor(pageArgs.pageKey))) {
+        return Promise.reject(new AiToolError('You do not have permission to read this Finance Hub page.', 403, 'AI_TOOL_PERMISSION_REQUIRED'));
+      }
+      return dependencies.financeHubPage
+        ? dependencies.financeHubPage(context, pageArgs)
+        : Promise.reject(new AiToolError('Finance Hub page data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED'));
+    },
+  },
+  {
     name: 'invoice.summary',
     label: 'Invoices and bills summary',
     description: 'Summarizes sales invoices, purchase bills, credit notes, and listing bills without party or customer PII.',
@@ -897,8 +996,8 @@ const definitions: PermissionedDefinition[] = [
     description: 'Summarizes commercial sell-account status, lock state, invoice state, and safe financial totals without vehicle or party identity.',
     permissions: FINANCE_READ_PERMISSIONS,
     available: false,
-    schema: rangeLimitArguments,
-    execute: (dependencies, context, args) => dependencies.sellAccountsSummary(context, args as RangeLimitArguments),
+    schema: sellAccountsSummaryArguments,
+    execute: (dependencies, context, args) => dependencies.sellAccountsSummary(context, args as SellAccountsSummaryArguments),
   },
   {
     name: 'refund.summary',
@@ -1000,6 +1099,23 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.usersSummary(context, args as RangeLimitArguments),
   },
   {
+    name: 'administration.page',
+    label: 'Administration page data',
+    description: 'Returns bounded source-backed Users, Roles, Settings, WhatsApp, and SMS page data with question keys, trends, readiness, and explainable suggestions.',
+    permissions: [...new Set(ADMINISTRATION_AI_PAGE_KEYS.flatMap((pageKey) => administrationPagePermissionsFor(pageKey)))],
+    available: false,
+    schema: administrationPageArguments,
+    execute: (dependencies, context, args) => {
+      const pageArguments = args as AdministrationPageArguments;
+      if (!hasPermission(context, administrationPagePermissionsFor(pageArguments.pageKey))) {
+        return Promise.reject(new AiToolError('You do not have permission to view this Administration page.', 403, 'AI_TOOL_PERMISSION_REQUIRED'));
+      }
+      return dependencies.administrationPage
+        ? dependencies.administrationPage(context, pageArguments)
+        : Promise.reject(new AiToolError('Administration page data is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED'));
+    },
+  },
+  {
     name: 'roles.summary',
     label: 'Roles summary',
     description: 'Lists custom roles and assigned-user counts without exposing permission arrays.',
@@ -1087,6 +1203,17 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: emptyArguments,
     execute: (dependencies, context, args) => dependencies.recruitmentSummary(context, args as EmptyArguments),
+  },
+  {
+    name: 'recruitment.page',
+    label: 'Recruitment page data',
+    description: 'Returns bounded source-backed data for Recruitment dashboard, jobs, applications, candidates, interviews, offers, departments, pipeline, and settings pages.',
+    permissions: ['recruitment.dashboard.read', 'recruitment.jobs.read', 'recruitment.applications.read', 'recruitment.candidates.read', 'recruitment.interviews.read', 'recruitment.offers.read', 'recruitment.departments.read', 'recruitment.pipeline.read', 'recruitment.settings.read'],
+    available: false,
+    schema: recruitmentPageArguments,
+    execute: (dependencies, context, args) => dependencies.recruitmentPage
+      ? dependencies.recruitmentPage(context, args as RecruitmentPageArguments)
+      : dependencies.recruitmentSummary(context, {}),
   },
   {
     name: 'recruitment.copilot',
@@ -1691,6 +1818,9 @@ const verificationSummaryFor = async (context: AiToolContext, args: RangeArgumen
 };
 
 const defaultDependencies: AiReadOnlyToolDependencies = {
+  async administrationPage(context, args) {
+    return getAdministrationAiPageData(context, args);
+  },
   async knowledgeSearch(_context, args) {
     const result = searchApprovedKnowledge(args.query);
     return {
@@ -2559,7 +2689,8 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
   async analyticsSummary(_context, args) {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const from = daysBack(periodDays);
-    const [totalEvents, byEventType, bySource] = await Promise.all([
+    const [page, totalEvents, byEventType, bySource] = await Promise.all([
+      getAnalyticsAiPageData(_context, { pageKey: 'overview', days: periodDays, limit: 20 }),
       prisma.analyticsEvent.count({ where: { occurredAt: { gte: from } } }),
       prisma.analyticsEvent.groupBy({
         by: ['eventType'],
@@ -2577,12 +2708,17 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       }),
     ]);
     return {
+      ...page,
       periodDays,
       totalEvents,
       byEventType: byEventType.map((row) => ({ eventType: row.eventType, count: row._count._all })),
       bySource: bySource.map((row) => ({ source: row.source || 'UNSPECIFIED', count: row._count._all })),
       maskedFields: ['anonymousId', 'sessionId', 'actorUserId', 'listingId', 'partnerId', 'query', 'filterPayload'],
     };
+  },
+
+  async analyticsPage(context, args) {
+    return getAnalyticsAiPageData(context, args);
   },
 
   async listingStatistics(_context, args) {
@@ -3293,6 +3429,11 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async financeHubPage(_context, args) {
+    const { pageKey, ...pageArguments } = args;
+    return getFinanceHubPageData(pageKey, pageArguments);
+  },
+
   async invoiceSummary(_context, args) {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const from = daysBack(periodDays);
@@ -3426,7 +3567,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const from = daysBack(periodDays);
     const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 10)));
-    const where = { deletedAt: null, createdAt: { gte: from } };
+    const where = args.allRecords ? { deletedAt: null } : { deletedAt: null, createdAt: { gte: from } };
     const [total, byStatus, byDraft, byLock, totals, rows] = await Promise.all([
       prisma.sellAccount.count({ where }),
       prisma.sellAccount.groupBy({ by: ['dealStatus'], where, _count: { _all: true } }),
@@ -3441,7 +3582,8 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       }),
     ]);
     return {
-      periodDays,
+      periodDays: args.allRecords ? null : periodDays,
+      scope: args.allRecords ? 'ALL_RECORDS' : 'RECENT_RECORDS',
       total,
       totals: { purchaseAmount: numeric(totals._sum.purchaseAmount), sellAmount: numeric(totals._sum.sellAmount), expenses: numeric(totals._sum.expenses), netProfitAfterGst: numeric(totals._sum.netProfitAfterGst) },
       byStatus: byStatus.map((row) => ({ status: row.dealStatus, count: row._count._all })),
@@ -3689,7 +3831,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     return { periodDays, ...buildCallIntelligence(activities) };
   },
 
-  async recruitmentSummary() {
+  async recruitmentSummary(context) {
     const [activeJobs, totalApplications, newApplications, underReview, interviewsScheduled, selectedCandidates, offersSent, hiredCandidates, applicationsByStage] = await Promise.all([
       prisma.job.count({ where: { status: 'PUBLISHED' } }),
       prisma.jobApplication.count(),
@@ -3701,10 +3843,16 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       prisma.jobApplication.count({ where: { currentStage: 'HIRED' } }),
       prisma.jobApplication.groupBy({ by: ['currentStage'], _count: { _all: true } }),
     ]);
+    const page = await getRecruitmentAiPageData(context, { pageKey: 'dashboard', limit: 10 });
     return {
+      ...page,
       stats: { activeJobs, totalApplications, newApplications, underReview, interviewsScheduled, selectedCandidates, offersSent, hiredCandidates },
       pipeline: applicationsByStage.map((row) => ({ stage: row.currentStage, count: row._count._all })),
     };
+  },
+
+  async recruitmentPage(context, args) {
+    return getRecruitmentAiPageData(context, args);
   },
 
   async recruitmentCopilot() {
@@ -4291,6 +4439,7 @@ export class AiReadOnlyToolsService {
       if (error instanceof AiToolError) throw error;
       throw new AiToolError('The requested data is unavailable right now.', 503, 'AI_TOOL_DATA_UNAVAILABLE');
     }
+    const operatorPresentation = presentAiToolDataForOperator(data, context);
     const secured = sanitizeAiToolData(data, context);
     data = secured.data;
     const availability = dataAvailabilityFor(data);
@@ -4325,6 +4474,7 @@ export class AiReadOnlyToolsService {
       toolName: definition.name,
       label: definition.label,
       data,
+      ...(canReadAiSensitiveField(context, 'mobile') ? { operatorData: operatorPresentation.data } : {}),
       contract,
       dataAvailability: availability.status,
       ...(availability.message ? { dataAvailabilityMessage: availability.message } : {}),

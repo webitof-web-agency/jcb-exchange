@@ -45,8 +45,10 @@ export type BillOfSupplyPdfData = {
 };
 
 const INK = '#111827';
-const MUTED = '#4B5563';
+const MUTED = '#6B7280';
 const RULE = '#9CA3AF';
+const ACCENT = '#1E3A8A';   // Navy blue — JCB Exchange brand accent
+const ACCENT_LIGHT = '#EFF6FF'; // Very light blue for header bg
 
 const startDocument = (title: string) => {
   const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: title } });
@@ -59,10 +61,14 @@ const startDocument = (title: string) => {
   return { doc, done };
 };
 
-const drawLogo = (doc: PDFKit.PDFDocument, logo: Buffer | null | undefined, x: number, y: number) => {
+/**
+ * Draws the logo image into the document at (x, y) with max size fitW × fitH.
+ * Skips silently on any error (unsupported format, corrupt buffer, etc.).
+ */
+const drawLogo = (doc: PDFKit.PDFDocument, logo: Buffer | null | undefined, x: number, y: number, fitW = 90, fitH = 46) => {
   if (!logo) return;
   try {
-    doc.image(logo, x, y, { fit: [90, 46] });
+    doc.image(logo, x, y, { fit: [fitW, fitH] });
   } catch {
     // Unsupported logo formats (SVG/WebP) are skipped; the document still renders.
   }
@@ -72,33 +78,107 @@ const dottedRule = (doc: PDFKit.PDFDocument, x: number, y: number, width: number
   doc.moveTo(x, y).lineTo(x + width, y).dash(1.5, { space: 2 }).strokeColor(RULE).lineWidth(0.7).stroke().undash();
 };
 
+const fitCenteredHeaderText = (
+  doc: PDFKit.PDFDocument,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  font: string,
+  maxFontSize: number,
+) => {
+  let fontSize = maxFontSize;
+  doc.font(font).fontSize(fontSize);
+  while (fontSize > 5 && doc.widthOfString(text) > width) {
+    fontSize -= 0.5;
+    doc.fontSize(fontSize);
+  }
+  doc.text(text, x, y, { width, align: 'center', lineBreak: false });
+};
+
+/**
+ * Draws the company header block:
+ *   [ LOGO (left) | Company Name + Address + IDs (right of logo) ]
+ * Returns the bottom-y of the header block.
+ *
+ * Industry-standard layout used by Indian dealership receipts:
+ *   - Accent top bar (full width, 4 px)
+ *   - White header area with logo left, company info center-right
+ *   - Thin bottom rule
+ */
+const drawCompanyHeader = (
+  doc: PDFKit.PDFDocument,
+  company: Company,
+  logo: Buffer | null | undefined,
+  left: number,
+  width: number,
+  startY = 32,
+): number => {
+  const logoW = 90;
+  const logoH = 46;
+  const headerH = 70;
+
+  // Accent top bar
+  doc.rect(left, startY, width, 4).fill(ACCENT);
+
+  // Header background
+  doc.rect(left, startY + 4, width, headerH).fillAndStroke(ACCENT_LIGHT, '#BFDBFE');
+
+  // Logo — left side, vertically centred in header
+  const logoX = left + 10;
+  const logoY = startY + 4 + (headerH - logoH) / 2;
+  drawLogo(doc, logo, logoX, logoY, logoW, logoH);
+
+  // Company name + details — right of logo, centred in remaining space
+  const textX = left + logoW + 20;
+  const textW = width - logoW - 24;
+  const nameY = startY + 14;
+  doc.fillColor(ACCENT);
+  fitCenteredHeaderText(doc, company.name.toUpperCase(), textX, nameY, textW, 'Helvetica-Bold', 14);
+
+  doc.fillColor('#374151');
+  fitCenteredHeaderText(doc, company.addressLine, textX, doc.y + 2, textW, 'Helvetica', 8);
+
+  const ids = company.gstin ? `GSTIN: ${company.gstin}` : '';
+  if (ids) {
+    doc.fillColor(MUTED);
+    fitCenteredHeaderText(doc, ids, textX, doc.y + 2, textW, 'Helvetica', 7.5);
+  }
+
+  return startY + 4 + headerH + 4; // bottom of header + small gap
+};
+
 export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Buffer | null) => {
   const { doc, done } = startDocument(`Money Receipt ${data.receiptNumber}`);
   const left = 36;
   const width = 523;
 
-  drawLogo(doc, logo, left + width - 90, 32);
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(data.company.name.toUpperCase(), left, 36, { width, align: 'center' });
-  doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(data.company.addressLine, left + 100, doc.y + 2, { width: width - 200, align: 'center' });
-  const ids = [data.company.cin ? `CIN: ${data.company.cin}` : '', data.company.gstin ? `GSTIN: ${data.company.gstin}` : ''].filter(Boolean).join('   ');
-  if (ids) doc.text(ids, left + 100, doc.y + 1, { width: width - 200, align: 'center' });
+  // ── Company Header ────────────────────────────────────────────────────────
+  let y = drawCompanyHeader(doc, data.company, logo, left, width, 32);
 
-  let y = Math.max(doc.y, 84) + 12;
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text(data.title, left, y, { width, align: 'center', underline: true });
-  y = doc.y + 14;
+  // ── Document Title ────────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(ACCENT)
+    .text(data.title, left, y, { width, align: 'center', underline: true });
+  y = doc.y + 10;
 
-  doc.font('Helvetica-Bold').fontSize(9.5);
+  // ── Receipt No + Date ─────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
   doc.text(`RECEIPT NO : ${data.receiptNumber}`, left, y, { width: width * 0.65 });
   doc.text(`DATE : ${data.receiptDate}`, left + width * 0.65, y, { width: width * 0.35, align: 'right' });
   y += 16;
   dottedRule(doc, left, y, width);
   y += 7;
-  doc.font('Helvetica-Bold').fontSize(9);
+
+  // ── Vehicle + Customer ID ─────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
   doc.text(`MODEL : ${data.vehicleTitle}`, left, y, { width: width * 0.5 });
   doc.text(`CUSTOMER ID : ${data.customerId}`, left + width * 0.5, y, { width: width * 0.5, align: 'right' });
   y = doc.y + 7;
   dottedRule(doc, left, y, width);
   y += 7;
+
+  // ── Customer Name + Place ─────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
   doc.text('RECEIVED WITH THANKS FROM', left, y, { width: 170 });
   doc.text(`: ${data.customerName.toUpperCase()}`, left + 170, y, { width: width - 170 });
   y = doc.y + 4;
@@ -108,34 +188,66 @@ export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Bu
   dottedRule(doc, left, y, width);
   y += 7;
 
-  const columns: Array<[string, number, 'left' | 'right']> = [['MODE', 0, 'left'], ['TXN NO.', 0.18, 'left'], ['DATED', 0.38, 'left'], ['DRAWN ON', 0.56, 'left'], ['AMOUNT', 0.78, 'right']];
-  const row = (values: string[]) => {
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
+  // ── Payment Table ─────────────────────────────────────────────────────────
+  const columns: Array<[string, number, 'left' | 'right']> = [
+    ['MODE', 0, 'left'],
+    ['TXN NO.', 0.18, 'left'],
+    ['DATED', 0.38, 'left'],
+    ['DRAWN ON', 0.56, 'left'],
+    ['AMOUNT', 0.78, 'right'],
+  ];
+  const row = (values: string[], headerRow = false) => {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(headerRow ? ACCENT : INK);
     columns.forEach(([, offset, align], index) => {
       const next = columns[index + 1]?.[1] ?? 1;
       doc.text(values[index] || '-', left + width * offset, y, { width: width * (next - offset) - 4, align });
     });
   };
-  row(columns.map(([label]) => label));
+  // Header row with light background
+  doc.rect(left, y - 2, width, 16).fill('#EFF6FF');
+  row(columns.map(([label]) => label), true);
   y += 14;
   dottedRule(doc, left, y, width);
   y += 6;
   row([data.mode, data.txnNumber, data.txnDate, data.drawnOn, data.amount]);
   y += 24;
-  doc.font('Helvetica-Bold').fontSize(9).text(data.amountInWords.toUpperCase(), left, y, { width });
+
+  // ── Amount in Words ───────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(INK)
+    .text(data.amountInWords.toUpperCase(), left, y, { width });
   y = doc.y + 10;
   dottedRule(doc, left, y, width);
   y += 7;
-  doc.font('Helvetica-Bold').fontSize(8.5).text(`REMARKS : ${data.remarks.toUpperCase()}`, left, y, { width, lineGap: 2 });
-  y = doc.y + 18;
-  doc.text(`FOR, ${data.company.name.toUpperCase()}`, left + width - 260, y, { width: 260, align: 'right' });
+
+  // ── Remarks ───────────────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK)
+    .text(`REMARKS : ${data.remarks.toUpperCase()}`, left, y, { width, lineGap: 2 });
+  y = doc.y + 20;
+
+  // ── Signature Block ───────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(INK)
+    .text(`FOR, ${data.company.name.toUpperCase()}`, left + width - 260, y, { width: 260, align: 'right' });
   y += 52;
   doc.text("CUSTOMER'S SIGNATURE", left, y, { width: 200 });
   doc.text('AUTHORISED SIGNATORY', left + width - 260, y, { width: 260, align: 'right' });
-  const signatoryLine = data.signatory.name === data.signatory.designation ? '' : `${data.signatory.name} (${data.signatory.designation})`;
-  if (signatoryLine) doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(signatoryLine, left + width - 260, y + 12, { width: 260, align: 'right' });
+  const signatoryLine = data.signatory.name === data.signatory.designation
+    ? ''
+    : `${data.signatory.name} (${data.signatory.designation})`;
+  if (signatoryLine) {
+    doc.font('Helvetica').fontSize(7.5).fillColor(MUTED)
+      .text(signatoryLine, left + width - 260, y + 12, { width: 260, align: 'right' });
+  }
   y += 28;
   doc.moveTo(left, y).lineTo(left + width, y).strokeColor(INK).lineWidth(0.8).stroke();
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  doc.font('Helvetica').fontSize(7).fillColor(MUTED)
+    .text(
+      `Computer generated · ${data.receiptNumber}`,
+      left,
+      doc.page.height - doc.page.margins.bottom - 14,
+      { width, align: 'center', lineBreak: false },
+    );
 
   doc.end();
   return done;

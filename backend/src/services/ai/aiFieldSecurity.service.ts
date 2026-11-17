@@ -20,7 +20,7 @@ const DOCUMENT_URL_FIELD_PATTERN = /(?:^|_)(?:url|uri|download|signed|attachment
 const SECRET_FIELD_PATTERN = /(?:^|_)(?:token|secret|password|passcode|api[_-]?key|private[_-]?key|authorization|signature|credential|cookie|hash)(?:$|_)/iu;
 const MOBILE_FIELD_PATTERN = /(?:^|_)(?:phone|mobile|contact)(?:$|_)/iu;
 const EMAIL_FIELD_PATTERN = /(?:^|_)email(?:$|_)/iu;
-const PII_FIELD_PATTERN = /(?:^|_)(?:owner|buyer|seller|purchaser|customer|holder|applicant)(?:_|$)|(?:^|_)(?:pan|aadhaar|gstin|license(?:number)?|rc(?:number)?|registration(?:number)?|chassis(?:number)?|engine(?:number)?|account(?:number)?|ifsc|upi|dob|dateofbirth|nameondocument)(?:$|_)/iu;
+const PII_FIELD_PATTERN = /(?:^|_)(?:owner|buyer|seller|purchaser|customer|holder|applicant)(?:_|$)|(?:^|_)(?:full_?name|pan|aadhaar|gstin|license(?:number)?|rc(?:number)?|registration(?:number)?|chassis(?:number)?|engine(?:number)?|account(?:number)?|ifsc|upi|dob|dateofbirth|nameondocument)(?:$|_)/iu;
 const SAFE_BOOLEANISH_FIELD_PATTERN = /(?:configured|present|count|status|enabled|ready|total|success|failed|pending|available|source|date|at|id|uploaded|sent)$/iu;
 
 const normalizedFieldName = (field: string) => field.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
@@ -98,6 +98,46 @@ export const sanitizeAiToolData = (value: unknown, _context: AiFieldSecurityCont
         continue;
       }
       output[key] = visit(child, childPath);
+    }
+    return output;
+  };
+
+  return { data: visit(value, ''), maskedFields: [...maskedFields] };
+};
+
+const OPERATOR_ALWAYS_MASK_PATTERN = /(?:^|_)(?:pan|aadhaar|gstin|account|ifsc|upi|transaction|payment|receipt|utr)(?:$|_)/iu;
+
+/**
+ * Builds the authenticated portal presentation. This is deliberately separate
+ * from the provider contract: permitted operators may see business/contact
+ * details needed for operations, but credentials, payment identifiers,
+ * government identifiers, and document locators never leave masked form.
+ */
+export const presentAiToolDataForOperator = (value: unknown, context: AiFieldSecurityContext): SanitizedAiToolData => {
+  const maskedFields = new Set<string>();
+  const visit = (current: unknown, path: string): unknown => {
+    if (current === null || current === undefined) return current;
+    if (current instanceof Date) return current.toISOString();
+    if (typeof current !== 'object') return current;
+    if (Array.isArray(current)) return current.map((item, index) => visit(item, path ? `${path}.${index}` : String(index)));
+
+    const output: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
+      const childPath = pathFor(path, key);
+      const normalized = normalizedFieldName(key);
+      const kind = kindForField(key);
+      if (OPERATOR_ALWAYS_MASK_PATTERN.test(normalized) && kind) {
+        output[key] = maskValueForKind(child, kind);
+        maskedFields.add(childPath);
+      } else if (kind === 'secret' || kind === 'documentUrl') {
+        output[key] = maskValueForKind(child, kind);
+        maskedFields.add(childPath);
+      } else if (kind && !canReadAiSensitiveField(context, key)) {
+        output[key] = maskValueForKind(child, kind);
+        maskedFields.add(childPath);
+      } else {
+        output[key] = visit(child, childPath);
+      }
     }
     return output;
   };

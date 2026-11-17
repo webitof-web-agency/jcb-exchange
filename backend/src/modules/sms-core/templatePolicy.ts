@@ -29,6 +29,11 @@ const SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
   RECRUITMENT_NEW_JOB_PUBLISHED: ['jobId', 'jobCode', 'jobTitle', 'jobSlug', 'locationCity', 'locationState', 'sourceEntityType', 'sourceEntityId'],
 } as const;
 
+const REQUIRED_SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
+  VEHICLE_SALE_PAYMENT_RECEIPT: ['customerName', 'vehicleTitle', 'amount', 'receiptNumber', 'balance', 'paymentMethod', 'receiptUrl'],
+};
+
+
 const VARIABLE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export const getSmsTemplateVariableOptions = (eventCode: string) => [...(SMS_TEMPLATE_VARIABLES[eventCode] || [])];
@@ -51,6 +56,16 @@ export const validateSmsTemplateVariableOrder = (eventCode: string, template?: s
   }
   return variables.join('|');
 };
+
+export const validateSmsTemplateConfiguration = (eventCode: string, enabled: boolean, template?: string | null) => {
+  const normalized = validateSmsTemplateVariableOrder(eventCode, template);
+  const required = REQUIRED_SMS_TEMPLATE_VARIABLES[eventCode] || null;
+  if (enabled && required && normalized !== required.join('|')) {
+    throw new Error(`SMS template for ${eventCode} must use this exact variable order: ${required.join('|')}.`);
+  }
+  return normalized;
+};
+
 
 const serializeSmsVariable = (value: unknown) => {
   if (value === undefined || value === null) return '';

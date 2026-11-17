@@ -47,6 +47,23 @@ test('presents missing configuration as an actionable but non-sensitive state', 
   });
 });
 
+test('keeps the read-only assistant available while the provider is not configured', () => {
+  const status: AiRuntimeStatus = {
+    enabled: false,
+    localAssistantEnabled: true,
+    provider: 'openai',
+    model: 'not configured',
+    modelConfigured: false,
+    keyConfigured: false,
+  };
+
+  assert.deepEqual(getAiRuntimePresentation(status), {
+    label: 'Read-only mode',
+    tone: 'success',
+    description: 'Live read-only operations answers are available; configure a provider for generative responses.',
+  });
+});
+
 test('builds bounded arguments for a selected read-only tool', () => {
   const searchTool: AiReadOnlyTool = { name: 'listing.search', label: 'Listing search', description: '', available: true };
   const detailTool: AiReadOnlyTool = { name: 'listing.detail', label: 'Listing detail', description: '', available: true };

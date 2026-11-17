@@ -1,5 +1,9 @@
 import { AI_READ_ONLY_TOOL_NAMES, type AiReadOnlyToolName } from './aiReadOnlyTools.service';
 import { findSupportedQuestionMatches } from './aiQuestionCatalog.service';
+import { financePageKeyFor, type FinancePageContext } from './financeAiPage.service';
+import { analyticsPageKeyFor } from './analyticsAiPage.service';
+import { recruitmentPageKeyFor } from './recruitmentAiPage.service';
+import { administrationPageKeyFor } from './administrationAiPage.service';
 
 export type AiAutoToolRequest = {
   name: AiReadOnlyToolName;
@@ -638,14 +642,61 @@ const followUpRequestFor = (
  * It intentionally returns null for unknown or mutation requests: those messages
  * must continue through the normal AI response without receiving database data.
  */
-export const routeAiMessage = (message: string): AiAutoToolRequest | null => {
+export const routeAiMessage = (message: string, pageContext: FinancePageContext = {}): AiAutoToolRequest | null => {
   const normalized = normalizeMessage(message);
   if (!normalized) return null;
-  if (hasAny(normalized, MUTATION_PATTERNS)) return null;
+
+  const financePageKey = financePageKeyFor(message, pageContext);
+  const explicitFinanceMutation = hasAny(normalized, [
+    /\b(create|add|delete|remove|update|edit|approve|reject|assign|send|buy)\b/u,
+    /\b(banao|bnao|hatao|bhejo|badlo|becho|kharido)\b/u,
+  ]);
+  if (hasAny(normalized, MUTATION_PATTERNS) && (!financePageKey || explicitFinanceMutation)) return null;
 
   const forecast = forecastRequest(normalized);
   if (forecast) return forecast;
+
+  const financePageReadQuestion = hasAny(normalized, [
+    /\b(show|tell|give|find|which|what|check|verify|how\s+many|complete|full|summary|status|details?|detail|data|report|reports|statement|statements?|analysis|analytics|count|total|batao|btao|dikhao|kitne|kitni|loss|profit|profitability|margin|sheet|cash\s+book|petty\s+cash|contra\s+and\s+adjustment\s+vouchers?|vault|closing|audit|queries|checklist|review|tally|export|exports|upload|history|download)\b/u,
+  ]);
+  const legacyAccountingSummary = /\baccounting\s+chart\s+of\s+accounts\s+summary\b/u.test(normalized);
+  if (financePageKey && financePageReadQuestion && !explicitFinanceMutation && !legacyAccountingSummary) {
+    return { name: 'finance.hub.page', arguments: { pageKey: financePageKey, ...rangeArguments(normalized) } };
+  }
+  if (pageContext.moduleKey === 'sold-vehicles' && financePageReadQuestion && !explicitFinanceMutation) {
+    return { name: 'sell.accounts.summary', arguments: { ...rangeArguments(normalized), allRecords: true } };
+  }
+  if (hasAny(normalized, MUTATION_PATTERNS)) return null;
   if (hasMutationIntent(normalized)) return null;
+
+  const administrationPageKey = administrationPageKeyFor(message, pageContext);
+  const administrationExplicitPageRequest = pageContext.groupKey === 'administration'
+    || hasAny(normalized, [
+      /\b(?:full|complete|pura|poora|raw)[\s\S]{0,30}\b(?:data|detail|details|report|summary)\b/u,
+      /\b(?:readiness|failure|failed)\b/u,
+      /\bdelivery\s+report\b/u,
+    ]);
+  if (administrationPageKey && administrationExplicitPageRequest) {
+    return { name: 'administration.page', arguments: { pageKey: administrationPageKey, ...rangeArguments(normalized) } };
+  }
+
+  const recruitmentPageKey = recruitmentPageKeyFor(message, pageContext);
+  if (recruitmentPageKey && (recruitmentPageKey !== 'dashboard' || pageContext.moduleKey === 'dashboard')) {
+    return {
+      name: 'recruitment.page',
+      arguments: {
+        pageKey: recruitmentPageKey,
+        ...(pageContext.recordId ? { recordId: pageContext.recordId } : {}),
+      },
+    };
+  }
+
+  const analyticsPageKey = analyticsPageKeyFor(message, pageContext);
+  const explicitAnalyticsPageRequest = /^analytics\s+(?:report|reports?)\s+(?:dikhao|show|do|batao)$/u.test(normalized);
+  const analyticsExportRequest = /\b(?:download|export|csv)\b/u.test(normalized) && /\banalytics?\b/u.test(normalized);
+  if (analyticsPageKey && (explicitAnalyticsPageRequest || analyticsExportRequest || pageContext.moduleKey === 'analytics-overview' || pageContext.moduleKey === 'analytics-listing-detail')) {
+    return { name: 'analytics.page', arguments: { pageKey: analyticsPageKey, ...(analyticsExportRequest ? { export: true } : {}) } };
+  }
   const sellAccountReadQuery = /\b(?:sell\s+accounts?|sale\s+accounts?|commercial\s+accounts?)\b/u.test(normalized)
     && hasAny(normalized, [/\b(summary|status|list|details?|count|total|report|batao|btao|dikhao)\b/u]);
   if (hasAny(normalized, MUTATION_PATTERNS) && !sellAccountReadQuery) return null;
@@ -1246,8 +1297,9 @@ const clarificationForMessage = (message: string): string | null => {
 export const resolveAiMessage = (
   message: string,
   context: readonly AiIntentContextMessage[] = [],
+  pageContext: FinancePageContext = {},
 ): AiIntentResolution => {
-  const request = routeAiMessage(message);
+  const request = routeAiMessage(message, pageContext);
   if (request) return { kind: 'tool', request };
   const followUp = followUpRequestFor(message, context);
   if (followUp) return { kind: 'tool', request: followUp };

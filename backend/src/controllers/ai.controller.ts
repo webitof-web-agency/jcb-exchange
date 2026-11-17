@@ -26,6 +26,7 @@ import { createAiDataErrorContractForCode } from '../services/ai/aiDataContract.
 import { aiReliabilityObservabilityService, moduleForAiTool } from '../services/ai/aiReliabilityObservability.service';
 import { redactSensitiveData } from '../services/ai/aiRedaction';
 import { analyzeDocumentImage, type AiDocumentType } from '../services/ai/aiDocumentVision.service';
+import { buildLocalAiAnswer } from '../services/ai/aiLocalAnswer.service';
 
 const aiDocumentAssistSchema = z.object({
   documentType: z.enum(['RC', 'PAN', 'GST', 'FINANCE']),
@@ -35,11 +36,18 @@ const aiToolCallSchema = z.object({
   name: z.string().trim().min(1).max(80),
   arguments: z.record(z.string(), z.unknown()).optional(),
 }).strict();
+const aiFinancePageContextSchema = z.object({
+  groupKey: z.string().trim().min(1).max(80).optional(),
+  moduleKey: z.string().trim().min(1).max(100).optional(),
+  moduleLabel: z.string().trim().min(1).max(160).optional(),
+  recordId: z.string().trim().min(1).max(160).optional(),
+}).strict();
 const aiChatBodySchema = z.object({
   message: z.string().trim().min(1).max(4000),
   model: z.string().trim().min(1).max(100).optional(),
   tool: aiToolCallSchema.optional(),
   conversationId: z.string().trim().min(1).max(160).optional(),
+  pageContext: aiFinancePageContextSchema.optional(),
 }).strict();
 
 const aiConversationCreateBodySchema = z.object({
@@ -481,7 +489,7 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       // Feedback guidance is optional continuity; it must never block the current answer.
     }
     const context = await aiContextFor(req);
-    const intentResolution = parsed.data.tool ? null : resolveAiMessage(parsed.data.message, intentContext);
+    const intentResolution = parsed.data.tool ? null : resolveAiMessage(parsed.data.message, intentContext, parsed.data.pageContext);
     if (intentResolution?.kind === 'clarification') {
       const requestId = randomUUID();
       await aiConversationService.appendMessage(req.user.id, conversationId, {
@@ -517,26 +525,50 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       : null;
     const toolFetchedAt = toolResult ? toolResult.contract.fetchedAt : null;
     const toolForecast = toolResult ? forecastMetadataFor(toolResult.data) : null;
-    const result = await aiGatewayService.chat({
-      userId: req.user.id,
-      role: req.user.role as AiRole,
-      message: parsed.data.message,
-      ...(parsed.data.model ? { model: parsed.data.model } : {}),
-      conversationContext: previousMessages.slice(-8).map((message) => ({
-        role: message.role === 'USER' ? 'user' as const : 'assistant' as const,
-        content: message.content,
-      })),
-      memoryContext,
-      ...(toolResult && toolFetchedAt
-        ? {
-          toolContext: {
-            toolName: toolResult.toolName,
-            label: toolResult.label,
-            data: toolResult.contract,
-          },
-        }
-        : {}),
-    });
+    let result: { requestId: string; provider: string; model: string; answer: string };
+    try {
+      result = await aiGatewayService.chat({
+        userId: req.user.id,
+        role: req.user.role as AiRole,
+        message: parsed.data.message,
+        ...(parsed.data.model ? { model: parsed.data.model } : {}),
+        conversationContext: previousMessages.slice(-8).map((message) => ({
+          role: message.role === 'USER' ? 'user' as const : 'assistant' as const,
+          content: message.content,
+        })),
+        memoryContext,
+        ...(toolResult && toolFetchedAt
+          ? {
+            toolContext: {
+              toolName: toolResult.toolName,
+              label: toolResult.label,
+              data: toolResult.contract,
+            },
+          }
+          : {}),
+      });
+    } catch (providerError) {
+      const providerCode = providerError instanceof AiGatewayError ? providerError.code : '';
+      const canUseLocalReadOnlyAnswer = Boolean(toolResult)
+        && (providerError instanceof AiDisabledError
+          || providerCode === 'AI_DISABLED'
+          || providerCode === 'AI_PROVIDER_NOT_CONFIGURED'
+          || providerCode === 'AI_CONFIGURATION_INVALID'
+          || providerCode.startsWith('AI_PROVIDER_'));
+      if (!canUseLocalReadOnlyAnswer || !toolResult) throw providerError;
+      result = {
+        requestId: randomUUID(),
+        provider: 'INTERNAL',
+        model: 'deterministic-read-only',
+        answer: buildLocalAiAnswer({
+          message: parsed.data.message,
+          label: toolResult.label,
+          data: toolResult.contract.data,
+          ...(toolResult.dataAvailability ? { dataAvailability: toolResult.dataAvailability } : {}),
+          ...(toolResult.dataAvailabilityMessage ? { dataAvailabilityMessage: toolResult.dataAvailabilityMessage } : {}),
+        }),
+      };
+    }
     await aiConversationService.appendMessage(req.user.id, conversationId, {
       role: 'ASSISTANT',
       content: result.answer,
@@ -580,6 +612,7 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
             ...(toolResult.dataAvailabilityMessage ? { dataAvailabilityMessage: toolResult.dataAvailabilityMessage } : {}),
             durationMs: toolResult.durationMs,
             ...(toolForecast || {}),
+            ...(toolResult.operatorData !== undefined ? { operatorData: toolResult.operatorData } : {}),
             ...(toolResult.uiActions ? { uiActions: toolResult.uiActions } : {}),
           },
         }

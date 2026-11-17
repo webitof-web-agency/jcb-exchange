@@ -103,6 +103,10 @@ export const getAiRuntimeStatus = async () => {
   const config = await getAiRuntimeConfig();
   return {
     enabled: config.enabled && Boolean(config.apiKey) && !config.configurationError,
+    // Read-only tools can answer from the live application database without an
+    // external model. This keeps the internal assistant useful while a provider
+    // key is being configured or during a temporary provider outage.
+    localAssistantEnabled: true,
     provider: config.provider,
     model: config.model,
     modelConfigured: Boolean(config.model),

@@ -37,6 +37,11 @@ const readRange = (query: Record<string, unknown>) => {
   return { key: null, from, to };
 };
 
+export const getTaxRange = (query: Record<string, unknown>) => {
+  const { from, to } = readRange(query);
+  return { from, to };
+};
+
 const systemIds = async () => new Map((await prisma.finAccount.findMany({ where: { systemKey: { not: null } }, select: { id: true, systemKey: true } })).map((account) => [account.systemKey!, account.id]));
 
 export type GstRow = {
@@ -391,7 +396,10 @@ export const createChallan = async (body: Record<string, unknown>, access: Ledge
 };
 
 export const listChallans = async (query: Record<string, unknown>) => {
-  const challans = await prisma.finTaxChallan.findMany({ where: { ...(typeof query.taxType === 'string' && query.taxType ? { taxType: query.taxType as FinTaxType } : {}) }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], take: 500 });
+  const hasRange = ['month', 'from', 'to'].some((key) => typeof query[key] === 'string' && Boolean(query[key]));
+  const range = hasRange ? readRange(query) : null;
+  const requestedType = typeof query.taxType === 'string' && Object.values(FinTaxType).includes(query.taxType as FinTaxType) ? query.taxType as FinTaxType : undefined;
+  const challans = await prisma.finTaxChallan.findMany({ where: { ...(requestedType ? { taxType: requestedType } : {}), ...(range ? { date: { gte: range.from, lte: range.to } } : {}) }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], take: 500 });
   const vouchers = await prisma.finVoucher.findMany({ where: { id: { in: challans.map((item) => item.voucherId) } }, select: { id: true, number: true, status: true } });
   return challans.map((item) => ({ ...item, date: dateOnly(item.date), total: num(item.total), voucher: vouchers.find((voucher) => voucher.id === item.voucherId) ?? null }));
 };

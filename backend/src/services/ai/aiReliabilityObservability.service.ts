@@ -112,6 +112,7 @@ export const moduleForAiTool = (toolName: string | undefined): string => {
   if (prefix === 'customer') return 'customers-visitors';
   if (prefix === 'tasks') return 'tasks';
   if (prefix === 'partner') return 'partners';
+  if (toolName === 'finance.hub.page') return 'finance-hub';
   if (prefix === 'finance' || prefix === 'revenue') return 'finance';
   if (prefix && ['invoice', 'payment', 'margin', 'wallet', 'api', 'sell', 'refund', 'accounting', 'journal'].includes(prefix)) return 'finance-commercial';
   if (prefix && ['categories', 'brands', 'models', 'locations'].includes(prefix)) return 'master-data';

@@ -4,6 +4,7 @@ import {
   AI_SENSITIVE_FIELD_PERMISSIONS,
   canReadAiSensitiveField,
   buildAiSecurityAuditPayload,
+  presentAiToolDataForOperator,
   sanitizeAiToolData,
 } from './aiFieldSecurity.service';
 
@@ -40,6 +41,25 @@ test('requires an explicit sensitive-field permission and never relaxes provider
     permissions: ['ALL_ACCESS', 'ai.sensitive.read'],
   });
   assert.equal((result.data as Record<string, unknown>).mobileNumber, '[REDACTED_MOBILE]');
+});
+
+test('keeps authorized business details in the portal while always hiding credentials and locators', () => {
+  const result = presentAiToolDataForOperator({
+    ownerName: 'Ramesh Kumar',
+    mobileNumber: '9876543210',
+    email: 'ramesh@example.com',
+    documentUrl: 'https://files.example.com/rc.pdf',
+    accessToken: 'provider-secret',
+    listingId: 'listing-123',
+  }, { role: 'EMPLOYEE', permissions: ['ai.sensitive.read'] });
+  const data = result.data as Record<string, unknown>;
+
+  assert.equal(data.ownerName, 'Ramesh Kumar');
+  assert.equal(data.mobileNumber, '9876543210');
+  assert.equal(data.email, 'ramesh@example.com');
+  assert.equal(data.documentUrl, '[REDACTED_DOCUMENT_URL]');
+  assert.equal(data.accessToken, '[REDACTED_SECRET]');
+  assert.equal(data.listingId, 'listing-123');
 });
 
 test('security audit payload contains metadata only and no sensitive values', () => {

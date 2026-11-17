@@ -186,6 +186,7 @@ export const financeWorkspaceScreens: Record<string, ComponentType> = {
   'cash-book-petty-cash': CashBookModule,
   'upi-gateway-settlement': GatewayModule,
   'expense-register': ExpenseRegisterModule,
+  'expenses-transactions': ExpenseRegisterModule,
   'vendor-bills': VendorBills,
   'recurring-expenses': RecurringExpensesModule,
   'employee-reimbursements': ReimbursementsModule,

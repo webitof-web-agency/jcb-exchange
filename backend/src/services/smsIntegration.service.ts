@@ -17,7 +17,7 @@ import {
   getMissingSmsTemplateVariables,
   getSmsTemplateVariableOptions,
   renderSmsVariables,
-  validateSmsTemplateVariableOrder,
+  validateSmsTemplateConfiguration,
 } from '../modules/sms-core/templatePolicy';
 import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
 import { resolveNotificationPreference } from './notificationRecipient.service';
@@ -225,7 +225,7 @@ const saveSmsAutomationRule = async ({ eventCode, enabled, messageId, variablesT
   if (normalizedMessageId && (!/^\d+$/.test(normalizedMessageId) || normalizedMessageId.length > 30)) {
     throw new Error('DLT Message ID must contain digits only.');
   }
-  const normalizedVariables = validateSmsTemplateVariableOrder(eventCode, variablesTemplate);
+  const normalizedVariables = validateSmsTemplateConfiguration(eventCode, enabled, variablesTemplate);
   if (enabled && !normalizedMessageId) throw new Error('Enter the approved DLT Message ID before enabling this SMS rule.');
   return prisma.smsAutomationRule.upsert({
     where: { eventCode },
@@ -452,6 +452,7 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
       rule: rule ? { enabled: rule.enabled, messageId: rule.messageId } : null,
     });
     if (!decision.shouldQueue || !rule?.messageId) return { queued: false, reason: decision.shouldQueue ? 'MESSAGE_ID_REQUIRED' : decision.reason };
+    const normalizedVariables = validateSmsTemplateConfiguration(input.eventCode, true, rule.variablesTemplate);
     const dedupeKey = buildDedupeKey(input, decision.recipientPhone);
     const existing = await prisma.smsMessageLog.findUnique({ where: { dedupeKey } });
     if (existing) return { queued: false, duplicate: true, messageLogId: existing.id };
@@ -471,7 +472,7 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
               payload: {
                 eventCode: input.eventCode,
                 messageId: rule.messageId,
-                variablesTemplate: rule.variablesTemplate || '',
+                variablesTemplate: normalizedVariables || '',
                 payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
               },
             },

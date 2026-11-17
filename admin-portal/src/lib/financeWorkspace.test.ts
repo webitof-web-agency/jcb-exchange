@@ -9,6 +9,9 @@ import {
   financeWorkspaceGroups,
   financeWorkspaceModules,
   getVisibleFinanceWorkspaceGroups,
+  matchFinanceAiPagePath,
+  matchFinanceAiPageContext,
+  matchAiPageContext,
   matchFinanceModulePath,
 } from './financeWorkspace';
 
@@ -58,4 +61,78 @@ test('module paths do not shadow the older finance pages or cross groups', () =>
   assert.equal(matchFinanceModulePath('/admin/finance/workspace'), null);
   assert.equal(matchFinanceModulePath('/admin/finance/payroll/day-book'), null);
   financeLegacyLinks.forEach((link) => assert.ok(financeWorkspaceGroups.some((group) => group.key === link.groupKey)));
+});
+
+test('AI page context includes Sales & Revenue legacy routes without changing their navigation', () => {
+  assert.equal(matchFinanceAiPagePath('/admin/invoices')?.module.key, 'vehicle-sale-invoices');
+  assert.equal(matchFinanceAiPagePath('/employee/recurrence')?.module.key, 'customer-prime-payments');
+  assert.equal(matchFinanceAiPagePath('/admin/finance/expenses')?.module.key, 'expenses-transactions');
+  assert.equal(matchFinanceAiPagePath('/admin/finance/vehicle-finance/stock-valuation')?.module.key, 'stock-valuation');
+  assert.equal(matchFinanceAiPagePath('/admin/dashboard'), null);
+});
+
+test('AI page context identifies the legacy Sold Vehicles module route', () => {
+  assert.deepEqual(matchFinanceAiPageContext('/employee/accounts/sell-accounts'), {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    moduleLabel: 'Sold Vehicles',
+  });
+  assert.equal(matchFinanceAiPageContext('/employee/accounts/sell-accounts/vehicle-id'), null);
+});
+
+test('AI page context identifies Analytics and every Recruitment page route', () => {
+  assert.deepEqual(matchAiPageContext('/admin/analytics'), {
+    groupKey: 'reports',
+    moduleKey: 'analytics-overview',
+    moduleLabel: 'Analytics',
+  });
+  assert.deepEqual(matchAiPageContext('/employee/analytics/vehicle-1'), {
+    groupKey: 'reports',
+    moduleKey: 'analytics-listing-detail',
+    moduleLabel: 'Analytics listing detail',
+  });
+  assert.deepEqual(matchAiPageContext('/admin/recruitment/jobs'), {
+    groupKey: 'recruitment',
+    moduleKey: 'jobs',
+    moduleLabel: 'Jobs',
+  });
+  assert.deepEqual(matchAiPageContext('/employee/recruitment/pipeline'), {
+    groupKey: 'recruitment',
+    moduleKey: 'pipeline',
+    moduleLabel: 'Pipeline Stages',
+  });
+  assert.deepEqual(matchAiPageContext('/admin/recruitment/applications/application-123'), {
+    groupKey: 'recruitment',
+    moduleKey: 'application-detail',
+    moduleLabel: 'Applications detail',
+    recordId: 'application-123',
+  });
+});
+
+test('AI page context identifies Administration routes', () => {
+  assert.deepEqual(matchAiPageContext('/admin/users'), {
+    groupKey: 'administration',
+    moduleKey: 'users',
+    moduleLabel: 'Users',
+  });
+  assert.deepEqual(matchAiPageContext('/employee/users/roles'), {
+    groupKey: 'administration',
+    moduleKey: 'roles',
+    moduleLabel: 'Roles & permissions',
+  });
+  assert.deepEqual(matchAiPageContext('/admin/settings'), {
+    groupKey: 'administration',
+    moduleKey: 'settings',
+    moduleLabel: 'Settings',
+  });
+  assert.deepEqual(matchAiPageContext('/admin/whatsapp'), {
+    groupKey: 'administration',
+    moduleKey: 'whatsapp',
+    moduleLabel: 'WhatsApp',
+  });
+  assert.deepEqual(matchAiPageContext('/employee/sms'), {
+    groupKey: 'administration',
+    moduleKey: 'sms',
+    moduleLabel: 'SMS Notifications',
+  });
 });

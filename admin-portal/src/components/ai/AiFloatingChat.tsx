@@ -27,10 +27,12 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { usePathname } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { notifyAiModelUpdated, subscribeToAiModelUpdates } from '@/lib/aiModelSync';
 import { hasAnyPermission } from '@/lib/permissionUtils';
+import { matchAiPageContext } from '@/lib/financeWorkspace';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
@@ -39,6 +41,7 @@ import { filterAiModelOptions, getProviderModelCatalogMessage, hasProviderModel,
 import { formatAiTimestamp, normalizeAiDisplayText } from './aiDisplay';
 import { choosePreferredSpeechVoice, getSpeechRecognitionConstructor, getVoiceInputErrorMessage, getVoiceInputStatusLabel, getVoiceOutputButtonLabel, joinVoiceDraft, stripAiVoiceMarkup, type SpeechRecognitionLike } from './aiVoice';
 import AiFileActions from './AiFileActions';
+import AiOperatorData from './AiOperatorData';
 import type { AiFileAction } from './aiFileActionModel';
 import JcbBotLogo from './JcbBotLogo';
 
@@ -67,6 +70,7 @@ type ConversationMessage = {
 
 type AiStatus = {
   enabled: boolean;
+  localAssistantEnabled?: boolean;
   provider: string;
   model: string;
   modelConfigured: boolean;
@@ -96,6 +100,7 @@ const BOT_POSITION_KEY = 'jcb-ai-bot-position';
 
 const defaultStatus: AiStatus = {
   enabled: false,
+  localAssistantEnabled: false,
   provider: 'openai',
   model: 'not configured',
   modelConfigured: false,
@@ -118,6 +123,7 @@ const displayTitle = (value: string) => value.length > 28 ? `${value.slice(0, 28
 
 export default function AiFloatingChat() {
   const user = useAuthStore((state) => state.user);
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
@@ -148,6 +154,7 @@ export default function AiFloatingChat() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [fileActionsByRequestId, setFileActionsByRequestId] = useState<Record<string, AiFileAction[]>>({});
+  const [operatorDataByRequestId, setOperatorDataByRequestId] = useState<Record<string, unknown>>({});
   const [draft, setDraft] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -166,6 +173,9 @@ export default function AiFloatingChat() {
       return null;
     }
   });
+  const financePageContext = useMemo(() => {
+    return matchAiPageContext(pathname || '') || undefined;
+  }, [pathname]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -235,9 +245,10 @@ export default function AiFloatingChat() {
       older: matching.filter((conversation) => getTimestamp(conversation) < monthStart.getTime()),
     };
   }, [conversations, historyQuery]);
+  const chatAvailable = status.enabled || Boolean(status.localAssistantEnabled);
   const canSend = Boolean(
     draft.trim()
-    && status.enabled
+    && chatAvailable
     && !statusLoading
     && !sending
     && activeConversation?.status !== 'ARCHIVED',
@@ -886,9 +897,11 @@ export default function AiFloatingChat() {
         answer: string;
         tool?: {
           uiActions?: AiFileAction[];
+          operatorData?: unknown;
         };
       }>('/ai/chat', {
         message: content,
+        ...(financePageContext ? { pageContext: financePageContext } : {}),
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
@@ -898,6 +911,9 @@ export default function AiFloatingChat() {
           ...current,
           [response.data.requestId]: response.data.tool?.uiActions || [],
         }));
+      }
+      if (response.data.tool?.operatorData !== undefined && response.data.requestId) {
+        setOperatorDataByRequestId((current) => ({ ...current, [response.data.requestId]: response.data.tool?.operatorData }));
       }
       const conversationId = response.data.conversationId;
       setActiveConversationId(conversationId);
@@ -1286,6 +1302,9 @@ export default function AiFloatingChat() {
                           : <p className="whitespace-pre-wrap break-words">{normalizeAiDisplayText(message.content)}</p>}
                         {message.role === 'ASSISTANT' && message.requestId && fileActionsByRequestId[message.requestId]?.length ? (
                           <AiFileActions actions={fileActionsByRequestId[message.requestId]} />
+                        ) : null}
+                        {message.role === 'ASSISTANT' && message.requestId ? (
+                          <AiOperatorData data={operatorDataByRequestId[message.requestId]} />
                         ) : null}
                         <div className={`mt-1.5 flex items-center justify-between gap-3 text-[10px] ${message.role === 'USER' ? 'text-slate-300' : 'text-slate-400'}`}>
                           <span className="truncate">

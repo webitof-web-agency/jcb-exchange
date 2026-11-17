@@ -226,6 +226,7 @@ const dependencies: AiReadOnlyToolDependencies = {
   smsActivitySummary: async () => ({ periodDays: 30, total: 2 }),
   notificationsSummary: async () => ({ periodDays: 30, total: 3, unread: 1 }),
   financeWorkspaceSummary: async () => ({ periods: 2, accounts: 10 }),
+  financeHubPage: async () => ({ pageKey: 'financial-overview', data: {} }),
   invoiceSummary: async () => ({ invoices: 3, bills: 1 }),
   paymentSummary: async () => ({ total: 4, amount: 125000 }),
   marginSummary: async () => ({ netProfit: 30000, marginPercent: 12 }),
@@ -428,6 +429,26 @@ test('tool execution is permission-scoped and calls only the selected dependency
   });
 });
 
+test('Administration page access is checked against the selected page, not the union of page permissions', async () => {
+  let calls = 0;
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    administrationPage: async () => {
+      calls += 1;
+      return { pageKey: 'settings' };
+    },
+  });
+
+  await assert.rejects(
+    () => service.execute({ userId: 'employee-1', role: 'EMPLOYEE', permissions: ['users.read'] }, {
+      name: 'administration.page',
+      arguments: { pageKey: 'settings' },
+    }),
+    /permission/i,
+  );
+  assert.equal(calls, 0);
+});
+
 test('tool execution returns the empty contract for an empty result', async () => {
   const service = new AiReadOnlyToolsService({
     ...dependencies,
@@ -610,6 +631,7 @@ test('executes Phase 5 finance and commercial tools through injected dependencie
   const service = new AiReadOnlyToolsService({
     ...dependencies,
     financeWorkspaceSummary: async () => { calls.push('finance.workspace.summary'); return { accounts: 2 }; },
+    financeHubPage: async () => { calls.push('finance.hub.page'); return { pageKey: 'financial-overview', data: {} }; },
     invoiceSummary: async () => { calls.push('invoice.summary'); return { invoices: 1 }; },
     paymentSummary: async () => { calls.push('payment.summary'); return { total: 1 }; },
     marginSummary: async () => { calls.push('margin.summary'); return { netProfit: 1 }; },

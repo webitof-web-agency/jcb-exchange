@@ -2,6 +2,7 @@ export const AI_MESSAGE_MAX_LENGTH = 4_000;
 
 export type AiRuntimeStatus = {
   enabled: boolean;
+  localAssistantEnabled?: boolean;
   provider: string;
   model: string;
   modelConfigured: boolean;
@@ -10,7 +11,7 @@ export type AiRuntimeStatus = {
 };
 
 export type AiRuntimePresentation = {
-  label: 'Ready' | 'Needs configuration' | 'Disabled';
+  label: 'Ready' | 'Read-only mode' | 'Needs configuration' | 'Disabled';
   tone: 'success' | 'warning' | 'neutral';
   description: string;
 };
@@ -63,11 +64,13 @@ export const getAiToolArguments = (tool: AiReadOnlyTool | null, query: string, d
 };
 
 export const getAiRuntimePresentation = (status: AiRuntimeStatus): AiRuntimePresentation => {
-  if (status.enabled) {
+  if (status.enabled || status.localAssistantEnabled) {
     return {
-      label: 'Ready',
+      label: status.enabled ? 'Ready' : 'Read-only mode',
       tone: 'success',
-      description: 'Internal AI assistant is ready for operator requests.',
+      description: status.enabled
+        ? 'Internal AI assistant is ready for operator requests.'
+        : 'Live read-only operations answers are available; configure a provider for generative responses.',
     };
   }
 

@@ -73,6 +73,57 @@ test('builds verification template actions only for internal verification routes
   assert.equal(action?.downloadable, true);
 });
 
+test('builds Payroll CSV actions only for authenticated internal export routes', () => {
+  const payslips = buildAiFileAction({
+    label: 'Payslips',
+    fileName: 'payslips-2026-11.csv',
+    mimeType: 'text/csv',
+    url: '/api/finance-hub/payroll/runs/32e28d69-5b6e-41b8-a1dd-850528f6ad09/payslips.csv',
+  });
+  const statutory = buildAiFileAction({
+    label: 'Statutory contributions',
+    fileName: 'statutory-2026-11.csv',
+    mimeType: 'text/csv',
+    url: '/api/finance-hub/payroll/statutory.csv?month=2026-11',
+  });
+  assert.equal(payslips?.previewable, false);
+  assert.equal(payslips?.downloadable, true);
+  assert.equal(statutory?.previewable, false);
+  assert.equal(statutory?.downloadable, true);
+  assert.equal(buildAiFileAction({ label: 'File', fileName: 'file.csv', mimeType: 'text/csv', url: '/api/finance-hub/payroll/runs/not-a-run/payslips.csv' }), null);
+});
+
+test('builds Taxation CSV actions only for internal tax export routes', () => {
+  const action = buildAiFileAction({
+    label: 'GST summary',
+    fileName: 'gst-summary.csv',
+    mimeType: 'text/csv',
+    url: '/api/finance-hub/tax/export/gst-summary?month=2026-11',
+  });
+  assert.equal(action?.previewable, false);
+  assert.equal(action?.downloadable, true);
+  assert.equal(buildAiFileAction({ label: 'File', fileName: 'file.csv', mimeType: 'text/csv', url: '/api/finance-hub/tax/export/unknown?month=2026-11' }), null);
+});
+
+test('builds accounting export actions only for allow-listed Finance Hub export routes', () => {
+  const tally = buildAiFileAction({
+    label: 'Tally export',
+    fileName: 'tally-export.xml',
+    mimeType: 'application/xml',
+    url: '/api/finance-hub/data/export/tally?from=2026-04-01&to=2026-11-17',
+  });
+  const trialBalance = buildAiFileAction({
+    label: 'Trial balance',
+    fileName: 'trial-balance.csv',
+    mimeType: 'text/csv',
+    url: '/api/finance-hub/data/export/trial-balance',
+  });
+
+  assert.equal(tally?.downloadable, true);
+  assert.equal(trialBalance?.downloadable, true);
+  assert.equal(buildAiFileAction({ label: 'File', fileName: 'file.csv', mimeType: 'text/csv', url: '/api/finance-hub/data/export/users' }), null);
+});
+
 test('rejects external, javascript, and unscoped file URLs', () => {
   for (const url of [
     'https://evil.example/file.pdf',
@@ -82,4 +133,15 @@ test('rejects external, javascript, and unscoped file URLs', () => {
   ]) {
     assert.equal(buildAiFileAction({ label: 'File', fileName: 'file.pdf', mimeType: 'application/pdf', url }), null);
   }
+});
+
+test('builds Analytics CSV export actions only for the internal listings export route', () => {
+  const action = buildAiFileAction({
+    label: 'Analytics listings export',
+    fileName: 'analytics-listings.csv',
+    mimeType: 'text/csv',
+    url: '/api/analytics/export/listings.csv',
+  });
+  assert.equal(action?.downloadable, true);
+  assert.equal(buildAiFileAction({ label: 'File', fileName: 'file.csv', mimeType: 'text/csv', url: '/api/analytics/export/users.csv' }), null);
 });

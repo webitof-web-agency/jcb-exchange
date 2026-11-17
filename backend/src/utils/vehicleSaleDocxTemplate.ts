@@ -2,7 +2,7 @@ import PizZip from 'pizzip';
 
 export type MoneyReceiptTemplateData = {
   companyName: string;
-  cin: string;
+  gstin: string;
   companyAddressLine: string;
   receiptNumber: string;
   receiptDate: string;
@@ -100,6 +100,42 @@ const replaceParagraphAtIndex = (xml: string, index: number, value: string) => {
   return next;
 };
 
+const setParagraphFontSize = (paragraph: string, halfPoints: number) => {
+  const sizeTag = `<w:sz w:val="${halfPoints}"/>`;
+  const sizeCsTag = `<w:szCs w:val="${halfPoints}"/>`;
+  const runPropertiesPattern = /<w:rPr(?:\s[^>]*)?>[\s\S]*?<\/w:rPr>/;
+  const replaceSizeTags = (runProperties: string) => {
+    let next = runProperties.replace(/<w:sz\b[^>]*\/>/, sizeTag).replace(/<w:szCs\b[^>]*\/>/, sizeCsTag);
+    if (!/<w:sz\b/.test(next)) next = next.replace('</w:rPr>', `${sizeTag}${sizeCsTag}</w:rPr>`);
+    else if (!/<w:szCs\b/.test(next)) next = next.replace('</w:rPr>', `${sizeCsTag}</w:rPr>`);
+    return next;
+  };
+  if (runPropertiesPattern.test(paragraph)) return paragraph.replace(runPropertiesPattern, replaceSizeTags);
+  return paragraph.replace('<w:r>', `<w:r><w:rPr>${sizeTag}${sizeCsTag}</w:rPr>`);
+};
+
+const setParagraphFontSizeAtIndex = (xml: string, index: number, halfPoints: number) => {
+  let currentIndex = 0;
+  return xml.replace(paragraphPattern, (paragraph) => {
+    const shouldResize = currentIndex++ === index;
+    return shouldResize ? setParagraphFontSize(paragraph, halfPoints) : paragraph;
+  });
+};
+
+const setSectionProperty = (xml: string, name: string, attributes: string) => {
+  const tag = `<w:${name} ${attributes}/>`;
+  const existing = new RegExp(`<w:${name}\\b[^>]*/>`);
+  if (existing.test(xml)) return xml.replace(existing, tag);
+  if (xml.includes('</w:sectPr>')) return xml.replace('</w:sectPr>', `${tag}</w:sectPr>`);
+  return xml.replace('</w:body>', `<w:sectPr>${tag}</w:sectPr></w:body>`);
+};
+
+const normalizeMoneyReceiptPageSetup = (xml: string) => {
+  let next = setSectionProperty(xml, 'pgSz', 'w:w="11906" w:h="16838"');
+  next = setSectionProperty(next, 'pgMar', 'w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"');
+  return next;
+};
+
 const findParagraphIndex = (xml: string, predicate: (text: string, index: number) => boolean, fromIndex = 0) => {
   const paragraphs = allParagraphs(xml);
   const match = paragraphs.find((paragraph, index) => index >= fromIndex && predicate(paragraph.text, index));
@@ -176,8 +212,10 @@ export const fillMoneyReceiptTemplate = (
   const companyIndex = findParagraphIndex(xml, (text) => text.toUpperCase().includes('JCB EXCHANGE'));
   if (companyIndex < 0) throw new Error('Money receipt DOCX template is missing the company header.');
   xml = replaceParagraphAtIndex(xml, companyIndex, data.companyName);
-  xml = replaceTextAfterLabel(xml, 'CIN:', `CIN: ${data.cin}`);
-  xml = replaceParagraphAtIndex(xml, findParagraphIndex(xml, (text, index) => index > companyIndex && text.toUpperCase().startsWith('CIN:')) + 1, data.companyAddressLine);
+  const taxIdentifierIndex = findParagraphIndex(xml, (text, index) => index > companyIndex && /^(?:CIN|GSTIN):/i.test(text));
+  if (taxIdentifierIndex < 0) throw new Error('Money receipt DOCX template is missing the GSTIN line.');
+  xml = replaceParagraphAtIndex(xml, taxIdentifierIndex, `GSTIN: ${data.gstin || '-'}`);
+  xml = replaceParagraphAtIndex(xml, taxIdentifierIndex + 1, data.companyAddressLine);
   xml = replaceTextAfterLabel(xml, 'RECEIPT NO', `RECEIPT NO : ${data.receiptNumber}`);
   xml = replaceTextAfterLabel(xml, 'DATE', `DATE : ${data.receiptDate}`);
   xml = replaceTextAfterLabel(xml, 'MODEL', `MODEL : ${data.vehicleTitle}`);
@@ -196,6 +234,15 @@ export const fillMoneyReceiptTemplate = (
   const authorisedIndex = findParagraphIndex(xml, (text, index) => index > forIndex && text.toUpperCase().includes('AUTHORISED SIGNATORY'));
   if (authorisedIndex < 0) throw new Error('Money receipt DOCX template is missing the authorised-signatory label.');
   xml = replaceParagraphAtIndex(xml, authorisedIndex, `AUTHORISED SIGNATORY: ${data.authorisedSignatoryName} (${data.authorisedSignatoryDesignation})`);
+  xml = normalizeMoneyReceiptPageSetup(xml);
+  // Font size for company name: auto-scale down for long names so it fits the DOCX table cell.
+  // The right-side cell is ~65% of the content width (~6800 twips). At 11pt a typical char is ~110 twips.
+  // Allow at most ~56 chars per line at 11pt. Scale down proportionally if longer, min 8pt (16 half-pts).
+  const companyNameLen = data.companyName.length;
+  const companyHalfPts = companyNameLen > 60 ? 18 : companyNameLen > 48 ? 20 : 22;
+  xml = setParagraphFontSizeAtIndex(xml, companyIndex, companyHalfPts);
+  xml = setParagraphFontSizeAtIndex(xml, taxIdentifierIndex, 16);
+  xml = setParagraphFontSizeAtIndex(xml, taxIdentifierIndex + 1, 15);
   return finish(zip, xml);
 };
 

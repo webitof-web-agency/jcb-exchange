@@ -94,6 +94,50 @@ test('routes supported operational aggregate questions', () => {
   assert.equal(routeAiMessage('give me the lead statistics for the last 30 days')?.name, 'lead.statistics');
 });
 
+test('routes page-specific recruitment questions to the page data tool', () => {
+  assert.deepEqual(routeAiMessage('recruitment jobs list dikhao'), {
+    name: 'recruitment.page',
+    arguments: { pageKey: 'jobs' },
+  });
+  assert.deepEqual(routeAiMessage('pipeline stages ka full data batao'), {
+    name: 'recruitment.page',
+    arguments: { pageKey: 'pipeline' },
+  });
+});
+
+test('preserves the current Recruitment detail record in page-aware AI context', () => {
+  assert.deepEqual(routeAiMessage('is record ka complete status batao', {
+    groupKey: 'recruitment',
+    moduleKey: 'application-detail',
+    recordId: 'application-123',
+  }), {
+    name: 'recruitment.page',
+    arguments: { pageKey: 'application-detail', recordId: 'application-123' },
+  });
+});
+
+test('routes analytics page questions to the page data tool', () => {
+  assert.deepEqual(routeAiMessage('analytics report dikhao'), {
+    name: 'analytics.page',
+    arguments: { pageKey: 'overview' },
+  });
+});
+
+test('routes Administration page questions to the page data tool', () => {
+  assert.deepEqual(routeAiMessage('users ka pura data dikhao'), {
+    name: 'administration.page',
+    arguments: { pageKey: 'users' },
+  });
+  assert.deepEqual(routeAiMessage('whatsapp campaign delivery report'), {
+    name: 'administration.page',
+    arguments: { pageKey: 'whatsapp' },
+  });
+  assert.deepEqual(routeAiMessage('sms failed logs batao'), {
+    name: 'administration.page',
+    arguments: { pageKey: 'sms' },
+  });
+});
+
 test('routes approved policy and SOP questions to the grounded knowledge tool', () => {
   assert.deepEqual(routeAiMessage('What is the approved KYC SOP checklist?'), {
     name: 'knowledge.search',
@@ -284,6 +328,188 @@ test('routes Phase 5 finance and commercial questions to dedicated read-only too
   assert.equal(routeAiMessage('accounting chart of accounts summary')?.name, 'accounting.summary');
 });
 
+test('routes the scoped Overview and Purchases pages to the Finance Hub page tool', () => {
+  assert.deepEqual(routeAiMessage('financial overview ka complete data batao'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'financial-overview' },
+  });
+  assert.deepEqual(routeAiMessage('cashflow overview dikhao'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'cash-flow-overview' },
+  });
+  assert.deepEqual(routeAiMessage('pending approvals aur alerts batao'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'alerts-pending-approvals' },
+  });
+  assert.deepEqual(routeAiMessage('vehicle purchse list dikhao'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'vehicle-purchase-list' },
+  });
+  assert.deepEqual(routeAiMessage('purchase bills and invoices ka detail'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'purchase-bills-invoices' },
+  });
+  assert.deepEqual(routeAiMessage('additional purchase cost report'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'additional-purchase-costs' },
+  });
+  assert.deepEqual(routeAiMessage('purchase returns ka status'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'purchase-returns' },
+  });
+  assert.deepEqual(routeAiMessage('seller advances kitne hain'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'seller-advances' },
+  });
+  assert.deepEqual(routeAiMessage('all purchases ka data'), {
+    name: 'finance.hub.page',
+    arguments: { pageKey: 'all-purchases' },
+  });
+});
+
+test('routes every selected Sales & Revenue and Vehicle Finance page to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['customer prime payments ka detail', 'customer-prime-payments'],
+    ['vehicle sale invoices dikhao', 'vehicle-sale-invoices'],
+    ['all sales ka data', 'all-sales'],
+    ['sales invoices ka status', 'sales-invoices'],
+    ['customer receipts ka detail', 'customer-receipts'],
+    ['credit debit notes dikhao', 'credit-debit-notes'],
+    ['sales returns and refunds batao', 'sales-returns-refunds'],
+    ['brokerage and other income dikhao', 'brokerage-other-income'],
+    ['vehicle wise ledger dikhao', 'vehicle-wise-ledger'],
+    ['vehicle cost sheet ka detail', 'vehicle-cost-sheet'],
+    ['vehicle profit and margin batao', 'vehicle-profit-margin'],
+    ['stock valuation batao', 'stock-valuation'],
+    ['exchange transactions dikhao', 'exchange-transactions'],
+    ['consignment deals ka data', 'consignment-deals'],
+    ['partner commission and settlement status', 'partner-commission-settlement'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the selected Party Ledgers and Receivables pages to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['customer ledger ka detail', 'customer-ledger'],
+    ['partner ledger batao', 'partner-ledger'],
+    ['seller vendor ledger dikhao', 'seller-vendor-ledger'],
+    ['broker agent ledger batao', 'broker-agent-ledger'],
+    ['party statement ka pura data', 'party-statements'],
+    ['party advances and deposits batao', 'party-advances-deposits'],
+    ['customer dues batao', 'customer-dues'],
+    ['supplier partner payables ka detail', 'supplier-partner-payables'],
+    ['due aging reports dikhao', 'due-aging-reports'],
+    ['payment schedules batao', 'payment-schedules'],
+    ['follow up and reminders ka status', 'follow-up-reminders'],
+    ['settlements and write offs batao', 'settlements-write-offs'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the selected Expenses & Assets pages to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['expenses and transactions ka data', 'expenses-transactions'],
+    ['expense register dikhao', 'expense-register'],
+    ['vendor bills ka detail', 'vendor-bills'],
+    ['recurring expenses batao', 'recurring-expenses'],
+    ['employee reimbursements ka status', 'employee-reimbursements'],
+    ['fixed assets ka data', 'fixed-assets'],
+    ['depreciation report dikhao', 'depreciation'],
+    ['prepaid expenses ka detail', 'prepaid-expenses'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the selected Payroll pages to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['employee salary ka detail', 'employee-salary'],
+    ['salary structure batao', 'salary-structure'],
+    ['payroll processing ka status', 'payroll-processing'],
+    ['advances and deductions dikhao', 'advances-deductions'],
+    ['payslips ka data', 'payslips'],
+    ['statutory contributions batao', 'statutory-contributions'],
+    ['full and final settlement ka detail', 'full-final-settlement'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the selected Taxation & Compliance pages to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['GST dashboard ka data', 'gst-dashboard'],
+    ['sales purchase GST register dikhao', 'sales-purchase-gst-register'],
+    ['GST returns and reconciliation batao', 'gst-returns-reconciliation'],
+    ['input tax credit ka detail', 'input-tax-credit'],
+    ['e invoice e way bill ka status', 'e-invoice-eway-bill'],
+    ['TDS management dikhao', 'tds-management'],
+    ['TCS register batao', 'tcs-management'],
+    ['tax payments and challans ka data', 'tax-payments-challans'],
+    ['income tax provisions batao', 'income-tax-provisions'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the Financial Reports pages to the bounded Finance Hub page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['profit and loss statement dikhao', 'profit-loss'],
+    ['p&l report batao', 'profit-loss'],
+    ['balance sheet dikhao', 'balance-sheet'],
+    ['cash flow statement ka details do', 'cash-flow-statement'],
+    ['revenue purchase reports batao', 'revenue-purchase-reports'],
+    ['vehicle profitability report dikhao', 'vehicle-profitability'],
+    ['expense margin analysis batao', 'expense-margin-analysis'],
+    ['receivables payables report dikhao', 'receivables-payables-report'],
+    ['bank and cash reports ka pura data', 'bank-cash-reports'],
+    ['tax reports summary dikhao', 'tax-reports'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('routes the selected Banking & Cash and Accounting & Books pages to the same bounded page tool', () => {
+  const cases: Array<[string, string]> = [
+    ['bank accounts ka detail', 'bank-accounts'],
+    ['HDFC virtual bank ledger batao', 'hdfc-virtual-bank-ledger'],
+    ['bank statement upload ka status', 'bank-statement-upload'],
+    ['bank reconciliation dikhao', 'bank-reconciliation'],
+    ['unmatched transactions batao', 'unmatched-transactions'],
+    ['bank transfers ka data', 'bank-transfers'],
+    ['cash book and petty cash', 'cash-book-petty-cash'],
+    ['UPI gateway settlement status', 'upi-gateway-settlement'],
+    ['master general ledger ka detail', 'master-general-ledger'],
+    ['chart of accounts dikhao', 'chart-of-accounts'],
+    ['day book ka data', 'day-book'],
+    ['journal entries batao', 'journal-entries'],
+    ['payment vouchers ka status', 'payment-vouchers'],
+    ['receipt vouchers dikhao', 'receipt-vouchers'],
+    ['contra and adjustment vouchers', 'contra-adjustment-vouchers'],
+    ['trial balance batao', 'trial-balance'],
+    ['suspense account ka detail', 'suspense-account'],
+    ['opening balances dikhao', 'opening-balances'],
+  ];
+  cases.forEach(([message, pageKey]) => assert.deepEqual(routeAiMessage(message), { name: 'finance.hub.page', arguments: { pageKey } }));
+});
+
+test('uses the current scoped Finance Hub page for a generic follow-up', () => {
+  assert.deepEqual(resolveAiMessage('is page ka complete data batao', [], { moduleKey: 'all-purchases' }), {
+    kind: 'tool',
+    request: { name: 'finance.hub.page', arguments: { pageKey: 'all-purchases' } },
+  });
+  assert.deepEqual(resolveAiMessage('is page ka complete data batao', [], { moduleKey: 'payroll-processing' }), {
+    kind: 'tool',
+    request: { name: 'finance.hub.page', arguments: { pageKey: 'payroll-processing' } },
+  });
+});
+
+test('uses the Sold Vehicles page source for generic questions on that page', () => {
+  assert.deepEqual(resolveAiMessage('sold vehicles module me check kro ki kitne data hai', [], { moduleKey: 'sold-vehicles' }), {
+    kind: 'tool',
+    request: { name: 'sell.accounts.summary', arguments: { allRecords: true } },
+  });
+  assert.deepEqual(resolveAiMessage('is module ko check karo', [], { moduleKey: 'sold-vehicles' }), {
+    kind: 'tool',
+    request: { name: 'sell.accounts.summary', arguments: { allRecords: true } },
+  });
+});
+
 test('routes page-specific analytics and listing payment questions to their source tools', () => {
   assert.deepEqual(routeAiMessage('analytics overview for last 14 days'), {
     name: 'analytics.summary',
@@ -340,6 +566,22 @@ test('routes CRM page questions to the page-specific read-only tools', () => {
   assert.equal(routeAiMessage('CRM contacts ki list dikhao')?.name, 'crm.contacts.summary');
   assert.equal(routeAiMessage('CRM campaigns ka status batao')?.name, 'crm.campaigns.summary');
   assert.equal(routeAiMessage('CRM import history dikhao')?.name, 'crm.import.summary');
+});
+
+test('routes Finance Settings page questions to the bounded Finance Hub page tool', () => {
+  for (const message of [
+    'company financial profile ka pura data batao',
+    'financial year and periods dikhao',
+    'account ledger masters ka data do',
+    'voucher numbering series batao',
+    'tax configurations ka status batao',
+    'cost centres ka detail batao',
+    'roles and permissions dikhao',
+    'automation approval rules batao',
+    'integrations and notifications ka status batao',
+  ]) {
+    assert.equal(routeAiMessage(message)?.name, 'finance.hub.page', message);
+  }
 });
 
 test('routes stored file requests to the secure document search tool', () => {

@@ -309,7 +309,7 @@ export const buildVehicleSalePaymentReceiptPdf = async (paymentId: string, optio
     const template = await readTemplate('VEHICLE_SALE_MONEY_RECEIPT_TEMPLATE_PATH', 'JCB_Exchange_OPC_Private_Limited_Money_Receipt.docx');
     const docx = fillMoneyReceiptTemplate(template, {
       companyName: company.companyName || 'JCB Exchange',
-      cin: company.cin || '-',
+      gstin: company.gstin || '-',
       companyAddressLine: companyAddressLine(company),
       receiptNumber,
       receiptDate: formatDocumentDate(payment.paymentDate),

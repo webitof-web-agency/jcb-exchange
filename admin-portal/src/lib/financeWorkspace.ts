@@ -139,6 +139,7 @@ export const financeWorkspaceGroups: FinanceWorkspaceGroup[] = [
     ['opening-balances', 'Opening Balances', 'Financial-year opening balances with import and approval.'],
   ]),
   moduleGroup('expenses-assets', 'Expenses & Assets', 'Operating costs, assets and amortisation.', [
+    ['expenses-transactions', 'Expenses & Transactions', 'Legacy operating expense page plus posted transaction view.', '/admin/finance/expenses'],
     ['expense-register', 'Expense Register', 'Existing expense/transaction register with filters and export.', '/admin/finance/expenses'],
     ['vendor-bills', 'Vendor Bills', 'Vendor bill capture, due date, approval and payment linkage.'],
     ['recurring-expenses', 'Recurring Expenses', 'Repeat expense schedule, generation and exception handling.', '/admin/recurrence'],
@@ -237,6 +238,81 @@ export const matchFinanceModulePath = (pathname: string) => {
   const group = financeWorkspaceGroups.find((item) => item.key === match[1]);
   const page = group?.modules.find((item) => item.key === match[2]);
   return group && page ? { group, module: page } : null;
+};
+
+/** Resolves workspace modules plus legacy finance pages used by the AI context. */
+export const matchFinanceAiPagePath = (pathname: string) => {
+  const current = matchFinanceModulePath(pathname);
+  if (current) return current;
+  const legacy = /^\/(admin|employee)(\/invoices|\/recurrence|\/finance\/expenses)\/?$/.exec(pathname);
+  if (!legacy) return null;
+  const group = financeWorkspaceGroups.find((item) => item.key === (legacy[2] === '/finance/expenses' ? 'expenses-assets' : 'sales-revenue'));
+  if (!group) return null;
+  const legacyPage = legacy[2] === '/invoices'
+    ? { key: 'vehicle-sale-invoices', label: 'Vehicle Sale Invoices' }
+    : legacy[2] === '/recurrence'
+      ? { key: 'customer-prime-payments', label: 'Customer Prime Payments' }
+      : { key: 'expenses-transactions', label: 'Expenses & Transactions' };
+  return { group, module: legacyPage };
+};
+
+/** Returns the compact page context sent to the read-only AI router, including legacy modules. */
+export const matchFinanceAiPageContext = (pathname: string) => {
+  const financePage = matchFinanceAiPagePath(pathname);
+  if (financePage) return { groupKey: financePage.group.key, moduleKey: financePage.module.key, moduleLabel: financePage.module.label };
+  if (/^\/(?:admin|employee)\/accounts\/sell-accounts\/?$/u.test(pathname)) {
+    return { groupKey: 'accounts', moduleKey: 'sold-vehicles', moduleLabel: 'Sold Vehicles' };
+  }
+  return null;
+};
+
+/** Compact AI context for the Reports/Analytics and Recruitment page families. */
+export const matchAiPageContext = (pathname: string) => {
+  const finance = matchFinanceAiPageContext(pathname);
+  if (finance) return finance;
+
+  const administrationMatch = /^\/(?:admin|employee)\/(users(?:\/roles)?|settings|whatsapp|sms)\/?$/u.exec(pathname);
+  if (administrationMatch) {
+    const page = administrationMatch[1];
+    const pageContext = page === 'users/roles'
+      ? { moduleKey: 'roles', moduleLabel: 'Roles & permissions' }
+      : page === 'users'
+        ? { moduleKey: 'users', moduleLabel: 'Users' }
+        : page === 'settings'
+          ? { moduleKey: 'settings', moduleLabel: 'Settings' }
+          : page === 'whatsapp'
+            ? { moduleKey: 'whatsapp', moduleLabel: 'WhatsApp' }
+            : { moduleKey: 'sms', moduleLabel: 'SMS Notifications' };
+    return { groupKey: 'administration', ...pageContext };
+  }
+
+  const analyticsMatch = /^\/(?:admin|employee)\/analytics(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (analyticsMatch) {
+    return analyticsMatch[1]
+      ? { groupKey: 'reports', moduleKey: 'analytics-listing-detail', moduleLabel: 'Analytics listing detail' }
+      : { groupKey: 'reports', moduleKey: 'analytics-overview', moduleLabel: 'Analytics' };
+  }
+
+  const recruitmentMatch = /^\/(?:admin|employee)\/recruitment\/([a-z0-9-]+)(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (!recruitmentMatch) return null;
+  const pageLabels: Record<string, string> = {
+    dashboard: 'Dashboard',
+    jobs: 'Jobs',
+    applications: 'Applications',
+    candidates: 'Candidates',
+    interviews: 'Interviews',
+    offers: 'Offers',
+    departments: 'Departments',
+    pipeline: 'Pipeline Stages',
+    settings: 'Settings',
+  };
+  const key = recruitmentMatch[2] ? `${recruitmentMatch[1].replace(/s$/u, '')}-detail` : recruitmentMatch[1];
+  return {
+    groupKey: 'recruitment',
+    moduleKey: key,
+    moduleLabel: recruitmentMatch[2] ? `${pageLabels[recruitmentMatch[1]] || recruitmentMatch[1]} detail` : (pageLabels[recruitmentMatch[1]] || recruitmentMatch[1]),
+    ...(recruitmentMatch[2] ? { recordId: recruitmentMatch[2] } : {}),
+  };
 };
 
 /**

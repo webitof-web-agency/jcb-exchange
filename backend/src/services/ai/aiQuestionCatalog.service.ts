@@ -163,6 +163,242 @@ const PHASE6_MODULE_SPECS: readonly ModuleSpec[] = [
   phase5Module('subscriptions', moduleAliases(['subscription', 'subscriptions', 'prime plan'], ['सदस्यता'], ['subscription ka'], ['subscriptions']), 'subscriptions.summary'),
 ];
 
+const FINANCIAL_REPORTS_MODULE_SPECS: readonly ModuleSpec[] = [
+  phase5Module(
+    'profit-loss',
+    moduleAliases(
+      ['profit and loss', 'profit loss', 'p&l', 'pnl', 'income statement', 'loss profit'],
+      ['लाभ और हानि', 'नफा नुकसान', 'मुनाफा', 'आमदनी और खर्च'],
+      ['profit loss ka', 'pnl ka', 'kamai aur kharcha', 'nafa nuksan', 'profit and loss statement'],
+      ['pnl', 'pl', 'profit', 'loss', 'profit loss']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'balance-sheet',
+    moduleAliases(
+      ['balance sheet', 'balancesheet', 'statement of assets and liabilities', 'financial position'],
+      ['तुलन पत्र', 'चिट्ठा', 'संपत्ति और देनदारियां'],
+      ['balance sheet ka', 'aamdani chitha', 'assets liabilities', 'balance sheet report'],
+      ['bs', 'balancesheet', 'chitha', 'sheet']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'cash-flow-statement',
+    moduleAliases(
+      ['cash flow statement', 'cashflow statement', 'direct cash flow', 'cash movement statement'],
+      ['रोकड़ प्रवाह', 'कैश फ्लो विवरण'],
+      ['cash flow statement ka', 'cash in cash out statement', 'rokad pravah'],
+      ['cfs', 'cashflow', 'cash in out', 'cash flow']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'revenue-purchase-reports',
+    moduleAliases(
+      ['revenue and purchase reports', 'revenue purchase reports', 'revenue by vehicle', 'purchases by supplier'],
+      ['राजस्व और खरीद', 'बिक्री और खरीद रिपोर्ट'],
+      ['revenue purchase report ka', 'bikri aur kharid', 'aamdani purchase'],
+      ['revenue purchase', 'monthly revenue', 'supplier purchases']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'vehicle-profitability',
+    moduleAliases(
+      ['vehicle profitability', 'vehicle profit report', 'machine profitability', 'per vehicle profit'],
+      ['वाहन लाभप्रदता', 'गाड़ी का मुनाफा', 'मशीन का नफा'],
+      ['vehicle profitability ka', 'gaadi ka profit', 'vehicle wise profit', 'profitability report'],
+      ['veh profit', 'gaadi margin', 'machine profit']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'expense-margin-analysis',
+    moduleAliases(
+      ['expense and margin analysis', 'expense margin analysis', 'margin trend', 'expense mix'],
+      ['व्यय और मार्जिन विश्लेषण', 'खर्च और मार्जिन'],
+      ['expense margin ka', 'kharcha aur margin', 'margin trend analysis'],
+      ['expense margin', 'margin analysis', 'cost analysis']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'receivables-payables-report',
+    moduleAliases(
+      ['receivables and payables report', 'receivables payables', 'due aging report', 'outstanding report'],
+      ['प्राप्य और देय', 'उधारी और बकाया', 'लेना देना रिपोर्ट'],
+      ['receivables payables ka', 'baki paisa report', 'dena lena report', 'dues payables'],
+      ['recv pay', 'dues payables', 'aging report']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'bank-cash-reports',
+    moduleAliases(
+      ['bank and cash reports', 'bank cash reports', 'bank balances', 'cash movement report'],
+      ['बैंक और रोकड़ रिपोर्ट', 'बैंक बैलेंस रिपोर्ट'],
+      ['bank cash report ka', 'bank aur cash balance', 'all bank accounts'],
+      ['bank cash', 'bank balances', 'cash book report']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'tax-reports',
+    moduleAliases(
+      ['tax reports', 'tax report', 'gst and tds report', 'tax liability report'],
+      ['कर रिपोर्ट', 'जीएसटी रिपोर्ट', 'टीडीएस रिपोर्ट'],
+      ['tax report ka', 'gst tds report', 'tax liability', 'tax challans'],
+      ['tax report', 'gst report', 'tds report']
+    ),
+    'finance.hub.page'
+  ),
+];
+
+const CA_AUDIT_MODULE_SPECS: readonly ModuleSpec[] = [
+  phase5Module(
+    'ca-dashboard',
+    moduleAliases(
+      ['ca dashboard', 'ca workspace dashboard', 'ca overview', 'audit dashboard', 'chartered accountant dashboard'],
+      ['सीए डैशबोर्ड', 'ऑडिट डैशबोर्ड', 'सीए कार्यक्षेत्र'],
+      ['ca dashboard ka', 'audit overview', 'ca closing progress', 'ca status'],
+      ['ca dash', 'ca dashboard', 'audit dash']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'document-vault',
+    moduleAliases(
+      ['document vault', 'ca vault', 'tax return documents', 'audit documents', 'vault files', 'stored certificates'],
+      ['दस्तावेज़ वॉल्ट', 'सीए वॉल्ट', 'ऑडिट कागजात', 'टैक्स रिटर्न दस्तावेज'],
+      ['document vault ka', 'ca vault files', 'stored returns', 'vault documents'],
+      ['vault', 'doc vault', 'vault files']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'monthly-closing',
+    moduleAliases(
+      ['monthly closing', 'month end closing', 'monthly close checklist', 'month end checklist', 'period closing'],
+      ['मासिक क्लोजिंग', 'महीने का समापन', 'माह समाप्ति चेकलिस्ट'],
+      ['monthly closing ka', 'month end checklist', 'maheene ki closing', 'month close'],
+      ['month close', 'monthly closing', 'close checklist']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'financial-year-closing',
+    moduleAliases(
+      ['financial year closing', 'year end closing', 'fy closing', 'annual close', 'year close gates'],
+      ['वित्तीय वर्ष क्लोजिंग', 'साल का समापन', 'वार्षिक क्लोजिंग'],
+      ['financial year closing ka', 'saal ki closing', 'year end close', 'fy close'],
+      ['year close', 'fy close', 'fy closing']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'audit-trail',
+    moduleAliases(
+      ['audit trail', 'audit log', 'financial audit trail', 'system audit log', 'action history'],
+      ['ऑडिट ट्रेल', 'ऑडिट लॉग', 'सिस्टम ऑडिट'],
+      ['audit trail ka', 'audit log data', 'kaunsa change hua', 'audit records'],
+      ['audit trail', 'audit log', 'trail']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'ca-queries-checklist',
+    moduleAliases(
+      ['ca queries and checklist', 'ca queries', 'ca checklist', 'auditor queries', 'ca questions'],
+      ['सीए प्रश्न और चेकलिस्ट', 'सीए सवाल', 'ऑडिटर प्रश्न'],
+      ['ca queries ka', 'ca sawal jawab', 'ca questions checklist', 'auditor queries'],
+      ['ca queries', 'ca query', 'ca checklist']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'accounting-review',
+    moduleAliases(
+      ['accounting review', 'voucher review', 'accounting review queue', 'self approved entries', 'ca review'],
+      ['अकाउंटिंग समीक्षा', 'वाउचर समीक्षा', 'सेल्फ अप्रूव्ड एंट्री'],
+      ['accounting review ka', 'voucher check', 'self approved vouchers', 'review queue'],
+      ['acct review', 'voucher review', 'review queue']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'import-export',
+    moduleAliases(
+      ['import and export', 'import export', 'data exchange', 'import export hub', 'data exchange hub'],
+      ['आयात और निर्यात', 'डेटा एक्सचेंज', 'इंपोर्ट एक्सपोर्ट हब'],
+      ['import export ka', 'data exchange hub', 'data import export'],
+      ['import export', 'data exchange', 'imp exp']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'import-bank-statements',
+    moduleAliases(
+      ['import bank statements', 'bank statement import', 'bank statement batches', 'statement import history'],
+      ['बैंक स्टेटमेंट आयात', 'बैंक विवरण आयात'],
+      ['import bank statements ka', 'bank statement import batches', 'statement upload history'],
+      ['import stmt', 'bank stmt import', 'statement batches']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'import-opening-balances',
+    moduleAliases(
+      ['import opening balances', 'opening balance import', 'opening sheet import', 'initial balances import'],
+      ['आरंभिक शेष आयात', 'ओपनिंग बैलेंस आयात'],
+      ['import opening balances ka', 'opening balance csv import', 'opening sheet'],
+      ['import opening', 'opening import', 'op bal import']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'import-transactions',
+    moduleAliases(
+      ['import transactions', 'voucher import', 'csv transaction import', 'transaction import batches'],
+      ['लेन-देन आयात', 'वाउचर आयात'],
+      ['import transactions ka', 'voucher csv import', 'import transactions batch'],
+      ['import txn', 'voucher import', 'import vouchers']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'tally-accounting-export',
+    moduleAliases(
+      ['tally accounting export', 'tally export', 'tally prime export', 'tally xml export', 'export to tally'],
+      ['टैली निर्यात', 'टैली एक्सपोर्ट', 'टैली प्राइम एक्सएमएल'],
+      ['tally accounting export ka', 'tally xml export', 'tally data bhejo', 'tally export'],
+      ['tally export', 'tally xml', 'tally prime']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'download-reports',
+    moduleAliases(
+      ['download reports', 'ca download reports', 'csv audit reports', 'download financial reports'],
+      ['रिपोर्ट डाउनलोड करें', 'वित्तीय रिपोर्ट डाउनलोड'],
+      ['download reports ka', 'report download krna hai', 'csv reports download', 'ca reports'],
+      ['download rpt', 'download reports', 'reports csv']
+    ),
+    'finance.hub.page'
+  ),
+  phase5Module(
+    'bulk-upload-history',
+    moduleAliases(
+      ['bulk upload history', 'upload history', 'import export history', 'batch history'],
+      ['अपलोड इतिहास', 'थोक अपलोड इतिहास', 'बैच इतिहास'],
+      ['bulk upload history ka', 'upload history dikhao', 'batch upload status'],
+      ['upload history', 'bulk history', 'batch history']
+    ),
+    'finance.hub.page'
+  ),
+];
+
 const MODULE_SPECS: readonly ModuleSpec[] = [
   {
     id: 'dashboard',
@@ -184,6 +420,8 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
   },
   ...PHASE5_MODULE_SPECS,
   ...PHASE6_MODULE_SPECS,
+  ...FINANCIAL_REPORTS_MODULE_SPECS,
+  ...CA_AUDIT_MODULE_SPECS,
   {
     id: 'analytics',
     aliases: moduleAliases(['analytics', 'analytics overview', 'analytics reports', 'insights'], ['à¤µà¤¿à¤¶à¥à¤²à¥‡à¤·à¤£'], ['analytics ka', 'insights ka', 'analytics report'], ['analytics', 'insights', 'reports']),

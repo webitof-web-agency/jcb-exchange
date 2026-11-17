@@ -19,3 +19,27 @@ test('accepts internal vehicle-doc and verification template actions', () => {
   assert.equal(getAiFileRequestPath('/api/vehicle-docs/CG04NF0268/zip'), '/vehicle-docs/CG04NF0268/zip');
   assert.equal(getAiFileRequestPath('/api/pan-verification/32e28d69-5b6e-41b8-a1dd-850528f6ad09/template'), '/pan-verification/32e28d69-5b6e-41b8-a1dd-850528f6ad09/template');
 });
+
+test('accepts Finance Hub payroll and tax exports returned by the assistant', () => {
+  assert.equal(
+    getAiFileRequestPath('/api/finance-hub/payroll/runs/32e28d69-5b6e-41b8-a1dd-850528f6ad09/payslips.csv'),
+    '/finance-hub/payroll/runs/32e28d69-5b6e-41b8-a1dd-850528f6ad09/payslips.csv',
+  );
+  assert.equal(
+    getAiFileRequestPath('/api/finance-hub/payroll/statutory.csv?month=2026-11'),
+    '/finance-hub/payroll/statutory.csv?month=2026-11',
+  );
+  assert.equal(
+    getAiFileRequestPath('/api/finance-hub/tax/export/gst-summary?month=2026-11'),
+    '/finance-hub/tax/export/gst-summary?month=2026-11',
+  );
+  assert.equal(
+    getAiFileRequestPath('/api/finance-hub/data/export/tally?from=2026-04-01&to=2026-11-17'),
+    '/finance-hub/data/export/tally?from=2026-04-01&to=2026-11-17',
+  );
+});
+
+test('accepts the authenticated Analytics listings export', () => {
+  assert.equal(getAiFileRequestPath('/api/analytics/export/listings.csv'), '/analytics/export/listings.csv');
+  assert.equal(getAiFileRequestPath('/api/analytics/export/users.csv'), null);
+});

@@ -25,6 +25,10 @@ import {
   sendWhatsAppTestMessage,
   updateWhatsAppSettings,
 } from '../services/whatsappIntegration.service';
+import {
+  buildVehicleSalePaymentReceiptWhatsAppTemplateComponents,
+  VEHICLE_SALE_PAYMENT_RECEIPT_WHATSAPP_TEMPLATE,
+} from '../services/vehicleSalePaymentReceiptWhatsAppTemplate';
 
 const getRuntimePublicApiUrl = (req: Request) => {
   const configured = process.env.WHATSAPP_PUBLIC_API_URL?.trim();
@@ -272,6 +276,12 @@ export const saveMarketplaceWhatsAppTemplate = async (req: Request, res: Respons
     if (body.components !== undefined && (body.components === null || typeof body.components !== 'object')) {
       return res.status(400).json({ error: 'components must be a JSON object or array.' });
     }
+    const enteredBodyText = asOptionalString(body.bodyText, 'bodyText', 2000);
+    const components = body.components !== undefined
+      ? body.components
+      : name === VEHICLE_SALE_PAYMENT_RECEIPT_WHATSAPP_TEMPLATE.name
+        ? buildVehicleSalePaymentReceiptWhatsAppTemplateComponents(enteredBodyText)
+        : undefined;
     const template = await saveWhatsAppMetaTemplate({
       ...(typeof body.id === 'string' ? { id: body.id } : {}),
       name,
@@ -279,7 +289,7 @@ export const saveMarketplaceWhatsAppTemplate = async (req: Request, res: Respons
       status,
       ...(typeof body.metaTemplateId === 'string' ? { metaTemplateId: body.metaTemplateId } : {}),
       ...(typeof body.category === 'string' ? { category: body.category } : {}),
-      ...(body.components !== undefined ? { components: body.components } : {}),
+      ...(components !== undefined ? { components } : {}),
     });
     res.json({ message: 'WhatsApp template saved.', template });
   } catch (error) {

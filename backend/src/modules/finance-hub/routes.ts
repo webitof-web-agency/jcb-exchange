@@ -203,6 +203,7 @@ router.get('/tax/withholding', taxReaders, tax.withholding);
 router.get('/tax/challans', taxReaders, tax.challans);
 router.post('/tax/challans', allow([P.booksPost]), tax.newChallan);
 router.get('/tax/income-tax', taxReaders, tax.incomeTax);
+router.get('/tax/export/:kind', taxReaders, tax.exportCsv);
 router.post('/tax/income-tax/provision', allow([P.booksPost]), tax.newProvision);
 
 // Payroll (P9)
@@ -217,6 +218,7 @@ router.put('/payroll/employees/:id/salary', payrollManagers, payroll.putSalary);
 router.get('/payroll/runs', payrollReaders, payroll.runs);
 router.post('/payroll/runs', payrollManagers, payroll.newRun);
 router.get('/payroll/runs/:id', payrollReaders, payroll.run);
+router.get('/payroll/runs/:id/payslips.csv', payrollReaders, payroll.payslipsCsv);
 router.put('/payroll/runs/:id/payslips/:slipId', payrollManagers, payroll.editPayslip);
 router.post('/payroll/runs/:id/recompute', payrollManagers, payroll.recompute);
 router.post('/payroll/runs/:id/cancel', payrollManagers, payroll.cancel);
@@ -226,7 +228,9 @@ router.get('/payroll/advances', payrollReaders, payroll.advances);
 router.post('/payroll/advances', allow([P.booksPost]), payroll.newAdvance);
 router.post('/payroll/advances/:id/close', payrollManagers, payroll.endAdvance);
 router.get('/payroll/statutory', payrollReaders, payroll.statutory);
+router.get('/payroll/statutory.csv', payrollReaders, payroll.statutoryCsv);
 router.get('/payroll/full-final', payrollReaders, payroll.fullFinal);
+router.get('/payroll/full-final.csv', payrollReaders, payroll.fullFinalCsv);
 router.post('/payroll/full-final', payrollManagers, payroll.newFullFinal);
 router.post('/payroll/full-final/:id/post', allow([P.approve]), payroll.postFnf);
 router.post('/payroll/full-final/:id/pay', allow([P.booksPost]), payroll.payFnf);
