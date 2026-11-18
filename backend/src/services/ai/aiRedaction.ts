@@ -10,12 +10,16 @@ const URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
 const SENSITIVE_URL_KEY_VALUE_PATTERN = /["']?(?:document[_-]?(?:url|uri|link)|file[_-]?(?:url|uri|link)|download[_-]?(?:url|uri|link)|public[_-]?verification[_-]?(?:url|uri|link)|signed[_-]?(?:url|uri|link))["]?\s*[:=]\s*["']?([^,\s}"']+)["']?/giu;
 const SENSITIVE_KEY_VALUE_PATTERN = /["']?(?:password|passcode|passphrase|secret|token|api[_-]?key|private[_-]?key|bank[\s_-]*(?:account[\s_-]*(?:number|no)?|number)|account[\s_-]?(?:number|no)|ifsc(?:[\s_-]?code)?|transaction[\s_-]?(?:ref(?:erence)?|id)|payment[\s_-]?(?:ref(?:erence)?|id)|receipt[\s_-]?(?:no|number)|utr(?:[\s_-]?number)?|txn(?:[\s_-]?(?:ref(?:erence)?|id))?)["']?\s*[:=]\s*["']?([^,\s}"']+)["']?/giu;
 
+export type RedactSensitiveDataOptions = {
+  redactMobile?: boolean;
+};
+
 /**
  * Redacts values that must never be sent to an AI provider. This function is
  * intentionally provider-agnostic and is applied to both user input and the
  * provider response before either crosses a trust boundary.
  */
-export const redactSensitiveData = (value: string): string => {
+export const redactSensitiveData = (value: string, options: RedactSensitiveDataOptions = {}): string => {
   let redacted = value;
   redacted = redacted.replace(SENSITIVE_URL_KEY_VALUE_PATTERN, (_match, _value: string) => '[REDACTED_DOCUMENT_URL]');
   redacted = redacted.replace(URL_PATTERN, '[REDACTED_URL]');
@@ -24,7 +28,9 @@ export const redactSensitiveData = (value: string): string => {
   redacted = redacted.replace(UPI_PATTERN, '[REDACTED_UPI]');
   redacted = redacted.replace(PAN_PATTERN, '[REDACTED_PAN]');
   redacted = redacted.replace(AADHAAR_PATTERN, '[REDACTED_AADHAAR]');
-  redacted = redacted.replace(MOBILE_PATTERN, '[REDACTED_MOBILE]');
+  if (options.redactMobile !== false) {
+    redacted = redacted.replace(MOBILE_PATTERN, '[REDACTED_MOBILE]');
+  }
   redacted = redacted.replace(ENTITY_ID_LABEL_PATTERN, '[REDACTED_INTERNAL_ID]');
   redacted = redacted.replace(UUID_PATTERN, '[REDACTED_INTERNAL_ID]');
   redacted = redacted.replace(MONGO_OBJECT_ID_PATTERN, '[REDACTED_INTERNAL_ID]');

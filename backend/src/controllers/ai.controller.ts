@@ -587,7 +587,15 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
               toolContext: {
                 toolName: toolResult.toolName,
                 label: toolResult.label,
-                data: toolResult.contract,
+                data: [
+                  'sold.vehicles',
+                  'sold.vehicle.search',
+                  'sold.vehicle.detail',
+                  'sold.vehicle.analytics',
+                  'sell.accounts.summary',
+                ].includes(toolResult.toolName) && toolResult.operatorData
+                  ? { ...toolResult.contract, data: toolResult.operatorData }
+                  : toolResult.contract,
               },
             }
             : {}),

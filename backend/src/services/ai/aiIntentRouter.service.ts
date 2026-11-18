@@ -699,8 +699,11 @@ const followUpRequestFor = (
     }
   }
 
-  if (previousTool === 'sold.vehicle.detail' && continuation) {
-    return { name: 'sold.vehicle.detail', arguments: { ...previousArguments } };
+  if ((previousTool === 'sold.vehicle.detail'
+    || previousTool === 'sell.accounts.summary'
+    || previousTool === 'sold.vehicles'
+    || previousTool === 'sold.vehicle.search') && continuation) {
+    return { name: previousTool, arguments: { ...previousArguments } };
   }
 
   // Preserve the previously selected entity for short detail follow-ups. The

@@ -88,8 +88,8 @@ const normalizeTitle = (title: string | undefined): string => {
   return value;
 };
 
-const normalizeContent = (content: string): string => {
-  const value = redactSensitiveData(content).trim();
+const normalizeContent = (content: string, options: { redactMobile?: boolean } = {}): string => {
+  const value = redactSensitiveData(content, options).trim();
   if (!value || value.length > 16_000) {
     throw new AiConversationError('Conversation message must contain 1 to 16,000 characters.', 400, 'AI_CONVERSATION_CONTENT_INVALID');
   }
@@ -247,7 +247,7 @@ export class AiConversationService {
     const messages = await this.repository.listMessages(conversationId);
     return messages.map(({ toolArguments, ...message }) => ({
       ...message,
-      content: redactSensitiveData(message.content),
+      content: redactSensitiveData(message.content, { redactMobile: message.role === 'USER' }),
       ...(options.includeToolContext && toolArguments ? { toolArguments } : {}),
     }));
   }
@@ -285,7 +285,7 @@ export class AiConversationService {
   }) {
     await this.ensureOwnership(actorUserId, conversationId);
     const role = ensureMessageRole(input.role);
-    const contentRedacted = normalizeContent(input.content);
+    const contentRedacted = normalizeContent(input.content, { redactMobile: role === 'USER' });
     return this.repository.appendMessage({
       conversationId,
       role,

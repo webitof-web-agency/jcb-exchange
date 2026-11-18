@@ -67,12 +67,21 @@ export type SanitizedAiToolData = {
   maskedFields: string[];
 };
 
+export type SanitizationOptions = {
+  allowOperationalDetails?: boolean;
+};
+
 /**
- * Produces the provider-safe representation of a tool result. This intentionally
- * masks even for ADMIN/SUPER_ADMIN: permission can govern an internal UI later,
- * but no raw PII, credential, or document locator may cross the provider boundary.
+ * Produces the provider-safe representation of a tool result. When
+ * allowOperationalDetails is enabled, business-operational names and contact
+ * numbers needed by internal operators are preserved while secrets, credentials,
+ * and internal identifiers remain protected.
  */
-export const sanitizeAiToolData = (value: unknown, _context: AiFieldSecurityContext): SanitizedAiToolData => {
+export const sanitizeAiToolData = (
+  value: unknown,
+  _context: AiFieldSecurityContext,
+  options: SanitizationOptions = {},
+): SanitizedAiToolData => {
   const maskedFields = new Set<string>();
 
   const visit = (current: unknown, path: string): unknown => {
@@ -93,6 +102,10 @@ export const sanitizeAiToolData = (value: unknown, _context: AiFieldSecurityCont
       const safeMetadata = SAFE_BOOLEANISH_FIELD_PATTERN.test(normalized)
         && (typeof child !== 'object' || child === null);
       const kind = safeMetadata ? null : kindForField(key);
+      if (options.allowOperationalDetails && (kind === 'pii' || kind === 'mobile')) {
+        output[key] = visit(child, childPath);
+        continue;
+      }
       if (kind) {
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);

@@ -875,3 +875,20 @@ test('uses a previous aggregate subject for a short range follow-up', () => {
     request: { name: 'listing.statistics', arguments: { days: 7 } },
   });
 });
+
+test('keeps a natural follow-up on sell.accounts.summary for pronoun contact questions', () => {
+  const context: AiIntentContextMessage[] = [
+    { role: 'USER', content: 'is module me seller name btao' },
+    {
+      role: 'ASSISTANT',
+      content: 'Deal SA-2026-001 ke seller ka naam SATYA EARTH MOVERS hai.',
+      toolName: 'sell.accounts.summary',
+      toolArguments: { allRecords: true },
+    },
+  ];
+  const result = resolveAiMessage('and uska phone number btao', context);
+  assert.deepEqual(result, {
+    kind: 'tool',
+    request: { name: 'sell.accounts.summary', arguments: { allRecords: true } },
+  });
+});

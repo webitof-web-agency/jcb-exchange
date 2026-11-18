@@ -3147,7 +3147,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
           brand: { select: { name: true } },
           model: { select: { name: true } },
           partner: { select: { partnerProfile: { select: { businessName: true, partnerCode: true } } } },
-          saleRecord: { select: { soldPrice: true, soldAt: true, invoiceNo: true } },
+          saleRecord: { select: { soldPrice: true, soldAt: true, invoiceNo: true, buyerName: true, buyerPhone: true } },
         },
       }),
     ]);
@@ -3166,6 +3166,8 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         soldAt: row.saleRecord?.soldAt?.toISOString() ?? row.soldAt?.toISOString() ?? null,
         soldPrice: row.saleRecord ? numeric(row.saleRecord.soldPrice) : null,
         invoiceNo: row.saleRecord?.invoiceNo ?? null,
+        buyerName: row.saleRecord?.buyerName ?? null,
+        buyerPhone: row.saleRecord?.buyerPhone ?? null,
         partner: row.partner.partnerProfile
           ? { businessName: row.partner.partnerProfile.businessName, partnerCode: row.partner.partnerProfile.partnerCode }
           : null,
@@ -3751,7 +3753,38 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         where,
         orderBy: { updatedAt: 'desc' },
         take: limit,
-        select: { recordNumber: true, sellDate: true, dealStatus: true, isDraft: true, isLocked: true, invoiceNumber: true, creditNoteNumber: true, purchaseAmount: true, sellAmount: true, expenses: true, netProfitAfterGst: true },
+        select: {
+          id: true,
+          recordNumber: true,
+          listingTitle: true,
+          vehicleNumber: true,
+          chassisNumber: true,
+          brandName: true,
+          vehicleModel: true,
+          vehicleType: true,
+          sellerName: true,
+          sellerNumber: true,
+          sellerCity: true,
+          sellerState: true,
+          purchaserName: true,
+          purchaserNumber: true,
+          purchaserCity: true,
+          purchaserState: true,
+          ownerName: true,
+          ownerNumber: true,
+          brokerName: true,
+          brokerNumber: true,
+          sellDate: true,
+          dealStatus: true,
+          isDraft: true,
+          isLocked: true,
+          invoiceNumber: true,
+          creditNoteNumber: true,
+          purchaseAmount: true,
+          sellAmount: true,
+          expenses: true,
+          netProfitAfterGst: true,
+        },
       }),
     ]);
     return {
@@ -3762,10 +3795,41 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       byStatus: byStatus.map((row) => ({ status: row.dealStatus, count: row._count._all })),
       byDraftState: byDraft.map((row) => ({ isDraft: row.isDraft, count: row._count._all })),
       byLockState: byLock.map((row) => ({ isLocked: row.isLocked, count: row._count._all })),
-      items: rows.map((row) => ({ recordNumber: row.recordNumber, sellDate: isoDate(row.sellDate), dealStatus: row.dealStatus, isDraft: row.isDraft, isLocked: row.isLocked, hasInvoice: Boolean(row.invoiceNumber), hasCreditNote: Boolean(row.creditNoteNumber), purchaseAmount: numeric(row.purchaseAmount), sellAmount: numeric(row.sellAmount), expenses: numeric(row.expenses), netProfitAfterGst: numeric(row.netProfitAfterGst) })),
+      items: rows.map((row) => ({
+        dealId: row.id,
+        recordNumber: row.recordNumber,
+        listingTitle: row.listingTitle,
+        vehicleNumber: row.vehicleNumber,
+        chassisNumber: row.chassisNumber,
+        brandName: row.brandName,
+        vehicleModel: row.vehicleModel,
+        vehicleType: row.vehicleType,
+        sellerName: row.sellerName,
+        sellerNumber: row.sellerNumber,
+        sellerCity: row.sellerCity,
+        sellerState: row.sellerState,
+        purchaserName: row.purchaserName,
+        purchaserNumber: row.purchaserNumber,
+        purchaserCity: row.purchaserCity,
+        purchaserState: row.purchaserState,
+        ownerName: row.ownerName,
+        ownerNumber: row.ownerNumber,
+        brokerName: row.brokerName,
+        brokerNumber: row.brokerNumber,
+        sellDate: isoDate(row.sellDate),
+        dealStatus: row.dealStatus,
+        isDraft: row.isDraft,
+        isLocked: row.isLocked,
+        hasInvoice: Boolean(row.invoiceNumber),
+        hasCreditNote: Boolean(row.creditNoteNumber),
+        purchaseAmount: numeric(row.purchaseAmount),
+        sellAmount: numeric(row.sellAmount),
+        expenses: numeric(row.expenses),
+        netProfitAfterGst: numeric(row.netProfitAfterGst),
+      })),
       returned: rows.length,
       hasMore: rows.length === limit,
-      maskedFields: ['listingTitle', 'vehicleNumber', 'chassisNumber', 'ownerName', 'sellerName', 'purchaserName', 'remarks', 'documents'],
+      maskedFields: [],
     };
   },
 
@@ -4612,8 +4676,15 @@ export class AiReadOnlyToolsService {
       if (error instanceof AiToolError) throw error;
       throw new AiToolError('The requested data is unavailable right now.', 503, 'AI_TOOL_DATA_UNAVAILABLE');
     }
-    const exactSoldVehicleOperatorScope = definition.name === 'sold.vehicle.detail'
-      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.permissions.some((permission) => SOLD_VEHICLE_PERMISSIONS.includes(permission as typeof SOLD_VEHICLE_PERMISSIONS[number])));
+    const isSoldVehicleTool = [
+      'sold.vehicles',
+      'sold.vehicle.search',
+      'sold.vehicle.detail',
+      'sold.vehicle.analytics',
+      'sell.accounts.summary',
+    ].includes(definition.name);
+    const exactSoldVehicleOperatorScope = isSoldVehicleTool
+      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.role === 'EMPLOYEE' || context.permissions.some((permission) => SOLD_VEHICLE_PERMISSIONS.includes(permission as typeof SOLD_VEHICLE_PERMISSIONS[number])));
     const operatorPresentation = presentAiToolDataForOperator(data, context, { allowOperationalPii: exactSoldVehicleOperatorScope });
     const secured = sanitizeAiToolData(data, context);
     data = secured.data;
@@ -4621,13 +4692,18 @@ export class AiReadOnlyToolsService {
     const durationMs = Math.max(0, Date.now() - startedAt);
     const forecastConfidence = forecastConfidenceFor(data);
     const contractSource = definition.name === 'knowledge.search' ? 'cache' : 'database';
+    const activeMaskedFields = exactSoldVehicleOperatorScope
+      ? [...new Set([...maskedFieldsFor(data), ...operatorPresentation.maskedFields])].filter(
+        (field) => !/(?:owner|buyer|seller|purchaser|customer|broker|party|vehicle|chassis|model|brand|listing|mobile|phone|contact)(?:Name|Number|Title)?$/iu.test(field)
+      )
+      : [...new Set([...maskedFieldsFor(data), ...secured.maskedFields])];
     const contract = createAiDataContract({
       status: availability.status === 'AVAILABLE' ? 'success' : 'empty',
       source: contractSource,
       fetchedAt: new Date(),
       freshness: 'current',
       data,
-      maskedFields: [...new Set([...maskedFieldsFor(data), ...secured.maskedFields])],
+      maskedFields: activeMaskedFields,
       permission: 'allowed',
       ...(requestedLimitFor(parsed.data) !== undefined ? { requestedLimit: requestedLimitFor(parsed.data) } : {}),
     });
@@ -4643,7 +4719,7 @@ export class AiReadOnlyToolsService {
       databaseLatencyMs,
       emptyData: availability.status === 'UNAVAILABLE',
       ...(forecastConfidence !== undefined ? { forecastConfidence } : {}),
-      ...(secured.maskedFields.length ? { maskedFields: secured.maskedFields } : {}),
+      ...(activeMaskedFields.length ? { maskedFields: activeMaskedFields } : {}),
     });
     return {
       toolName: definition.name,
